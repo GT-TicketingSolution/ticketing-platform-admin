@@ -9,8 +9,8 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Ticket Booking Platform – Super Admin",
-  description: "Super Admin panel for the Ticket Booking Platform",
+  title: "Ticket Booking Platform – Admin",
+  description: "Admin panel for the Ticket Booking Platform",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -206,13 +206,19 @@ function NavItem({
 // LogoutItem with portal tooltip
 // ─────────────────────────────────────────────────────────────────────────────
 function LogoutItem({ isIconOnly }: { isIconOnly: boolean }) {
+  const router = useRouter();
   const [hovered, setHovered] = useState(false);
   const anchorRef = useRef<HTMLDivElement>(null);
+
+  const handleLogout = () => {
+    router.push("/login");
+  };
 
   return (
     <div style={{ padding: "8px 10px 24px 10px", flexShrink: 0 }}>
       <div
         ref={anchorRef}
+        onClick={handleLogout}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{

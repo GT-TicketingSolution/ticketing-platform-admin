@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Bell, UserCircle2, AlignRight } from "lucide-react";
 import { colors, typography, spacing } from "@/lib/theme";
 
@@ -17,6 +18,8 @@ export default function Header({
   onMenuClick,
   sidebarWidth = spacing.sidebarWidth,
 }: HeaderProps) {
+  const [bellHovered, setBellHovered] = useState(false);
+
   return (
     <header
       style={{
@@ -89,31 +92,72 @@ export default function Header({
           flexShrink: 0,
         }}
       >
-        {/* ── Notification bell – circular outlined button ── */}
-        <button
-          aria-label="Notifications"
-          style={{
-            background: "transparent",
-            border: `1.5px solid ${colors.header.iconColor}`,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: "30px",
-            height: "30px",
-            padding: 0,
-            borderRadius: "50%",
-            transition: "background 0.18s ease, border-color 0.18s ease",
-            flexShrink: 0,
-          }}
-          className="header-bell-btn"
-        >
-          <Bell
-            size={16}
-            color={colors.header.iconColor}
-            strokeWidth={1.8}
-          />
-        </button>
+        {/* ── Notification Bell Container with Tooltip ── */}
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <button
+            aria-label="Notifications"
+            onMouseEnter={() => setBellHovered(true)}
+            onMouseLeave={() => setBellHovered(false)}
+            style={{
+              background: "transparent",
+              border: `1.5px solid ${colors.header.iconColor}`,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "30px",
+              height: "30px",
+              padding: 0,
+              borderRadius: "50%",
+              transition: "background 0.18s ease, border-color 0.18s ease",
+              flexShrink: 0,
+            }}
+            className="header-bell-btn"
+          >
+            <Bell
+              size={16}
+              color={colors.header.iconColor}
+              strokeWidth={1.8}
+            />
+          </button>
+
+          {/* Hover Tooltip Popup */}
+          {bellHovered && (
+            <div
+              style={{
+                position: "absolute",
+                top: "calc(100% + 8px)",
+                left: "50%",
+                transform: "translateX(-50%)",
+                background: colors.sidebar.tooltipBg,
+                color: colors.sidebar.tooltipText,
+                fontFamily: typography.fontFamily.sans,
+                fontSize: "12px",
+                fontWeight: typography.fontWeight.medium,
+                padding: "4px 10px",
+                borderRadius: "6px",
+                whiteSpace: "nowrap",
+                pointerEvents: "none",
+                zIndex: 100,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.18)",
+              }}
+            >
+              {/* Arrow indicator */}
+              <span
+                style={{
+                  position: "absolute",
+                  bottom: "100%",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  borderWidth: "5px",
+                  borderStyle: "solid",
+                  borderColor: `transparent transparent ${colors.sidebar.tooltipBg} transparent`,
+                }}
+              />
+              Notifications
+            </div>
+          )}
+        </div>
 
         {/* Vertical divider */}
         <div
@@ -135,11 +179,11 @@ export default function Header({
             flexShrink: 0,
           }}
         >
-          {/* ── Filled dark avatar circle ── */}
+          {/* Filled dark avatar circle */}
           <div
             style={{
-              width: "30px",
-              height: "30px",
+              width: "34px",
+              height: "34px",
               borderRadius: "50%",
               background: colors.header.avatarBg,
               display: "flex",
@@ -148,7 +192,6 @@ export default function Header({
               flexShrink: 0,
             }}
           >
-            {/* Solid filled person silhouette */}
             <svg
               width="23"
               height="23"

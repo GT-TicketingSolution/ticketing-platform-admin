@@ -6,9 +6,7 @@
  */
 
 export const colors = {
-
   // Sidebar
-
   sidebar: {
     bg: "#0C2A42",
     divider: "#2372A5",
@@ -25,7 +23,6 @@ export const colors = {
   },
 
   // Header
-
   header: {
     bg: "#FFFFFF",
     border: "#E5E7EB",
@@ -37,8 +34,35 @@ export const colors = {
     shadow: "0 1px 4px rgba(0,0,0,0.06)",
   },
 
-  // Brand / Primary
+  // Login Page Tokens
+  login: {
+    bg: "#FFFFFF",
+    cardBg: "#FFFFFF",
+    cardBorder: "#0084FF",
+    cardShadow: "0 8px 32px rgba(1, 27, 47, 0.12)",
+    title: "#011B2F",
+    subtitle: "#6B7280",
+    avatarBg: "#002A45",
+    roleContainerBg: "#FFFDFD",
+    roleBorder: "#B3AFAF",
+    roleActiveBg: "#011B2F",
+    roleActiveText: "#FFFBFB",
+    roleInactiveText: "#002A45",
+    inputBorder: "#D9D9D9",
+    inputBorderActive: "#B3AFAF",
+    inputIcon: "#6B7280",
+    inputText: "#011B2F",
+    placeholder: "#6B7280",
+    forgotPassword: "#173F63",
+    btnBg: "#F4BC43",
+    btnHoverBg: "#E5AF36",
+    btnText: "#011B2F",
+    footerText: "#002A45",
+    footerAdminLink: "#F4BC43",
+    langText: "#173F63",
+  },
 
+  // Brand / Primary
   brand: {
     primary: "#F4BC43",
     primaryDark: "#011B2F",
@@ -46,7 +70,6 @@ export const colors = {
   },
 
   // Backgrounds
-
   bg: {
     page: "#F0F4F8",
     card: "#FFFFFF",
@@ -54,11 +77,10 @@ export const colors = {
   },
 
   // Text
-
   text: {
     primary: "#011B2F",
     secondary: "#2372A5",
-    muted: "#A0A0A0",
+    muted: "#6B7280",
     white: "#FFFFFF",
   },
 
@@ -88,13 +110,14 @@ export const typography = {
     lg: "18px",
     xl: "20px",
     "2xl": "24px",
-    "3xl": "30px",
+    "3xl": "32px",
   },
   lineHeight: {
     tight: "20px",
     normal: "25px",
     base: "24px",
     relaxed: "28px",
+    heading: "40px",
   },
 } as const;
 
