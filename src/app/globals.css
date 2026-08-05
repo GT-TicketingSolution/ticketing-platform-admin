@@ -1,26 +1,63 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Brand */
+  --color-brand-primary: #F4BC43;
+  --color-brand-primary-dark: #011B2F;
+  --color-brand-accent: #2372A5;
+
+  /* Sidebar */
+  --color-sidebar-bg: #0C2A42;
+  --color-sidebar-divider: #2372A5;
+  --color-sidebar-active-bg: #F4BC43;
+  --color-sidebar-active-text: #011B2F;
+  --color-sidebar-item-text: #FFFFFF;
+
+  /* Page */
+  --color-bg-page: #F0F4F8;
+  --color-bg-card: #FFFFFF;
+  --color-text-primary: #011B2F;
+  --color-text-secondary: #2372A5;
+  --color-text-muted: #6B7280;
+
+  /* Status */
+  --color-success: #22C55E;
+  --color-warning: #F4BC43;
+  --color-error: #EF4444;
+  --color-info: #2372A5;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Sidebar scrollbar styling */
+aside::-webkit-scrollbar {
+  width: 4px;
+}
+aside::-webkit-scrollbar-track {
+  background: transparent;
+}
+aside::-webkit-scrollbar-thumb {
+  background: #2372A5;
+  border-radius: 4px;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
 }

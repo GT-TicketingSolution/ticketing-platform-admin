@@ -1,3 +1,4 @@
+import UnderConstruction from "@/components/ui/UnderConstruction";
 export default function CustomerManagementPage() {
-  return null;
+  return <UnderConstruction />;
 }
