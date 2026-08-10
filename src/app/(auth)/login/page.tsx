@@ -2,17 +2,20 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Mail, Lock, Eye, EyeOff, Globe, ChevronDown } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, Globe, ChevronDown, AlertCircle } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import { loginSchema, LoginFormData, RoleType } from "./schema";
+import { findManagerByEmail, saveManagerSession } from "@/lib/managerAuth";
 
 export default function LoginPage() {
   const router = useRouter();
   const [selectedRole, setSelectedRole] = useState<RoleType>("Admin");
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [selectedLang, setSelectedLang] = useState("English");
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
 
@@ -23,15 +26,56 @@ export default function LoginPage() {
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      emailOrUsername: "",
+      email: "",
       password: "",
     },
   });
 
   const onSubmit = async (data: LoginFormData) => {
     setIsSubmitting(true);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    router.push("/ticket-booking");
+    setAuthError(null);
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    // ── Manager login: create session for any entered email/password ───────
+    if (selectedRole === "Manager") {
+      const existing = findManagerByEmail(data.email);
+      const managerToSave = existing || {
+        id: `MGR-${Date.now().toString().slice(-3)}`,
+        name: data.email.split("@")[0] || "Manager User",
+        email: data.email,
+        phone: "9876543210",
+        password: data.password,
+        attraction: "Toy Train, Ropeway",
+        joinedDate: new Date().toISOString().slice(0, 10),
+        status: "Active" as const,
+        allowedModules: ["Bookings", "Transactions", "Invoices", "Inventory / Capacity", "Reports", "Staff Management"],
+        attractionManagementEnabled: true,
+        attractionPermissions: [
+          {
+            attractionId: "ATR-001",
+            modules: ["Counter Assignment", "Customer Management", "Complimentary Passes", "User Management", "CCTV Monitoring"],
+          },
+          {
+            attractionId: "ATR-002",
+            modules: ["Counter Assignment", "Customer Management", "CCTV Monitoring"],
+          },
+        ],
+      };
+
+      saveManagerSession(managerToSave);
+      sessionStorage.setItem("userRole", "Manager");
+      router.push("/dashboard");
+      return;
+    }
+
+    // Admin / Staff login: direct login for any input 
+    sessionStorage.setItem("userRole", selectedRole);
+    if (selectedRole === "Staff") {
+      router.push("/ticket-booking");
+    } else {
+      router.push("/dashboard");
+    }
   };
 
   return (
@@ -299,10 +343,10 @@ export default function LoginPage() {
               gap: "18px",
             }}
           >
-            {/* Email/Username Field */}
+            {/* Email Field */}
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               <label
-                htmlFor="emailOrUsername"
+                htmlFor="email"
                 style={{
                   fontFamily: typography.fontFamily.sans,
                   fontWeight: typography.fontWeight.medium,
@@ -311,7 +355,7 @@ export default function LoginPage() {
                   color: colors.login.title,
                 }}
               >
-                Email/Username
+                Email
               </label>
 
               <div
@@ -321,7 +365,7 @@ export default function LoginPage() {
                   alignItems: "center",
                   height: "42px",
                   border: `1px solid ${
-                    errors.emailOrUsername ? colors.status.error : colors.login.inputBorder
+                    errors.email ? colors.status.error : colors.login.inputBorder
                   }`,
                   borderRadius: "8px",
                   background: "#FFFFFF",
@@ -336,10 +380,10 @@ export default function LoginPage() {
                   style={{ flexShrink: 0, marginRight: "10px" }}
                 />
                 <input
-                  id="emailOrUsername"
+                  id="email"
                   type="text"
-                  placeholder="Enter your email or username"
-                  {...register("emailOrUsername")}
+                  placeholder="Enter your email"
+                  {...register("email")}
                   style={{
                     width: "100%",
                     border: "none",
@@ -352,7 +396,7 @@ export default function LoginPage() {
                 />
               </div>
 
-              {errors.emailOrUsername && (
+              {errors.email && (
                 <span
                   style={{
                     fontFamily: typography.fontFamily.sans,
@@ -361,7 +405,7 @@ export default function LoginPage() {
                     marginTop: "1px",
                   }}
                 >
-                  {errors.emailOrUsername.message}
+                  {errors.email.message}
                 </span>
               )}
             </div>
@@ -451,11 +495,8 @@ export default function LoginPage() {
 
               {/* Forgot Password Link */}
               <div style={{ textAlign: "right", marginTop: "2px" }}>
-                <a
-                  href="#forgot-password"
-                  onClick={(e) => {
-                    e.preventDefault();
-                  }}
+                <Link
+                  href="/forgot-password"
                   style={{
                     fontFamily: typography.fontFamily.sans,
                     fontWeight: typography.fontWeight.medium,
@@ -466,7 +507,7 @@ export default function LoginPage() {
                   }}
                 >
                   Forgot Password?
-                </a>
+                </Link>
               </div>
             </div>
 
@@ -497,35 +538,35 @@ export default function LoginPage() {
             >
               {isSubmitting ? "Logging in..." : "Login"}
             </button>
-          </form>
-        </div>
 
-        {/* ── Footer Link Below Card ── */}
-        <div
-          style={{
-            marginTop: "16px",
-            textAlign: "center",
-            fontFamily: typography.fontFamily.sans,
-            fontSize: "14px",
-            lineHeight: "18px",
-            fontWeight: typography.fontWeight.normal,
-            color: colors.login.footerText,
-          }}
-        >
-          Don’t have an account?{" "}
-          <a
-            href="#contact-admin"
-            onClick={(e) => {
-              e.preventDefault();
-            }}
-            style={{
-              color: colors.login.footerAdminLink,
-              fontWeight: typography.fontWeight.semibold,
-              textDecoration: "none",
-            }}
-          >
-            Contact Administrator
-          </a>
+            {/* Auth error banner */}
+            {authError && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  background: "#FEF2F2",
+                  border: "1px solid #FECACA",
+                  borderRadius: "8px",
+                  padding: "10px 14px",
+                  marginTop: "4px",
+                }}
+              >
+                <AlertCircle size={16} color={colors.status.error} style={{ flexShrink: 0 }} />
+                <span
+                  style={{
+                    fontFamily: typography.fontFamily.sans,
+                    fontSize: "13px",
+                    color: colors.status.error,
+                    fontWeight: 500,
+                  }}
+                >
+                  {authError}
+                </span>
+              </div>
+            )}
+          </form>
         </div>
       </main>
 

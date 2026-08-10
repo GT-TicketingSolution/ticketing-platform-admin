@@ -16,17 +16,22 @@ import {
   ClipboardList,
   BarChart2,
   Users,
-  Settings,
   CloudUpload,
   LogOut,
   AlignRight,
   X,
+  LayoutDashboard,
+  UserCheck,
+  UserCog,
+  ScanLine,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 
-// ─── Nav items ───────────────────────────────────────────────────────────────
-const NAV_ITEMS = [
-  { label: "Ticket Booking", href: "/ticket-booking", icon: Ticket },
+// ── Admin nav: Dashboard first, Manager/Staff Mgmt, no Ticket Booking ──
+const ADMIN_NAV_ITEMS = [
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Manager Management", href: "/manager-management", icon: UserCheck },
+  { label: "Staff Management", href: "/staff-management", icon: UserCog },
   { label: "Bookings", href: "/bookings", icon: BookOpen },
   { label: "Transactions", href: "/transactions", icon: CircleDollarSign },
   { label: "Invoices", href: "/invoices", icon: FileText },
@@ -36,11 +41,44 @@ const NAV_ITEMS = [
   { label: "Customer Management", href: "/customer-management", icon: UserRound },
   { label: "Complimentary Passes", href: "/complimentary-passes", icon: ClipboardList },
   { label: "Reports", href: "/reports", icon: BarChart2 },
-  { label: "User Management", href: "/user-management", icon: Users },
-  { label: "Settings", href: "/settings", icon: Settings },
-  { label: "Backup", href: "/backup", icon: CloudUpload },
+  { label: "User Management", href: "/user-management", icon: Users }
 ];
 
+// ── All possible manager nav items (filtered by session permissions) ──
+const ALL_MANAGER_NAV_ITEMS = [
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Staff Management", href: "/staff-management", icon: UserCog },
+  { label: "Bookings", href: "/bookings", icon: BookOpen },
+  { label: "Transactions", href: "/transactions", icon: CircleDollarSign },
+  { label: "Invoices", href: "/invoices", icon: FileText },
+  { label: "Inventory / Capacity", href: "/inventory", icon: Boxes },
+  { label: "CCTV Monitoring", href: "/cctv-monitoring", icon: Cctv },
+  { label: "Attraction Management", href: "/attraction-management", icon: Landmark },
+  { label: "Customer Management", href: "/customer-management", icon: UserRound },
+  { label: "Complimentary Passes", href: "/complimentary-passes", icon: ClipboardList },
+  { label: "Reports", href: "/reports", icon: BarChart2 },
+];
+
+// ── Staff nav: Ticket Booking + Scanner only ──
+const STAFF_NAV_ITEMS = [
+  { label: "Ticket Booking", href: "/ticket-booking", icon: Ticket },
+  { label: "Scanner", href: "/scanner", icon: ScanLine },
+];
+
+/** Pick the correct nav list based on the active role and manager permissions */
+function getNavItems(role: string, managerAllowedModules: Set<string> | null) {
+  switch (role) {
+    case "Manager":
+      if (managerAllowedModules) {
+        return ALL_MANAGER_NAV_ITEMS.filter((item) =>
+          managerAllowedModules.has(item.label)
+        );
+      }
+      return ALL_MANAGER_NAV_ITEMS;
+    case "Staff": return STAFF_NAV_ITEMS;
+    default: return ADMIN_NAV_ITEMS;
+  }
+}
 
 function PortalTooltip({
   label,
@@ -108,21 +146,22 @@ function PortalTooltip({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// NavItem with portal tooltip
-// ─────────────────────────────────────────────────────────────────────────────
+// NavItem with portal tooltip and instant click response
+
 function NavItem({
   label,
   href,
   icon: Icon,
   isActive,
   isIconOnly,
+  onClick,
 }: {
   label: string;
   href: string;
   icon: React.ElementType;
   isActive: boolean;
   isIconOnly: boolean;
+  onClick?: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -131,7 +170,9 @@ function NavItem({
     <>
       <Link
         href={href}
-        style={{ textDecoration: "none", display: "block", padding: "3px 10px" }}
+        prefetch={true}
+        onClick={onClick}
+        style={{ textDecoration: "none", display: "block", padding: "3px 10px",gap:10 }}
       >
         <div
           ref={anchorRef as React.RefObject<HTMLDivElement>}
@@ -148,7 +189,7 @@ function NavItem({
               : hovered
                 ? colors.sidebar.hoverBg
                 : "transparent",
-            transition: "background 0.18s ease",
+            transition: "background 0.08s ease, color 0.08s ease",
             cursor: "pointer",
             justifyContent: isIconOnly ? "center" : "flex-start",
           }}
@@ -202,15 +243,15 @@ function NavItem({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // LogoutItem with portal tooltip
-// ─────────────────────────────────────────────────────────────────────────────
-function LogoutItem({ isIconOnly }: { isIconOnly: boolean }) {
+
+function LogoutItem({ isIconOnly, onLogout }: { isIconOnly: boolean; onLogout?: () => void }) {
   const router = useRouter();
   const [hovered, setHovered] = useState(false);
   const anchorRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = () => {
+    if (onLogout) onLogout();
     router.push("/login");
   };
 
@@ -271,25 +312,38 @@ function LogoutItem({ isIconOnly }: { isIconOnly: boolean }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sidebar
-// ─────────────────────────────────────────────────────────────────────────────
+// Sidebar Component
 interface SidebarProps {
   collapsed: boolean;
   drawerOpen: boolean;
   isMobile: boolean;
+  roleName?: string;
+  roleInitials?: string;
+  /** For Manager role: which nav labels are permitted. null = no filter (admin/staff) */
+  managerAllowedModules?: Set<string> | null;
   onDesktopToggle: () => void;
   onDrawerClose: () => void;
+  onLogout?: () => void;
 }
 
 export default function Sidebar({
   collapsed,
   drawerOpen,
   isMobile,
+  roleName = "Admin",
+  roleInitials = "AD",
+  managerAllowedModules = null,
   onDesktopToggle,
   onDrawerClose,
+  onLogout,
 }: SidebarProps) {
   const pathname = usePathname();
+  const [pendingPath, setPendingPath] = useState<string | null>(null);
+
+  // Sync / clear pending path when actual pathname updates
+  useEffect(() => {
+    setPendingPath(null);
+  }, [pathname]);
 
   // Close drawer on route change
   const closeDrawer = useCallback(onDrawerClose, [onDrawerClose]);
@@ -331,12 +385,12 @@ export default function Sidebar({
       left: 0,
       top: 0,
       zIndex: 50,
-      // Do NOT set overflowX:hidden here so tooltips are visible,
-      // but we clip only when expanded to prevent label overflow
       overflowY: "auto",
       overflowX: isIconOnly ? "visible" : "hidden",
       transition: "width 0.25s cubic-bezier(0.4,0,0.2,1)",
     };
+
+  const activePath = pendingPath ?? pathname;
 
   return (
     <>
@@ -355,19 +409,62 @@ export default function Sidebar({
       )}
 
       <aside style={sidebarStyle}>
-        {/* ── Top bar ── */}
+        {/* ── Top bar with Role Badge & Title ── */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            justifyContent: isIconOnly ? "center" : "flex-end",
-            padding: "14px",
+            justifyContent: isIconOnly ? "center" : "space-between",
+            padding: "14px 16px",
             minHeight: "76px",
             flexShrink: 0,
+            boxSizing: "border-box",
+            gap: "10px",
           }}
         >
+          {/* Expanded role badge & title */}
+          {!isIconOnly ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "8px",
+                  background: colors.brand.primary,
+                  color: colors.sidebar.activeText,
+                  fontFamily: typography.fontFamily.sans,
+                  fontWeight: 800,
+                  fontSize: "14px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  boxShadow: "0 2px 8px rgba(244, 188, 67, 0.35)",
+                }}
+              >
+                {roleInitials}
+              </div>
+              <span
+                style={{
+                  fontFamily: typography.fontFamily.sans,
+                  fontWeight: typography.fontWeight.bold,
+                  fontSize: "15px",
+                  color: "#FFFFFF",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {roleName}
+              </span>
+            </div>
+          ) : (
+            // Collapsed icon-only mode: show ONLY the menu toggle button centered
+            null
+          )}
+
+          {/* Toggle buttons */}
           {isMobile ? (
-            // Mobile: X close button
             <button
               onClick={onDrawerClose}
               aria-label="Close sidebar"
@@ -380,14 +477,13 @@ export default function Sidebar({
                 alignItems: "center",
                 justifyContent: "center",
                 borderRadius: "6px",
-                marginLeft: "auto",
               }}
               className="sidebar-toggle-btn"
             >
               <X size={22} color={colors.sidebar.iconColor} />
             </button>
           ) : (
-            // Desktop: collapse toggle
+            // Desktop: always show the toggle button (collapsed or expanded)
             <button
               onClick={onDesktopToggle}
               aria-label="Toggle sidebar"
@@ -400,6 +496,7 @@ export default function Sidebar({
                 alignItems: "center",
                 justifyContent: "center",
                 borderRadius: "6px",
+                flexShrink: 0,
               }}
               className="sidebar-toggle-btn"
             >
@@ -417,11 +514,12 @@ export default function Sidebar({
           }}
         />
 
-        {/* ── Navigation ── */}
-        <nav style={{ flex: 1, padding: "8px 0" }}>
-          {NAV_ITEMS.map((item) => {
+        {/* ── Navigation (role-based + permission-filtered) ── */}
+        <nav style={{ flex: 1, padding: "8px 0",marginTop:"20px" }}>
+          {getNavItems(roleName, managerAllowedModules).map((item) => {
             const isActive =
-              pathname === item.href || pathname.startsWith(item.href + "/");
+              activePath === item.href ||
+              (item.href !== "/dashboard" && activePath.startsWith(item.href));
             return (
               <NavItem
                 key={item.href}
@@ -430,13 +528,11 @@ export default function Sidebar({
                 icon={item.icon}
                 isActive={isActive}
                 isIconOnly={isIconOnly}
+                onClick={() => setPendingPath(item.href)}
               />
             );
           })}
         </nav>
-
-        {/* ── Logout ── */}
-        <LogoutItem isIconOnly={isIconOnly} />
 
         {/* ── Scoped styles ── */}
         <style>{`

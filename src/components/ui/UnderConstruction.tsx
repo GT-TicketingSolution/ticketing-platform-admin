@@ -1,6 +1,19 @@
+"use client";
+
+import { useEffect } from "react";
 import { colors, typography } from "@/lib/theme";
 
-export default function UnderConstruction() {
+interface UnderConstructionProps {
+  title?: string;
+}
+
+export default function UnderConstruction({ title }: UnderConstructionProps) {
+  useEffect(() => {
+    if (title) {
+      document.title = title;
+    }
+  }, [title]);
+
   return (
     <div
       style={{

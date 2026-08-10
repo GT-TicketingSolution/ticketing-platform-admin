@@ -4,89 +4,112 @@ import { useState, useEffect } from "react";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 import { colors, spacing } from "@/lib/theme";
+import { ToastProvider } from "@/components/ui/Toast";
+import {
+  getManagerSession,
+  getManagerAllowedModules,
+  clearManagerSession,
+} from "@/lib/managerAuth";
 
 /** Breakpoint below which we switch to mobile/tablet drawer mode */
 const MOBILE_BREAKPOINT = 1024;
 
+const ROLE_INITIALS: Record<string, string> = {
+  Admin: "AD",
+  Manager: "MG",
+  Staff: "ST",
+};
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  // true  → screen < 1024px  (tablet + mobile)
-  // false → screen ≥ 1024px  (laptop + desktop)
   const [isMobile, setIsMobile] = useState(false);
-
-  // Desktop only: whether the sidebar is collapsed to icon-only mode
   const [collapsed, setCollapsed] = useState(false);
-
-  // Mobile/Tablet only: whether the drawer is open
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [userRole, setUserRole] = useState("Admin");
+  /** Modules the current manager is allowed to see (null = not a manager) */
+  const [managerAllowedModules, setManagerAllowedModules] = useState<Set<string> | null>(null);
 
-  // Detect breakpoint on mount and on resize
+  useEffect(() => {
+    const saved = sessionStorage.getItem("userRole") ?? "Admin";
+    setUserRole(saved);
+
+    if (saved === "Manager") {
+      const session = getManagerSession();
+      setManagerAllowedModules(getManagerAllowedModules(session));
+    } else {
+      setManagerAllowedModules(null);
+    }
+  }, []);
+
   useEffect(() => {
     const checkBreakpoint = () => {
       const mobile = window.innerWidth < MOBILE_BREAKPOINT;
       setIsMobile(mobile);
-      if (!mobile) {
-        // Coming back to desktop → close any open drawer
-        setDrawerOpen(false);
-      }
+      if (!mobile) setDrawerOpen(false);
     };
     checkBreakpoint();
     window.addEventListener("resize", checkBreakpoint);
     return () => window.removeEventListener("resize", checkBreakpoint);
   }, []);
 
-  // Content left margin:
-  // • Desktop expanded  → 268px
-  // • Desktop collapsed → 68px
-  // • Mobile/Tablet     → 0  (sidebar is a floating overlay, not in flow)
   const contentMarginLeft = isMobile
     ? 0
     : collapsed
-      ? spacing.sidebarCollapsedWidth
-      : spacing.sidebarWidth;
+    ? spacing.sidebarCollapsedWidth
+    : spacing.sidebarWidth;
+
+  const roleInitials = ROLE_INITIALS[userRole] ?? userRole.slice(0, 2).toUpperCase();
+
+  const handleLogout = () => {
+    if (userRole === "Manager") clearManagerSession();
+    sessionStorage.removeItem("userRole");
+  };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: colors.bg.page }}>
-      {/* ── Global Sidebar ── */}
-      <Sidebar
-        collapsed={collapsed}
-        drawerOpen={drawerOpen}
-        isMobile={isMobile}
-        onDesktopToggle={() => setCollapsed((p) => !p)}
-        onDrawerClose={() => setDrawerOpen(false)}
-      />
-
-      {/* ── Right panel (shifts with sidebar on desktop only) ── */}
-      <div
-        style={{
-          marginLeft: `${contentMarginLeft}px`,
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          minHeight: "100vh",
-          minWidth: 0,
-          transition: "margin-left 0.25s cubic-bezier(0.4,0,0.2,1)",
-        }}
-      >
-        {/* ── Fixed Header – receives sidebar width to set its left offset ── */}
-        <Header
+    <ToastProvider>
+      <div style={{ display: "flex", minHeight: "100vh", background: colors.bg.page }}>
+        <Sidebar
+          collapsed={collapsed}
+          drawerOpen={drawerOpen}
           isMobile={isMobile}
-          onMenuClick={() => setDrawerOpen(true)}
-          sidebarWidth={contentMarginLeft}
+          roleName={userRole}
+          roleInitials={roleInitials}
+          managerAllowedModules={managerAllowedModules}
+          onDesktopToggle={() => setCollapsed((p) => !p)}
+          onDrawerClose={() => setDrawerOpen(false)}
+          onLogout={handleLogout}
         />
 
-        {/* ── Page content (paddingTop reserves space for the fixed header) ── */}
-        <main
+        <div
           style={{
+            marginLeft: `${contentMarginLeft}px`,
             flex: 1,
-            padding: isMobile ? "16px" : "24px",
-            paddingTop: `${spacing.headerHeight + (isMobile ? 16 : 24)}px`,
-            boxSizing: "border-box",
-            background: colors.bg.page,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: "100vh",
+            minWidth: 0,
+            transition: "margin-left 0.25s cubic-bezier(0.4,0,0.2,1)",
           }}
         >
-          {children}
-        </main>
+          <Header
+            isMobile={isMobile}
+            userRole={userRole}
+            onMenuClick={() => setDrawerOpen(true)}
+            sidebarWidth={contentMarginLeft}
+          />
+
+          <main
+            style={{
+              flex: 1,
+              padding: isMobile ? "16px" : "24px",
+              paddingTop: `${spacing.headerHeight + (isMobile ? 16 : 24)}px`,
+              boxSizing: "border-box",
+              background: colors.bg.page,
+            }}
+          >
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </ToastProvider>
   );
 }
