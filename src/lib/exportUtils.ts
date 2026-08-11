@@ -35,4 +35,26 @@ export function exportMultiSectionXLS(filename: string, sections: XLSSection[]) 
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Generates and downloads a single-table CSV/Excel file
+ */
+export function exportToCSV(filename: string, headers: string[], rows: (string | number | boolean)[][]) {
+  const headerLine = headers.map((h) => `"${String(h).replace(/"/g, '""')}"`).join(",");
+  const rowLines = rows.map((row) =>
+    row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")
+  );
+
+  const content = [headerLine, ...rowLines].join("\n");
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `${filename.endsWith(".csv") ? filename : `${filename}.csv`}`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }

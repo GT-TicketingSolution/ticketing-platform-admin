@@ -172,89 +172,110 @@ export function DataTable<T>({
         </table>
       </div>
 
-      {/* Pagination Bar */}
       {data.length > 0 && (
         <div
           style={{
-            padding: "14px 20px",
-            borderTop: `1px solid ${colors.header.border}`,
+            padding: "16px 20px",
+            borderTop: "1px solid rgba(179, 175, 175, 0.4)",
             background: "#FFFFFF",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             flexWrap: "wrap",
             gap: "12px",
-            fontSize: "13px",
-            fontFamily: typography.fontFamily.sans,
-            color: colors.text.muted,
           }}
         >
-          {/* Summary text */}
-          <div>
-            Showing{" "}
-            <strong style={{ color: colors.text.primary }}>
-              {Math.min(startIndex + 1, data.length)}
-            </strong>{" "}
-            to{" "}
-            <strong style={{ color: colors.text.primary }}>
-              {Math.min(startIndex + pageSize, data.length)}
-            </strong>{" "}
-            of <strong style={{ color: colors.text.primary }}>{data.length}</strong> entries
-          </div>
+          {/* Showing Count */}
+          <span
+            style={{
+              fontFamily: typography.fontFamily.sans,
+              fontWeight: 600,
+              fontSize: "11px",
+              color: "rgba(81, 82, 82, 0.69)",
+            }}
+          >
+            Showing {Math.min(startIndex + 1, data.length)}–{Math.min(startIndex + pageSize, data.length)} of {data.length}
+          </span>
 
-          {/* Page controls */}
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {/* Pagination Controls */}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            {/* Previous Button */}
             <button
-              onClick={handlePrev}
               disabled={activePage <= 1}
+              onClick={handlePrev}
               style={{
-                display: "inline-flex",
+                height: "30px",
+                padding: "0 12px",
+                background: "#FFFFFF",
+                border: "1px solid rgba(179, 175, 175, 0.75)",
+                borderRadius: "4px",
+                fontFamily: "Inter, sans-serif",
+                fontWeight: 500,
+                fontSize: "10px",
+                color: activePage <= 1 ? "#A0A0A0" : "#374151",
+                cursor: activePage <= 1 ? "not-allowed" : "pointer",
+                opacity: activePage <= 1 ? 0.5 : 1,
+                display: "flex",
                 alignItems: "center",
                 gap: "4px",
-                padding: "6px 12px",
-                borderRadius: "6px",
-                border: `1px solid ${colors.header.border}`,
-                background: activePage <= 1 ? "#F1F5F9" : "#FFFFFF",
-                color: activePage <= 1 ? "#94A3B8" : colors.text.primary,
-                fontWeight: 600,
-                cursor: activePage <= 1 ? "not-allowed" : "pointer",
-                transition: "all 0.15s ease",
               }}
             >
-              <ChevronLeft size={16} /> Previous
+              <ChevronLeft size={12} />
+              <span>Previous</span>
             </button>
 
-            <span
-              style={{
-                padding: "4px 10px",
-                borderRadius: "6px",
-                background: colors.bg.page,
-                fontWeight: 700,
-                color: colors.sidebar.bg,
-                fontSize: "13px",
-              }}
-            >
-              Page {activePage} of {totalPages}
-            </span>
+            {/* Page Number Buttons */}
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+              const isActive = page === activePage;
+              return (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  style={{
+                    width: "28px",
+                    height: "30px",
+                    background: isActive ? "#F4BC43" : "#FFFFFF",
+                    border: "1px solid rgba(179, 175, 175, 0.75)",
+                    borderRadius: "4px",
+                    fontFamily: "Inter, sans-serif",
+                    fontWeight: 500,
+                    fontSize: "10px",
+                    color: "#374151",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transition: "all 0.12s ease",
+                  }}
+                >
+                  {page}
+                </button>
+              );
+            })}
 
+            {/* Next Button */}
             <button
-              onClick={handleNext}
               disabled={activePage >= totalPages}
+              onClick={handleNext}
               style={{
-                display: "inline-flex",
+                height: "30px",
+                padding: "0 12px",
+                background: "#FFFFFF",
+                border: "1px solid rgba(179, 175, 175, 0.75)",
+                borderRadius: "4px",
+                fontFamily: "Inter, sans-serif",
+                fontWeight: 500,
+                fontSize: "10px",
+                color: activePage >= totalPages ? "#A0A0A0" : "#374151",
+                cursor: activePage >= totalPages ? "not-allowed" : "pointer",
+                opacity: activePage >= totalPages ? 0.5 : 1,
+                display: "flex",
                 alignItems: "center",
                 gap: "4px",
-                padding: "6px 12px",
-                borderRadius: "6px",
-                border: `1px solid ${colors.header.border}`,
-                background: activePage >= totalPages ? "#F1F5F9" : "#FFFFFF",
-                color: activePage >= totalPages ? "#94A3B8" : colors.text.primary,
-                fontWeight: 600,
-                cursor: activePage >= totalPages ? "not-allowed" : "pointer",
-                transition: "all 0.15s ease",
               }}
             >
-              Next <ChevronRight size={16} />
+              <span>Next</span>
+              <ChevronRight size={12} />
             </button>
           </div>
         </div>

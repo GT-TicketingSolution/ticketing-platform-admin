@@ -53,8 +53,6 @@ const ROUTE_HEADER_MAP: Record<string, { title: string; icon: React.ElementType 
   "/manager-management": { title: "Manager Management", icon: UserCheck },
   "/staff-management": { title: "Staff Management", icon: UserCog },
   "/dashboard": { title: "Dashboard", icon: LayoutDashboard },
-  "/manager-dashboard": { title: "Manager Dashboard", icon: LayoutDashboard },
-  "/staff-dashboard": { title: "Staff Dashboard", icon: LayoutDashboard },
   "/scanner": { title: "Ticket Scanner", icon: ScanLine },
   "/settings": { title: "Settings", icon: Settings },
 };

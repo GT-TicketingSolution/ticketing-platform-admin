@@ -13,6 +13,8 @@ import {
   ArrowLeft,
   Filter,
   X,
+  FileText,
+  FileSpreadsheet,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import { INITIAL_STAFF, INITIAL_ATTRACTIONS, StaffUser, Attraction } from "@/types/admin";
@@ -27,6 +29,10 @@ import StatusToggle from "@/components/ui/StatusToggle";
 import StatusFilterSelect from "@/components/ui/StatusFilterSelect";
 import MultiSelectDropdown from "@/components/ui/MultiSelectDropdown";
 import { matchesStatusFilter } from "@/lib/filterUtils";
+import { useUserRole } from "@/hooks/useUserRole";
+import { RoleGuard } from "@/components/auth/RoleGuard";
+import { handleDownloadStaffListPDF, handleExportStaffCSV } from "@/lib/printUtils";
+import ExportButtons from "@/components/ui/ExportButtons";
 
 const MultiSelect = MultiSelectDropdown;
 
@@ -34,7 +40,7 @@ function StaffManagementInner() {
   const { showToast } = useToast();
 
   const searchParams = useSearchParams();
-  const [userRole, setUserRole] = useState<string>("Admin");
+  const { role: userRole } = useUserRole();
   const [staffList, setStaffList] = useState<StaffUser[]>(INITIAL_STAFF);
   const [attractions, setAttractions] = useState<Attraction[]>(INITIAL_ATTRACTIONS);
   const [search, setSearch] = useState("");
@@ -45,14 +51,12 @@ function StaffManagementInner() {
 
   useEffect(() => {
     document.title = META_CONSTANTS.staffManagement.fullTitle;
-    const savedRole = sessionStorage.getItem("userRole") ?? "Admin";
-    setUserRole(savedRole);
-    const scoped = filterAttractionsByRole(INITIAL_ATTRACTIONS, savedRole);
+    const scoped = filterAttractionsByRole(INITIAL_ATTRACTIONS, userRole);
     setAttractions(scoped);
     if (scoped.length > 0) {
       setFormData((prev) => ({ ...prev, assignedAttraction: [scoped[0].name] }));
     }
-  }, []);
+  }, [userRole]);
 
   // Modal & Selection States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -219,6 +223,31 @@ function StaffManagementInner() {
       setSelectedStaff(updated);
     }
     showToast(`Status of "${staff.name}" updated to "${newStatus}".`, "success");
+  };
+
+  // Export Handlers
+  const handleExportPDF = () => {
+    if (filtered.length === 0) {
+      showToast("No staff data matches current filters", "info");
+      return;
+    }
+    const parts: string[] = [];
+    if (selectedAttractionFilter !== "All") parts.push(`Attraction: ${selectedAttractionFilter}`);
+    if (selectedStatusFilter !== "All") parts.push(`Status: ${selectedStatusFilter}`);
+    if (search) parts.push(`Search: "${search}"`);
+    const filterInfo = parts.length > 0 ? parts.join(" | ") : "All Staff";
+    handleDownloadStaffListPDF(filtered, filterInfo);
+    showToast(`Generated PDF report for ${filtered.length} staff members`, "success");
+  };
+
+  const handleExportExcel = () => {
+    if (filtered.length === 0) {
+      showToast("No staff data matches current filters", "info");
+      return;
+    }
+    const label = selectedAttractionFilter !== "All" ? selectedAttractionFilter : "All";
+    handleExportStaffCSV(filtered, label);
+    showToast(`Exported ${filtered.length} staff members to CSV`, "success");
   };
 
   // DataTable Columns
@@ -713,7 +742,7 @@ function StaffManagementInner() {
     );
   }
 
-  // ─── Main Staff List View ───────────────────────────────────────────────
+  // ─── Main Staff List View 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* Header Bar */}
@@ -721,34 +750,15 @@ function StaffManagementInner() {
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent: "flex-end",
           flexWrap: "wrap",
-          gap: "16px",
+          gap: "12px",
         }}
       >
-        <div>
-          <h1
-            style={{
-              fontFamily: typography.fontFamily.sans,
-              fontWeight: typography.fontWeight.bold,
-              fontSize: typography.fontSize["2xl"],
-              color: colors.text.primary,
-              margin: 0,
-            }}
-          >
-            Staff Management ({staffList.length})
-          </h1>
-          <p
-            style={{
-              fontFamily: typography.fontFamily.sans,
-              fontSize: "14px",
-              color: colors.text.muted,
-              margin: "4px 0 0 0",
-            }}
-          >
-            Assign staff members to specific attractions and specialized ticket counters (Foreigner, Indian, Child/Senior).
-          </p>
-        </div>
+        <ExportButtons
+          onExportPDF={handleExportPDF}
+          onExportExcel={handleExportExcel}
+        />
 
         <button
           onClick={handleOpenAddModal}
@@ -1105,7 +1115,9 @@ function StaffManagementInner() {
 export default function StaffManagementPage() {
   return (
     <Suspense fallback={null}>
-      <StaffManagementInner />
+      <RoleGuard allowedRoles={["Admin", "Manager"]}>
+        <StaffManagementInner />
+      </RoleGuard>
     </Suspense>
   );
 }

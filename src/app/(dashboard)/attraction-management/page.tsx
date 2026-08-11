@@ -22,6 +22,8 @@ import { useToast } from "@/components/ui/Toast";
 import { confirmAdd, confirmDelete, showSuccessNotify } from "@/lib/notify";
 import { filterAttractionsByRole } from "@/lib/managerAuth";
 import { Shield, Building2 } from "lucide-react";
+import { useUserRole } from "@/hooks/useUserRole";
+import { HasRole } from "@/components/auth/RoleGuard";
 
 // Category badge color
 const CATEGORY_COLOR: Record<string, string> = {
@@ -318,14 +320,12 @@ function AttractionCard({
 
 export default function AttractionManagementPage() {
   const { showToast } = useToast();
-  const [userRole, setUserRole] = useState<string>("Admin");
+  const { role: userRole } = useUserRole();
 
   useEffect(() => {
     document.title = "Attraction Management | Ticketing Platform";
-    const savedRole = sessionStorage.getItem("userRole") ?? "Admin";
-    setUserRole(savedRole);
-    setAttractions(filterAttractionsByRole(INITIAL_ATTRACTIONS, savedRole));
-  }, []);
+    setAttractions(filterAttractionsByRole(INITIAL_ATTRACTIONS, userRole));
+  }, [userRole]);
 
   const [attractions, setAttractions] = useState<Attraction[]>(INITIAL_ATTRACTIONS);
   const [searchQuery, setSearchQuery] = useState("");

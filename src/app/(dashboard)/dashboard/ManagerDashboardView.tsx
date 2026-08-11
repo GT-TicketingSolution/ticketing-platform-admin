@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
   UserCog,
@@ -14,15 +14,16 @@ import {
 import { colors, typography } from "@/lib/theme";
 import { INITIAL_STAFF, StaffUser } from "@/types/admin";
 
-export default function ManagerDashboardPage() {
+export default function ManagerDashboardView() {
   const [staff] = useState<StaffUser[]>(INITIAL_STAFF);
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredStaff = useMemo(() => {
-    return staff.filter((s) =>
-      searchQuery === "" ||
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.role.some((r) => r.toLowerCase().includes(searchQuery.toLowerCase()))
+    return staff.filter(
+      (s) =>
+        searchQuery === "" ||
+        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.role.some((r) => r.toLowerCase().includes(searchQuery.toLowerCase()))
     );
   }, [staff, searchQuery]);
 
@@ -33,12 +34,11 @@ export default function ManagerDashboardPage() {
     [filteredStaff]
   );
 
-  // Estimate revenue: avg ₹250 per ticket
   const estimatedRevenue = totalTicketsProcessed * 250;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* ── Header ── */}
+      {/* Header Title */}
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "16px" }}>
         <div>
           <h1
@@ -52,15 +52,14 @@ export default function ManagerDashboardPage() {
           >
             Manager Dashboard
           </h1>
-          <p style={{ fontFamily: typography.fontFamily.sans, fontSize: "14px", color: colors.text.muted, margin: "4px 0 0 0" }}>
-            Overview of your staff and ticket processing performance.
+          <p style={{ margin: "4px 0 0 0", fontSize: "14px", color: colors.text.muted }}>
+            Operations &amp; Staff Performance Overview
           </p>
         </div>
       </div>
 
-      {/* ── Stat Cards ── */}
+      {/* Stat Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: "18px" }}>
-        {/* Total Staff (clickable → staff management) */}
         <Link
           href="/staff-management"
           prefetch={true}
@@ -95,7 +94,6 @@ export default function ManagerDashboardPage() {
           </div>
         </Link>
 
-        {/* Total Tickets Processed */}
         <div
           style={{
             background: "#FFFFFF",
@@ -124,7 +122,6 @@ export default function ManagerDashboardPage() {
           </div>
         </div>
 
-        {/* Estimated Revenue */}
         <div
           style={{
             background: colors.sidebar.bg,
@@ -154,7 +151,7 @@ export default function ManagerDashboardPage() {
         </div>
       </div>
 
-      {/* ── Recent Staff Table ── */}
+      {/* Recent Staff Table */}
       <div
         style={{
           background: "#FFFFFF",
@@ -164,7 +161,6 @@ export default function ManagerDashboardPage() {
           border: `1px solid ${colors.header.border}`,
         }}
       >
-        {/* Table header */}
         <div style={{ padding: "18px 24px", borderBottom: `1px solid ${colors.header.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
           <div>
             <h3 style={{ fontFamily: typography.fontFamily.sans, fontWeight: typography.fontWeight.bold, fontSize: "16px", color: colors.text.primary, margin: 0 }}>
@@ -175,7 +171,6 @@ export default function ManagerDashboardPage() {
             </span>
           </div>
 
-          {/* Search */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px", border: `1px solid ${colors.header.border}`, borderRadius: "8px", padding: "0 12px", height: "36px", minWidth: "220px", background: "#FFFFFF" }}>
             <Search size={15} color={colors.text.muted} />
             <input
@@ -213,7 +208,7 @@ export default function ManagerDashboardPage() {
                   <td style={{ padding: "14px 20px", fontWeight: 600 }}>{s.name}</td>
                   <td style={{ padding: "14px 20px" }}>
                     <span style={{ background: colors.bg.page, padding: "4px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, color: colors.brand.accent }}>
-                      {s.role}
+                      {s.role.join(", ")}
                     </span>
                   </td>
                   <td style={{ padding: "14px 20px", fontWeight: 700 }}>{s.ticketsIssued.toLocaleString()}</td>

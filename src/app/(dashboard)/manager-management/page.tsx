@@ -28,6 +28,8 @@ import {
   TrendingUp,
   ChevronDown,
   ChevronRight,
+  FileText,
+  FileSpreadsheet,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import {
@@ -41,6 +43,8 @@ import { confirmDelete, confirmAdd, confirmStatusChange, showSuccessNotify } fro
 import { addManagerSchema, AddManagerFormData } from "./schema";
 import { DataTable, Column } from "@/components/ui/DataTable";
 import { META_CONSTANTS } from "@/lib/metaConstant";
+import { handleDownloadManagersListPDF, handleExportManagersCSV } from "@/lib/printUtils";
+import ExportButtons from "@/components/ui/ExportButtons";
 
 // Sub-modules available inside each attraction
 const SUB_MODULES = [
@@ -648,10 +652,35 @@ function ManagerManagementInner() {
     if (!selectedManager) return;
     const computedAttraction = getAttractionFromPermissions(selectedManager.attractionPermissions || []);
     const updated = { ...selectedManager, attraction: computedAttraction };
-    setManagers(managers.map((m) => (m.id === updated.id ? updated : m)));
+    setManagers((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
     setSelectedManager(updated);
     setIsEditing(false);
     showToast(`Manager "${updated.name}" updated successfully!`, "success");
+  };
+
+  // Export Handlers
+  const handleExportPDF = () => {
+    if (filteredManagers.length === 0) {
+      showToast("No manager data matches current filters", "info");
+      return;
+    }
+    const parts: string[] = [];
+    if (selectedAttractionFilter !== "All") parts.push(`Attraction: ${selectedAttractionFilter}`);
+    if (selectedStatusFilter !== "All") parts.push(`Status: ${selectedStatusFilter}`);
+    if (searchQuery) parts.push(`Search: "${searchQuery}"`);
+    const filterInfo = parts.length > 0 ? parts.join(" | ") : "All Managers";
+    handleDownloadManagersListPDF(filteredManagers, filterInfo);
+    showToast(`Generated PDF report for ${filteredManagers.length} managers`, "success");
+  };
+
+  const handleExportExcel = () => {
+    if (filteredManagers.length === 0) {
+      showToast("No manager data matches current filters", "info");
+      return;
+    }
+    const label = selectedAttractionFilter !== "All" ? selectedAttractionFilter : "All";
+    handleExportManagersCSV(filteredManagers, label);
+    showToast(`Exported ${filteredManagers.length} managers to CSV`, "success");
   };
 
   // Delete
@@ -1009,15 +1038,12 @@ function ManagerManagementInner() {
   // List View
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "16px" }}>
-        <div>
-          <h1 style={{ fontFamily: typography.fontFamily.sans, fontWeight: 700, fontSize: typography.fontSize["2xl"], color: colors.text.primary, margin: 0 }}>
-            Managers ({managers.length})
-          </h1>
-          <p style={{ fontFamily: typography.fontFamily.sans, fontSize: "14px", color: colors.text.muted, margin: "4px 0 0" }}>
-            Manage attraction managers - their assigned attraction, permissions, and access.
-          </p>
-        </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap", gap: "12px" }}>
+        <ExportButtons
+          onExportPDF={handleExportPDF}
+          onExportExcel={handleExportExcel}
+        />
+
         <button
           onClick={() => setIsAddModalOpen(true)}
           style={{ display: "flex", alignItems: "center", gap: "8px", background: colors.brand.primary, color: colors.sidebar.activeText, border: "none", borderRadius: "8px", padding: "10px 18px", fontFamily: typography.fontFamily.sans, fontWeight: 700, fontSize: "14px", cursor: "pointer", boxShadow: "0 4px 12px rgba(244,188,67,0.3)" }}

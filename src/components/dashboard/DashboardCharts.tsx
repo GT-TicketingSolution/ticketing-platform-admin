@@ -3,10 +3,7 @@
 import { useState } from "react";
 import {
   TrendingUp,
-  BarChart3,
   PieChart,
-  Calendar,
-  Layers,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 

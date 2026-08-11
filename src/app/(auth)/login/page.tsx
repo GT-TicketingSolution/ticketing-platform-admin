@@ -69,13 +69,16 @@ export default function LoginPage() {
       return;
     }
 
-    // Admin / Staff login: direct login for any input 
-    sessionStorage.setItem("userRole", selectedRole);
+    // Staff login: redirect directly to Ticket Booking
     if (selectedRole === "Staff") {
+      sessionStorage.setItem("userRole", "Staff");
       router.push("/ticket-booking");
-    } else {
-      router.push("/dashboard");
+      return;
     }
+
+    // Admin login: direct login for any input
+    sessionStorage.setItem("userRole", selectedRole);
+    router.push("/dashboard");
   };
 
   return (

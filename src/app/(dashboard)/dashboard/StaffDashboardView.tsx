@@ -11,7 +11,6 @@ import {
 import Link from "next/link";
 import { colors, typography } from "@/lib/theme";
 
-// Mock ticket stats for staff dashboard
 const STAFF_STATS = {
   ticketsIssuedToday: 142,
   ticketsPendingScan: 28,
@@ -33,10 +32,10 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   "Cancelled": { bg: "#FEF2F2", text: "#DC2626" },
 };
 
-export default function StaffDashboardPage() {
+export default function StaffDashboardView() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* ── Header ── */}
+      {/* Header Title */}
       <div>
         <h1
           style={{
@@ -47,16 +46,15 @@ export default function StaffDashboardPage() {
             margin: 0,
           }}
         >
-          Staff Dashboard
+          Staff Counter Dashboard
         </h1>
-        <p style={{ fontFamily: typography.fontFamily.sans, fontSize: "14px", color: colors.text.muted, margin: "4px 0 0 0" }}>
-          Today's ticketing activity and quick access to your work tools.
+        <p style={{ margin: "4px 0 0 0", fontSize: "14px", color: colors.text.muted }}>
+          Live ticketing operations &amp; verification log
         </p>
       </div>
 
-      {/* ── Stat Cards ── */}
+      {/* Stat Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "18px" }}>
-        {/* Tickets Issued Today (→ ticket-booking) */}
         <Link
           href="/ticket-booking"
           prefetch={true}
@@ -88,7 +86,6 @@ export default function StaffDashboardPage() {
           </div>
         </Link>
 
-        {/* Pending Scan (→ scanner) */}
         <Link
           href="/scanner"
           prefetch={true}
@@ -120,7 +117,6 @@ export default function StaffDashboardPage() {
           </div>
         </Link>
 
-        {/* Tickets Validated */}
         <div style={{ background: "#FFFFFF", borderRadius: "12px", padding: "20px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", display: "flex", alignItems: "center", justifyContent: "space-between", borderLeft: `4px solid ${colors.status.success}` }}>
           <div>
             <span style={{ fontFamily: typography.fontFamily.sans, fontSize: "13px", fontWeight: 500, color: colors.text.muted, display: "block" }}>Tickets Validated</span>
@@ -136,7 +132,6 @@ export default function StaffDashboardPage() {
           </div>
         </div>
 
-        {/* Revenue card */}
         <div style={{ background: colors.sidebar.bg, borderRadius: "12px", padding: "20px", boxShadow: "0 4px 14px rgba(12, 42, 66, 0.15)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <span style={{ fontFamily: typography.fontFamily.sans, fontSize: "13px", fontWeight: 500, color: "rgba(255,255,255,0.7)", display: "block" }}>Today's Revenue</span>
@@ -153,7 +148,7 @@ export default function StaffDashboardPage() {
         </div>
       </div>
 
-      {/* ── Quick Actions ── */}
+      {/* Quick Actions */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
         <Link
           href="/ticket-booking"
@@ -208,13 +203,13 @@ export default function StaffDashboardPage() {
             <ScanLine size={22} color={colors.brand.primary} />
           </div>
           <div>
-            <div style={{ fontSize: "16px", fontWeight: 700 }}>Scan & Validate</div>
+            <div style={{ fontSize: "16px", fontWeight: 700 }}>Scan &amp; Validate</div>
             <div style={{ fontSize: "12px", fontWeight: 500, opacity: 0.7, color: "rgba(255,255,255,0.7)" }}>Verify visitor entry QR codes</div>
           </div>
         </Link>
       </div>
 
-      {/* ── Recent Tickets Table ── */}
+      {/* Recent Tickets Table */}
       <div style={{ background: "#FFFFFF", borderRadius: "12px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", overflow: "hidden", border: `1px solid ${colors.header.border}` }}>
         <div style={{ padding: "18px 24px", borderBottom: `1px solid ${colors.header.border}` }}>
           <h3 style={{ fontFamily: typography.fontFamily.sans, fontWeight: 700, fontSize: "16px", color: colors.text.primary, margin: 0 }}>Recent Tickets</h3>
