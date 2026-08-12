@@ -17,6 +17,7 @@ export interface Attraction {
   hasSeating: boolean;
   status: "Active" | "Inactive";
   image?: string;
+  description?: string;
 }
 
 // ─── Per-attraction module permissions ───────────────────────────────────────

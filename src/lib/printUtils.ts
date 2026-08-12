@@ -498,6 +498,125 @@ export async function handleDownloadTransactionsListPDF(
 }
 
 /**
+ * Download Filtered Invoices List PDF Report
+ */
+export async function handleDownloadInvoicesListPDF(
+  invoices: any[],
+  filterInfo: string = "All Invoices"
+) {
+  try {
+    if (!(window as any).html2pdf) {
+      await new Promise<void>((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src =
+          "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error("Failed to load PDF library"));
+        document.head.appendChild(script);
+      });
+    }
+
+    const getInvoiceId = (t: any) => t.invoiceId || t.id.replace("TXN-", "INV-");
+    const totalAmount = invoices.reduce((sum, t) => sum + (t.amount || 0), 0);
+
+    const rowsHtml = invoices
+      .map(
+        (t, idx) => `
+        <tr style="border-bottom: 1px solid #E5E7EB; font-size: 11px;">
+          <td style="padding: 8px 10px;">${idx + 1}</td>
+          <td style="padding: 8px 10px; font-weight: 600; color: #0C2A42;">${getInvoiceId(t)}</td>
+          <td style="padding: 8px 10px;">${t.customerName}</td>
+          <td style="padding: 8px 10px;">${t.dateTime}</td>
+          <td style="padding: 8px 10px;">${t.attraction || "—"}</td>
+          <td style="padding: 8px 10px;">${t.visitors || "2 Adults + 1 Child"}</td>
+          <td style="padding: 8px 10px; text-align: right; font-weight: 600;">₹${(t.amount || 0).toFixed(2)}</td>
+          <td style="padding: 8px 10px;">${t.paymentMode}</td>
+          <td style="padding: 8px 10px; text-align: center;">
+            <span style="display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; background: ${
+              t.status === "Confirmed" ? "#B5FFE7" : t.status === "Cancelled" ? "#FEE2E2" : "#FFF8D9"
+            }; color: ${
+              t.status === "Confirmed" ? "#119167" : t.status === "Cancelled" ? "#DC2626" : "#D97706"
+            };">${t.status}</span>
+          </td>
+        </tr>
+      `
+      )
+      .join("");
+
+    const reportHtml = `
+      <div style="font-family: Arial, sans-serif; padding: 24px; color: #011B2F; background: #FFFFFF;">
+        <!-- Header -->
+        <table style="width: 100%; border-collapse: collapse; border-bottom: 2px solid #F4BC43; padding-bottom: 10px; margin-bottom: 16px;">
+          <tr>
+            <td style="vertical-align: top;">
+              <div style="font-size: 20px; font-weight: bold; color: #0C2A42;">TICKETING PLATFORM</div>
+              <div style="font-size: 13px; color: #0C2A42; font-weight: 600; margin-top: 2px;">INVOICES LIST REPORT</div>
+              <div style="font-size: 11px; color: #6B7280; margin-top: 2px;">Filter: ${filterInfo}</div>
+            </td>
+            <td style="text-align: right; vertical-align: top;">
+              <div style="font-size: 11px; color: #6B7280;">Generated: ${new Date().toLocaleString()}</div>
+              <div style="font-size: 11px; color: #6B7280; margin-top: 2px;">Total Records: <strong>${invoices.length}</strong></div>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Table -->
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 20px;">
+          <thead>
+            <tr style="background: #F1F5F9; color: #374151; font-weight: bold;">
+              <th style="padding: 8px 10px; text-align: left; width: 30px;">#</th>
+              <th style="padding: 8px 10px; text-align: left;">Invoice ID</th>
+              <th style="padding: 8px 10px; text-align: left;">Customer</th>
+              <th style="padding: 8px 10px; text-align: left;">Date &amp; Time</th>
+              <th style="padding: 8px 10px; text-align: left;">Attraction</th>
+              <th style="padding: 8px 10px; text-align: left;">Visitors</th>
+              <th style="padding: 8px 10px; text-align: right;">Amount</th>
+              <th style="padding: 8px 10px; text-align: left;">Mode</th>
+              <th style="padding: 8px 10px; text-align: center;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+
+        <!-- Summary Bar -->
+        <table style="width: 100%; border-collapse: collapse; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px;">
+          <tr>
+            <td style="padding: 10px 14px; font-weight: bold; font-size: 12px; color: #0C2A42;">
+              Total Invoices: ${invoices.length}
+            </td>
+            <td style="padding: 10px 14px; text-align: right; font-weight: bold; font-size: 14px; color: #0C2A42;">
+              Total Revenue: ₹${totalAmount.toFixed(2)}
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+
+    const element = document.createElement("div");
+    element.style.width = "820px";
+    element.innerHTML = reportHtml;
+    document.body.appendChild(element);
+
+    const opt = {
+      margin: [10, 10, 10, 10],
+      filename: `Invoices_Report_${new Date().toISOString().slice(0, 10)}.pdf`,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
+    };
+
+    await (window as any).html2pdf().set(opt).from(element).save();
+    document.body.removeChild(element);
+  } catch (err) {
+    console.error("Invoice PDF export error:", err);
+  }
+}
+
+
+
+/**
  * Download Filtered Staff List PDF Report
  */
 export async function handleDownloadStaffListPDF(
