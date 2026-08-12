@@ -1,3 +1,5 @@
-export default function DashboardPage() {
-  return null;
+import DashboardPage from "./dashboard/page";
+
+export default function RootDashboardPage() {
+  return <DashboardPage />;
 }
