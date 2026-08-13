@@ -7,8 +7,7 @@ import {
   Plus,
   Pencil,
   Trash2,
-  ChevronLeft,
-  ChevronRight,
+  RotateCcw,
 } from "lucide-react";
 import { Customer, INITIAL_CUSTOMERS } from "@/types/admin";
 import AddEditCustomerModal from "@/components/modals/AddEditCustomerModal";
@@ -199,140 +198,150 @@ export default function CustomerManagementPage() {
   return (
     <div
       style={{
-        padding: "24px 32px 40px 32px",
-        background: "#FFFFFF",
-        minHeight: "calc(100vh - 78px)",
-        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+        gap: "20px",
+        width: "100%",
       }}
     >
-
-      {/* ── Page Header matching exact Figma style ── */}
+      {/* ── Row 1: Export buttons + Add Customer — right-aligned (matches Bookings) ── */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
+          justifyContent: "flex-end",
           gap: "12px",
-          marginBottom: "28px",
-        }}
-      >
-        <UserRound size={30} color="#011B2F" strokeWidth={2.2} />
-        <h1
-          style={{
-            margin: 0,
-            fontFamily: "'Plus Jakarta Sans', sans-serif",
-            fontWeight: 700,
-            fontSize: "20px",
-            lineHeight: "25px",
-            color: "#0C2A42",
-          }}
-        >
-          Customer Management
-        </h1>
-      </div>
-
-      {/* ── Top Controls Row: Search Box & Actions (Export PDF, Export Excel, + Add Customer) ── */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "16px",
           flexWrap: "wrap",
-          marginBottom: "24px",
         }}
       >
-        {/* Search Bar matching exact Figma Rectangle 59 style */}
-        <div
+        <ExportButtons
+          onExportPDF={handleExportPDF}
+          onExportExcel={handleExportCSV}
+          pdfLabel="Export PDF"
+          excelLabel="Export Excel"
+        />
+
+        {/* Add Customer */}
+        <button
+          type="button"
+          onClick={handleOpenAddModal}
           style={{
-            position: "relative",
-            width: "100%",
-            maxWidth: "413px",
-            height: "40px",
-            background: "#FFFFFF",
-            border: "1.5px solid rgba(179, 175, 175, 0.51)",
-            borderRadius: "4px",
+            height: "39px",
+            padding: "0 20px",
+            background: "#0C2A42",
+            borderRadius: "5px",
+            border: "none",
+            cursor: "pointer",
             display: "flex",
             alignItems: "center",
-            padding: "0 12px",
-            boxSizing: "border-box",
+            gap: "8px",
+            boxShadow: "0 4px 12px rgba(12,42,66,0.2)",
+            transition: "all 0.2s ease",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "#173F63";
+            e.currentTarget.style.transform = "translateY(-1px)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "#0C2A42";
+            e.currentTarget.style.transform = "translateY(0)";
           }}
         >
-          <Search size={18} color="#B3AFAF" style={{ flexShrink: 0, marginRight: "10px" }} />
-          <input
-            type="text"
-            placeholder="Search by Customer Name, Mobile No., GSTN........"
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setCurrentPage(1);
-            }}
+          <Plus size={16} color="#FFFFFF" strokeWidth={2.5} />
+          <span
             style={{
-              width: "100%",
-              border: "none",
-              outline: "none",
-              background: "transparent",
               fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontWeight: 700,
+              fontWeight: 600,
               fontSize: "12px",
-              lineHeight: "15px",
-              color: "#011B2F",
+              color: "#FFFFFF",
             }}
-          />
+          >
+            Add Customer
+          </span>
+        </button>
+      </div>
+
+      {/* ── Row 2: Filter card (matches Bookings white card style) ── */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "16px",
+          background: "#FFFFFF",
+          padding: "20px",
+          borderRadius: "8px",
+          border: "1px solid rgba(179, 175, 175, 0.4)",
+        }}
+      >
+        {/* Search */}
+        <div style={{ flex: 1, minWidth: "260px", maxWidth: "420px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              background: "#FFFFFF",
+              border: "1.5px solid rgba(179, 175, 175, 0.51)",
+              borderRadius: "4px",
+              padding: "0 12px",
+              height: "40px",
+              boxSizing: "border-box",
+            }}
+          >
+            <Search size={18} color="#B3AFAF" />
+            <input
+              type="text"
+              placeholder="Search by Customer Name, Mobile No., GSTN........"
+              value={searchTerm}
+              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+              style={{
+                width: "100%",
+                border: "none",
+                outline: "none",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                fontWeight: 700,
+                fontSize: "12px",
+                color: "#011B2F",
+                background: "transparent",
+              }}
+            />
+          </div>
         </div>
 
-        {/* Action Buttons: Export PDF, Export Excel, Add Customer */}
-        <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
-          <ExportButtons
-            onExportPDF={handleExportPDF}
-            onExportExcel={handleExportCSV}
-            pdfLabel="Export PDF"
-            excelLabel="Export Excel"
-          />
-
-          {/* Add Customer Button */}
+        {/* Reset Button */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div style={{ height: "14px" }} />
           <button
             type="button"
-            onClick={handleOpenAddModal}
+            onClick={() => { setSearchTerm(""); setCurrentPage(1); }}
             style={{
-              width: "153px",
-              height: "48px",
-              background: "#F4BC43",
-              borderRadius: "8px",
-              border: "none",
+              height: "40px",
+              width: "95px",
+              borderRadius: "4px",
+              border: "0.5px solid rgba(179, 175, 175, 0.66)",
+              background: "#FFFFFF",
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontWeight: 500,
+              fontSize: "12px",
+              color: "#173F63",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: "8px",
-              boxShadow: "0 4px 12px rgba(244, 188, 67, 0.25)",
-              transition: "all 0.2s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "#E5AF36";
-              e.currentTarget.style.transform = "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "#F4BC43";
-              e.currentTarget.style.transform = "translateY(0)";
+              gap: "6px",
+              boxSizing: "border-box",
+              transition: "all 0.15s ease",
             }}
           >
-            <Plus size={24} color="#0C2A42" strokeWidth={3} />
-            <span
-              style={{
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: 700,
-                fontSize: "14px",
-                lineHeight: "18px",
-                color: "#0C2A42",
-              }}
-            >
-              Add Customer
-            </span>
+            <RotateCcw size={14} />
+            <span>Reset</span>
           </button>
         </div>
       </div>
 
-      {/* ── Global Data Table Component (Unified S.No, Headers, Row Styles & Invoices Pagination UI) ── */}
+      {/* ── Table ── */}
       <GlobalDataTable
         columns={columns}
         data={filteredCustomers}
