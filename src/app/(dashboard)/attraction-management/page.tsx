@@ -15,10 +15,11 @@ import { colors } from "@/lib/theme";
 import { Attraction } from "@/types/admin";
 import AttractionEmptyState from "@/components/attraction/AttractionEmptyState";
 import AddEditAttractionForm from "@/components/attraction/AddEditAttractionForm";
+import SeatLayoutConfigPage from "@/components/attraction/SeatLayoutConfigPage";
 import SeatingConfigModal from "@/components/modals/SeatingConfigModal";
 import BulkUploadModal from "@/components/modals/BulkUploadModal";
-import DeleteAttractionModal from "@/components/modals/DeleteAttractionModal";
 import { useToast } from "@/components/ui/Toast";
+import { confirmDelete } from "@/lib/notify";
 
 // ── SessionStorage key ─────────────────────────────────────────────────────
 const SESSION_KEY = "attractions_data";
@@ -211,14 +212,13 @@ export default function AttractionManagementPage() {
   const [attractions, setAttractions] = useState<Attraction[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<"list" | "add" | "edit" | "empty">("empty");
+  const [viewMode, setViewMode] = useState<"list" | "add" | "edit" | "empty" | "seating">("empty");
 
   const [attractionToEdit, setAttractionToEdit] = useState<Attraction | null>(null);
+  const [seatingDraftAttraction, setSeatingDraftAttraction] = useState<Attraction | null>(null);
   const [isSeatingOpen, setIsSeatingOpen] = useState(false);
   const [seatingAttraction, setSeatingAttraction] = useState<Attraction | null>(null);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [attractionToDelete, setAttractionToDelete] = useState<Attraction | null>(null);
 
   // ── Load from sessionStorage on mount ───────────────────────────────────
   useEffect(() => {
@@ -262,9 +262,18 @@ export default function AttractionManagementPage() {
     setIsSeatingOpen(true);
   };
 
-  const handleOpenDelete = (attraction: Attraction) => {
-    setAttractionToDelete(attraction);
-    setIsDeleteOpen(true);
+  // Called from AddEditAttractionForm when 'Requires seat allocation' is checked
+  const handleConfigureSeating = (draft: Partial<Attraction>) => {
+    setSeatingDraftAttraction(draft as Attraction);
+    setViewMode("seating");
+  };
+
+  const handleOpenDelete = async (attraction: Attraction) => {
+    const confirmed = await confirmDelete(`attraction "${attraction.name}"`);
+    if (!confirmed) return;
+
+    setAttractions((prev) => prev.filter((a) => a.id !== attraction.id));
+    showToast(`Attraction "${attraction.name}" deleted.`, "info");
   };
 
   const handleSaveAttraction = (data: Partial<Attraction>) => {
@@ -294,15 +303,7 @@ export default function AttractionManagementPage() {
     }
   };
 
-  const handleDeleteConfirm = () => {
-    if (!attractionToDelete) return;
-    const name = attractionToDelete.name;
-    const updated = attractions.filter((a) => a.id !== attractionToDelete.id);
-    setAttractions(updated);
-    showToast(`Attraction "${name}" deleted.`, "info");
-    setIsDeleteOpen(false);
-    setAttractionToDelete(null);
-  };
+
 
   const handleBulkUploadSuccess = (count: number) => {
     showToast(`Successfully uploaded ${count} new attractions!`, "success");
@@ -320,6 +321,21 @@ export default function AttractionManagementPage() {
           onAddAttraction={handleOpenAdd}
           onBulkUpload={() => setIsBulkOpen(true)}
         />
+      )}
+
+      {/* ── SEATING CONFIG PAGE VIEW (full-page, triggered by Seat Allocation checkbox) ──── */}
+      {viewMode === "seating" && (
+        <div style={{ width: "100%", maxWidth: "1124px" }}>
+          <SeatLayoutConfigPage
+            attraction={seatingDraftAttraction}
+            onBack={() => setViewMode("add")}
+            onSaveSuccess={(updatedData) => {
+              // After saving seat config, redirect back to Add attraction page
+              showToast("Seat layout configuration saved!", "success");
+              setViewMode("add");
+            }}
+          />
+        </div>
       )}
 
       {/* ── ADD / EDIT FORM VIEW ────────────────────────────────────── */}
@@ -349,6 +365,7 @@ export default function AttractionManagementPage() {
             attractionToEdit={viewMode === "edit" ? attractionToEdit : null}
             onSave={handleSaveAttraction}
             onCancel={() => setViewMode(attractions.length > 0 ? "list" : "empty")}
+            onConfigureSeating={handleConfigureSeating}
           />
         </div>
       )}
@@ -528,12 +545,6 @@ export default function AttractionManagementPage() {
         isOpen={isBulkOpen}
         onClose={() => setIsBulkOpen(false)}
         onUploadSuccess={handleBulkUploadSuccess}
-      />
-      <DeleteAttractionModal
-        isOpen={isDeleteOpen}
-        onClose={() => setIsDeleteOpen(false)}
-        attraction={attractionToDelete}
-        onConfirmDelete={handleDeleteConfirm}
       />
     </div>
   );

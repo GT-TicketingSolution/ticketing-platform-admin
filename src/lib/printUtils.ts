@@ -872,3 +872,90 @@ export function handleExportManagersCSV(managerList: any[], label: string = "All
   exportToCSV(`Managers_${label}`, headers, rows);
 }
 
+/**
+ * Download Filtered Customer List PDF Report
+ */
+export async function handleDownloadCustomerListPDF(
+  customerList: any[],
+  filterInfo: string = "All Customers"
+) {
+  try {
+    if (!(window as any).html2pdf) {
+      await new Promise<void>((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src =
+          "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error("Failed to load PDF library"));
+        document.head.appendChild(script);
+      });
+    }
+
+    const rowsHtml = customerList
+      .map(
+        (c, idx) => `
+        <tr style="border-bottom: 1px solid #E5E7EB; font-size: 11px;">
+          <td style="padding: 8px 10px;">${c.sNo || idx + 1}</td>
+          <td style="padding: 8px 10px; font-weight: 600; color: #0C2A42;">${c.name}</td>
+          <td style="padding: 8px 10px;">${c.mobile}</td>
+          <td style="padding: 8px 10px;">${c.gstn}</td>
+        </tr>
+      `
+      )
+      .join("");
+
+    const reportHtml = `
+      <div style="font-family: Arial, sans-serif; padding: 24px; color: #011B2F; background: #FFFFFF;">
+        <!-- Header -->
+        <table style="width: 100%; border-collapse: collapse; border-bottom: 2px solid #F4BC43; padding-bottom: 10px; margin-bottom: 16px;">
+          <tr>
+            <td style="vertical-align: top;">
+              <div style="font-size: 20px; font-weight: bold; color: #0C2A42;">TICKETING PLATFORM</div>
+              <div style="font-size: 13px; color: #0C2A42; font-weight: 600; margin-top: 2px;">CUSTOMER MANAGEMENT REPORT</div>
+              <div style="font-size: 11px; color: #6B7280; margin-top: 2px;">Filter: ${filterInfo}</div>
+            </td>
+            <td style="text-align: right; vertical-align: top;">
+              <div style="font-size: 11px; color: #6B7280;">Generated: ${new Date().toLocaleString()}</div>
+              <div style="font-size: 11px; color: #6B7280; margin-top: 2px;">Total Customers: <strong>${customerList.length}</strong></div>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Table -->
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 20px;">
+          <thead>
+            <tr style="background: #F1F5F9; color: #374151; font-weight: bold;">
+              <th style="padding: 8px 10px; text-align: left; width: 50px;">S.NO.</th>
+              <th style="padding: 8px 10px; text-align: left;">Customer Name</th>
+              <th style="padding: 8px 10px; text-align: left;">Mobile Number</th>
+              <th style="padding: 8px 10px; text-align: left;">GSTN</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    const element = document.createElement("div");
+    element.style.width = "750px";
+    element.innerHTML = reportHtml;
+    document.body.appendChild(element);
+
+    const opt = {
+      margin: [10, 10, 10, 10],
+      filename: `Customer_Report_${new Date().toISOString().slice(0, 10)}.pdf`,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+    };
+
+    await (window as any).html2pdf().set(opt).from(element).save();
+    document.body.removeChild(element);
+  } catch (err) {
+    console.error("Customer PDF export error:", err);
+  }
+}
+
+

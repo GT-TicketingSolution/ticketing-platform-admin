@@ -1,8 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Upload, Plus, Trash2 } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Upload, Plus, Trash2, X } from "lucide-react";
 import { Attraction } from "@/types/admin";
+import { confirmDelete } from "@/lib/notify";
+import { validateAttractionForm } from "@/app/(dashboard)/attraction-management/schema";
+
+// ── Shared required asterisk ─────────────────────────────────────────────────
+const Req = () => <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>;
 
 // ── Visitor category type 
 export interface CategoryItem {
@@ -19,6 +24,228 @@ interface AddEditAttractionFormProps {
   attractionToEdit?: Attraction | null;
   onSave: (data: Partial<Attraction>) => void;
   onCancel: () => void;
+  /** Called when user checks 'Requires seat allocation' — passes the partially-built attraction */
+  onConfigureSeating?: (draft: Partial<Attraction>) => void;
+}
+
+// ── Add Visitor Category Modal ──────────────────────────────────────────────
+function AddVisitorCategoryModal({
+  isOpen,
+  onClose,
+  onAdd,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onAdd: (name: string, basePrice: string, image?: string) => void;
+}) {
+  const [catName, setCatName] = useState("");
+  const [basePrice, setBasePrice] = useState("");
+  const [image, setImage] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [imageError, setImageError] = useState(false);
+  const [priceErrorMsg, setPriceErrorMsg] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setCatName("");
+      setBasePrice("");
+      setImage(null);
+      setError("");
+      setImageError(false);
+      setPriceErrorMsg("");
+      setTimeout(() => inputRef.current?.focus(), 80);
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setImage(ev.target?.result as string);
+      setImageError(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAdd = () => {
+    const newErrors: Record<string, string> = {};
+    if (!image) newErrors.image = "Category image is required.";
+    if (!catName.trim()) newErrors.name = "Category name is required.";
+    else if (catName.trim().length < 2) newErrors.name = "Name must be at least 2 characters.";
+    if (!basePrice.trim()) newErrors.basePrice = "Base price is required.";
+    else if (isNaN(Number(basePrice)) || Number(basePrice) < 0) newErrors.basePrice = "Base price must be a non-negative number.";
+
+    if (Object.keys(newErrors).length > 0) {
+      setError(newErrors.name || "");
+      setPriceErrorMsg(newErrors.basePrice || "");
+      setImageError(!!newErrors.image);
+      return;
+    }
+    onAdd(catName.trim(), basePrice.trim(), image || "");
+    onClose();
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0,
+        backgroundColor: "rgba(1, 27, 47, 0.55)",
+        backdropFilter: "blur(4px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        zIndex: 1100, padding: "16px",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "#FFFFFF", borderRadius: "14px",
+          width: "100%", maxWidth: "440px",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.18)",
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+          overflow: "hidden",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ background: "#011B2F", padding: "16px 22px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <Plus size={20} color="#F4BC43" />
+            <span style={{ fontWeight: 700, fontSize: "16px", color: "#FFFFFF" }}>Add Visitor Category</span>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#FFFFFF", display: "flex" }}>
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: "24px 22px", display: "flex", flexDirection: "column", gap: "16px" }}>
+          {/* Category Image Upload */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+            <div
+              style={{
+                width: "72px",
+                height: "72px",
+                borderRadius: "50%",
+                overflow: "hidden",
+                border: imageError ? "2px dashed #DC2626" : "2px dashed #2372A5",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: imageError ? "#FEF2F2" : "#F8FAFC",
+                position: "relative",
+              }}
+            >
+              {image ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={image} alt="Category preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <Upload size={24} color={imageError ? "#DC2626" : "#2372A5"} />
+              )}
+            </div>
+            <label
+              htmlFor="modal-cat-img-upload"
+              style={{
+                boxSizing: "border-box",
+                padding: "4px 12px",
+                background: "#FFFFFF",
+                border: imageError ? "1.5px dashed #DC2626" : "1.5px dashed #2372A5",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                fontWeight: 600,
+                fontSize: "11px",
+                color: imageError ? "#DC2626" : "#2372A5",
+              }}
+            >
+              {image ? "Change Image" : "Upload Category Image"}
+            </label>
+            <input
+              id="modal-cat-img-upload"
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              style={{ display: "none" }}
+            />
+            {imageError && !error && <span style={{ fontSize: "11px", color: "#DC2626" }}>Category image is required.</span>}
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontWeight: 700, fontSize: "12px", color: "#374151", marginBottom: "6px" }}>
+              Category Name<Req />
+            </label>
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="e.g. Senior Citizen"
+              value={catName}
+              onChange={(e) => { setCatName(e.target.value); setError(""); }}
+              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              style={{
+                width: "100%", height: "40px", boxSizing: "border-box",
+                border: error ? "1.5px solid #DC2626" : "1.5px solid rgba(179,175,175,0.51)",
+                borderRadius: "8px", padding: "0 14px",
+                fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "13px",
+                color: "#011B2F", outline: "none",
+              }}
+            />
+            {error && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{error}</span>}
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontWeight: 700, fontSize: "12px", color: "#374151", marginBottom: "6px" }}>
+              Base Price (₹)<Req />
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. 150.00"
+              value={basePrice}
+              onChange={(e) => { setBasePrice(e.target.value.replace(/[^0-9.]/g, "")); setPriceErrorMsg(""); }}
+              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              style={{
+                width: "100%", height: "40px", boxSizing: "border-box",
+                border: priceErrorMsg ? "1.5px solid #DC2626" : "1.5px solid rgba(179,175,175,0.51)",
+                borderRadius: "8px", padding: "0 14px",
+                fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "13px",
+                color: "#011B2F", outline: "none",
+              }}
+            />
+            {priceErrorMsg && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{priceErrorMsg}</span>}
+          </div>
+
+          {/* Footer buttons */}
+          <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "4px" }}>
+            <button
+              type="button" onClick={onClose}
+              style={{
+                height: "40px", padding: "0 20px",
+                background: "#FFFFFF", border: "1.5px solid rgba(179,175,175,0.51)",
+                borderRadius: "8px", cursor: "pointer",
+                fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "13px", color: "#011B2F",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button" onClick={handleAdd}
+              style={{
+                height: "40px", padding: "0 24px",
+                background: "#F4BC43", border: "none",
+                borderRadius: "8px", cursor: "pointer",
+                fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "13px", color: "#011B2F",
+                boxShadow: "0 4px 12px rgba(244,188,67,0.3)",
+              }}
+            >
+              Add Category
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Default categories using local /Assets/Visitors/ images 
@@ -79,6 +306,7 @@ export default function AddEditAttractionForm({
   attractionToEdit,
   onSave,
   onCancel,
+  onConfigureSeating,
 }: AddEditAttractionFormProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -86,6 +314,8 @@ export default function AddEditAttractionForm({
   const [requiresSeating, setRequiresSeating] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
+  const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   // ── Populate form when editing ──────────────────────────────────────────
   useEffect(() => {
@@ -133,31 +363,69 @@ export default function AddEditAttractionForm({
   };
 
   const handleAddCategory = () => {
-    const namePrompt = prompt("Enter new category name (e.g. Senior Citizen):");
-    if (!namePrompt?.trim()) return;
+    setIsAddCategoryModalOpen(true);
+  };
+
+  const handleAddCategoryConfirm = (catName: string, basePrice: string, image?: string) => {
     setCategories((prev) => [
       ...prev,
       {
         id: `cat_${Date.now()}`,
-        name: namePrompt.trim(),
-        image: "/Assets/Visitors/Adult.jpg",
-        basePrice: "00.00",
+        name: catName,
+        image: image || "/Assets/Visitors/Adult.jpg",
+        basePrice: basePrice || "00.00",
         futurePrice: "00.00",
         effectiveFrom: "",
       },
     ]);
   };
 
-  const handleDeleteCategory = (id: string) => {
-    if (categories.length <= 1) {
-      alert("At least one visitor category is required.");
-      return;
-    }
+  const handleDeleteCategory = async (id: string) => {
+    if (categories.length <= 1) return; // silently prevent deleting last one
+    const cat = categories.find((c) => c.id === id);
+    const confirmed = await confirmDelete(`visitor category "${cat?.name || "this category"}"`); 
+    if (!confirmed) return;
     setCategories((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  // When seat allocation is toggled on — optionally open SeatLayoutConfigPage
+  const handleSeatingToggle = () => {
+    const next = !requiresSeating;
+    setRequiresSeating(next);
+    if (next && onConfigureSeating) {
+      onConfigureSeating({
+        name: name.trim() || "New Attraction",
+        description,
+        status,
+        hasSeating: true,
+        category: "Ride",
+        timing: "09:00 AM - 06:00 PM",
+        image: imagePreview || "",
+      });
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // ── Schema-based validation ────────────────────────────────────────
+    const validation = validateAttractionForm({
+      name: name.trim(),
+      description: description.trim(),
+      image: imagePreview,
+      status,
+      hasSeating: requiresSeating,
+    });
+
+    if (!validation.success) {
+      setFormErrors(validation.errors);
+      // Scroll to first error
+      const firstField = Object.keys(validation.errors)[0];
+      document.getElementById(`field-${firstField}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+
+    setFormErrors({});
 
     const getPriceByName = (n: string) => {
       const cat = categories.find((c) => c.name.toLowerCase() === n.toLowerCase());
@@ -165,8 +433,8 @@ export default function AddEditAttractionForm({
     };
 
     onSave({
-      name: name.trim() || "New Attraction",
-      description,
+      name: name.trim(),
+      description: description.trim(),
       status,
       hasSeating: requiresSeating,
       category: "Ride",
@@ -179,7 +447,6 @@ export default function AddEditAttractionForm({
         senior: getPriceByName("senior"),
         foreigner: getPriceByName("foreigner"),
       },
-      // Store categories for future use
       visitorCategories: categories,
     } as Partial<Attraction> & { visitorCategories: CategoryItem[] });
   };
@@ -221,23 +488,22 @@ export default function AddEditAttractionForm({
           </h3>
 
           {/* Attraction Name */}
-          <div style={{ marginBottom: "20px" }}>
+          <div style={{ marginBottom: "20px" }} id="field-name">
             <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
-              Attraction Name*
+              Attraction Name<Req />
             </label>
             <input
               type="text"
-              required
               placeholder="e.g. toy train"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => { setName(e.target.value); setFormErrors((p) => ({ ...p, name: "" })); }}
               style={{
                 boxSizing: "border-box",
                 width: "100%",
                 maxWidth: "313px",
                 height: "38px",
                 background: "#FFFFFF",
-                border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                border: formErrors.name ? "1.5px solid #DC2626" : "1.5px solid rgba(179, 175, 175, 0.51)",
                 borderRadius: "8px",
                 padding: "0 15px",
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
@@ -247,27 +513,28 @@ export default function AddEditAttractionForm({
                 outline: "none",
               }}
             />
+            {formErrors.name && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{formErrors.name}</span>}
           </div>
 
           {/* Description + Attraction Image Row */}
           <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", alignItems: "flex-start" }}>
             {/* Description */}
-            <div style={{ flex: "1 1 260px" }}>
+            <div style={{ flex: "1 1 260px" }} id="field-description">
               <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
-                Description*
+                Description<Req />
               </label>
               <div style={{ position: "relative", maxWidth: "313px" }}>
                 <textarea
                   placeholder="Enter attraction description......"
                   maxLength={500}
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => { setDescription(e.target.value); setFormErrors((p) => ({ ...p, description: "" })); }}
                   style={{
                     boxSizing: "border-box",
                     width: "100%",
                     height: "176px",
                     background: "#FFFFFF",
-                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                    border: formErrors.description ? "1.5px solid #DC2626" : "1.5px solid rgba(179, 175, 175, 0.51)",
                     borderRadius: "8px",
                     padding: "12px 15px 28px 15px",
                     fontFamily: "'Plus Jakarta Sans', sans-serif",
@@ -292,12 +559,13 @@ export default function AddEditAttractionForm({
                   {description.length}/500
                 </span>
               </div>
+              {formErrors.description && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{formErrors.description}</span>}
             </div>
 
             {/* Attraction Image Dropzone */}
-            <div style={{ flex: "1 1 260px" }}>
+            <div style={{ flex: "1 1 260px" }} id="field-image">
               <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
-                Attraction image*
+                Attraction image<Req />
               </label>
               <div
                 style={{
@@ -386,6 +654,7 @@ export default function AddEditAttractionForm({
                   style={{ display: "none" }}
                 />
               </div>
+              {formErrors.image && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{formErrors.image}</span>}
             </div>
           </div>
         </div>
@@ -411,7 +680,7 @@ export default function AddEditAttractionForm({
             Status
           </h3>
           <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "10px" }}>
-            Attraction Status*
+            Attraction Status<Req />
           </label>
 
           {/* Active / Inactive toggle */}
@@ -464,7 +733,7 @@ export default function AddEditAttractionForm({
             Seat Allocation
           </h3>
           <label
-            onClick={() => setRequiresSeating((p) => !p)}
+            onClick={handleSeatingToggle}
             style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", userSelect: "none" }}
           >
             <div
@@ -708,6 +977,7 @@ export default function AddEditAttractionForm({
           <button
             type="button"
             onClick={handleAddCategory}
+
             style={{
               boxSizing: "border-box",
               width: "176px",
@@ -795,7 +1065,7 @@ export default function AddEditAttractionForm({
           }}
           className="btn-form-save"
         >
-          Save
+          {attractionToEdit ? "Save" : "Add"}
         </button>
       </div>
 
@@ -810,6 +1080,13 @@ export default function AddEditAttractionForm({
           }
         }
       `}</style>
+
+      {/* Add Visitor Category Modal */}
+      <AddVisitorCategoryModal
+        isOpen={isAddCategoryModalOpen}
+        onClose={() => setIsAddCategoryModalOpen(false)}
+        onAdd={handleAddCategoryConfirm}
+      />
     </form>
   );
 }
