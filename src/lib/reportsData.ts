@@ -197,11 +197,24 @@ export function generateAttractionReportData(
  */
 export function getOverallReportSummary(
   fromDate?: string,
-  toDate?: string
+  toDate?: string,
+  attractions: Attraction[] = INITIAL_ATTRACTIONS
 ): OverallReportSummary {
   const { filteredTransactions, filteredBookings } = getFilteredDataByDate(fromDate, toDate);
 
-  const attractionReports = INITIAL_ATTRACTIONS.map((attraction) =>
+  if (!attractions || attractions.length === 0) {
+    return {
+      totalRevenue: 0,
+      totalTicketsSold: 0,
+      totalBookings: 0,
+      topAttractionName: "None",
+      topAttractionRevenue: 0,
+      avgOrderValue: 0,
+      attractionReports: [],
+    };
+  }
+
+  const attractionReports = attractions.map((attraction) =>
     generateAttractionReportData(attraction, filteredTransactions, filteredBookings)
   );
 
@@ -228,7 +241,7 @@ export function getOverallReportSummary(
     totalRevenue,
     totalTicketsSold,
     totalBookings,
-    topAttractionName,
+    topAttractionName: topAttractionName === "-" ? "None" : topAttractionName,
     topAttractionRevenue: Math.max(0, topAttractionRevenue),
     avgOrderValue,
     attractionReports,

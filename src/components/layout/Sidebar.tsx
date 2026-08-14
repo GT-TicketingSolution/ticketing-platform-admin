@@ -24,6 +24,7 @@ import {
   UserCheck,
   UserCog,
   ScanLine,
+  Armchair,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 
@@ -37,6 +38,7 @@ const ADMIN_NAV_ITEMS = [
   { label: "Invoices", href: "/invoices", icon: FileText },
   { label: "Inventory / Capacity", href: "/inventory", icon: Boxes },
   { label: "CCTV Monitoring", href: "/cctv-monitoring", icon: Cctv },
+  { label: "Seat Management", href: "/seat-management", icon: Armchair },
   { label: "Attraction Management", href: "/attraction-management", icon: Landmark },
   { label: "Customer Management", href: "/customer-management", icon: UserRound },
   { label: "Complimentary Passes", href: "/complimentary-passes", icon: ClipboardList },
@@ -52,6 +54,7 @@ const ALL_MANAGER_NAV_ITEMS = [
   { label: "Invoices", href: "/invoices", icon: FileText },
   { label: "Inventory / Capacity", href: "/inventory", icon: Boxes },
   { label: "CCTV Monitoring", href: "/cctv-monitoring", icon: Cctv },
+  { label: "Seat Management", href: "/seat-management", icon: Armchair },
   { label: "Attraction Management", href: "/attraction-management", icon: Landmark },
   { label: "Customer Management", href: "/customer-management", icon: UserRound },
   { label: "Complimentary Passes", href: "/complimentary-passes", icon: ClipboardList },

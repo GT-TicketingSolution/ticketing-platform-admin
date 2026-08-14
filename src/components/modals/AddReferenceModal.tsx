@@ -304,7 +304,7 @@ export default function AddReferenceModal({
                 boxShadow: "0 4px 12px rgba(244,188,67,0.3)",
               }}
             >
-              Save
+              Add
             </button>
           </div>
         </form>

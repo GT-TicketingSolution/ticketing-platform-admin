@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Download,
   Ticket,
@@ -9,19 +11,44 @@ import {
   ChevronDown,
   ChevronUp,
   Layers,
+  Plus,
+  ArrowRight,
+  BarChart3,
+  CreditCard,
+  TrendingUp,
+  FileSpreadsheet,
+  AlertCircle,
 } from "lucide-react";
 import DateRangePicker from "@/components/ui/DateRangePicker";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import { colors } from "@/lib/theme";
-import { INITIAL_ATTRACTIONS } from "@/types/admin";
-import {
-  getOverallReportSummary
-} from "@/lib/reportsData";
+import { Attraction, INITIAL_ATTRACTIONS } from "@/types/admin";
+import { getOverallReportSummary } from "@/lib/reportsData";
 import AttractionReportCard from "@/components/reports/AttractionReportCard";
 import SingleAttractionReportView from "@/components/reports/SingleAttractionReportView";
 import { exportMultiSectionXLS, XLSSection } from "@/lib/exportUtils";
 
+const SESSION_KEY = "attractions_data";
+
+function loadAttractionsFromSession(): Attraction[] {
+  if (typeof window === "undefined") return INITIAL_ATTRACTIONS;
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as Attraction[];
+    }
+  } catch {}
+  return INITIAL_ATTRACTIONS;
+}
+
 export default function ReportsPage() {
+  const router = useRouter();
+
+  // Attractions State
+  const [attractions, setAttractions] = useState<Attraction[]>([]);
+  const [isHydrated, setIsHydrated] = useState(false);
+
   // Filters State
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
@@ -29,11 +56,14 @@ export default function ReportsPage() {
 
   // Accordion State for "All Attractions" view (IDs of expanded cards)
   const [expandedAttractionIds, setExpandedAttractionIds] = useState<Set<string>>(
-    new Set([INITIAL_ATTRACTIONS[0]?.id || "ATR-001"])
+    new Set()
   );
 
   useEffect(() => {
     document.title = META_CONSTANTS.reports.fullTitle;
+    const loaded = loadAttractionsFromSession();
+    setAttractions(loaded);
+    setIsHydrated(true);
   }, []);
 
   // Quick Date Preset Handler
@@ -87,15 +117,18 @@ export default function ReportsPage() {
     }
   };
 
-  // Compute Overall Report Summary
+  // Compute Overall Report Summary with dynamic attractions list
   const overallSummary = useMemo(() => {
-    return getOverallReportSummary(fromDate, toDate);
-  }, [fromDate, toDate]);
+    return getOverallReportSummary(fromDate, toDate, attractions);
+  }, [fromDate, toDate, attractions]);
 
   // Attraction options dropdown
   const attractionDropdownOptions = useMemo(() => {
-    return ["All Attractions", ...INITIAL_ATTRACTIONS.map((a) => a.name)];
-  }, []);
+    if (!attractions || attractions.length === 0) {
+      return ["No Attractions Available"];
+    }
+    return ["All Attractions", ...attractions.map((a) => a.name)];
+  }, [attractions]);
 
   // Accordion Toggle Handlers
   const handleToggleCardExpand = (id: string) => {
@@ -111,7 +144,7 @@ export default function ReportsPage() {
   };
 
   const handleExpandAll = () => {
-    setExpandedAttractionIds(new Set(INITIAL_ATTRACTIONS.map((a) => a.id)));
+    setExpandedAttractionIds(new Set(attractions.map((a) => a.id)));
   };
 
   const handleCollapseAll = () => {
@@ -120,6 +153,8 @@ export default function ReportsPage() {
 
   // Export Overall Excel Report
   const handleExportOverallReport = () => {
+    if (attractions.length === 0) return;
+
     const sections: XLSSection[] = [
       {
         title: "1. SALES SUMMARY OVERVIEW",
@@ -168,11 +203,19 @@ export default function ReportsPage() {
 
   // Find single attraction report if single attraction selected
   const singleAttractionReport = useMemo(() => {
-    if (selectedAttraction === "All" || selectedAttraction === "All Attractions") return null;
+    if (
+      selectedAttraction === "All" ||
+      selectedAttraction === "All Attractions" ||
+      selectedAttraction === "No Attractions Available"
+    ) {
+      return null;
+    }
     return overallSummary.attractionReports.find(
       (r) => r.attraction.name.toLowerCase() === selectedAttraction.toLowerCase()
     );
   }, [selectedAttraction, overallSummary]);
+
+  const hasNoAttractions = isHydrated && attractions.length === 0;
 
   return (
     <div
@@ -195,7 +238,16 @@ export default function ReportsPage() {
           boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px", marginBottom: "20px" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            gap: "16px",
+            marginBottom: "20px",
+          }}
+        >
           <div>
             <h1
               style={{
@@ -208,7 +260,13 @@ export default function ReportsPage() {
             >
               Sales & Revenue Reports
             </h1>
-            <p style={{ margin: "4px 0 0 0", fontSize: "14px", color: colors.text.muted }}>
+            <p
+              style={{
+                margin: "4px 0 0 0",
+                fontSize: "14px",
+                color: colors.text.muted,
+              }}
+            >
               Analyze ticket sales volume, attraction performance, and revenue reports by date range.
             </p>
           </div>
@@ -216,19 +274,22 @@ export default function ReportsPage() {
           <button
             type="button"
             onClick={handleExportOverallReport}
+            disabled={hasNoAttractions}
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
               padding: "10px 18px",
               borderRadius: "10px",
-              backgroundColor: "#2372A5",
+              backgroundColor: hasNoAttractions ? "#94A3B8" : "#2372A5",
               color: "#FFFFFF",
               border: "none",
               fontSize: "13px",
               fontWeight: 700,
-              cursor: "pointer",
-              boxShadow: "0 2px 8px rgba(35, 114, 165, 0.25)",
+              cursor: hasNoAttractions ? "not-allowed" : "pointer",
+              opacity: hasNoAttractions ? 0.7 : 1,
+              boxShadow: hasNoAttractions ? "none" : "0 2px 8px rgba(35, 114, 165, 0.25)",
+              transition: "all 0.2s",
             }}
           >
             <Download size={16} />
@@ -268,18 +329,19 @@ export default function ReportsPage() {
               <select
                 value={selectedAttraction}
                 onChange={(e) => setSelectedAttraction(e.target.value)}
+                disabled={hasNoAttractions}
                 style={{
                   width: "100%",
                   padding: "10px 36px 10px 14px",
                   borderRadius: "8px",
                   border: "1px solid #CBD5E1",
-                  backgroundColor: "#FFFFFF",
-                  color: colors.text.primary,
+                  backgroundColor: hasNoAttractions ? "#F1F5F9" : "#FFFFFF",
+                  color: hasNoAttractions ? "#94A3B8" : colors.text.primary,
                   fontSize: "14px",
                   fontWeight: 600,
                   outline: "none",
                   appearance: "none",
-                  cursor: "pointer",
+                  cursor: hasNoAttractions ? "not-allowed" : "pointer",
                 }}
               >
                 {attractionDropdownOptions.map((opt) => (
@@ -290,7 +352,7 @@ export default function ReportsPage() {
               </select>
               <ChevronDown
                 size={18}
-                color="#64748B"
+                color={hasNoAttractions ? "#94A3B8" : "#64748B"}
                 style={{ position: "absolute", right: 12, top: 12, pointerEvents: "none" }}
               />
             </div>
@@ -360,8 +422,214 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* RENDER VIEW: Single Attraction vs All Attractions Accordion */}
-      {singleAttractionReport ? (
+      {/* ── MEANINGFUL EMPTY STATE WHEN NO ATTRACTION IS CREATED ── */}
+      {hasNoAttractions ? (
+        <div
+          style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: "20px",
+            border: "1px solid #E2E8F0",
+            padding: "48px 24px",
+            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.04)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            textAlign: "center",
+            gap: "28px",
+          }}
+        >
+          {/* Visual Icon Badge */}
+          <div
+            style={{
+              width: "80px",
+              height: "80px",
+              borderRadius: "50%",
+              backgroundColor: "#EFF6FF",
+              border: "2px solid #BFDBFE",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#2372A5",
+              boxShadow: "0 8px 16px rgba(35, 114, 165, 0.12)",
+            }}
+          >
+            <BarChart3 size={38} color="#2372A5" strokeWidth={2.2} />
+          </div>
+
+          {/* Heading & Meaningful Context Description */}
+          <div style={{ maxWidth: "560px" }}>
+            <h2
+              style={{
+                fontSize: "22px",
+                fontWeight: 800,
+                color: "#0C2A42",
+                margin: "0 0 10px 0",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+              }}
+            >
+              No Attractions Found to Generate Reports
+            </h2>
+            <p
+              style={{
+                fontSize: "14px",
+                lineHeight: "1.6",
+                color: "#64748B",
+                margin: 0,
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+              }}
+            >
+              There are currently no attractions created in the platform. To view ticket sales
+              breakdown, revenue metrics, category analytics, and payment distributions, please create
+              an attraction first.
+            </p>
+          </div>
+
+          {/* Direct CTA Actions */}
+          <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap", justifyContent: "center" }}>
+            <Link
+              href="/attraction-management?action=add"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "12px 24px",
+                backgroundColor: "#0C2A42",
+                color: "#FFFFFF",
+                borderRadius: "10px",
+                textDecoration: "none",
+                fontWeight: 700,
+                fontSize: "14px",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                boxShadow: "0 4px 12px rgba(12, 42, 66, 0.25)",
+                transition: "all 0.2s ease",
+              }}
+            >
+              <Plus size={18} strokeWidth={2.5} />
+              <span>Create New Attraction</span>
+            </Link>
+
+            <Link
+              href="/attraction-management"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "12px 22px",
+                backgroundColor: "#FFFFFF",
+                color: "#0C2A42",
+                border: "1.5px solid #CBD5E1",
+                borderRadius: "10px",
+                textDecoration: "none",
+                fontWeight: 600,
+                fontSize: "14px",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                transition: "all 0.2s ease",
+              }}
+            >
+              <span>Go to Attraction Management</span>
+              <ArrowRight size={16} />
+            </Link>
+          </div>
+
+          {/* Feature Highlight Cards - Showing what reports offer */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "16px",
+              width: "100%",
+              maxWidth: "960px",
+              marginTop: "16px",
+              textAlign: "left",
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: "#F8FAFC",
+                border: "1px solid #E2E8F0",
+                borderRadius: "12px",
+                padding: "16px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                <div style={{ padding: "6px", borderRadius: "6px", backgroundColor: "#DCFCE7", color: "#16A34A" }}>
+                  <TrendingUp size={16} />
+                </div>
+                <h4 style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
+                  Revenue & Sales Metrics
+                </h4>
+              </div>
+              <p style={{ margin: 0, fontSize: "12px", color: "#64748B", lineHeight: "1.4" }}>
+                Track gross revenue, confirmed bookings count, and average transaction values per attraction.
+              </p>
+            </div>
+
+            <div
+              style={{
+                backgroundColor: "#F8FAFC",
+                border: "1px solid #E2E8F0",
+                borderRadius: "12px",
+                padding: "16px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                <div style={{ padding: "6px", borderRadius: "6px", backgroundColor: "#E0F2FE", color: "#0284C7" }}>
+                  <Ticket size={16} />
+                </div>
+                <h4 style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
+                  Ticket Tier Breakdown
+                </h4>
+              </div>
+              <p style={{ margin: 0, fontSize: "12px", color: "#64748B", lineHeight: "1.4" }}>
+                Analyze tickets volume for Adults, Children, Students, Senior Citizens, and Foreign visitors.
+              </p>
+            </div>
+
+            <div
+              style={{
+                backgroundColor: "#F8FAFC",
+                border: "1px solid #E2E8F0",
+                borderRadius: "12px",
+                padding: "16px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                <div style={{ padding: "6px", borderRadius: "6px", backgroundColor: "#F3E8FF", color: "#8B5CF6" }}>
+                  <CreditCard size={16} />
+                </div>
+                <h4 style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
+                  Payment Mode Distribution
+                </h4>
+              </div>
+              <p style={{ margin: 0, fontSize: "12px", color: "#64748B", lineHeight: "1.4" }}>
+                Compare collection streams across UPI, Cash counter, Card, and Online payment methods.
+              </p>
+            </div>
+
+            <div
+              style={{
+                backgroundColor: "#F8FAFC",
+                border: "1px solid #E2E8F0",
+                borderRadius: "12px",
+                padding: "16px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                <div style={{ padding: "6px", borderRadius: "6px", backgroundColor: "#FEF3C7", color: "#D97706" }}>
+                  <FileSpreadsheet size={16} />
+                </div>
+                <h4 style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#1E293B" }}>
+                  Export-Ready Excel & PDF
+                </h4>
+              </div>
+              <p style={{ margin: 0, fontSize: "12px", color: "#64748B", lineHeight: "1.4" }}>
+                Download audit-ready multi-section XLS reports filtered by customized date ranges.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : singleAttractionReport ? (
+        /* RENDER VIEW: Single Attraction Report Drill-Down */
         <SingleAttractionReportView
           reportData={singleAttractionReport}
           onBackToAll={() => setSelectedAttraction("All")}

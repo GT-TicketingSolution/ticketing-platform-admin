@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Upload, Plus, Trash2, X } from "lucide-react";
+import { Upload, Plus, Trash2, X, Check, Armchair } from "lucide-react";
 import { Attraction } from "@/types/admin";
 import { confirmDelete } from "@/lib/notify";
 import { validateAttractionForm } from "@/app/(dashboard)/attraction-management/schema";
+import { SeatConfigData } from "@/components/modals/CreateSeatModal";
+
+const SEAT_STORAGE_KEY = "seat_layouts_data";
 
 // ── Shared required asterisk ─────────────────────────────────────────────────
 const Req = () => <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>;
@@ -18,6 +21,7 @@ export interface CategoryItem {
   basePrice: string;
   futurePrice: string;
   effectiveFrom: string;
+  numberOfSeats: string;
 }
 
 interface AddEditAttractionFormProps {
@@ -250,47 +254,19 @@ function AddVisitorCategoryModal({
 
 // ── Default categories using local /Assets/Visitors/ images 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
-  {
-    id: "adult",
-    name: "Adult",
-    image: "/Assets/Visitors/Adult.jpg",
-    basePrice: "100.00",
-    futurePrice: "00.00",
-    effectiveFrom: "",
-  },
-  {
-    id: "child",
-    name: "Child",
-    image: "/Assets/Visitors/Child.jpg",
-    basePrice: "50.00",
-    futurePrice: "00.00",
-    effectiveFrom: "",
-  },
-  {
-    id: "student",
-    name: "Student",
-    image: "/Assets/Visitors/Student.jpg",
-    basePrice: "60.00",
-    futurePrice: "00.00",
-    effectiveFrom: "",
-  },
-  {
-    id: "foreigner",
-    name: "Foreigner",
-    image: "/Assets/Visitors/Foreigner.jpg",
-    basePrice: "500.00",
-    futurePrice: "00.00",
-    effectiveFrom: "",
-  },
+  { id: "adult",    name: "Adult",    image: "/Assets/Visitors/Adult.jpg",    basePrice: "100.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
+  { id: "child",    name: "Child",    image: "/Assets/Visitors/Child.jpg",    basePrice: "50.00",  futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
+  { id: "student",  name: "Student",  image: "/Assets/Visitors/Student.jpg",  basePrice: "60.00",  futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
+  { id: "foreigner",name: "Foreigner",image: "/Assets/Visitors/Foreigner.jpg",basePrice: "500.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
 ];
 
 // ── Helper: derive category list from an existing Attraction's pricing ─────
 function pricingToCategories(attraction: Attraction): CategoryItem[] {
   const base = [
-    { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", price: attraction.pricing.adult },
-    { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", price: attraction.pricing.child },
-    { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", price: attraction.pricing.student },
-    { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", price: attraction.pricing.foreigner },
+    { id: "adult",    name: "Adult",    image: "/Assets/Visitors/Adult.jpg",    price: attraction.pricing.adult },
+    { id: "child",    name: "Child",    image: "/Assets/Visitors/Child.jpg",    price: attraction.pricing.child },
+    { id: "student",  name: "Student",  image: "/Assets/Visitors/Student.jpg",  price: attraction.pricing.student },
+    { id: "foreigner",name: "Foreigner",image: "/Assets/Visitors/Foreigner.jpg",price: attraction.pricing.foreigner },
   ];
   return base.map((c) => ({
     id: c.id,
@@ -299,6 +275,7 @@ function pricingToCategories(attraction: Attraction): CategoryItem[] {
     basePrice: String(c.price ?? "00.00"),
     futurePrice: "00.00",
     effectiveFrom: "",
+    numberOfSeats: "",
   }));
 }
 
@@ -311,11 +288,23 @@ export default function AddEditAttractionForm({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<"Active" | "Inactive">("Active");
-  const [requiresSeating, setRequiresSeating] = useState(false);
+  const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
+  const [availableSeats, setAvailableSeats] = useState<SeatConfigData[]>([]);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  // ── Load seat layouts from localStorage ────────────────────────────────
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SEAT_STORAGE_KEY);
+      if (raw) {
+        const all: SeatConfigData[] = JSON.parse(raw);
+        setAvailableSeats(all.filter((s) => s.status === "Active"));
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   // ── Populate form when editing ──────────────────────────────────────────
   useEffect(() => {
@@ -323,7 +312,8 @@ export default function AddEditAttractionForm({
       setName(attractionToEdit.name || "");
       setDescription(attractionToEdit.description || "");
       setStatus(attractionToEdit.status || "Active");
-      setRequiresSeating(attractionToEdit.hasSeating ?? false);
+      const assignedIds = (attractionToEdit as Attraction & { assignedSeatIds?: string[] }).assignedSeatIds || [];
+      setSelectedSeatIds(assignedIds);
       setImagePreview(attractionToEdit.image || null);
       setCategories(pricingToCategories(attractionToEdit));
     } else {
@@ -331,7 +321,7 @@ export default function AddEditAttractionForm({
       setName("");
       setDescription("");
       setStatus("Active");
-      setRequiresSeating(false);
+      setSelectedSeatIds([]);
       setImagePreview(null);
       setCategories(DEFAULT_CATEGORIES);
     }
@@ -376,8 +366,15 @@ export default function AddEditAttractionForm({
         basePrice: basePrice || "00.00",
         futurePrice: "00.00",
         effectiveFrom: "",
+        numberOfSeats: "",
       },
     ]);
+  };
+
+  const toggleSeatId = (id: string) => {
+    setSelectedSeatIds((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+    );
   };
 
   const handleDeleteCategory = async (id: string) => {
@@ -388,22 +385,7 @@ export default function AddEditAttractionForm({
     setCategories((prev) => prev.filter((c) => c.id !== id));
   };
 
-  // When seat allocation is toggled on — optionally open SeatLayoutConfigPage
-  const handleSeatingToggle = () => {
-    const next = !requiresSeating;
-    setRequiresSeating(next);
-    if (next && onConfigureSeating) {
-      onConfigureSeating({
-        name: name.trim() || "New Attraction",
-        description,
-        status,
-        hasSeating: true,
-        category: "Ride",
-        timing: "09:00 AM - 06:00 PM",
-        image: imagePreview || "",
-      });
-    }
-  };
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -414,7 +396,7 @@ export default function AddEditAttractionForm({
       description: description.trim(),
       image: imagePreview,
       status,
-      hasSeating: requiresSeating,
+      hasSeating: selectedSeatIds.length > 0,
     });
 
     if (!validation.success) {
@@ -436,7 +418,7 @@ export default function AddEditAttractionForm({
       name: name.trim(),
       description: description.trim(),
       status,
-      hasSeating: requiresSeating,
+      hasSeating: selectedSeatIds.length > 0,
       category: "Ride",
       timing: "09:00 AM - 06:00 PM",
       image: imagePreview || "",
@@ -448,7 +430,8 @@ export default function AddEditAttractionForm({
         foreigner: getPriceByName("foreigner"),
       },
       visitorCategories: categories,
-    } as Partial<Attraction> & { visitorCategories: CategoryItem[] });
+      assignedSeatIds: selectedSeatIds,
+    } as Partial<Attraction> & { visitorCategories: CategoryItem[]; assignedSeatIds: string[] });
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -728,37 +711,89 @@ export default function AddEditAttractionForm({
             ))}
           </div>
 
-          {/* Seat Allocation Section */}
-          <h3 style={{ margin: "0 0 16px 0", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "18px", color: "#0C2A42" }}>
+          {/* Seat Allocation Section - Multi-select from Seat Management */}
+          <h3 style={{ margin: "0 0 10px 0", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "18px", color: "#0C2A42" }}>
             Seat Allocation
           </h3>
-          <label
-            onClick={handleSeatingToggle}
-            style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", userSelect: "none" }}
-          >
+
+          {availableSeats.length === 0 ? (
             <div
               style={{
-                width: "20px",
-                height: "20px",
-                borderRadius: "4px",
-                background: requiresSeating ? "#0C2A42" : "#FFFFFF",
-                border: requiresSeating ? "1px solid #0C2A42" : "1.5px solid rgba(179,175,175,0.8)",
+                background: "#F9FAFB",
+                border: "1.5px dashed #D1D5DB",
+                borderRadius: "8px",
+                padding: "14px 12px",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
+                gap: "8px",
               }}
             >
-              {requiresSeating && (
-                <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
-                  <path d="M1 5L4.5 8.5L11 1.5" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
+              <Armchair size={16} color="#9CA3AF" />
+              <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "11px", color: "#9CA3AF" }}>
+                No seat layouts yet. Create one in Seat Management.
+              </span>
             </div>
-            <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "14px", letterSpacing: "0.02em", color: "#374151" }}>
-              Requires seat allocation
-            </span>
-          </label>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "210px", overflowY: "auto" }}>
+              {availableSeats.map((seat) => {
+                const isSelected = selectedSeatIds.includes(seat.id!);
+                return (
+                  <div
+                    key={seat.id}
+                    onClick={() => toggleSeatId(seat.id!)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "8px 10px",
+                      background: isSelected ? "#EFF6FF" : "#FAFAFA",
+                      border: isSelected ? "1.5px solid #0C2A42" : "1px solid #E5E7EB",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                      userSelect: "none",
+                    }}
+                  >
+                    {/* Check circle */}
+                    <div
+                      style={{
+                        width: "18px",
+                        height: "18px",
+                        borderRadius: "50%",
+                        background: isSelected ? "#0C2A42" : "#FFFFFF",
+                        border: isSelected ? "2px solid #0C2A42" : "2px solid #D1D5DB",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      {isSelected && <Check size={10} color="#FFFFFF" strokeWidth={3} />}
+                    </div>
+
+                    <Armchair size={14} color={isSelected ? "#0C2A42" : "#9CA3AF"} />
+
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: "12px", color: "#011B2F" }}>
+                        {seat.name}
+                      </p>
+                      <p style={{ margin: 0, fontSize: "10px", color: "#6B7280", marginTop: "1px" }}>
+                        {seat.rows}R × {seat.cols}C &nbsp;·&nbsp; {seat.rows * seat.cols} seats
+                        {seat.hasAisle ? " · Aisle" : ""}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {selectedSeatIds.length > 0 && (
+            <p style={{ margin: "6px 0 0 0", fontSize: "11px", color: "#059669", fontWeight: 600 }}>
+              ✓ {selectedSeatIds.length} seat layout{selectedSeatIds.length > 1 ? "s" : ""} selected
+            </p>
+          )}
         </div>
       </div>
 
@@ -941,6 +976,36 @@ export default function AddEditAttractionForm({
                     fontWeight: 500,
                     fontSize: "9px",
                     color: "rgba(55, 65, 81, 0.84)",
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              {/* Number of Seats (Required) */}
+              <div style={{ width: "100%", textAlign: "center" }}>
+                <span style={{ display: "block", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "10px", color: "#011B2F", marginBottom: "4px" }}>
+                  No. of Seats<span style={{ color: "#DC2626" }}>*</span>
+                </span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="e.g. 10"
+                  value={cat.numberOfSeats}
+                  onChange={(e) => handleCategoryChange(cat.id, "numberOfSeats", e.target.value.replace(/\D/g, ""))}
+                  style={{
+                    boxSizing: "border-box",
+                    width: "144px",
+                    height: "24px",
+                    background: cat.numberOfSeats ? "#F0FDF4" : "#FFF7ED",
+                    border: cat.numberOfSeats
+                      ? "1.5px solid #10B981"
+                      : "1.5px solid #FCA5A5",
+                    borderRadius: "4px",
+                    textAlign: "center",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 700,
+                    fontSize: "10px",
+                    color: "#011B2F",
                     outline: "none",
                   }}
                 />
