@@ -591,33 +591,54 @@ export default function ComplimentaryPassesPage() {
         }}
       >
         {/* Tabs */}
-        <div style={{ display: "flex", alignItems: "center", gap: "20px", flexWrap: "wrap" }}>
-          {(["issued", "reference"] as ActiveTab[]).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => {
-                setActiveTab(tab);
-                resetPage();
-                setSearchTerm("");
-              }}
-              style={{
-                height: "41px",
-                padding: "0 22px",
-                background: activeTab === tab ? "#F4BC43" : "transparent",
-                border: "none",
-                borderRadius: "8px",
-                cursor: "pointer",
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: 600,
-                fontSize: "18px",
-                color: activeTab === tab ? "#0C2A42" : "#A0A0A0",
-                transition: "all 0.2s",
-              }}
-            >
-              {tab === "issued" ? "Issued Passes" : "Reference Managment"}
-            </button>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          {(["issued", "reference"] as ActiveTab[]).map((tab) => {
+            const isActive = activeTab === tab;
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => {
+                  setActiveTab(tab);
+                  resetPage();
+                  setSearchTerm("");
+                }}
+                style={{
+                  height: "41px",
+                  padding: "0 22px",
+                  background: isActive ? "#F4BC43" : "#FFFFFF",
+                  border: isActive ? "1.5px solid #0C2A42" : "1.5px solid #CBD5E1",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 600,
+                  fontSize: "16px",
+                  color: isActive ? "#0C2A42" : "#64748B",
+                  boxShadow: isActive ? "0 2px 8px rgba(244, 188, 67, 0.25)" : "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.borderColor = "#94A3B8";
+                    e.currentTarget.style.background = "#F8FAFC";
+                    e.currentTarget.style.color = "#0C2A42";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.borderColor = "#CBD5E1";
+                    e.currentTarget.style.background = "#FFFFFF";
+                    e.currentTarget.style.color = "#64748B";
+                  }
+                }}
+              >
+                {tab === "issued" ? "Issued Passes" : "Reference Management"}
+              </button>
+            );
+          })}
         </div>
 
         {/* Export + Primary action (right-aligned) */}

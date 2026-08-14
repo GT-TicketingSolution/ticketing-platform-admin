@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { X, ChevronDown } from "lucide-react";
 import { ComplimentaryPass, Reference, ATTRACTIONS } from "@/types/complimentaryPass";
 import { validatePass } from "@/app/(dashboard)/complimentary-passes/schema";
 
@@ -59,7 +59,19 @@ export default function IssueComplimentaryPassModal({
   const [reference, setReference] = useState("");
   const [date, setDate] = useState("");
   const [status, setStatus] = useState<"Active" | "Used" | "Expired">("Active");
+  const [isRefOpen, setIsRefOpen] = useState(false);
   const [errors, setErrors] = useState<{ [k: string]: string }>({});
+  const refDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (refDropdownRef.current && !refDropdownRef.current.contains(event.target as Node)) {
+        setIsRefOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (passToEdit) {
@@ -271,23 +283,127 @@ export default function IssueComplimentaryPassModal({
               />
               {errors.visitors && <p style={errorStyle}>{errors.visitors}</p>}
             </div>
-            <div>
+            <div ref={refDropdownRef} style={{ position: "relative" }}>
               <label style={labelStyle}>
                 Reference <span style={{ color: "#DC2626" }}>*</span>
               </label>
-              <input
-                type="text"
-                placeholder="Enter reference"
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-                list="icp-ref-list"
-                style={inputStyle}
-              />
-              <datalist id="icp-ref-list">
-                {uniqueRefs.map((r) => (
-                  <option key={r} value={r} />
-                ))}
-              </datalist>
+              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                <input
+                  type="text"
+                  placeholder="Select or enter reference"
+                  value={reference}
+                  onChange={(e) => {
+                    setReference(e.target.value);
+                    setIsRefOpen(true);
+                  }}
+                  onFocus={() => setIsRefOpen(true)}
+                  style={{ ...inputStyle, paddingRight: "32px" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsRefOpen((prev) => !prev)}
+                  style={{
+                    position: "absolute",
+                    right: "8px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "4px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#011B2F",
+                  }}
+                >
+                  <ChevronDown
+                    size={16}
+                    style={{
+                      transform: isRefOpen ? "rotate(180deg)" : "none",
+                      transition: "transform 0.2s",
+                    }}
+                  />
+                </button>
+              </div>
+
+              {/* Dropdown list of already created references */}
+              {isRefOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    zIndex: 999,
+                    marginTop: "4px",
+                    background: "#FFFFFF",
+                    border: "1px solid #E5E7EB",
+                    borderRadius: "8px",
+                    boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
+                    maxHeight: "180px",
+                    overflowY: "auto",
+                  }}
+                >
+                  {references.length === 0 ? (
+                    <div style={{ padding: "10px 12px", fontSize: "12px", color: "#6B7280" }}>
+                      No references found. Type to enter a custom reference.
+                    </div>
+                  ) : (
+                    references
+                      .filter((r) =>
+                        r.referenceName.toLowerCase().includes(reference.toLowerCase()) ||
+                        r.contactPerson.toLowerCase().includes(reference.toLowerCase()) ||
+                        r.department.toLowerCase().includes(reference.toLowerCase())
+                      )
+                      .map((r) => (
+                        <div
+                          key={r.id}
+                          onClick={() => {
+                            setReference(r.referenceName);
+                            if (!visitorName.trim()) {
+                              setVisitorName(r.contactPerson);
+                            }
+                            if (!mobile.trim()) {
+                              setMobile(r.mobile);
+                            }
+                            // Clear error states for auto-filled fields if any
+                            setErrors((prev) => ({
+                              ...prev,
+                              reference: "",
+                              visitorName: "",
+                              mobile: "",
+                            }));
+                            setIsRefOpen(false);
+                          }}
+                          style={{
+                            padding: "8px 12px",
+                            cursor: "pointer",
+                            borderBottom: "1px solid #F3F4F6",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "2px",
+                            transition: "background 0.15s",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = "#F0F7FF";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "transparent";
+                          }}
+                        >
+                          <div style={{ fontWeight: 600, fontSize: "12px", color: "#011B2F" }}>
+                            {r.referenceName}
+                          </div>
+                          <div style={{ fontSize: "11px", color: "#6B7280" }}>
+                            {r.contactPerson} {r.post && r.post !== "—" ? `(${r.post})` : ""} &bull; {r.department}
+                          </div>
+                        </div>
+                      ))
+                  )}
+                </div>
+              )}
+
               {errors.reference && <p style={errorStyle}>{errors.reference}</p>}
             </div>
           </div>
@@ -365,7 +481,7 @@ export default function IssueComplimentaryPassModal({
                 boxShadow: "0 4px 12px rgba(244,188,67,0.3)",
               }}
             >
-              Save
+              Add
             </button>
           </div>
         </form>
