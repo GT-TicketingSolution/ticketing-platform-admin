@@ -23,6 +23,7 @@ import BookingDetailsModal from "@/components/modals/BookingDetailsModal";
 import EditBookingModal from "@/components/modals/EditBookingModal";
 import DateRangePicker from "@/components/ui/DateRangePicker";
 import ExportButtons from "@/components/ui/ExportButtons";
+import { GlobalDataTable } from "@/components/ui/GlobalDataTable";
 import {
   handlePrintInvoice,
   handleDownloadPDF,
@@ -478,301 +479,148 @@ export default function BookingsPage() {
       </div>
 
       {/* ── Bookings Data Table ── */}
-      <div
-        style={{
-          background: "#FFFFFF",
-          border: "1px solid rgba(0, 0, 0, 0.22)",
-          borderRadius: "5px",
-          overflow: "hidden",
-          boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
-        }}
-      >
-        <div style={{ overflowX: "auto" }}>
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              textAlign: "left",
-              fontFamily: "'Inter', sans-serif",
-              fontSize: "12px",
-            }}
-          >
-            <thead>
-              <tr
-                style={{
-                  background: "rgba(179, 175, 175, 0.17)",
-                  borderBottom: "0.8px solid #F1F5F9",
-                  height: "40px",
-                  color: "#374151",
-                  fontWeight: 500,
-                }}
-              >
-                <th style={{ padding: "0 16px", width: "50px" }}>S.No</th>
-                <th style={{ padding: "0 16px" }}>Booking ID</th>
-                <th style={{ padding: "0 16px" }}>Customer Name</th>
-                <th style={{ padding: "0 16px" }}>Date &amp; Time</th>
-                <th style={{ padding: "0 16px" }}>Attraction</th>
-                <th style={{ padding: "0 16px" }}>Visitors</th>
-                <th style={{ padding: "0 16px" }}>Amount</th>
-                <th style={{ padding: "0 16px" }}>Status</th>
-                <th style={{ padding: "0 16px", textAlign: "center" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedBookings.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={9}
+      {/* ── Global Data Table (Unified S.No, Headers, Row Styles & Pagination) ── */}
+      <GlobalDataTable
+        columns={[
+          { header: "Booking ID", accessorKey: "id" },
+          { header: "Customer Name", accessorKey: "customerName" },
+          { header: "Date & Time", accessorKey: "dateTime" },
+          { header: "Attraction", accessorKey: "attraction" },
+          { header: "Visitors", accessorKey: "visitors" },
+          { header: "Amount", cell: (item) => `₹${item.amount}` },
+          { header: "Status", cell: (item) => renderStatusBadge(item.status) },
+          {
+            header: "Actions",
+            align: "center",
+            cell: (item) => {
+              const isDropdownOpen = activeDropdownId === item.id;
+              return (
+                <div style={{ position: "relative", display: "inline-block" }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveDropdownId(isDropdownOpen ? null : item.id);
+                    }}
+                    aria-label="Actions menu"
                     style={{
-                      padding: "40px 20px",
-                      textAlign: "center",
-                      color: colors.text.muted,
-                      fontSize: "13px",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: "6px",
+                      borderRadius: "4px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#374151",
                     }}
                   >
-                    No bookings found matching current filters.
-                  </td>
-                </tr>
-              ) : (
-                paginatedBookings.map((b, index) => {
-                  const sNo = startIndex + index + 1;
-                  const isDropdownOpen = activeDropdownId === b.id;
+                    <MoreVertical size={18} />
+                  </button>
 
-                  return (
-                    <tr
-                      key={b.id}
+                  {isDropdownOpen && (
+                    <div
+                      ref={dropdownRef}
                       style={{
-                        borderBottom: "1px solid rgba(179, 175, 175, 0.5)",
-                        height: "44px",
-                        transition: "background 0.12s ease",
+                        position: "absolute",
+                        right: 0,
+                        top: "32px",
+                        zIndex: 100,
+                        background: "#FFFFFF",
+                        border: "1px solid #E5E7EB",
+                        borderRadius: "8px",
+                        boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
+                        width: "150px",
+                        padding: "4px 0",
+                        display: "flex",
+                        flexDirection: "column",
                       }}
-                      className="table-row-hover"
                     >
-                      <td style={{ padding: "0 16px", color: "#6B7280", fontWeight: 500 }}>{sNo}</td>
-                      <td style={{ padding: "0 16px", fontWeight: 500, color: "#374151" }}>{b.id}</td>
-                      <td style={{ padding: "0 16px", fontWeight: 500, color: "#374151" }}>{b.customerName}</td>
-                      <td style={{ padding: "0 16px", fontWeight: 500, color: "#374151" }}>{b.dateTime}</td>
-                      <td style={{ padding: "0 16px", fontWeight: 500, color: "#374151" }}>{b.attraction}</td>
-                      <td style={{ padding: "0 16px", fontWeight: 500, color: "#374151" }}>{b.visitors}</td>
-                      <td style={{ padding: "0 16px", fontWeight: 500, color: "#374151" }}>₹{b.amount}</td>
-                      <td style={{ padding: "0 16px" }}>{renderStatusBadge(b.status)}</td>
-
-                      {/* Actions */}
-                      <td style={{ padding: "0 16px", textAlign: "center", position: "relative" }}>
-                        <button
-                          onClick={() => setActiveDropdownId(isDropdownOpen ? null : b.id)}
-                          aria-label="Actions menu"
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            cursor: "pointer",
-                            padding: "6px",
-                            borderRadius: "4px",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "#374151",
-                          }}
-                        >
-                          <MoreVertical size={18} />
-                        </button>
-
-                        {isDropdownOpen && (
-                          <div
-                            ref={dropdownRef}
-                            style={{
-                              position: "absolute",
-                              right: "16px",
-                              top: "36px",
-                              zIndex: 100,
-                              background: "#FFFFFF",
-                              border: "1px solid #E5E7EB",
-                              borderRadius: "8px",
-                              boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
-                              width: "150px",
-                              padding: "4px 0",
-                              display: "flex",
-                              flexDirection: "column",
-                              animation: "fadeIn 0.15s ease",
-                            }}
-                          >
-                            <button
-                              onClick={() => handleOpenDetails(b)}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                padding: "8px 14px",
-                                background: "none",
-                                border: "none",
-                                width: "100%",
-                                textAlign: "left",
-                                fontSize: "12px",
-                                fontWeight: 500,
-                                color: "#0C2A42",
-                                cursor: "pointer",
-                              }}
-                              className="dropdown-item"
-                            >
-                              <Eye size={15} color="#2372A5" />
-                              <span>View Details</span>
-                            </button>
-
-                            <button
-                              onClick={() => handleOpenEdit(b)}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                padding: "8px 14px",
-                                background: "none",
-                                border: "none",
-                                width: "100%",
-                                textAlign: "left",
-                                fontSize: "12px",
-                                fontWeight: 500,
-                                color: "#0C2A42",
-                                cursor: "pointer",
-                              }}
-                              className="dropdown-item"
-                            >
-                              <Edit2 size={15} color="#F4BC43" />
-                              <span>Edit Booking</span>
-                            </button>
-
-                            <button
-                              onClick={() => handleDeleteBooking(b)}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                padding: "8px 14px",
-                                background: "none",
-                                border: "none",
-                                width: "100%",
-                                textAlign: "left",
-                                fontSize: "12px",
-                                fontWeight: 500,
-                                color: "#DC2626",
-                                cursor: "pointer",
-                              }}
-                              className="dropdown-item"
-                            >
-                              <Trash2 size={15} color="#DC2626" />
-                              <span>Delete</span>
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ── Pagination ── */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: "16px",
-          padding: "8px 4px",
-        }}
-      >
-        <span
-          style={{
-            fontFamily: typography.fontFamily.sans,
-            fontWeight: 600,
-            fontSize: "11px",
-            color: "rgba(81, 82, 82, 0.69)",
-          }}
-        >
-          Showing {totalItems > 0 ? startIndex + 1 : 0}–{endIndex} of {totalItems} bookings
-        </span>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <button
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-            style={{
-              height: "30px",
-              padding: "0 12px",
-              background: "#FFFFFF",
-              border: "1px solid rgba(179, 175, 175, 0.75)",
-              borderRadius: "4px",
-              fontFamily: "'Inter', sans-serif",
-              fontSize: "10px",
-              fontWeight: 500,
-              color: "#374151",
-              cursor: currentPage === 1 ? "not-allowed" : "pointer",
-              opacity: currentPage === 1 ? 0.5 : 1,
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-            }}
-          >
-            <ChevronLeft size={14} />
-            <span>Previous</span>
-          </button>
-
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-            const isActive = page === currentPage;
-            return (
-              <button
-                key={page}
-                onClick={() => setCurrentPage(page)}
-                style={{
-                  width: "28px",
-                  height: "30px",
-                  background: isActive ? "#F4BC43" : "#FFFFFF",
-                  border: "1px solid rgba(179, 175, 175, 0.75)",
-                  borderRadius: "4px",
-                  fontFamily: "'Inter', sans-serif",
-                  fontSize: "10px",
-                  fontWeight: 500,
-                  color: "#374151",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  transition: "all 0.12s ease",
-                }}
-              >
-                {page}
-              </button>
-            );
-          })}
-
-          <button
-            disabled={currentPage === totalPages || totalPages === 0}
-            onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-            style={{
-              height: "30px",
-              padding: "0 12px",
-              background: "#FFFFFF",
-              border: "1px solid rgba(179, 175, 175, 0.75)",
-              borderRadius: "4px",
-              fontFamily: "'Inter', sans-serif",
-              fontSize: "10px",
-              fontWeight: 500,
-              color: "#374151",
-              cursor: currentPage === totalPages || totalPages === 0 ? "not-allowed" : "pointer",
-              opacity: currentPage === totalPages || totalPages === 0 ? 0.5 : 1,
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-            }}
-          >
-            <span>Next</span>
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenDetails(item);
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          width: "100%",
+                          padding: "8px 14px",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                          fontFamily: typography.fontFamily.sans,
+                          color: "#374151",
+                          textAlign: "left",
+                        }}
+                      >
+                        <Eye size={14} color="#6B7280" />
+                        <span>View Details</span>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEdit(item);
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          width: "100%",
+                          padding: "8px 14px",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                          fontFamily: typography.fontFamily.sans,
+                          color: "#374151",
+                          textAlign: "left",
+                        }}
+                      >
+                        <Edit2 size={14} color="#F4BC43" />
+                        <span>Edit Booking</span>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteBooking(item);
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          width: "100%",
+                          padding: "8px 14px",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                          fontFamily: typography.fontFamily.sans,
+                          color: "#DC2626",
+                          textAlign: "left",
+                        }}
+                      >
+                        <Trash2 size={14} color="#DC2626" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            },
+          },
+        ]}
+        data={filteredBookings}
+        keyExtractor={(item) => item.id}
+        pageSize={ITEMS_PER_PAGE}
+        currentPage={currentPage}
+        onPageChange={setCurrentPage}
+        showSNo={true}
+        sNoHeader="S.No"
+        itemLabel="bookings"
+        emptyMessage="No bookings found matching current filters."
+      />
 
       {/* ── Modals ── */}
       <BookingDetailsModal

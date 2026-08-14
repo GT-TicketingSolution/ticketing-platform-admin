@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import DateRangePicker from "@/components/ui/DateRangePicker";
 import ExportButtons from "@/components/ui/ExportButtons";
+import { GlobalDataTable } from "@/components/ui/GlobalDataTable";
 import { Transaction, TransactionStatus } from "@/types/transaction";
 import { INITIAL_TRANSACTIONS } from "@/lib/mockTransactions";
 import { META_CONSTANTS } from "@/lib/metaConstant";
@@ -489,437 +490,125 @@ export default function TransactionsPage() {
         </div>
       </div>
 
-      {/* ── Data Table ── */}
-      <div
-        style={{
-          boxSizing: "border-box",
-          width: "100%",
-          background: "#FFFFFF",
-          border: "1px solid rgba(0, 0, 0, 0.22)",
-          borderRadius: "5px",
-          overflow: "visible",
-        }}
-      >
-        <div style={{ overflowX: "auto" }}>
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              textAlign: "left",
-              fontFamily: "Inter, sans-serif",
-            }}
-          >
-            <thead>
-              <tr
-                style={{
-                  background: "rgba(179, 175, 175, 0.17)",
-                  opacity: 0.84,
-                  borderBottom: "0.8px solid #F1F5F9",
-                  height: "40px",
-                }}
-              >
-                <th
-                  style={{
-                    padding: "10px 20px",
-                    fontWeight: 500,
-                    fontSize: "12px",
-                    color: "#374151",
-                  }}
-                >
-                  Transaction ID
-                </th>
-                <th
-                  style={{
-                    padding: "10px 20px",
-                    fontWeight: 500,
-                    fontSize: "12px",
-                    color: "#374151",
-                  }}
-                >
-                  Customer Name
-                </th>
-                <th
-                  style={{
-                    padding: "10px 20px",
-                    fontWeight: 500,
-                    fontSize: "12px",
-                    color: "#374151",
-                  }}
-                >
-                  Date & Time
-                </th>
-                <th
-                  style={{
-                    padding: "10px 20px",
-                    fontWeight: 500,
-                    fontSize: "12px",
-                    color: "#374151",
-                  }}
-                >
-                  Booking ID
-                </th>
-                <th
-                  style={{
-                    padding: "10px 20px",
-                    fontWeight: 500,
-                    fontSize: "12px",
-                    color: "#374151",
-                  }}
-                >
-                  Amount
-                </th>
-                <th
-                  style={{
-                    padding: "10px 20px",
-                    fontWeight: 500,
-                    fontSize: "12px",
-                    color: "#374151",
-                  }}
-                >
-                  Payment Mode
-                </th>
-                <th
-                  style={{
-                    padding: "10px 20px",
-                    fontWeight: 500,
-                    fontSize: "12px",
-                    color: "#374151",
-                  }}
-                >
-                  Status
-                </th>
-                <th
-                  style={{
-                    padding: "10px 20px",
-                    fontWeight: 500,
-                    fontSize: "12px",
-                    color: "#374151",
-                    textAlign: "center",
-                  }}
-                >
-                  Actions
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {paginatedTransactions.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={8}
+      {/* ── Global Data Table (Unified S.No, Headers, Row Styles & Pagination) ── */}
+      <GlobalDataTable
+        columns={[
+          { header: "Transaction ID", accessorKey: "id" },
+          { header: "Customer Name", accessorKey: "customerName" },
+          { header: "Date & Time", accessorKey: "dateTime" },
+          { header: "Booking ID", accessorKey: "bookingId" },
+          { header: "Amount", cell: (item) => `₹${item.amount}` },
+          { header: "Payment Mode", accessorKey: "paymentMode" },
+          { header: "Status", cell: (item) => renderStatusBadge(item.status) },
+          {
+            header: "Actions",
+            align: "center",
+            cell: (item) => {
+              const isDropdownOpen = activeDropdownId === item.id;
+              return (
+                <div style={{ position: "relative", display: "inline-block" }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveDropdownId(isDropdownOpen ? null : item.id);
+                    }}
+                    aria-label="Actions menu"
                     style={{
-                      padding: "40px 20px",
-                      textAlign: "center",
-                      color: colors.text.muted,
-                      fontSize: "14px",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: "6px",
+                      borderRadius: "4px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#374151",
                     }}
                   >
-                    No transactions match your filter criteria.
-                  </td>
-                </tr>
-              ) : (
-                paginatedTransactions.map((txn) => {
-                  const isDropdownOpen = activeDropdownId === txn.id;
-                  return (
-                    <tr
-                      key={txn.id}
-                      className="table-row-hover"
+                    <MoreVertical size={18} />
+                  </button>
+
+                  {isDropdownOpen && (
+                    <div
+                      ref={dropdownRef}
                       style={{
-                        borderBottom: "1px solid rgba(179, 175, 175, 0.5)",
-                        height: "44px",
-                        transition: "background 0.15s ease",
+                        position: "absolute",
+                        right: 0,
+                        top: "32px",
+                        zIndex: 100,
+                        background: "#FFFFFF",
+                        border: "1px solid #E5E7EB",
+                        borderRadius: "8px",
+                        boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
+                        width: "150px",
+                        padding: "4px 0",
+                        display: "flex",
+                        flexDirection: "column",
                       }}
                     >
-                      {/* Transaction ID */}
-                      <td
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenDetails(item);
+                        }}
                         style={{
-                          padding: "10px 20px",
-                          fontWeight: 500,
-                          fontSize: "12px",
-                          color: "#374151",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          width: "100%",
+                          padding: "8px 14px",
+                          background: "none",
+                          border: "none",
                           cursor: "pointer",
-                        }}
-                        onClick={() => handleOpenDetails(txn)}
-                      >
-                        {txn.id}
-                      </td>
-
-                      {/* Customer Name */}
-                      <td
-                        style={{
-                          padding: "10px 20px",
-                          fontWeight: 500,
                           fontSize: "12px",
+                          fontFamily: typography.fontFamily.sans,
                           color: "#374151",
+                          textAlign: "left",
                         }}
                       >
-                        {txn.customerName}
-                      </td>
-
-                      {/* Date & Time */}
-                      <td
+                        <Eye size={14} color="#6B7280" />
+                        <span>View Details</span>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteTransaction(item);
+                        }}
                         style={{
-                          padding: "10px 20px",
-                          fontWeight: 500,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          width: "100%",
+                          padding: "8px 14px",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
                           fontSize: "12px",
-                          color: "#374151",
+                          fontFamily: typography.fontFamily.sans,
+                          color: "#DC2626",
+                          textAlign: "left",
                         }}
                       >
-                        {txn.dateTime}
-                      </td>
-
-                      {/* Booking ID */}
-                      <td
-                        style={{
-                          padding: "10px 20px",
-                          fontWeight: 500,
-                          fontSize: "12px",
-                          color: "#374151",
-                        }}
-                      >
-                        {txn.bookingId}
-                      </td>
-
-                      {/* Amount */}
-                      <td
-                        style={{
-                          padding: "10px 20px",
-                          fontWeight: 500,
-                          fontSize: "12px",
-                          color: "#374151",
-                        }}
-                      >
-                        ₹{txn.amount}
-                      </td>
-
-                      {/* Payment Mode */}
-                      <td
-                        style={{
-                          padding: "10px 20px",
-                          fontWeight: 500,
-                          fontSize: "12px",
-                          color: "#374151",
-                        }}
-                      >
-                        {txn.paymentMode}
-                      </td>
-
-                      {/* Status */}
-                      <td style={{ padding: "10px 20px" }}>
-                        {renderStatusBadge(txn.status)}
-                      </td>
-
-                      {/* Actions (3 Dots Menu) */}
-                      <td
-                        style={{
-                          padding: "0 16px",
-                          textAlign: "center",
-                          position: "relative",
-                        }}
-                      >
-                        <button
-                          onClick={() =>
-                            setActiveDropdownId(isDropdownOpen ? null : txn.id)
-                          }
-                          aria-label="Actions menu"
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            cursor: "pointer",
-                            padding: "6px",
-                            borderRadius: "4px",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "#374151",
-                          }}
-                        >
-                          <MoreVertical size={18} />
-                        </button>
-
-                        {/* Action Dropdown Menu */}
-                        {isDropdownOpen && (
-                          <div
-                            ref={dropdownRef}
-                            style={{
-                              position: "absolute",
-                              right: "16px",
-                              top: "36px",
-                              zIndex: 100,
-                              background: "#FFFFFF",
-                              border: "1px solid #E5E7EB",
-                              borderRadius: "8px",
-                              boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
-                              width: "160px",
-                              padding: "4px 0",
-                              display: "flex",
-                              flexDirection: "column",
-                              animation: "fadeIn 0.15s ease",
-                            }}
-                          >
-                            {/* View Details Option */}
-                            <button
-                              onClick={() => handleOpenDetails(txn)}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                padding: "8px 14px",
-                                background: "none",
-                                border: "none",
-                                width: "100%",
-                                textAlign: "left",
-                                fontSize: "12px",
-                                fontWeight: 500,
-                                color: "#0C2A42",
-                                cursor: "pointer",
-                              }}
-                              className="dropdown-item"
-                            >
-                              <Eye size={15} color="#2372A5" />
-                              <span>View Details</span>
-                            </button>
-
-                            {/* Delete Option (Admin only) */}
-                            <HasRole roles={["Admin"]}>
-                              <button
-                                onClick={() => handleDeleteTransaction(txn)}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "8px",
-                                  padding: "8px 14px",
-                                  background: "none",
-                                  border: "none",
-                                  width: "100%",
-                                  textAlign: "left",
-                                  fontSize: "12px",
-                                  fontWeight: 500,
-                                  color: "#DC2626",
-                                  cursor: "pointer",
-                                }}
-                                className="dropdown-item"
-                              >
-                                <Trash2 size={15} color="#DC2626" />
-                                <span>Delete</span>
-                              </button>
-                            </HasRole>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* ── Pagination Footer ── */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "16px 20px",
-            background: "#FFFFFF",
-            borderTop: "1px solid rgba(179, 175, 175, 0.4)",
-            flexWrap: "wrap",
-            gap: "12px",
-          }}
-        >
-          {/* Showing Count */}
-          <span
-            style={{
-              fontFamily: typography.fontFamily.sans,
-              fontWeight: 600,
-              fontSize: "10px",
-              color: "rgba(81, 82, 82, 0.69)",
-            }}
-          >
-            Showing {totalItems === 0 ? 0 : startIndex + 1}–{endIndex} of {totalItems}
-          </span>
-
-          {/* Pagination Controls */}
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            {/* Previous */}
-            <button
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-              style={{
-                height: "30px",
-                padding: "0 12px",
-                background: "#FFFFFF",
-                border: "1px solid rgba(179, 175, 175, 0.75)",
-                borderRadius: "4px",
-                fontFamily: "Inter, sans-serif",
-                fontWeight: 500,
-                fontSize: "10px",
-                color: currentPage === 1 ? "#A0A0A0" : "#374151",
-                cursor: currentPage === 1 ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
-            >
-              <ChevronLeft size={12} />
-              <span>Previous</span>
-            </button>
-
-            {/* Page Buttons */}
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-              const isActive = page === currentPage;
-              return (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  style={{
-                    width: "28px",
-                    height: "30px",
-                    background: isActive ? "#F4BC43" : "#FFFFFF",
-                    border: "1px solid rgba(179, 175, 175, 0.75)",
-                    borderRadius: "4px",
-                    fontFamily: "Inter, sans-serif",
-                    fontWeight: 500,
-                    fontSize: "10px",
-                    color: "#374151",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {page}
-                </button>
+                        <Trash2 size={14} color="#DC2626" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               );
-            })}
-
-            {/* Next */}
-            <button
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-              style={{
-                height: "30px",
-                padding: "0 12px",
-                background: "#FFFFFF",
-                border: "1px solid rgba(179, 175, 175, 0.75)",
-                borderRadius: "4px",
-                fontFamily: "Inter, sans-serif",
-                fontWeight: 500,
-                fontSize: "10px",
-                color: currentPage === totalPages ? "#A0A0A0" : "#374151",
-                cursor: currentPage === totalPages ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
-            >
-              <span>Next</span>
-              <ChevronRight size={12} />
-            </button>
-          </div>
-        </div>
-      </div>
+            },
+          },
+        ]}
+        data={filteredTransactions}
+        keyExtractor={(item) => item.id}
+        pageSize={ITEMS_PER_PAGE}
+        currentPage={currentPage}
+        onPageChange={setCurrentPage}
+        showSNo={true}
+        sNoHeader="S.No"
+        itemLabel="transactions"
+        emptyMessage="No transactions match your filter criteria."
+      />
 
       {/* ── Transaction Details Modal ── */}
       <TransactionDetailsModal

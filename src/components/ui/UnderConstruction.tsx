@@ -33,7 +33,7 @@ export default function UnderConstruction({ title }: UnderConstructionProps) {
           margin: 0,
         }}
       >
-        Development in Progress
+        Coming soon...
       </p>
     </div>
   );

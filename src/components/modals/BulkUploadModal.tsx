@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, UploadCloud, CheckCircle2, FileSpreadsheet } from "lucide-react";
-import { typography } from "@/lib/theme";
+import { X, Upload, Download, FileSpreadsheet } from "lucide-react";
 
 interface BulkUploadModalProps {
   isOpen: boolean;
@@ -47,13 +46,28 @@ export default function BulkUploadModal({
   };
 
   const handleUpload = () => {
-    if (!selectedFile) return;
     setIsUploading(true);
     setTimeout(() => {
       setIsUploading(false);
       onUploadSuccess(3);
       onClose();
-    }, 1500);
+    }, 1200);
+  };
+
+  const handleDownloadTemplate = () => {
+    // Generate sample CSV for download
+    const csvContent =
+      "data:text/csv;charset=utf-8," +
+      "Attraction Name,Category,Timing,Adult Price,Child Price,Student Price,Senior Price,Foreigner Price,Has Seating,Status\n" +
+      "Nahargarh Toy Train,Ride,09:00 AM - 06:00 PM,100,50,60,75,500,Yes,Active\n" +
+      "Wax Museum,Museum,10:00 AM - 06:00 PM,200,100,120,150,800,No,Active\n";
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "Attraction_Upload_Template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -76,31 +90,50 @@ export default function BulkUploadModal({
           background: "#FFFFFF",
           borderRadius: "20px",
           width: "100%",
-          maxWidth: "500px",
+          maxWidth: "880px",
+          maxHeight: "90vh",
+          overflowY: "auto",
           boxShadow: "0 20px 50px rgba(0, 0, 0, 0.25)",
           border: "1px solid rgba(179, 175, 175, 0.4)",
           display: "flex",
           flexDirection: "column",
-          overflow: "hidden",
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
+        {/* Container Header */}
         <div
           style={{
-            padding: "20px 24px",
-            background: "#0C2A42",
-            color: "#FFFFFF",
+            padding: "24px 32px 16px 32px",
             display: "flex",
-            alignItems: "center",
+            alignItems: "flex-start",
             justifyContent: "space-between",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <UploadCloud size={22} color="#F4BC43" />
-            <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-              Bulk Upload Attractions
-            </h3>
+          <div>
+            <h2
+              style={{
+                margin: "0 0 6px 0",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                fontWeight: 700,
+                fontSize: "20px",
+                lineHeight: "25px",
+                color: "#0C2A42",
+              }}
+            >
+              Bulk Upload
+            </h2>
+            <p
+              style={{
+                margin: 0,
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                fontWeight: 500,
+                fontSize: "13px",
+                color: "#6B7280",
+              }}
+            >
+              Upload a file to add or update multiple attractions at once.
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -108,107 +141,371 @@ export default function BulkUploadModal({
               background: "transparent",
               border: "none",
               cursor: "pointer",
-              color: "#FFFFFF",
+              color: "#6B7280",
+              padding: "4px",
             }}
           >
-            <X size={20} />
+            <X size={22} />
           </button>
         </div>
 
-        {/* Body */}
-        <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
-          <p style={{ margin: 0, fontSize: "13px", color: "#64748B", fontFamily: typography.fontFamily.sans }}>
-            Upload a CSV or Excel file containing attraction titles, categories, timings, and ticket pricing structures.
-          </p>
-
-          {/* Dropzone */}
+        {/* Modal Outer Card Container matching Screenshot 4 */}
+        <div style={{ padding: "0 32px 32px 32px" }}>
           <div
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
             style={{
-              border: `2px dashed ${dragActive ? "#2372A5" : "rgba(179, 175, 175, 0.6)"}`,
-              borderRadius: "14px",
-              padding: "32px 20px",
-              textAlign: "center",
-              background: dragActive ? "#F0F9FF" : "#F8FAFC",
-              transition: "all 0.2s ease",
-              cursor: "pointer",
-              position: "relative",
+              boxSizing: "border-box",
+              width: "100%",
+              background: "#FFFFFF",
+              border: "1.5px solid rgba(179, 175, 175, 0.51)",
+              borderRadius: "15px",
+              padding: "28px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "28px",
             }}
           >
-            <input
-              type="file"
-              accept=".csv, .xlsx, .xls"
-              onChange={handleFileChange}
-              style={{
-                position: "absolute",
-                inset: 0,
-                opacity: 0,
-                cursor: "pointer",
-              }}
-            />
-            {selectedFile ? (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-                <FileSpreadsheet size={40} color="#2372A5" />
-                <span style={{ fontSize: "14px", fontWeight: 700, color: "#011B2F", fontFamily: typography.fontFamily.sans }}>
-                  {selectedFile.name}
-                </span>
-                <span style={{ fontSize: "12px", color: "#64748B", fontFamily: typography.fontFamily.sans }}>
-                  {(selectedFile.size / 1024).toFixed(1)} KB
-                </span>
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-                <UploadCloud size={38} color="#0C2A42" />
-                <span style={{ fontSize: "14px", fontWeight: 700, color: "#011B2F", fontFamily: typography.fontFamily.sans }}>
-                  Drag & Drop CSV/Excel file here
-                </span>
-                <span style={{ fontSize: "12px", color: "#94A3B8", fontFamily: typography.fontFamily.sans }}>
-                  or click to browse from computer
-                </span>
-              </div>
-            )}
-          </div>
+            {/* Section 1: Upload File */}
+            <div>
+              <h3
+                style={{
+                  margin: "0 0 16px 0",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 700,
+                  fontSize: "16px",
+                  color: "#0C2A42",
+                }}
+              >
+                1. Upload File
+              </h3>
 
-          {/* Action buttons */}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-            <button
-              onClick={onClose}
+              {/* Dropzone matching Screenshot 4 */}
+              <div
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                style={{
+                  boxSizing: "border-box",
+                  width: "100%",
+                  minHeight: "180px",
+                  background: dragActive ? "#F0F9FF" : "#F8FAFC",
+                  border: `1.5px ${dragActive ? "dashed" : "solid"} ${
+                    dragActive ? "#2372A5" : "rgba(179, 175, 175, 0.51)"
+                  }`,
+                  borderRadius: "12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "24px",
+                  position: "relative",
+                  textAlign: "center",
+                }}
+              >
+                <input
+                  type="file"
+                  accept=".csv, .xlsx, .xls"
+                  onChange={handleFileChange}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    opacity: 0,
+                    cursor: "pointer",
+                  }}
+                />
+
+                {selectedFile ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <FileSpreadsheet size={40} color="#2372A5" />
+                    <span
+                      style={{
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "14px",
+                        color: "#011B2F",
+                      }}
+                    >
+                      {selectedFile.name}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontSize: "12px",
+                        color: "#6B7280",
+                      }}
+                    >
+                      {(selectedFile.size / 1024).toFixed(1)} KB - Click or drag to change
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <Upload size={32} color="#2372A5" strokeWidth={1.8} />
+                    <span
+                      style={{
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 600,
+                        fontSize: "13px",
+                        color: "#011B2F",
+                        marginTop: "10px",
+                      }}
+                    >
+                      Drag & Drop your File here
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 500,
+                        fontSize: "11px",
+                        color: "#6B7280",
+                        margin: "4px 0 10px 0",
+                      }}
+                    >
+                      or
+                    </span>
+                    <label
+                      htmlFor="bulk-file-upload"
+                      style={{
+                        boxSizing: "border-box",
+                        padding: "8px 20px",
+                        background: "#F4BC43",
+                        borderRadius: "8px",
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "12px",
+                        color: "#011B2F",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <Upload size={14} color="#011B2F" />
+                      Browse File
+                    </label>
+                    <span
+                      style={{
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 500,
+                        fontSize: "11px",
+                        color: "#6B7280",
+                        marginTop: "12px",
+                      }}
+                    >
+                      Only .csv, .xls, .xlsx files are allowed
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Section 2: Download Template & Guidelines */}
+            <div
               style={{
-                padding: "10px 20px",
-                borderRadius: "8px",
-                border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                background: "#FFFFFF",
-                color: "#011B2F",
-                fontSize: "14px",
-                fontWeight: 600,
-                cursor: "pointer",
+                display: "grid",
+                gridTemplateColumns: "1fr 1px 1.4fr",
+                gap: "24px",
+                alignItems: "stretch",
+              }}
+              className="section-template-grid"
+            >
+              {/* Left Column: Download Template */}
+              <div>
+                <h3
+                  style={{
+                    margin: "0 0 16px 0",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 700,
+                    fontSize: "16px",
+                    color: "#0C2A42",
+                  }}
+                >
+                  2. Download Template
+                </h3>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "14px",
+                    marginBottom: "16px",
+                  }}
+                >
+                  {/* CSV Yellow Icon Badge */}
+                  <div
+                    style={{
+                      width: "48px",
+                      height: "48px",
+                      background: "#FEF3C7",
+                      borderRadius: "8px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#D97706",
+                      fontWeight: 800,
+                      fontSize: "12px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    CSV
+                  </div>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 500,
+                      fontSize: "12px",
+                      lineHeight: "16px",
+                      color: "#6B7280",
+                    }}
+                  >
+                    Download our sample template to see the correct format and
+                    required columns
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadTemplate}
+                  style={{
+                    boxSizing: "border-box",
+                    padding: "8px 18px",
+                    background: "#FFFFFF",
+                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                    borderRadius: "8px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    cursor: "pointer",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 600,
+                    fontSize: "12px",
+                    color: "#011B2F",
+                    transition: "all 0.18s ease",
+                  }}
+                  className="btn-download-template"
+                >
+                  <Download size={14} color="#011B2F" />
+                  Download Template
+                </button>
+              </div>
+
+              {/* Vertical Line Divider */}
+              <div style={{ background: "#E2E8F0", width: "100%", height: "100%" }} />
+
+              {/* Right Column: Template Guidelines */}
+              <div>
+                <h3
+                  style={{
+                    margin: "0 0 16px 0",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 700,
+                    fontSize: "16px",
+                    color: "#0C2A42",
+                  }}
+                >
+                  Guidelines
+                </h3>
+
+                <ul
+                  style={{
+                    margin: 0,
+                    paddingLeft: "18px",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 500,
+                    fontSize: "12px",
+                    lineHeight: "20px",
+                    color: "#6B7280",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "4px",
+                  }}
+                >
+                  <li>Only CSV, XLS, XLSX Files are supported.</li>
+                  <li>Maximum 500 records can be uploaded at a time.</li>
+                  <li>First row must contain column headers.</li>
+                  <li>
+                    Existing attractions will be updated if the attraction name
+                    matches.
+                  </li>
+                  <li>Ensure all required fields are filled in the file.</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Modal Bottom Action Row */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: "14px",
+                marginTop: "12px",
               }}
             >
-              Cancel
-            </button>
-            <button
-              onClick={handleUpload}
-              disabled={!selectedFile || isUploading}
-              style={{
-                padding: "10px 24px",
-                borderRadius: "8px",
-                border: "none",
-                background: !selectedFile || isUploading ? "#94A3B8" : "#0C2A42",
-                color: "#FFFFFF",
-                fontSize: "14px",
-                fontWeight: 600,
-                cursor: !selectedFile || isUploading ? "not-allowed" : "pointer",
-                boxShadow: "0 4px 12px rgba(12, 42, 66, 0.25)",
-              }}
-            >
-              {isUploading ? "Uploading..." : "Process Bulk Upload"}
-            </button>
+              <button
+                type="button"
+                onClick={onClose}
+                style={{
+                  boxSizing: "border-box",
+                  width: "124px",
+                  height: "44px",
+                  background: "#FFFFFF",
+                  border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                  borderRadius: "8px",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 700,
+                  fontSize: "14px",
+                  color: "#011B2F",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleUpload}
+                disabled={isUploading}
+                style={{
+                  boxSizing: "border-box",
+                  width: "153px",
+                  height: "44px",
+                  background: "#F4BC43",
+                  borderRadius: "8px",
+                  border: "none",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 700,
+                  fontSize: "14px",
+                  color: "#011B2F",
+                  cursor: isUploading ? "not-allowed" : "pointer",
+                  boxShadow: "0 4px 12px rgba(244, 188, 67, 0.3)",
+                }}
+              >
+                {isUploading ? "Uploading..." : "Upload File"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      <style>{`
+        .btn-download-template:hover {
+          background: #F8FAFC !important;
+        }
+        @media (max-width: 768px) {
+          .section-template-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

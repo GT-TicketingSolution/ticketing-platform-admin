@@ -40,8 +40,7 @@ const ADMIN_NAV_ITEMS = [
   { label: "Attraction Management", href: "/attraction-management", icon: Landmark },
   { label: "Customer Management", href: "/customer-management", icon: UserRound },
   { label: "Complimentary Passes", href: "/complimentary-passes", icon: ClipboardList },
-  { label: "Reports", href: "/reports", icon: BarChart2 },
-  { label: "User Management", href: "/user-management", icon: Users }
+  { label: "Reports", href: "/reports", icon: BarChart2 }
 ];
 
 // ── All possible manager nav items (filtered by session permissions) ──
