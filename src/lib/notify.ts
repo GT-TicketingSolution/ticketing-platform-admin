@@ -29,12 +29,33 @@ export function showSuccessNotify(message: string = "This is a test message!", t
     allowOutsideClick: true,
     animation: "slide-up",
     size: "sm",
-    showCloseIcon: false,
+    showCloseIcon: true,
     showDenyButton: false,
     showCancelButton: false,
-    showConfirmButton: false,
-    timer: 2500,
-    timerProgressBar: false,
+    showConfirmButton: true,
+    confirmButtonText: "OK",
+    focusConfirm: true,
+    celebrate: false,
+  });
+}
+
+/**
+ * Reusable helper to show error notify-bolt modal without auto-closing.
+ */
+export function showErrorNotify(message: string = "An error occurred.", title: string = "Error") {
+  return showNotify({
+    title,
+    message,
+    variant: "classic",
+    status: "error",
+    allowOutsideClick: true,
+    animation: "slide-up",
+    size: "sm",
+    showCloseIcon: true,
+    showDenyButton: false,
+    showCancelButton: false,
+    showConfirmButton: true,
+    confirmButtonText: "OK",
     focusConfirm: true,
     celebrate: false,
   });
@@ -143,6 +164,32 @@ export async function confirmStatusChange(
       confirmButtonText: "Yes",
       cancelButtonText: "No",
       focusConfirm: true,
+      celebrate: false,
+    });
+    return result === "confirm";
+  } catch {
+    return false;
+  }
+}
+/**
+ * Confirm before logging out — warns the user their session will be ended.
+ */
+export async function confirmLogout(): Promise<boolean> {
+  try {
+    const result = await showNotify({
+      title: "Confirm logout?",
+      message: "You will be logged out of your session. Any unsaved changes will be lost.",
+      variant: "classic",
+      status: "warning",
+      allowOutsideClick: true,
+      animation: "slide-up",
+      size: "sm",
+      showCloseIcon: false,
+      showConfirmButton: true,
+      showCancelButton: true,
+      confirmButtonText: "Yes, Logout",
+      cancelButtonText: "Cancel",
+      focusConfirm: false,
       celebrate: false,
     });
     return result === "confirm";

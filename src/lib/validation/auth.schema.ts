@@ -23,6 +23,8 @@ export const changePasswordSchema = z
     path: ["newPassword"],
   });
 
+export type ChangePasswordFormData = z.infer<typeof changePasswordSchema>;
+
 export const updateProfileSchema = z
   .object({
     name: z

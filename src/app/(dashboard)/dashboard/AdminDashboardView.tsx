@@ -17,13 +17,13 @@ import {
   XCircle,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
-import { INITIAL_MANAGERS, INITIAL_STAFF, ManagerUser, StaffUser } from "@/types/admin";
+import { INITIAL_STAFF, ManagerUser, StaffUser } from "@/types/admin";
 import { exportMultiSectionXLS, XLSSection } from "@/lib/exportUtils";
 import DashboardCharts from "@/components/dashboard/DashboardCharts";
 import { extractUniqueAttractions, matchesAttractionFilter } from "@/lib/filterUtils";
 
 export default function AdminDashboardView() {
-  const [managers] = useState<ManagerUser[]>(INITIAL_MANAGERS);
+  const [managers] = useState<ManagerUser[]>([]);
   const [staff] = useState<StaffUser[]>(INITIAL_STAFF);
 
   // Filters State
@@ -32,17 +32,17 @@ export default function AdminDashboardView() {
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   const attractionOptions = useMemo(() => {
-    return ["All", ...extractUniqueAttractions(managers.map((m) => m.attraction))];
+    return ["All", ...extractUniqueAttractions(managers.map((m) => m.attraction ?? "").filter(Boolean))];
   }, [managers]);
 
   const filteredManagers = useMemo(() => {
     return managers.filter((m) => {
-      const matchesLoc = matchesAttractionFilter(m.attraction, selectedAttraction);
+      const matchesLoc = matchesAttractionFilter(m.attraction ?? "", selectedAttraction);
       const matchesSearch =
         searchQuery === "" ||
         m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         m.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.attraction.toLowerCase().includes(searchQuery.toLowerCase());
+        (m.attraction ?? "").toLowerCase().includes(searchQuery.toLowerCase());
       return matchesLoc && matchesSearch;
     });
   }, [managers, selectedAttraction, searchQuery]);
@@ -61,11 +61,11 @@ export default function AdminDashboardView() {
   const totalManagersCount = filteredManagers.length;
   const totalStaffCount = filteredStaff.length;
   const totalBookingsCount = useMemo(() => {
-    return filteredManagers.reduce((sum, m) => sum + m.totalBookings, 0);
+    return filteredManagers.reduce((sum, m) => sum + (m.totalBookings ?? 0), 0);
   }, [filteredManagers]);
 
   const totalEarnings = useMemo(() => {
-    return filteredManagers.reduce((sum, m) => sum + m.revenueGenerated, 0);
+    return filteredManagers.reduce((sum, m) => sum + (m.revenueGenerated ?? 0), 0);
   }, [filteredManagers]);
 
   const handleExportXLS = () => {
@@ -99,12 +99,12 @@ export default function AdminDashboardView() {
         rows: filteredManagers.map((m) => [
           m.id,
           m.name,
-          m.phone,
+          m.phone ?? "—",
           m.email,
-          m.attraction,
-          m.joinedDate,
-          m.totalBookings,
-          `₹${m.revenueGenerated.toLocaleString("en-IN")}`,
+          m.attraction ?? "—",
+          m.createdAt ? new Date(m.createdAt).toLocaleDateString() : "—",
+          m.totalBookings ?? 0,
+          `₹${(m.revenueGenerated ?? 0).toLocaleString("en-IN")}`,
           m.status,
         ]),
       },
@@ -688,7 +688,7 @@ export default function AdminDashboardView() {
                 </tr>
               ) : (
                 [...filteredManagers]
-                  .sort((a, b) => new Date(b.joinedDate).getTime() - new Date(a.joinedDate).getTime())
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                   .slice(0, 5)
                   .map((mgr) => (
                     <tr
@@ -723,7 +723,7 @@ export default function AdminDashboardView() {
                         </span>
                       </td>
                       <td style={{ padding: "14px 20px", color: colors.text.muted }}>
-                        {mgr.joinedDate}
+                        {mgr.createdAt ? new Date(mgr.createdAt).toLocaleDateString() : "—"}
                       </td>
                       <td
                         style={{
@@ -732,7 +732,7 @@ export default function AdminDashboardView() {
                           color: colors.text.primary,
                         }}
                       >
-                        {mgr.totalBookings.toLocaleString("en-IN")}
+                        {(mgr.totalBookings ?? 0).toLocaleString("en-IN")}
                       </td>
                       <td style={{ padding: "14px 20px" }}>
                         <span

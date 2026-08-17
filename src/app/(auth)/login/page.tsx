@@ -5,19 +5,21 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Mail, Lock, Eye, EyeOff, Globe, ChevronDown, AlertCircle } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, Globe, ChevronDown } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
-import { loginSchema, LoginFormData, RoleType } from "./schema";
-import { findManagerByEmail, saveManagerSession } from "@/lib/managerAuth";
+import { loginSchema, LoginFormData, RoleType, ROLE_MAP } from "./schema";
+import { useLoginMutation } from "@/hooks/useAuthQueries";
 
 export default function LoginPage() {
   const router = useRouter();
   const [selectedRole, setSelectedRole] = useState<RoleType>("Admin");
   const [showPassword, setShowPassword] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
   const [selectedLang, setSelectedLang] = useState("English");
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
+
+  // TanStack Query Login Mutation
+  const loginMutation = useLoginMutation();
+  const isSubmitting = loginMutation.isPending;
 
   const {
     register,
@@ -32,53 +34,18 @@ export default function LoginPage() {
   });
 
   const onSubmit = async (data: LoginFormData) => {
-    setIsSubmitting(true);
-    setAuthError(null);
-
-    await new Promise((resolve) => setTimeout(resolve, 250));
-
-    // ── Manager login: create session for any entered email/password ───────
-    if (selectedRole === "Manager") {
-      const existing = findManagerByEmail(data.email);
-      const managerToSave = existing || {
-        id: `MGR-${Date.now().toString().slice(-3)}`,
-        name: data.email.split("@")[0] || "Manager User",
+    try {
+      const result = await loginMutation.mutateAsync({
         email: data.email,
-        phone: "9876543210",
         password: data.password,
-        attraction: "Toy Train, Ropeway",
-        joinedDate: new Date().toISOString().slice(0, 10),
-        status: "Active" as const,
-        allowedModules: ["Bookings", "Transactions", "Invoices", "Inventory / Capacity", "Reports", "Staff Management"],
-        attractionManagementEnabled: true,
-        attractionPermissions: [
-          {
-            attractionId: "ATR-001",
-            modules: ["Counter Assignment", "Customer Management", "Complimentary Passes", "User Management", "CCTV Monitoring"],
-          },
-          {
-            attractionId: "ATR-002",
-            modules: ["Counter Assignment", "Customer Management", "CCTV Monitoring"],
-          },
-        ],
-      };
+        role: ROLE_MAP[selectedRole],
+      });
 
-      saveManagerSession(managerToSave);
-      sessionStorage.setItem("userRole", "Manager");
-      router.push("/dashboard");
-      return;
+      // Use backend-provided redirectTo
+      router.push(result.redirectTo);
+    } catch {
+      // Error notifications are handled via TanStack Query onError & notify popups
     }
-
-    // Staff login: redirect directly to Ticket Booking
-    if (selectedRole === "Staff") {
-      sessionStorage.setItem("userRole", "Staff");
-      router.push("/ticket-booking");
-      return;
-    }
-
-    // Admin login: direct login for any input
-    sessionStorage.setItem("userRole", selectedRole);
-    router.push("/dashboard");
   };
 
   return (
@@ -367,9 +334,8 @@ export default function LoginPage() {
                   display: "flex",
                   alignItems: "center",
                   height: "42px",
-                  border: `1px solid ${
-                    errors.email ? colors.status.error : colors.login.inputBorder
-                  }`,
+                  border: `1px solid ${errors.email ? colors.status.error : colors.login.inputBorder
+                    }`,
                   borderRadius: "8px",
                   background: "#FFFFFF",
                   padding: "0 12px",
@@ -434,9 +400,8 @@ export default function LoginPage() {
                   display: "flex",
                   alignItems: "center",
                   height: "42px",
-                  border: `1px solid ${
-                    errors.password ? colors.status.error : colors.login.inputBorderActive
-                  }`,
+                  border: `1px solid ${errors.password ? colors.status.error : colors.login.inputBorderActive
+                    }`,
                   borderRadius: "8px",
                   background: "#FFFFFF",
                   padding: "0 12px",
@@ -541,34 +506,6 @@ export default function LoginPage() {
             >
               {isSubmitting ? "Logging in..." : "Login"}
             </button>
-
-            {/* Auth error banner */}
-            {authError && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  background: "#FEF2F2",
-                  border: "1px solid #FECACA",
-                  borderRadius: "8px",
-                  padding: "10px 14px",
-                  marginTop: "4px",
-                }}
-              >
-                <AlertCircle size={16} color={colors.status.error} style={{ flexShrink: 0 }} />
-                <span
-                  style={{
-                    fontFamily: typography.fontFamily.sans,
-                    fontSize: "13px",
-                    color: colors.status.error,
-                    fontWeight: 500,
-                  }}
-                >
-                  {authError}
-                </span>
-              </div>
-            )}
           </form>
         </div>
       </main>

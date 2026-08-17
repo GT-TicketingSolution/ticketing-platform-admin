@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   X,
   User,
@@ -8,21 +8,18 @@ import {
   Phone,
   Check,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
+import {
+  useProfileQuery,
+  useUpdateProfileMutation,
+} from "@/hooks/useAuthQueries";
 
 interface EditProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-// ── Default profile state 
-const defaultProfile = {
-  name: "Amit Sharma",
-  email: "amit@gmail.com",
-  phone: "9876543210",
-  role: "Admin",
-};
 
 // ── Reusable input field — defined at MODULE level so React never re-mounts it on re-render
 function InputField({
@@ -35,6 +32,7 @@ function InputField({
   onChange,
   error,
   maxLength,
+  disabled,
 }: {
   id: string;
   label: string;
@@ -45,6 +43,7 @@ function InputField({
   onChange: (v: string) => void;
   error?: string;
   maxLength?: number;
+  disabled?: boolean;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -67,8 +66,9 @@ function InputField({
           border: `1.5px solid ${error ? colors.status.error : colors.login.inputBorder}`,
           borderRadius: "8px",
           padding: "0 12px",
-          background: "#FFFFFF",
+          background: disabled ? "#F9FAFB" : "#FFFFFF",
           transition: "border-color 0.2s ease",
+          opacity: disabled ? 0.7 : 1,
         }}
       >
         <span style={{ display: "flex", marginRight: "10px", flexShrink: 0, color: colors.login.inputIcon }}>
@@ -80,6 +80,7 @@ function InputField({
           placeholder={placeholder}
           value={value}
           maxLength={maxLength}
+          disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
           style={{
             width: "100%",
@@ -111,22 +112,72 @@ function InputField({
   );
 }
 
+// ── Read-only info row (role / status) ──
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+      <span
+        style={{
+          fontSize: "13px",
+          fontWeight: typography.fontWeight.semibold,
+          color: colors.text.primary,
+          fontFamily: typography.fontFamily.sans,
+        }}
+      >
+        {label}
+      </span>
+      <div
+        style={{
+          height: "42px",
+          border: `1.5px solid ${colors.login.inputBorder}`,
+          borderRadius: "8px",
+          padding: "0 12px",
+          background: "#F9FAFB",
+          display: "flex",
+          alignItems: "center",
+          fontSize: "14px",
+          fontFamily: typography.fontFamily.sans,
+          color: colors.text.primary,
+          opacity: 0.7,
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 export default function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
-  const [formData, setFormData] = useState({ ...defaultProfile });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
+  // Profile is already pre-fetched by DashboardLayout on login.
+  // We always read from the React Query cache here — no extra network request.
+  const { data: profileData, isLoading, isError, refetch } = useProfileQuery();
+
+  const updateMutation = useUpdateProfileMutation();
+
+  const profile = profileData?.profile;
+
+  const [formData, setFormData] = useState({ name: "", email: "", phone: "" });
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+
+  // Seed form whenever profile loads or modal re-opens
+  useEffect(() => {
+    if (profile) {
+      setFormData({
+        name: profile.name || "",
+        email: profile.email || "",
+        phone: profile.phone || "",
+      });
+      setErrors({});
+    }
+  }, [profile, isOpen]);
 
   if (!isOpen) return null;
 
   const avatarInitials = formData.name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+    ? formData.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
+    : "??";
 
-  // ── Validation 
+  // ── Validation ──
   const validate = () => {
     const errs: { [key: string]: string } = {};
     if (!formData.name.trim()) errs.name = "Name is required";
@@ -135,35 +186,38 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       errs.email = "Invalid email format";
     }
-    if (!formData.phone.trim()) {
-      errs.phone = "Phone number is required";
-    } else if (formData.phone.length < 10) {
-      errs.phone = "Phone must be 10 digits";
+    if (formData.phone && formData.phone.length > 0 && formData.phone.length < 10) {
+      errs.phone = "Phone must be at least 10 digits";
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
 
-    setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setSuccess(true);
-      setTimeout(() => {
-        setSuccess(false);
-        onClose();
-      }, 1600);
-    }, 500);
+    try {
+      await updateMutation.mutateAsync({
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim() || undefined,
+      });
+      await refetch();
+      setTimeout(onClose, 600);
+    } catch {
+      // Errors are shown via toast in useUpdateProfileMutation's onError
+    }
   };
+
+
 
   const handleClose = () => {
     setErrors({});
-    setSuccess(false);
     onClose();
   };
+
+  const isSubmitting = updateMutation.isPending;
 
   return (
     <div
@@ -204,7 +258,6 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            {/* Avatar initials badge */}
             <div
               style={{
                 width: "40px",
@@ -266,126 +319,202 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
           </button>
         </div>
 
-        {/* ── Form ── */}
-        <form onSubmit={handleSubmit} style={{ padding: "24px" }}>
-          {/* Success Banner */}
-          {success && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                padding: "12px 16px",
-                background: "#F0FDF4",
-                border: `1px solid ${colors.status.success}`,
-                borderRadius: "10px",
-                color: colors.status.success,
-                fontFamily: typography.fontFamily.sans,
-                fontWeight: typography.fontWeight.semibold,
-                fontSize: "14px",
-                marginBottom: "16px",
-              }}
-            >
-              <Check size={20} style={{ flexShrink: 0 }} />
-              <span>Profile updated successfully!</span>
-            </div>
-          )}
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <InputField
-              id="ep-name"
-              label="Full Name"
-              icon={<User size={16} />}
-              placeholder="e.g. Amit Sharma"
-              value={formData.name}
-              onChange={(v) => setFormData({ ...formData, name: v })}
-              error={errors.name}
-            />
-
-            <InputField
-              id="ep-email"
-              label="Email Address"
-              icon={<Mail size={16} />}
-              type="email"
-              placeholder="admin@gmail.com"
-              value={formData.email}
-              onChange={(v) => setFormData({ ...formData, email: v })}
-              error={errors.email}
-            />
-
-            <InputField
-              id="ep-phone"
-              label="Phone Number"
-              icon={<Phone size={16} />}
-              placeholder="9876543210"
-              value={formData.phone}
-              maxLength={10}
-              onChange={(v) =>
-                setFormData({
-                  ...formData,
-                  phone: v.replace(/\D/g, "").slice(0, 10),
-                })
-              }
-              error={errors.phone}
-            />
-          </div>
-
-          {/* Action Buttons */}
+        {/* ── Body ── */}
+        {isLoading ? (
+          /* Loading state */
           <div
             style={{
-              marginTop: "24px",
+              padding: "40px 24px",
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
-              justifyContent: "flex-end",
               gap: "12px",
             }}
           >
-            <button
-              type="button"
-              onClick={handleClose}
-              disabled={isSubmitting}
+            <Loader2
+              size={32}
+              style={{ color: colors.sidebar.activeBg, animation: "spin 1s linear infinite" }}
+            />
+            <p
               style={{
-                height: "40px",
-                padding: "0 20px",
-                borderRadius: "8px",
-                border: `1px solid ${colors.login.inputBorder}`,
-                background: "#FFFFFF",
-                color: colors.text.primary,
-                fontSize: "14px",
-                fontWeight: typography.fontWeight.medium,
-                cursor: "pointer",
                 fontFamily: typography.fontFamily.sans,
+                fontSize: "14px",
+                color: colors.text.primary,
+                opacity: 0.6,
+                margin: 0,
               }}
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting || success}
+              Loading your profile…
+            </p>
+          </div>
+        ) : isError ? (
+          /* Error fallback */
+          <div
+            style={{
+              padding: "32px 24px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "12px",
+              textAlign: "center",
+            }}
+          >
+            <AlertCircle size={32} color={colors.status.error} />
+            <p
               style={{
-                height: "40px",
-                padding: "0 22px",
+                fontFamily: typography.fontFamily.sans,
+                fontSize: "14px",
+                color: colors.text.primary,
+                margin: 0,
+                fontWeight: typography.fontWeight.semibold,
+              }}
+            >
+              Failed to load profile
+            </p>
+            <p
+              style={{
+                fontFamily: typography.fontFamily.sans,
+                fontSize: "13px",
+                color: colors.text.primary,
+                opacity: 0.6,
+                margin: 0,
+              }}
+            >
+              Please check your connection and try again.
+            </p>
+            <button
+              onClick={() => refetch()}
+              style={{
+                marginTop: "4px",
+                padding: "8px 20px",
                 borderRadius: "8px",
-                border: "none",
                 background: colors.sidebar.activeBg,
                 color: colors.sidebar.activeText,
-                fontSize: "14px",
-                fontWeight: typography.fontWeight.bold,
-                cursor: isSubmitting || success ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
+                border: "none",
+                cursor: "pointer",
                 fontFamily: typography.fontFamily.sans,
-                boxShadow: "0 4px 12px rgba(244, 188, 67, 0.3)",
-                opacity: isSubmitting || success ? 0.85 : 1,
-                transition: "opacity 0.2s ease",
+                fontWeight: typography.fontWeight.bold,
+                fontSize: "13px",
               }}
             >
-              <Check size={16} />
-              <span>{isSubmitting ? "Saving..." : "Save Changes"}</span>
+              Retry
             </button>
           </div>
-        </form>
+        ) : (
+          /* ── Form ── */
+          <form onSubmit={handleSubmit} style={{ padding: "24px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <InputField
+                id="ep-name"
+                label="Full Name"
+                icon={<User size={16} />}
+                placeholder="e.g. John Doe"
+                value={formData.name}
+                onChange={(v) => setFormData({ ...formData, name: v })}
+                error={errors.name}
+                disabled={isSubmitting}
+              />
+
+              <InputField
+                id="ep-email"
+                label="Email Address"
+                icon={<Mail size={16} />}
+                type="email"
+                placeholder="admin@example.com"
+                value={formData.email}
+                onChange={(v) => setFormData({ ...formData, email: v })}
+                error={errors.email}
+                disabled={isSubmitting}
+              />
+
+              <InputField
+                id="ep-phone"
+                label="Phone Number"
+                icon={<Phone size={16} />}
+                placeholder="9876543210"
+                value={formData.phone}
+                maxLength={10}
+                onChange={(v) =>
+                  setFormData({
+                    ...formData,
+                    phone: v.replace(/\D/g, "").slice(0, 10),
+                  })
+                }
+                error={errors.phone}
+                disabled={isSubmitting}
+              />
+
+              {/* Read-only fields from server */}
+              {profile?.role && <ReadOnlyField label="Role" value={profile.role} />}
+              {profile?.status && <ReadOnlyField label="Status" value={profile.status} />}
+            </div>
+
+            {/* Action Buttons */}
+            <div
+              style={{
+                marginTop: "24px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: "12px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleClose}
+                disabled={isSubmitting}
+                style={{
+                  height: "40px",
+                  padding: "0 20px",
+                  borderRadius: "8px",
+                  border: `1px solid ${colors.login.inputBorder}`,
+                  background: "#FFFFFF",
+                  color: colors.text.primary,
+                  fontSize: "14px",
+                  fontWeight: typography.fontWeight.medium,
+                  cursor: isSubmitting ? "not-allowed" : "pointer",
+                  fontFamily: typography.fontFamily.sans,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                style={{
+                  height: "40px",
+                  padding: "0 22px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: colors.sidebar.activeBg,
+                  color: colors.sidebar.activeText,
+                  fontSize: "14px",
+                  fontWeight: typography.fontWeight.bold,
+                  cursor: isSubmitting ? "not-allowed" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontFamily: typography.fontFamily.sans,
+                  boxShadow: "0 4px 12px rgba(244, 188, 67, 0.3)",
+                  opacity: isSubmitting ? 0.85 : 1,
+                  transition: "opacity 0.2s ease",
+                }}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check size={16} />
+                    <span>Save Changes</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
 
       <style>{`
@@ -396,6 +525,10 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
         @keyframes epSlideUp {
           from { opacity: 0; transform: translateY(16px) scale(0.98); }
           to   { opacity: 1; transform: translateY(0)     scale(1);   }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
         }
       `}</style>
     </div>

@@ -9,7 +9,9 @@ interface SeatAllocationModalProps {
   onClose: () => void;
   attractionName: string;
   currentSeatId?: string;
+  currentSeatIds?: string[];
   onSelect: (seat: SeatConfigData) => void;
+  onSelectMultiple?: (seats: SeatConfigData[]) => void;
 }
 
 const SEAT_STORAGE_KEY = "seat_layouts_data";
@@ -19,15 +21,22 @@ export default function SeatAllocationModal({
   onClose,
   attractionName,
   currentSeatId,
+  currentSeatIds,
   onSelect,
+  onSelectMultiple,
 }: SeatAllocationModalProps) {
   const [seats, setSeats] = useState<SeatConfigData[]>([]);
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<string | undefined>(currentSeatId);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
-    setSelected(currentSeatId);
+    const initial = currentSeatIds?.length
+      ? currentSeatIds
+      : currentSeatId
+      ? [currentSeatId]
+      : [];
+    setSelectedIds(initial);
     setSearch("");
     try {
       const raw = localStorage.getItem(SEAT_STORAGE_KEY);
@@ -36,7 +45,7 @@ export default function SeatAllocationModal({
     } catch {
       setSeats([]);
     }
-  }, [isOpen, currentSeatId]);
+  }, [isOpen, currentSeatId, currentSeatIds]);
 
   if (!isOpen) return null;
 
@@ -46,10 +55,20 @@ export default function SeatAllocationModal({
       s.name.toLowerCase().includes(search.toLowerCase())
   );
 
+  const toggleSeatSelection = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
   const handleConfirm = () => {
-    const seat = seats.find((s) => s.id === selected);
-    if (seat) {
-      onSelect(seat);
+    const selectedSeats = seats.filter((s) => selectedIds.includes(s.id!));
+    if (selectedSeats.length > 0) {
+      if (onSelectMultiple) {
+        onSelectMultiple(selectedSeats);
+      } else {
+        onSelect(selectedSeats[0]);
+      }
       onClose();
     }
   };
@@ -279,11 +298,11 @@ export default function SeatAllocationModal({
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {filtered.map((seat) => {
-                const isSelected = selected === seat.id;
+                const isSelected = selectedIds.includes(seat.id!);
                 return (
                   <div
                     key={seat.id}
-                    onClick={() => setSelected(seat.id)}
+                    onClick={() => toggleSeatSelection(seat.id!)}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -341,7 +360,7 @@ export default function SeatAllocationModal({
                       style={{
                         width: "22px",
                         height: "22px",
-                        borderRadius: "50%",
+                        borderRadius: "6px",
                         background: isSelected ? "#0C2A42" : "#FFFFFF",
                         border: isSelected ? "2px solid #0C2A42" : "2px solid #D1D5DB",
                         display: "flex",
@@ -391,22 +410,24 @@ export default function SeatAllocationModal({
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={!selected}
+            disabled={selectedIds.length === 0}
             style={{
               flex: 1,
               height: "42px",
-              background: selected ? "#0C2A42" : "#D1D5DB",
+              background: selectedIds.length > 0 ? "#0C2A42" : "#D1D5DB",
               border: "none",
               borderRadius: "8px",
               fontFamily: "'Plus Jakarta Sans', sans-serif",
               fontWeight: 700,
               fontSize: "14px",
-              color: selected ? "#FFFFFF" : "#9CA3AF",
-              cursor: selected ? "pointer" : "not-allowed",
+              color: selectedIds.length > 0 ? "#FFFFFF" : "#9CA3AF",
+              cursor: selectedIds.length > 0 ? "pointer" : "not-allowed",
               transition: "all 0.15s ease",
             }}
           >
-            Assign Seat Layout
+            {selectedIds.length > 1
+              ? `Assign ${selectedIds.length} Seat Layouts`
+              : "Assign Seat Layout"}
           </button>
         </div>
       </div>

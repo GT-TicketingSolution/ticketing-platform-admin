@@ -15,8 +15,6 @@ import {
   UserRound,
   ClipboardList,
   BarChart2,
-  Users,
-  CloudUpload,
   LogOut,
   AlignRight,
   X,
@@ -26,9 +24,46 @@ import {
   ScanLine,
   Armchair,
 } from "lucide-react";
+import { useMemo } from "react";
 import { colors, typography } from "@/lib/theme";
+import { useSystemModules, SystemModule } from "@/hooks/useSystemModuleQueries";
 
-// ── Admin nav: Dashboard first, Manager/Staff Mgmt, no Ticket Booking ──
+// ── Module registry mapping backend module key/name to route & Lucide icon ──
+const MODULE_REGISTRY: Record<string, { label: string; href: string; icon: any }> = {
+  dashboard: { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  manager_management: { label: "Manager Management", href: "/manager-management", icon: UserCheck },
+  managers: { label: "Manager Management", href: "/manager-management", icon: UserCheck },
+  manager: { label: "Manager Management", href: "/manager-management", icon: UserCheck },
+  staff_management: { label: "Staff Management", href: "/staff-management", icon: UserCog },
+  staff: { label: "Staff Management", href: "/staff-management", icon: UserCog },
+  bookings: { label: "Bookings", href: "/bookings", icon: BookOpen },
+  booking: { label: "Bookings", href: "/bookings", icon: BookOpen },
+  transactions: { label: "Transactions", href: "/transactions", icon: CircleDollarSign },
+  transaction: { label: "Transactions", href: "/transactions", icon: CircleDollarSign },
+  invoices: { label: "Invoices", href: "/invoices", icon: FileText },
+  invoice: { label: "Invoices", href: "/invoices", icon: FileText },
+  inventory: { label: "Inventory / Capacity", href: "/inventory", icon: Boxes },
+  inventory_capacity: { label: "Inventory / Capacity", href: "/inventory", icon: Boxes },
+  cctv_monitoring: { label: "CCTV Monitoring", href: "/cctv-monitoring", icon: Cctv },
+  cctv: { label: "CCTV Monitoring", href: "/cctv-monitoring", icon: Cctv },
+  seat_management: { label: "Seat Management", href: "/seat-management", icon: Armchair },
+  seats: { label: "Seat Management", href: "/seat-management", icon: Armchair },
+  attraction_management: { label: "Attraction Management", href: "/attraction-management", icon: Landmark },
+  attractions: { label: "Attraction Management", href: "/attraction-management", icon: Landmark },
+  attraction: { label: "Attraction Management", href: "/attraction-management", icon: Landmark },
+  customer_management: { label: "Customer Management", href: "/customer-management", icon: UserRound },
+  customers: { label: "Customer Management", href: "/customer-management", icon: UserRound },
+  customer: { label: "Customer Management", href: "/customer-management", icon: UserRound },
+  complimentary_passes: { label: "Complimentary Passes", href: "/complimentary-passes", icon: ClipboardList },
+  passes: { label: "Complimentary Passes", href: "/complimentary-passes", icon: ClipboardList },
+  reports: { label: "Reports", href: "/reports", icon: BarChart2 },
+  records_reports: { label: "Reports", href: "/reports", icon: BarChart2 },
+  ticket_booking: { label: "Ticket Booking", href: "/ticket-booking", icon: Ticket },
+  tickets: { label: "Ticket Booking", href: "/ticket-booking", icon: Ticket },
+  scanner: { label: "Scanner", href: "/scanner", icon: ScanLine },
+};
+
+// ── Fallback Admin nav: Used while initial loading or if offline ──
 const ADMIN_NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Manager Management", href: "/manager-management", icon: UserCheck },
@@ -45,42 +80,11 @@ const ADMIN_NAV_ITEMS = [
   { label: "Reports", href: "/reports", icon: BarChart2 }
 ];
 
-// ── All possible manager nav items (filtered by session permissions) ──
-const ALL_MANAGER_NAV_ITEMS = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Staff Management", href: "/staff-management", icon: UserCog },
-  { label: "Bookings", href: "/bookings", icon: BookOpen },
-  { label: "Transactions", href: "/transactions", icon: CircleDollarSign },
-  { label: "Invoices", href: "/invoices", icon: FileText },
-  { label: "Inventory / Capacity", href: "/inventory", icon: Boxes },
-  { label: "CCTV Monitoring", href: "/cctv-monitoring", icon: Cctv },
-  { label: "Seat Management", href: "/seat-management", icon: Armchair },
-  { label: "Attraction Management", href: "/attraction-management", icon: Landmark },
-  { label: "Customer Management", href: "/customer-management", icon: UserRound },
-  { label: "Complimentary Passes", href: "/complimentary-passes", icon: ClipboardList },
-  { label: "Reports", href: "/reports", icon: BarChart2 },
-];
-
 // ── Staff nav: Ticket Booking + Scanner only ──
 const STAFF_NAV_ITEMS = [
   { label: "Ticket Booking", href: "/ticket-booking", icon: Ticket },
   { label: "Scanner", href: "/scanner", icon: ScanLine },
 ];
-
-/** Pick the correct nav list based on the active role and manager permissions */
-function getNavItems(role: string, managerAllowedModules: Set<string> | null) {
-  switch (role) {
-    case "Manager":
-      if (managerAllowedModules) {
-        return ALL_MANAGER_NAV_ITEMS.filter((item) =>
-          managerAllowedModules.has(item.label)
-        );
-      }
-      return ALL_MANAGER_NAV_ITEMS;
-    case "Staff": return STAFF_NAV_ITEMS;
-    default: return ADMIN_NAV_ITEMS;
-  }
-}
 
 function PortalTooltip({
   label,
@@ -174,7 +178,7 @@ function NavItem({
         href={href}
         prefetch={true}
         onClick={onClick}
-        style={{ textDecoration: "none", display: "block", padding: "3px 10px",gap:10 }}
+        style={{ textDecoration: "none", display: "block", padding: "3px 10px", gap: 10 }}
       >
         <div
           ref={anchorRef as React.RefObject<HTMLDivElement>}
@@ -254,7 +258,6 @@ function LogoutItem({ isIconOnly, onLogout }: { isIconOnly: boolean; onLogout?: 
 
   const handleLogout = () => {
     if (onLogout) onLogout();
-    router.push("/login");
   };
 
   return (
@@ -341,6 +344,46 @@ export default function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const [pendingPath, setPendingPath] = useState<string | null>(null);
+
+  // Fetch active system modules from backend (GET /api/admin/system-modules)
+  const { data: systemModules } = useSystemModules();
+
+  const navItems = useMemo(() => {
+    if (roleName === "Staff") return STAFF_NAV_ITEMS;
+
+    if (systemModules && Array.isArray(systemModules) && systemModules.length > 0) {
+      const activeItems = systemModules
+        .filter((mod) => String(mod.isActive).toUpperCase() === "ACTIVE" || (mod.isActive as unknown) === true)
+        .map((mod) => {
+          const normalizedKey = (mod.key || "").toLowerCase().replace(/[-\s]/g, "_");
+          const normalizedName = (mod.name || "").toLowerCase().replace(/[-\s]/g, "_");
+          const match = MODULE_REGISTRY[normalizedKey] || MODULE_REGISTRY[normalizedName];
+          if (match) {
+            return {
+              label: mod.name || match.label,
+              href: match.href,
+              icon: match.icon,
+            };
+          }
+          return null;
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
+
+      if (roleName === "Manager" && managerAllowedModules) {
+        return activeItems.filter((item) => managerAllowedModules.has(item.label));
+      }
+
+      if (activeItems.length > 0) {
+        return activeItems;
+      }
+    }
+
+    // Fallback if system modules not loaded yet or offline
+    if (roleName === "Manager" && managerAllowedModules) {
+      return ADMIN_NAV_ITEMS.filter((item) => managerAllowedModules.has(item.label));
+    }
+    return ADMIN_NAV_ITEMS;
+  }, [roleName, systemModules, managerAllowedModules]);
 
   // Sync / clear pending path when actual pathname updates
   useEffect(() => {
@@ -516,9 +559,9 @@ export default function Sidebar({
           }}
         />
 
-        {/* ── Navigation (role-based + permission-filtered) ── */}
-        <nav style={{ flex: 1, padding: "8px 0",marginTop:"20px" }}>
-          {getNavItems(roleName, managerAllowedModules).map((item) => {
+        {/* ── Navigation (dynamically rendered from system modules) ── */}
+        <nav style={{ flex: 1, padding: "8px 0", marginTop: "20px" }}>
+          {navItems.map((item) => {
             const isActive =
               activePath === item.href ||
               (item.href !== "/dashboard" && activePath.startsWith(item.href));
