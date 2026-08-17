@@ -10,6 +10,8 @@ import {
   getManagerAllowedModules,
   clearManagerSession,
 } from "@/lib/managerAuth";
+import { useProfileQuery, useLogoutMutation } from "@/hooks/useAuthQueries";
+import { confirmLogout } from "@/lib/notify";
 
 /** Breakpoint below which we switch to mobile/tablet drawer mode */
 const MOBILE_BREAKPOINT = 1024;
@@ -27,6 +29,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [userRole, setUserRole] = useState("Admin");
   /** Modules the current manager is allowed to see (null = not a manager) */
   const [managerAllowedModules, setManagerAllowedModules] = useState<Set<string> | null>(null);
+
+  /**
+   * Eagerly prefetch the authenticated user's profile as soon as the
+   * dashboard mounts (i.e. immediately after login). The result is
+   * stored in React Query's cache so the Header and EditProfileModal
+   * can read it instantly without an extra network round-trip.
+   */
+  useProfileQuery();
 
   useEffect(() => {
     const saved = sessionStorage.getItem("userRole") ?? "Admin";
@@ -54,14 +64,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const contentMarginLeft = isMobile
     ? 0
     : collapsed
-    ? spacing.sidebarCollapsedWidth
-    : spacing.sidebarWidth;
+      ? spacing.sidebarCollapsedWidth
+      : spacing.sidebarWidth;
 
   const roleInitials = ROLE_INITIALS[userRole] ?? userRole.slice(0, 2).toUpperCase();
 
-  const handleLogout = () => {
-    if (userRole === "Manager") clearManagerSession();
-    sessionStorage.removeItem("userRole");
+  const logoutMutation = useLogoutMutation();
+
+  const handleLogout = async () => {
+    const confirmed = await confirmLogout();
+    if (confirmed) {
+      if (userRole === "Manager") clearManagerSession();
+      logoutMutation.mutate();
+    }
   };
 
   return (

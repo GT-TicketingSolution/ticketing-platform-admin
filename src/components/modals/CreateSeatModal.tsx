@@ -1,17 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { X, Armchair, MoveHorizontal } from "lucide-react";
 
-export interface SeatConfigData {
-  id?: string;
-  name: string;
-  rows: number;
-  cols: number;
-  hasAisle: boolean;
-  aisleAfterCol: number; // 1-based index: aisle is placed after this column (1 .. cols - 1)
-  status: "Active" | "Inactive";
-}
+import { SeatConfigData } from "@/app/(dashboard)/seat-management/types";
+export type { SeatConfigData };
 
 interface CreateSeatModalProps {
   isOpen: boolean;
@@ -34,9 +27,11 @@ export default function CreateSeatModal({
   const [aisleAfterCol, setAisleAfterCol] = useState<number>(1);
   const [status, setStatus] = useState<"Active" | "Inactive" | "">("");
 
-  // Dragging state for aisle
+  // Dragging state for aisle (mouse-based)
   const [isDraggingAisle, setIsDraggingAisle] = useState<boolean>(false);
   const [dragOverCol, setDragOverCol] = useState<number | null>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const isDraggingRef = useRef(false);
 
   // Errors
   const [errors, setErrors] = useState<{ [k: string]: string }>({});
@@ -67,8 +62,6 @@ export default function CreateSeatModal({
       setAisleAfterCol(Math.max(1, Math.floor(numCols / 2)));
     }
   }, [cols, aisleAfterCol]);
-
-  if (!isOpen) return null;
 
   const parsedRows = typeof rows === "number" ? Math.max(0, rows) : 0;
   const parsedCols = typeof cols === "number" ? Math.max(0, cols) : 0;
@@ -140,6 +133,39 @@ export default function CreateSeatModal({
   const isAisleActive = hasAisle === true;
   const leftColumnsCount = isAisleActive ? Math.min(parsedCols - 1, Math.max(1, aisleAfterCol)) : parsedCols;
   const rightColumnsCount = isAisleActive ? parsedCols - leftColumnsCount : 0;
+
+  // Mouse-based aisle drag handlers
+  const handleAisleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!isAisleActive || parsedCols <= 1) return;
+    e.preventDefault();
+    isDraggingRef.current = true;
+    setIsDraggingAisle(true);
+  }, [isAisleActive, parsedCols]);
+
+  // handlePreviewMouseMove removed — individual gap zones use onMouseEnter instead
+
+  const handlePreviewMouseUp = useCallback(() => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    setIsDraggingAisle(false);
+    if (dragOverCol !== null) {
+      setAisleAfterCol(dragOverCol);
+      setDragOverCol(null);
+    }
+  }, [dragOverCol]);
+
+  const handlePreviewMouseLeave = useCallback(() => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      setIsDraggingAisle(false);
+      if (dragOverCol !== null) {
+        setAisleAfterCol(dragOverCol);
+        setDragOverCol(null);
+      }
+    }
+  }, [dragOverCol]);
+
+  if (!isOpen) return null;
 
   return (
     <div
@@ -373,9 +399,7 @@ export default function CreateSeatModal({
                   type="button"
                   onClick={() => {
                     setHasAisle(true);
-                    if (parsedCols > 1 && aisleAfterCol === 0) {
-                      setAisleAfterCol(Math.floor(parsedCols / 2));
-                    }
+                    setAisleAfterCol(1); // always default to leftmost position
                     if (errors.hasAisle) setErrors((prev) => ({ ...prev, hasAisle: "" }));
                   }}
                   style={{
@@ -593,8 +617,11 @@ export default function CreateSeatModal({
               )}
             </div>
 
-            {/* Preview Box with Perfect Center Alignment */}
+            {/* Preview Box */}
             <div
+              ref={previewRef}
+              onMouseUp={handlePreviewMouseUp}
+              onMouseLeave={handlePreviewMouseLeave}
               style={{
                 flex: 1,
                 minHeight: "260px",
@@ -608,6 +635,8 @@ export default function CreateSeatModal({
                 justifyContent: "center",
                 overflow: "auto",
                 position: "relative",
+                cursor: isDraggingAisle ? "grabbing" : "default",
+                userSelect: "none",
               }}
             >
               {parsedRows === 0 || parsedCols === 0 ? (
@@ -668,54 +697,97 @@ export default function CreateSeatModal({
                     {Array.from({ length: parsedRows }, (_, rIdx) => {
                       const rowNum = rIdx + 1;
                       return (
-                        <div key={`left-row-${rowNum}`} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <div key={`left-row-${rowNum}`} style={{ display: "flex", alignItems: "center", gap: "0px" }}>
                           {/* Row label */}
                           <span
                             style={{
-                              width: "20px",
+                              width: "24px",
+                              marginRight: "4px",
                               fontSize: "11px",
                               fontWeight: 700,
                               color: "#9CA3AF",
                               textAlign: "right",
+                              flexShrink: 0,
                             }}
                           >
                             R{rowNum}
                           </span>
 
-                          {/* Left Seats */}
+                          {/* Left Seats with interactive gap zones between them */}
                           {Array.from({ length: leftColumnsCount }, (_, cIdx) => {
                             const colNum = cIdx + 1;
                             const seatNumber = rIdx * parsedCols + colNum;
+                            const isLastLeft = cIdx === leftColumnsCount - 1;
+                            // Gap is "after colNum" — only shown between left seats (not after the last)
+                            const isGapHovered = dragOverCol === colNum;
 
                             return (
-                              <div
-                                key={`seat-l-${rowNum}-${colNum}`}
-                                onDragOver={(e) => {
-                                  e.preventDefault();
-                                  setDragOverCol(colNum);
-                                }}
-                                onDrop={(e) => {
-                                  e.preventDefault();
-                                  setAisleAfterCol(colNum);
-                                  setDragOverCol(null);
-                                  setIsDraggingAisle(false);
-                                }}
-                                style={{
-                                  width: "42px",
-                                  height: "36px",
-                                  background: "#FFFFFF",
-                                  border: dragOverCol === colNum ? "2px dashed #3B82F6" : "1.5px solid #0C2A42",
-                                  borderRadius: "6px",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  fontSize: "11px",
-                                  fontWeight: 700,
-                                  color: "#0C2A42",
-                                }}
-                              >
-                                {seatNumber < 10 ? `0${seatNumber}` : seatNumber}
-                              </div>
+                              <React.Fragment key={`seat-l-${rowNum}-${colNum}`}>
+                                <div
+                                  data-seat-col={colNum}
+                                  style={{
+                                    width: "42px",
+                                    height: "36px",
+                                    background: "#FFFFFF",
+                                    border: "1.5px solid #0C2A42",
+                                    borderRadius: "6px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: "11px",
+                                    fontWeight: 700,
+                                    color: "#0C2A42",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {seatNumber < 10 ? `0${seatNumber}` : seatNumber}
+                                </div>
+
+                                {/* Interactive gap zone between consecutive left seats.
+                                    Expands during drag so it is easy to hover into.
+                                    onMouseEnter highlights it; onMouseUp / onClick commits. */}
+                                {isAisleActive && !isLastLeft && (
+                                  <div
+                                    onMouseEnter={() => {
+                                      if (isDraggingRef.current) setDragOverCol(colNum);
+                                    }}
+                                    onMouseUp={() => {
+                                      if (isDraggingRef.current) {
+                                        isDraggingRef.current = false;
+                                        setIsDraggingAisle(false);
+                                        setAisleAfterCol(colNum);
+                                        setDragOverCol(null);
+                                      }
+                                    }}
+                                    onClick={() => setAisleAfterCol(colNum)}
+                                    title={`Move aisle after column ${colNum}`}
+                                    style={{
+                                      width: isDraggingAisle ? "28px" : "6px",
+                                      height: "36px",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      cursor: isDraggingAisle ? "copy" : "pointer",
+                                      flexShrink: 0,
+                                      transition: "width 0.12s ease",
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        width: isGapHovered ? "4px" : "2px",
+                                        height: isGapHovered ? "100%" : "55%",
+                                        background: isGapHovered ? "#3B82F6" : isDraggingAisle ? "#CBD5E1" : "#E5E7EB",
+                                        borderRadius: "2px",
+                                        transition: "all 0.1s ease",
+                                        pointerEvents: "none",
+                                      }}
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Tiny spacer after last left seat before the AISLE bar */}
+                                {isLastLeft && <div style={{ width: "6px", flexShrink: 0 }} />}
+                              </React.Fragment>
                             );
                           })}
                         </div>
@@ -723,30 +795,23 @@ export default function CreateSeatModal({
                     })}
                   </div>
 
-                  {/* ── Continuous Full-Height Draggable Aisle (Matching Image 2) ── */}
+                  {/* ── Continuous Full-Height Draggable Aisle ── */}
                   {isAisleActive && parsedCols > 1 && (
                     <div
-                      draggable
-                      onDragStart={(e) => {
-                        setIsDraggingAisle(true);
-                        e.dataTransfer.setData("text/plain", "aisle");
-                      }}
-                      onDragEnd={() => {
-                        setIsDraggingAisle(false);
-                        setDragOverCol(null);
-                      }}
+                      onMouseDown={handleAisleMouseDown}
                       style={{
                         width: "56px",
                         margin: "0 10px",
                         background: isDraggingAisle ? "#FEF3C7" : "rgba(229, 231, 235, 0.55)",
-                        border: "1.5px dashed #9CA3AF",
+                        border: isDraggingAisle ? "1.5px dashed #F59E0B" : "1.5px dashed #9CA3AF",
                         borderRadius: "6px",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         cursor: isDraggingAisle ? "grabbing" : "grab",
-                        transition: "all 0.18s ease",
+                        transition: "background 0.15s ease, border-color 0.15s ease",
                         minHeight: `${parsedRows * 36 + (parsedRows - 1) * 8}px`,
+                        flexShrink: 0,
                       }}
                       title="Grab and drag to reposition aisle between columns"
                     >
@@ -757,9 +822,10 @@ export default function CreateSeatModal({
                           fontFamily: "'Plus Jakarta Sans', sans-serif",
                           fontWeight: 800,
                           fontSize: "11px",
-                          color: "#4B5563",
+                          color: isDraggingAisle ? "#92400E" : "#4B5563",
                           letterSpacing: "3px",
                           userSelect: "none",
+                          pointerEvents: "none",
                         }}
                       >
                         AISLE
@@ -773,40 +839,80 @@ export default function CreateSeatModal({
                       {Array.from({ length: parsedRows }, (_, rIdx) => {
                         const rowNum = rIdx + 1;
                         return (
-                          <div key={`right-row-${rowNum}`} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <div key={`right-row-${rowNum}`} style={{ display: "flex", alignItems: "center", gap: "0px" }}>
+                            {/* Small spacer after the AISLE bar before first right seat */}
+                            <div style={{ width: "6px", flexShrink: 0 }} />
+
                             {Array.from({ length: rightColumnsCount }, (_, cIdx) => {
                               const colNum = leftColumnsCount + cIdx + 1;
                               const seatNumber = rIdx * parsedCols + colNum;
+                              const isLastRight = cIdx === rightColumnsCount - 1;
+                              // Gap is "after colNum" — only between right seats (not after the last)
+                              const isGapHovered = dragOverCol === colNum;
 
                               return (
-                                <div
-                                  key={`seat-r-${rowNum}-${colNum}`}
-                                  onDragOver={(e) => {
-                                    e.preventDefault();
-                                    setDragOverCol(colNum - 1);
-                                  }}
-                                  onDrop={(e) => {
-                                    e.preventDefault();
-                                    setAisleAfterCol(colNum - 1);
-                                    setDragOverCol(null);
-                                    setIsDraggingAisle(false);
-                                  }}
-                                  style={{
-                                    width: "42px",
-                                    height: "36px",
-                                    background: "#FFFFFF",
-                                    border: dragOverCol === colNum - 1 ? "2px dashed #3B82F6" : "1.5px solid #0C2A42",
-                                    borderRadius: "6px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    fontSize: "11px",
-                                    fontWeight: 700,
-                                    color: "#0C2A42",
-                                  }}
-                                >
-                                  {seatNumber < 10 ? `0${seatNumber}` : seatNumber}
-                                </div>
+                                <React.Fragment key={`seat-r-${rowNum}-${colNum}`}>
+                                  <div
+                                    data-seat-col={colNum}
+                                    style={{
+                                      width: "42px",
+                                      height: "36px",
+                                      background: "#FFFFFF",
+                                      border: "1.5px solid #0C2A42",
+                                      borderRadius: "6px",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      fontSize: "11px",
+                                      fontWeight: 700,
+                                      color: "#0C2A42",
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {seatNumber < 10 ? `0${seatNumber}` : seatNumber}
+                                  </div>
+
+                                  {/* Interactive gap zone between consecutive right seats.
+                                      Expands during drag; onMouseEnter highlights; onMouseUp / onClick commits. */}
+                                  {isAisleActive && !isLastRight && (
+                                    <div
+                                      onMouseEnter={() => {
+                                        if (isDraggingRef.current) setDragOverCol(colNum);
+                                      }}
+                                      onMouseUp={() => {
+                                        if (isDraggingRef.current) {
+                                          isDraggingRef.current = false;
+                                          setIsDraggingAisle(false);
+                                          setAisleAfterCol(colNum);
+                                          setDragOverCol(null);
+                                        }
+                                      }}
+                                      onClick={() => setAisleAfterCol(colNum)}
+                                      title={`Move aisle after column ${colNum}`}
+                                      style={{
+                                        width: isDraggingAisle ? "28px" : "6px",
+                                        height: "36px",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        cursor: isDraggingAisle ? "copy" : "pointer",
+                                        flexShrink: 0,
+                                        transition: "width 0.12s ease",
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          width: isGapHovered ? "4px" : "2px",
+                                          height: isGapHovered ? "100%" : "55%",
+                                          background: isGapHovered ? "#3B82F6" : isDraggingAisle ? "#CBD5E1" : "#E5E7EB",
+                                          borderRadius: "2px",
+                                          transition: "all 0.1s ease",
+                                          pointerEvents: "none",
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+                                </React.Fragment>
                               );
                             })}
                           </div>

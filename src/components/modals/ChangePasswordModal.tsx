@@ -16,7 +16,8 @@ import { colors, typography } from "@/lib/theme";
 import {
   changePasswordSchema,
   ChangePasswordFormData,
-} from "./schema";
+} from "@/lib/validation/auth.schema";
+import { useChangePasswordMutation } from "@/hooks/useAuthQueries";
 
 interface ChangePasswordModalProps {
   isOpen: boolean;
@@ -31,7 +32,9 @@ export default function ChangePasswordModal({
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const changePasswordMutation = useChangePasswordMutation();
+  const isSubmitting = changePasswordMutation.isPending;
 
   const {
     register,
@@ -49,17 +52,22 @@ export default function ChangePasswordModal({
 
   if (!isOpen) return null;
 
-  const onSubmit = async (_data: ChangePasswordFormData) => {
-    setIsSubmitting(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    setIsSubmitting(false);
-    setSuccess(true);
-    reset();
-    setTimeout(() => {
-      setSuccess(false);
-      onClose();
-    }, 1800);
+  const onSubmit = async (data: ChangePasswordFormData) => {
+    try {
+      await changePasswordMutation.mutateAsync({
+        currentPassword: data.currentPassword,
+        newPassword: data.newPassword,
+        confirmPassword: data.confirmPassword,
+      });
+      setSuccess(true);
+      reset();
+      setTimeout(() => {
+        setSuccess(false);
+        onClose();
+      }, 1500);
+    } catch {
+      // Handled via onError in mutation
+    }
   };
 
   const handleClose = () => {

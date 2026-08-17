@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusToggle from "@/components/ui/StatusToggle";
 import StatusFilterSelect from "@/components/ui/StatusFilterSelect";
-import { extractUniqueAttractions, matchesStatusFilter, matchesAttractionFilter } from "@/lib/filterUtils";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -16,7 +15,6 @@ import {
   Trash2,
   X,
   Check,
-  AlertCircle,
   ArrowLeft,
   Calendar,
   ShieldCheck,
@@ -24,20 +22,15 @@ import {
   Phone,
   Mail,
   Filter,
-  Building2,
   TrendingUp,
   ChevronDown,
   ChevronRight,
-  FileText,
-  FileSpreadsheet,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import {
-  INITIAL_MANAGERS,
-  INITIAL_ATTRACTIONS,
   ManagerUser,
   AttractionPermission,
-} from "@/types/admin";
+} from "./types";
 import { useToast } from "@/components/ui/Toast";
 import { confirmDelete, confirmAdd, confirmStatusChange, showSuccessNotify } from "@/lib/notify";
 import { addManagerSchema, AddManagerFormData } from "./schema";
@@ -45,6 +38,16 @@ import { DataTable, Column } from "@/components/ui/DataTable";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import { handleDownloadManagersListPDF, handleExportManagersCSV } from "@/lib/printUtils";
 import ExportButtons from "@/components/ui/ExportButtons";
+import {
+  useManagers,
+  useCreateManager,
+  useUpdateManager,
+  useDisableManager,
+  useUpdateManagerPermissions,
+  useAttractions,
+  type AttractionItem,
+} from "@/hooks/useManagerQueries";
+import { useSystemModules, SystemModule } from "@/hooks/useSystemModuleQueries";
 
 // Sub-modules available inside each attraction
 const SUB_MODULES = [
@@ -55,30 +58,29 @@ const SUB_MODULES = [
   "CCTV Monitoring",
 ];
 
-// System modules available for manager UI permissions
-const SYSTEM_MODULES = [
-  { id: "Bookings", label: "Bookings", description: "View & manage bookings" },
-  { id: "Transactions", label: "Transactions", description: "Financial & payment records" },
-  { id: "Reports", label: "Records / Reports", description: "Sales & revenue analytics" },
-  { id: "Invoices", label: "Invoices", description: "Tax invoices & billing receipts" },
-  { id: "Inventory / Capacity", label: "Inventory / Capacity", description: "Capacity & ticket inventory" },
-  { id: "Staff Management", label: "Staff Management", description: "Create & manage counter staff" },
-];
-
 function SystemModulePermissionTree({
   selectedModules,
+  modules,
+  isLoading,
   onChange,
 }: {
   selectedModules: string[];
+  modules: SystemModule[];
+  isLoading?: boolean;
   onChange: (modules: string[]) => void;
 }) {
-  const allSelected = SYSTEM_MODULES.every((m) => selectedModules.includes(m.id));
+  const activeModules = modules.filter(
+    (m) => String(m.isActive).toUpperCase() === "ACTIVE" || (m.isActive as unknown) === true
+  );
+
+  const allSelected =
+    activeModules.length > 0 && activeModules.every((m) => selectedModules.includes(m.id));
 
   const toggleAll = () => {
     if (allSelected) {
       onChange([]);
     } else {
-      onChange(SYSTEM_MODULES.map((m) => m.id));
+      onChange(activeModules.map((m) => m.id));
     }
   };
 
@@ -115,83 +117,97 @@ function SystemModulePermissionTree({
             Main System Module Permissions
           </span>
         </div>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            cursor: "pointer",
-            userSelect: "none",
-            fontSize: "12px",
-            color: colors.brand.primary,
-            fontWeight: 600,
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={allSelected}
-            onChange={toggleAll}
-            style={{ accentColor: colors.brand.primary, width: "13px", height: "13px" }}
-          />
-          Select All
-        </label>
+        {activeModules.length > 0 && (
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              cursor: "pointer",
+              userSelect: "none",
+              fontSize: "12px",
+              color: colors.brand.primary,
+              fontWeight: 600,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+              style={{ accentColor: colors.brand.primary, width: "13px", height: "13px" }}
+            />
+            Select All
+          </label>
+        )}
       </div>
 
       <div
         style={{
           padding: "12px 16px",
           background: "#FFFFFF",
-          display: "grid",
+          display: activeModules.length > 0 ? "grid" : "block",
           gridTemplateColumns: "1fr 1fr",
           gap: "10px",
         }}
       >
-        {SYSTEM_MODULES.map((mod) => {
-          const isChecked = selectedModules.includes(mod.id);
-          return (
-            <label
-              key={mod.id}
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: "8px",
-                padding: "8px 10px",
-                borderRadius: "8px",
-                border: `1px solid ${isChecked ? "rgba(35,114,165,0.3)" : colors.header.border}`,
-                background: isChecked ? "rgba(35,114,165,0.04)" : "#F8FAFC",
-                cursor: "pointer",
-                userSelect: "none",
-                transition: "all 0.15s",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={isChecked}
-                onChange={() => toggleModule(mod.id)}
+        {isLoading ? (
+          <div style={{ padding: "16px", textAlign: "center", color: colors.text.muted, fontSize: "13px" }}>
+            Loading system modules...
+          </div>
+        ) : activeModules.length === 0 ? (
+          <div style={{ padding: "16px", textAlign: "center", color: colors.text.muted, fontSize: "13px" }}>
+            No active system modules available.
+          </div>
+        ) : (
+          activeModules.map((mod) => {
+            const isChecked = selectedModules.includes(mod.id);
+            return (
+              <label
+                key={mod.id}
                 style={{
-                  accentColor: colors.brand.accent,
-                  width: "14px",
-                  height: "14px",
-                  marginTop: "2px",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "8px",
+                  padding: "8px 10px",
+                  borderRadius: "8px",
+                  border: `1px solid ${isChecked ? "rgba(35,114,165,0.3)" : colors.header.border}`,
+                  background: isChecked ? "rgba(35,114,165,0.04)" : "#F8FAFC",
+                  cursor: "pointer",
+                  userSelect: "none",
+                  transition: "all 0.15s",
                 }}
-              />
-              <div>
-                <div
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => toggleModule(mod.id)}
                   style={{
-                    fontSize: "13px",
-                    fontWeight: isChecked ? 700 : 500,
-                    color: isChecked ? colors.brand.accent : colors.text.primary,
+                    accentColor: colors.brand.accent,
+                    width: "14px",
+                    height: "14px",
+                    marginTop: "2px",
                   }}
-                >
-                  {mod.label}
+                />
+                <div>
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: isChecked ? 700 : 500,
+                      color: isChecked ? colors.brand.accent : colors.text.primary,
+                    }}
+                  >
+                    {mod.name}
+                  </div>
+                  {mod.description && (
+                    <div style={{ fontSize: "11px", color: colors.text.muted }}>
+                      {mod.description}
+                    </div>
+                  )}
                 </div>
-                <div style={{ fontSize: "11px", color: colors.text.muted }}>
-                  {mod.description}
-                </div>
-              </div>
-            </label>
-          );
-        })}
+              </label>
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -212,7 +228,7 @@ function FieldError({ message }: { message?: string }) {
         fontFamily: typography.fontFamily.sans,
       }}
     >
-      <AlertCircle size={12} />
+      <span style={{ fontSize: "10px" }}>⚠</span>
       {message}
     </span>
   );
@@ -236,23 +252,28 @@ const inputStyle = (hasError: boolean): React.CSSProperties => ({
 
 
 // Helper to derive attraction label from selected permissions
-function getAttractionFromPermissions(permissions: AttractionPermission[]): string {
-  if (!permissions || permissions.length === 0) return "Main Entrance";
+function getAttractionFromPermissions(
+  permissions: AttractionPermission[],
+  attractionsList: AttractionItem[] = []
+): string {
+  if (!permissions || permissions.length === 0) return "General Access";
   const names = permissions
-    .map((p) => INITIAL_ATTRACTIONS.find((a) => a.id === p.attractionId)?.name)
+    .map((p) => attractionsList.find((a) => a.id === p.attractionId)?.name)
     .filter(Boolean);
-  return names.length > 0 ? names.join(", ") : "Main Entrance";
+  return names.length > 0 ? names.join(", ") : "General Access";
 }
 
 //Attraction Permission Tree
 function AttractionPermissionTree({
   enabled,
   permissions,
+  attractions = [],
   onEnabledChange,
   onPermissionsChange,
 }: {
   enabled: boolean;
   permissions: AttractionPermission[];
+  attractions?: AttractionItem[];
   onEnabledChange: (v: boolean) => void;
   onPermissionsChange: (p: AttractionPermission[]) => void;
 }) {
@@ -371,176 +392,183 @@ function AttractionPermissionTree({
       {/* Attraction list — only visible when master is on */}
       {enabled && (
         <div style={{ background: "#FFFFFF" }}>
-          {INITIAL_ATTRACTIONS.map((attraction, idx) => {
-            const selected = isAttractionSelected(attraction.id);
-            const expanded = expandedIds.includes(attraction.id);
-            const perm = getPermission(attraction.id);
-            const allSubsChecked = perm?.modules.length === SUB_MODULES.length;
+          {attractions.length === 0 ? (
+            <div style={{ padding: "16px", textAlign: "center", color: colors.text.muted, fontSize: "13px" }}>
+              No active attractions found.
+            </div>
+          ) : (
+            attractions.map((attraction, idx) => {
+              const selected = isAttractionSelected(attraction.id);
+              const expanded = expandedIds.includes(attraction.id);
+              const perm = getPermission(attraction.id);
+              const allSubsChecked = perm?.modules.length === SUB_MODULES.length;
 
-            return (
-              <div
-                key={attraction.id}
-                style={{
-                  borderTop: idx > 0 ? `1px solid ${colors.header.border}` : undefined,
-                }}
-              >
-                {/* Attraction row */}
+              return (
                 <div
+                  key={attraction.id}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
-                    padding: "10px 16px",
-                    background: selected ? "rgba(35,114,165,0.05)" : "#FFFFFF",
-                    transition: "background 0.15s",
+                    borderTop: idx > 0 ? `1px solid ${colors.header.border}` : undefined,
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    onChange={() => toggleAttraction(attraction.id)}
-                    style={{
-                      accentColor: colors.brand.accent,
-                      width: "15px",
-                      height: "15px",
-                      flexShrink: 0,
-                      cursor: "pointer",
-                    }}
-                  />
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: "13px",
-                        fontWeight: selected ? 700 : 500,
-                        color: selected ? colors.brand.accent : colors.text.primary,
-                      }}
-                    >
-                      {attraction.name}
-                    </div>
-                    <div style={{ fontSize: "11px", color: colors.brand.primary, fontWeight: 600 }}>
-                      {attraction.category}
-                    </div>
-                  </div>
-
-                  {selected && (
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        color: colors.brand.accent,
-                        background: "rgba(35,114,165,0.1)",
-                        padding: "2px 8px",
-                        borderRadius: "6px",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {perm?.modules.length ?? 0}/{SUB_MODULES.length} modules
-                    </span>
-                  )}
-
-                  {selected && (
-                    <button
-                      type="button"
-                      onClick={() => toggleExpand(attraction.id)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: "2px",
-                        color: colors.text.muted,
-                        display: "flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                    </button>
-                  )}
-                </div>
-
-                {selected && expanded && (
+                  {/* Attraction row */}
                   <div
                     style={{
-                      background: "rgba(35,114,165,0.03)",
-                      borderTop: `1px dashed rgba(35,114,165,0.2)`,
-                      padding: "10px 16px 10px 44px",
                       display: "flex",
-                      flexDirection: "column",
-                      gap: "6px",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "10px 16px",
+                      background: selected ? "rgba(35,114,165,0.05)" : "#FFFFFF",
+                      transition: "background 0.15s",
                     }}
                   >
-                    <label
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => toggleAttraction(attraction.id)}
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
+                        accentColor: colors.brand.accent,
+                        width: "15px",
+                        height: "15px",
+                        flexShrink: 0,
                         cursor: "pointer",
-                        userSelect: "none",
-                        paddingBottom: "6px",
-                        borderBottom: `1px solid rgba(35,114,165,0.15)`,
-                        marginBottom: "4px",
                       }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={allSubsChecked}
-                        onChange={(e) => toggleAllSubModules(attraction.id, e.target.checked)}
-                        style={{ accentColor: colors.brand.accent, width: "13px", height: "13px" }}
-                      />
-                      <span
+                    />
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
                         style={{
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          color: colors.brand.accent,
+                          fontSize: "13px",
+                          fontWeight: selected ? 700 : 500,
+                          color: selected ? colors.brand.accent : colors.text.primary,
                         }}
                       >
-                        Select All Modules
-                      </span>
-                    </label>
+                        {attraction.name}
+                      </div>
+                      {attraction.category && (
+                        <div style={{ fontSize: "11px", color: colors.brand.primary, fontWeight: 600 }}>
+                          {attraction.category}
+                        </div>
+                      )}
+                    </div>
 
-                    {SUB_MODULES.map((mod) => {
-                      const modEnabled = perm?.modules.includes(mod) ?? false;
-                      return (
-                        <label
-                          key={mod}
+                    {selected && (
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: colors.brand.accent,
+                          background: "rgba(35,114,165,0.1)",
+                          padding: "2px 8px",
+                          borderRadius: "6px",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {perm?.modules.length ?? 0}/{SUB_MODULES.length} modules
+                      </span>
+                    )}
+
+                    {selected && (
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(attraction.id)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          padding: "2px",
+                          color: colors.text.muted,
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </button>
+                    )}
+                  </div>
+
+                  {selected && expanded && (
+                    <div
+                      style={{
+                        background: "rgba(35,114,165,0.03)",
+                        borderTop: `1px dashed rgba(35,114,165,0.2)`,
+                        padding: "10px 16px 10px 44px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "6px",
+                      }}
+                    >
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          cursor: "pointer",
+                          userSelect: "none",
+                          paddingBottom: "6px",
+                          borderBottom: `1px solid rgba(35,114,165,0.15)`,
+                          marginBottom: "4px",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={allSubsChecked}
+                          onChange={(e) => toggleAllSubModules(attraction.id, e.target.checked)}
+                          style={{ accentColor: colors.brand.accent, width: "13px", height: "13px" }}
+                        />
+                        <span
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            cursor: "pointer",
-                            userSelect: "none",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            color: colors.brand.accent,
                           }}
                         >
-                          <input
-                            type="checkbox"
-                            checked={modEnabled}
-                            onChange={() => toggleSubModule(attraction.id, mod)}
+                          Select All Modules
+                        </span>
+                      </label>
+
+                      {SUB_MODULES.map((mod) => {
+                        const modEnabled = perm?.modules.includes(mod) ?? false;
+                        return (
+                          <label
+                            key={mod}
                             style={{
-                              accentColor: colors.brand.accent,
-                              width: "13px",
-                              height: "13px",
-                            }}
-                          />
-                          <span
-                            style={{
-                              fontSize: "13px",
-                              fontWeight: modEnabled ? 600 : 400,
-                              color: modEnabled ? colors.text.primary : colors.text.muted,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              cursor: "pointer",
+                              userSelect: "none",
                             }}
                           >
-                            {mod}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                            <input
+                              type="checkbox"
+                              checked={modEnabled}
+                              onChange={() => toggleSubModule(attraction.id, mod)}
+                              style={{
+                                accentColor: colors.brand.accent,
+                                width: "13px",
+                                height: "13px",
+                              }}
+                            />
+                            <span
+                              style={{
+                                fontSize: "13px",
+                                fontWeight: modEnabled ? 600 : 400,
+                                color: modEnabled ? colors.text.primary : colors.text.muted,
+                              }}
+                            >
+                              {mod}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       )}
-
       {/* Footer summary */}
       <div
         style={{
@@ -567,7 +595,7 @@ function ManagerManagementInner() {
 
   const { showToast } = useToast();
   const searchParams = useSearchParams();
-  const [managers, setManagers] = useState<ManagerUser[]>(INITIAL_MANAGERS);
+  const [managers, setManagers] = useState<ManagerUser[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAttractionFilter, setSelectedAttractionFilter] = useState<string>("All");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>(
@@ -577,6 +605,41 @@ function ManagerManagementInner() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedManager, setSelectedManager] = useState<ManagerUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+
+  // TanStack Query Hooks
+  const { data: apiManagerData, isLoading: isFetchingManagers } = useManagers();
+  const { data: systemModules = [], isLoading: isSystemModulesLoading } = useSystemModules();
+  const { data: attractionsData } = useAttractions();
+  const attractionsList: AttractionItem[] = attractionsData || [];
+
+  const createManagerMutation = useCreateManager();
+  const updateManagerMutation = useUpdateManager();
+  const updateManagerPermissionsMutation = useUpdateManagerPermissions();
+  const disableManagerMutation = useDisableManager();
+
+  // Sync API managers when loaded — map directly from backend schema
+  useEffect(() => {
+    if (apiManagerData?.managers) {
+      const mapped: ManagerUser[] = apiManagerData.managers.map((m) => ({
+        id: m.id,
+        name: m.name,
+        email: m.email,
+        phone: m.phone ?? null,
+        role: m.role || "MANAGER",
+        status: (m.status as import("./types").ManagerStatus) || "ACTIVE",
+        createdAt: m.createdAt || new Date().toISOString(),
+        lastLoginAt: m.lastLoginAt ?? null,
+        attraction: "",
+        totalBookings: 0,
+        revenueGenerated: 0,
+        attractionManagementEnabled: false,
+        staffCreationEnabled: true,
+        allowedModules: [],
+        attractionPermissions: [],
+      }));
+      setManagers(mapped);
+    }
+  }, [apiManagerData]);
 
   // react-hook-form
   const {
@@ -608,15 +671,21 @@ function ManagerManagementInner() {
 
   // Filter 
   const filteredManagers = managers.filter((m) => {
-    const matchesAttraction = matchesAttractionFilter(m.attraction, selectedAttractionFilter);
-    const matchesStatus = matchesStatusFilter(m.status, selectedStatusFilter);
-    const matchesSearch =
-      m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.phone.includes(searchQuery) ||
-      m.attraction.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.status.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesAttraction && matchesStatus && matchesSearch;
+    const statusMatches =
+      selectedStatusFilter === "All" ||
+      m.status.toUpperCase() === selectedStatusFilter.toUpperCase() ||
+      (selectedStatusFilter === "Active" && m.status.toUpperCase() === "ACTIVE") ||
+      (selectedStatusFilter === "Inactive" && m.status.toUpperCase() === "DISABLED");
+
+    const searchLower = searchQuery.toLowerCase();
+    const searchMatches =
+      !searchQuery ||
+      m.name.toLowerCase().includes(searchLower) ||
+      m.email.toLowerCase().includes(searchLower) ||
+      (m.phone && m.phone.toLowerCase().includes(searchLower)) ||
+      m.status.toLowerCase().includes(searchLower);
+
+    return statusMatches && searchMatches;
   });
 
   // Add
@@ -625,16 +694,18 @@ function ManagerManagementInner() {
     const confirmed = await confirmAdd(`manager "${data.name}"`);
     if (!confirmed) { setIsAddModalOpen(true); return; }
 
-    const computedAttraction = getAttractionFromPermissions(data.attractionPermissions || []);
+    const computedAttraction = getAttractionFromPermissions(data.attractionPermissions || [], attractionsList);
 
     const created: ManagerUser = {
-      id: `MGR-10${managers.length + 1}`,
+      id: `MGR-${Date.now().toString().slice(-6)}`,
       name: data.name,
       phone: data.phone,
       email: data.email,
+      role: "MANAGER",
+      status: data.status === "Active" ? "ACTIVE" : "DISABLED",
+      createdAt: new Date().toISOString(),
+      lastLoginAt: null,
       attraction: computedAttraction,
-      joinedDate: new Date().toISOString().slice(0, 10),
-      status: data.status,
       totalBookings: 0,
       revenueGenerated: 0,
       allowedModules: data.allowedModules || [],
@@ -642,20 +713,63 @@ function ManagerManagementInner() {
       attractionPermissions: data.attractionManagementEnabled ? data.attractionPermissions : [],
     };
 
-    setManagers([created, ...managers]);
+    // Try API mutation via TanStack Query
+    try {
+      await createManagerMutation.mutateAsync({
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        password: data.password,
+        status: data.status === "Active" ? "ACTIVE" : "DISABLED",
+        systemModuleIds: data.allowedModules,
+        attractionPermissions: data.attractionPermissions?.map((p) => ({
+          attractionId: p.attractionId,
+          moduleIds: p.modules,
+        })),
+      });
+    } catch {
+      // Handled via TanStack Query onError and notify
+    }
+
+    setManagers((prev) => [created, ...prev]);
     reset();
-    showToast(`Manager "${created.name}" added successfully!`, "success");
   };
 
   // Edit
   const handleSaveEdit = async () => {
     if (!selectedManager) return;
-    const computedAttraction = getAttractionFromPermissions(selectedManager.attractionPermissions || []);
+    const computedAttraction = getAttractionFromPermissions(selectedManager.attractionPermissions || [], attractionsList);
     const updated = { ...selectedManager, attraction: computedAttraction };
+
+    try {
+      await updateManagerMutation.mutateAsync({
+        managerId: selectedManager.id,
+        data: {
+          name: selectedManager.name,
+          email: selectedManager.email,
+          phone: selectedManager.phone || undefined,
+          status: selectedManager.status === "Active" || selectedManager.status === "ACTIVE" ? "ACTIVE" : "DISABLED",
+        },
+      });
+
+      // Submit full permission state to PUT /api/admin/managers/:id/permissions
+      await updateManagerPermissionsMutation.mutateAsync({
+        managerId: selectedManager.id,
+        data: {
+          systemModuleIds: selectedManager.allowedModules || [],
+          attractionPermissions: (selectedManager.attractionPermissions || []).map((p) => ({
+            attractionId: p.attractionId,
+            moduleIds: p.modules,
+          })),
+        },
+      });
+    } catch {
+      // Fallback
+    }
+
     setManagers((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
     setSelectedManager(updated);
     setIsEditing(false);
-    showToast(`Manager "${updated.name}" updated successfully!`, "success");
   };
 
   // Export Handlers
@@ -665,7 +779,6 @@ function ManagerManagementInner() {
       return;
     }
     const parts: string[] = [];
-    if (selectedAttractionFilter !== "All") parts.push(`Attraction: ${selectedAttractionFilter}`);
     if (selectedStatusFilter !== "All") parts.push(`Status: ${selectedStatusFilter}`);
     if (searchQuery) parts.push(`Search: "${searchQuery}"`);
     const filterInfo = parts.length > 0 ? parts.join(" | ") : "All Managers";
@@ -678,7 +791,7 @@ function ManagerManagementInner() {
       showToast("No manager data matches current filters", "info");
       return;
     }
-    const label = selectedAttractionFilter !== "All" ? selectedAttractionFilter : "All";
+    const label = selectedStatusFilter !== "All" ? selectedStatusFilter : "All";
     handleExportManagersCSV(filteredManagers, label);
     showToast(`Exported ${filteredManagers.length} managers to CSV`, "success");
   };
@@ -690,23 +803,41 @@ function ManagerManagementInner() {
     setSelectedManager(null);
     const confirmed = await confirmDelete(`manager "${target?.name ?? id}"`);
     if (!confirmed) { setSelectedManager(prev); return; }
+
+    try {
+      await disableManagerMutation.mutateAsync(id);
+    } catch {
+      // Fallback
+    }
+
     setManagers(managers.filter((m) => m.id !== id));
-    showToast(`Manager "${target?.name ?? id}" has been deleted.`, "info");
   };
 
   // Status toggle with confirmation
   const handleStatusChangeWithConfirm = async (manager: ManagerUser, newStatus: "Active" | "Inactive") => {
     const confirmed = await confirmStatusChange(manager.name, newStatus);
     if (!confirmed) return;
-    const updated = { ...manager, status: newStatus };
-    setManagers(managers.map((m) => (m.id === manager.id ? updated : m)));
-    if (selectedManager?.id === manager.id) {
-      setSelectedManager(updated);
+    const apiStatus = newStatus === "Active" ? "ACTIVE" : "DISABLED";
+    const updated = { ...manager, status: apiStatus };
+
+    try {
+      await updateManagerMutation.mutateAsync({
+        managerId: manager.id,
+        data: {
+          status: apiStatus,
+        },
+      });
+    } catch {
+      // Fallback
     }
-    showToast(`Status of "${manager.name}" updated to "${newStatus}".`, "success");
+
+    setManagers(managers.map((m) => (m.id === manager.id ? (updated as ManagerUser) : m)));
+    if (selectedManager?.id === manager.id) {
+      setSelectedManager(updated as ManagerUser);
+    }
   };
 
-  // Table columns
+  // Table columns matching backend response fields
   const columns: Column<ManagerUser>[] = [
     {
       header: "Manager Name",
@@ -714,20 +845,42 @@ function ManagerManagementInner() {
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div
             style={{
-              width: "34px", height: "34px", borderRadius: "50%",
-              background: colors.sidebar.bg, color: "#FFFFFF",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: "13px", fontWeight: 700, flexShrink: 0,
+              width: "36px",
+              height: "36px",
+              borderRadius: "50%",
+              background: colors.sidebar.bg,
+              color: "#FFFFFF",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "14px",
+              fontWeight: 700,
+              flexShrink: 0,
             }}
           >
-            {manager.name.charAt(0)}
+            {manager.name ? manager.name.charAt(0).toUpperCase() : "M"}
           </div>
-          <div style={{ fontWeight: 600, color: colors.text.primary }}>{manager.name}</div>
+          <div>
+            <div style={{ fontWeight: 600, color: colors.text.primary, fontSize: "14px" }}>
+              {manager.name}
+            </div>
+            <div style={{ fontSize: "12px", color: colors.text.muted }}>
+              {manager.email}
+            </div>
+          </div>
         </div>
       ),
     },
     {
-      header: "Assigned Attractions",
+      header: "Phone",
+      cell: (manager) => (
+        <span style={{ fontSize: "13px", color: colors.text.primary, fontWeight: 500 }}>
+          {manager.phone || "—"}
+        </span>
+      ),
+    },
+    {
+      header: "Assigned Attraction",
       cell: (manager) => (
         <span
           style={{
@@ -737,7 +890,7 @@ function ManagerManagementInner() {
           }}
         >
           <Building size={13} color={colors.brand.accent} />
-          {manager.attraction}
+          {manager.attraction || "—"}
         </span>
       ),
     },
@@ -750,16 +903,27 @@ function ManagerManagementInner() {
       align: "right",
       cell: (manager) => (
         <button
-          onClick={() => { setSelectedManager(manager); setIsEditing(false); }}
+          onClick={() => {
+            setSelectedManager(manager);
+            setIsEditing(false);
+          }}
           style={{
-            display: "inline-flex", alignItems: "center", gap: "6px",
-            background: "rgba(35,114,165,0.1)", color: colors.brand.accent,
-            border: `1px solid ${colors.brand.accent}`, borderRadius: "6px",
-            padding: "6px 12px", fontSize: "13px", fontWeight: 600,
-            cursor: "pointer", fontFamily: typography.fontFamily.sans,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            background: "rgba(35,114,165,0.1)",
+            color: colors.brand.accent,
+            border: `1px solid ${colors.brand.accent}`,
+            borderRadius: "6px",
+            padding: "6px 12px",
+            fontSize: "13px",
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: typography.fontFamily.sans,
           }}
         >
-          <Eye size={15} /><span>View</span>
+          <Eye size={15} />
+          <span>View</span>
         </button>
       ),
     },
@@ -796,15 +960,13 @@ function ManagerManagementInner() {
                 <h1 style={{ fontFamily: typography.fontFamily.sans, fontWeight: 700, fontSize: "20px", color: colors.text.primary, margin: 0 }}>
                   {selectedManager.name}
                 </h1>
-                <span style={{ background: "rgba(35,114,165,0.1)", color: colors.brand.accent, padding: "2px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: 700 }}>
-                  {selectedManager.id}
+                <span style={{ background: "rgba(35,114,165,0.1)", color: colors.brand.accent, padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 700 }}>
+                  {selectedManager.role || "MANAGER"}
                 </span>
-                <span style={{ background: selectedManager.status === "Active" ? "rgba(34,197,94,0.12)" : "#FEF2F2", color: selectedManager.status === "Active" ? colors.status.success : colors.status.error, padding: "2px 10px", borderRadius: "12px", fontSize: "12px", fontWeight: 700 }}>
-                  {selectedManager.status}
-                </span>
+                <StatusBadge status={selectedManager.status} />
               </div>
-              <p style={{ fontFamily: typography.fontFamily.sans, fontSize: "13px", color: colors.text.muted, margin: "2px 0 0" }}>
-                Assigned Attraction: {selectedManager.attraction}
+              <p style={{ fontFamily: typography.fontFamily.sans, fontSize: "12px", color: colors.text.muted, margin: "3px 0 0" }}>
+                ID: {selectedManager.id}
               </p>
             </div>
           </div>
@@ -841,24 +1003,22 @@ function ManagerManagementInner() {
                 <input type="text" value={selectedManager.name} onChange={(e) => setSelectedManager({ ...selectedManager, name: e.target.value })} style={inputStyle(false)} />
               </div>
               <div>
-                <label style={{ fontSize: "13px", fontWeight: 600 }}>Assigned Attraction</label>
-                <input type="text" value={selectedManager.attraction} onChange={(e) => setSelectedManager({ ...selectedManager, attraction: e.target.value })} style={inputStyle(false)} />
+                <label style={{ fontSize: "13px", fontWeight: 600 }}>Email Address</label>
+                <input type="email" value={selectedManager.email} onChange={(e) => setSelectedManager({ ...selectedManager, email: e.target.value })} style={inputStyle(false)} />
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
               <div>
                 <label style={{ fontSize: "13px", fontWeight: 600 }}>Phone Number</label>
-                <input type="text" maxLength={10} value={selectedManager.phone} onChange={(e) => setSelectedManager({ ...selectedManager, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })} style={inputStyle(false)} />
+                <input type="text" maxLength={10} value={selectedManager.phone || ""} onChange={(e) => setSelectedManager({ ...selectedManager, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })} style={inputStyle(false)} />
               </div>
               <div>
-                <label style={{ fontSize: "13px", fontWeight: 600 }}>Email Address</label>
-                <input type="email" value={selectedManager.email} onChange={(e) => setSelectedManager({ ...selectedManager, email: e.target.value })} style={inputStyle(false)} />
+                <label style={{ fontSize: "13px", fontWeight: 600, display: "block", marginBottom: "8px" }}>Account Status</label>
+                <StatusToggle
+                  status={selectedManager.status === "ACTIVE" || selectedManager.status === "Active" ? "Active" : "Inactive"}
+                  onChange={(s) => setSelectedManager({ ...selectedManager, status: s === "Active" ? "ACTIVE" : "DISABLED" })}
+                />
               </div>
-            </div>
-
-            <div>
-              <label style={{ fontSize: "13px", fontWeight: 600, display: "block", marginBottom: "8px" }}>Account Status</label>
-              <StatusToggle status={selectedManager.status} onChange={(s) => setSelectedManager({ ...selectedManager, status: s })} />
             </div>
 
             {/* Permission tree in edit mode */}
@@ -866,12 +1026,15 @@ function ManagerManagementInner() {
               <label style={{ fontSize: "13px", fontWeight: 600, display: "block", marginBottom: "8px", color: colors.text.primary }}>Module Permissions</label>
               <SystemModulePermissionTree
                 selectedModules={selectedManager.allowedModules || []}
+                modules={systemModules}
+                isLoading={isSystemModulesLoading}
                 onChange={(mods) => setSelectedManager({ ...selectedManager, allowedModules: mods })}
               />
               <AttractionPermissionTree
-                enabled={selectedManager.attractionManagementEnabled}
-                permissions={selectedManager.attractionPermissions}
-                onEnabledChange={(v) => setSelectedManager({ ...selectedManager, attractionManagementEnabled: v, attractionPermissions: v ? selectedManager.attractionPermissions : [] })}
+                enabled={selectedManager.attractionManagementEnabled ?? true}
+                permissions={selectedManager.attractionPermissions || []}
+                attractions={attractionsList}
+                onEnabledChange={(v) => setSelectedManager({ ...selectedManager, attractionManagementEnabled: v, attractionPermissions: v ? (selectedManager.attractionPermissions || []) : [] })}
                 onPermissionsChange={(p) => setSelectedManager({ ...selectedManager, attractionPermissions: p })}
               />
             </div>
@@ -884,27 +1047,36 @@ function ManagerManagementInner() {
               <div style={{ background: "#FFFFFF", borderRadius: "16px", padding: "20px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", display: "flex", flexDirection: "column", gap: "14px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", paddingBottom: "12px", borderBottom: `1px solid ${colors.header.border}` }}>
                   <Building size={18} color={colors.brand.accent} />
-                  <h3 style={{ fontSize: "15px", margin: 0, fontWeight: 700, fontFamily: typography.fontFamily.sans, color: colors.text.primary }}>Contact Details</h3>
+                  <h3 style={{ fontSize: "15px", margin: 0, fontWeight: 700, fontFamily: typography.fontFamily.sans, color: colors.text.primary }}>Account & Contact Details</h3>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                   <div>
                     <span style={{ fontSize: "12px", color: colors.text.muted, display: "flex", alignItems: "center", gap: "4px" }}><Phone size={12} /> Phone</span>
-                    <strong style={{ fontSize: "14px", marginTop: "2px", display: "block" }}>{selectedManager.phone}</strong>
+                    <strong style={{ fontSize: "14px", marginTop: "2px", display: "block" }}>{selectedManager.phone || "—"}</strong>
                   </div>
                   <div>
                     <span style={{ fontSize: "12px", color: colors.text.muted, display: "flex", alignItems: "center", gap: "4px" }}><Mail size={12} /> Email</span>
                     <strong style={{ fontSize: "14px", marginTop: "2px", display: "block" }}>{selectedManager.email}</strong>
                   </div>
                   <div>
-                    <span style={{ fontSize: "12px", color: colors.text.muted, display: "flex", alignItems: "center", gap: "4px" }}><Building size={12} /> Attraction</span>
-                    <strong style={{ fontSize: "14px", marginTop: "2px", display: "block", color: colors.brand.accent }}>{selectedManager.attraction}</strong>
+                    <span style={{ fontSize: "12px", color: colors.text.muted, display: "flex", alignItems: "center", gap: "4px" }}><Calendar size={12} /> Created Date</span>
+                    <strong style={{ fontSize: "14px", marginTop: "2px", display: "block", color: colors.text.primary }}>
+                      {selectedManager.createdAt
+                        ? new Date(selectedManager.createdAt).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : "—"}
+                    </strong>
                   </div>
                   <div>
                     <span style={{ fontSize: "12px", color: colors.text.muted, display: "block", marginBottom: "4px" }}>Status</span>
                     <StatusToggle
-                      status={selectedManager.status}
+                      status={selectedManager.status === "ACTIVE" || selectedManager.status === "Active" ? "Active" : "Inactive"}
                       onChange={(s) => {
-                        const updated = { ...selectedManager, status: s };
+                        const apiStatus = s === "Active" ? "ACTIVE" : "DISABLED";
+                        const updated = { ...selectedManager, status: apiStatus as any };
                         setSelectedManager(updated);
                         setManagers(managers.map((m) => (m.id === updated.id ? updated : m)));
                       }}
@@ -913,28 +1085,40 @@ function ManagerManagementInner() {
                 </div>
               </div>
 
-              {/* Performance */}
+              {/* Activity / Login info */}
               <div style={{ background: "#FFFFFF", borderRadius: "16px", padding: "20px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", display: "flex", flexDirection: "column", gap: "14px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", paddingBottom: "12px", borderBottom: `1px solid ${colors.header.border}` }}>
                   <TrendingUp size={18} color={colors.brand.accent} />
-                  <h3 style={{ fontSize: "15px", margin: 0, fontWeight: 700, fontFamily: typography.fontFamily.sans, color: colors.text.primary }}>Performance Overview</h3>
+                  <h3 style={{ fontSize: "15px", margin: 0, fontWeight: 700, fontFamily: typography.fontFamily.sans, color: colors.text.primary }}>Activity & Security</h3>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                   <div>
-                    <span style={{ fontSize: "12px", color: colors.text.muted, display: "block" }}>Total Bookings</span>
-                    <strong style={{ fontSize: "16px", color: colors.brand.accent, marginTop: "2px", display: "block" }}>{selectedManager.totalBookings.toLocaleString()}</strong>
+                    <span style={{ fontSize: "12px", color: colors.text.muted, display: "block" }}>Role</span>
+                    <strong style={{ fontSize: "14px", color: colors.brand.accent, marginTop: "2px", display: "block" }}>{selectedManager.role || "MANAGER"}</strong>
                   </div>
                   <div>
-                    <span style={{ fontSize: "12px", color: colors.text.muted, display: "block" }}>Revenue Generated</span>
-                    <strong style={{ fontSize: "16px", color: colors.status.success, marginTop: "2px", display: "block" }}>₹{selectedManager.revenueGenerated.toLocaleString("en-IN")}</strong>
+                    <span style={{ fontSize: "12px", color: colors.text.muted, display: "block" }}>Last Login</span>
+                    <strong style={{ fontSize: "14px", color: selectedManager.lastLoginAt ? colors.status.success : colors.text.muted, marginTop: "2px", display: "block" }}>
+                      {selectedManager.lastLoginAt
+                        ? new Date(selectedManager.lastLoginAt).toLocaleString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "Never logged in"}
+                    </strong>
                   </div>
                   <div>
-                    <span style={{ fontSize: "12px", color: colors.text.muted, display: "flex", alignItems: "center", gap: "4px" }}><Calendar size={12} /> Joined Date</span>
-                    <span style={{ fontSize: "13px", fontWeight: 600, marginTop: "2px", display: "block" }}>{selectedManager.joinedDate}</span>
+                    <span style={{ fontSize: "12px", color: colors.text.muted, display: "flex", alignItems: "center", gap: "4px" }}><Calendar size={12} /> Registered At</span>
+                    <span style={{ fontSize: "13px", fontWeight: 600, marginTop: "2px", display: "block" }}>
+                      {selectedManager.createdAt ? new Date(selectedManager.createdAt).toISOString().slice(0, 10) : "—"}
+                    </span>
                   </div>
                   <div>
                     <span style={{ fontSize: "12px", color: colors.text.muted, display: "flex", alignItems: "center", gap: "4px" }}><ShieldCheck size={12} /> Role Level</span>
-                    <span style={{ fontSize: "13px", fontWeight: 700, color: colors.text.primary, marginTop: "2px", display: "block" }}>Attraction Supervisor</span>
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: colors.text.primary, marginTop: "2px", display: "block" }}>Manager</span>
                   </div>
                 </div>
               </div>
@@ -950,23 +1134,29 @@ function ManagerManagementInner() {
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                 {selectedManager.allowedModules && selectedManager.allowedModules.length > 0 ? (
-                  selectedManager.allowedModules.map((mod) => (
-                    <span
-                      key={mod}
-                      style={{
-                        background: "rgba(35,114,165,0.08)",
-                        color: colors.brand.accent,
-                        border: `1px solid rgba(35,114,165,0.2)`,
-                        borderRadius: "6px",
-                        padding: "4px 10px",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        fontFamily: typography.fontFamily.sans,
-                      }}
-                    >
-                      {mod === "Reports" ? "Records / Reports" : mod}
-                    </span>
-                  ))
+                  selectedManager.allowedModules.map((modId) => {
+                    const modObj = systemModules.find(
+                      (sm) => sm.id === modId || sm.key === modId || sm.name === modId
+                    );
+                    const displayName = modObj ? modObj.name : modId;
+                    return (
+                      <span
+                        key={modId}
+                        style={{
+                          background: "rgba(35,114,165,0.08)",
+                          color: colors.brand.accent,
+                          border: `1px solid rgba(35,114,165,0.2)`,
+                          borderRadius: "6px",
+                          padding: "4px 10px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          fontFamily: typography.fontFamily.sans,
+                        }}
+                      >
+                        {displayName}
+                      </span>
+                    );
+                  })
                 ) : (
                   <span style={{ fontSize: "12px", color: colors.text.muted, fontFamily: typography.fontFamily.sans }}>
                     No system modules assigned.
@@ -993,10 +1183,10 @@ function ManagerManagementInner() {
                 </span>
               </div>
 
-              {selectedManager.attractionManagementEnabled && selectedManager.attractionPermissions.length > 0 ? (
+              {selectedManager.attractionManagementEnabled && (selectedManager.attractionPermissions || []).length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  {selectedManager.attractionPermissions.map((perm) => {
-                    const attraction = INITIAL_ATTRACTIONS.find((a) => a.id === perm.attractionId);
+                  {(selectedManager.attractionPermissions || []).map((perm) => {
+                    const attraction = attractionsList.find((a) => a.id === perm.attractionId);
                     if (!attraction) return null;
                     return (
                       <div
@@ -1057,11 +1247,10 @@ function ManagerManagementInner() {
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <Filter size={16} color={colors.brand.accent} />
           <span style={{ fontSize: "13px", fontWeight: 600, color: colors.text.muted, fontFamily: typography.fontFamily.sans }}>Filter:</span>
-          <Building2 size={16} color={colors.text.muted} />
           <select value={selectedAttractionFilter} onChange={(e) => setSelectedAttractionFilter(e.target.value)} style={{ height: "38px", borderRadius: "8px", border: `1px solid ${colors.header.border}`, padding: "0 12px", fontFamily: typography.fontFamily.sans, fontSize: "13px", fontWeight: 600, color: colors.brand.accent, outline: "none", cursor: "pointer", background: "#FFFFFF" }}>
             <option value="All">All Attractions</option>
-            {extractUniqueAttractions(managers.map((m) => m.attraction)).map((loc) => (
-              <option key={loc} value={loc}>{loc}</option>
+            {attractionsList.map((loc) => (
+              <option key={loc.id} value={loc.name}>{loc.name}</option>
             ))}
           </select>
 
@@ -1147,11 +1336,14 @@ function ManagerManagementInner() {
                 </label>
                 <SystemModulePermissionTree
                   selectedModules={watchedAllowedModules || []}
+                  modules={systemModules}
+                  isLoading={isSystemModulesLoading}
                   onChange={(mods) => setValue("allowedModules", mods, { shouldValidate: true })}
                 />
                 <AttractionPermissionTree
                   enabled={watchedEnabled ?? false}
                   permissions={(watchedPermissions ?? []) as AttractionPermission[]}
+                  attractions={attractionsList}
                   onEnabledChange={(v) => {
                     setValue("attractionManagementEnabled", v, { shouldValidate: true });
                     if (!v) setValue("attractionPermissions", []);

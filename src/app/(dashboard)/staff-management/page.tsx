@@ -17,7 +17,8 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
-import { INITIAL_STAFF, INITIAL_ATTRACTIONS, StaffUser, Attraction } from "@/types/admin";
+import { INITIAL_STAFF, StaffUser } from "./types";
+import { INITIAL_ATTRACTIONS, Attraction } from "@/app/(dashboard)/attraction-management/types";
 import { DataTable, Column } from "@/components/ui/DataTable";
 import { useToast } from "@/components/ui/Toast";
 import { confirmAdd, confirmDelete, confirmStatusChange } from "@/lib/notify";

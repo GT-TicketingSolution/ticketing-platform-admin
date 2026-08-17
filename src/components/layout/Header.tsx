@@ -24,10 +24,13 @@ import {
   UserCog,
   ScanLine,
   LayoutDashboard,
+  Armchair,
 } from "lucide-react";
 import { colors, typography, spacing } from "@/lib/theme";
 import ChangePasswordModal from "@/components/modals/ChangePasswordModal";
 import EditProfileModal from "@/components/modals/EditProfileModal";
+import { useProfileQuery, useLogoutMutation } from "@/hooks/useAuthQueries";
+import { confirmLogout } from "@/lib/notify";
 
 interface HeaderProps {
   title?: string;
@@ -39,6 +42,7 @@ interface HeaderProps {
 }
 
 const ROUTE_HEADER_MAP: Record<string, { title: string; icon: React.ElementType }> = {
+  "/seat-management": { title: "Seat Management", icon: Armchair },
   "/attraction-management": { title: "Attraction Management", icon: Landmark },
   "/ticket-booking": { title: "Ticket Booking", icon: Ticket },
   "/bookings": { title: "Bookings", icon: BookOpen },
@@ -72,6 +76,12 @@ export default function Header({
   const [showSettings, setShowSettings] = useState(false);
   const [displayRole, setDisplayRole] = useState(userRole || "Admin");
 
+  // Live profile data from API
+  const { data: profileData, isLoading: profileLoading } = useProfileQuery();
+  const logoutMutation = useLogoutMutation();
+
+  const displayName = profileData?.profile?.name || (profileLoading ? "Loading..." : "—");
+
   useEffect(() => {
     if (userRole) {
       setDisplayRole(userRole);
@@ -102,13 +112,14 @@ export default function Header({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Close dropdown first so UI is clean before the popup appears
     setProfileDropdownOpen(false);
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem("userRole");
-      sessionStorage.removeItem("manager_session");
+    // Show confirmation — only proceed if user clicks "Yes, Logout"
+    const confirmed = await confirmLogout();
+    if (confirmed) {
+      logoutMutation.mutate();
     }
-    router.push("/login");
   };
 
   const menuItems = [
@@ -387,9 +398,11 @@ export default function Header({
                       lineHeight: "18px",
                       color: colors.header.userNameText,
                       whiteSpace: "nowrap",
+                      opacity: profileLoading ? 0.5 : 1,
+                      transition: "opacity 0.2s ease",
                     }}
                   >
-                    Amit Sharma
+                    {displayName}
                   </span>
                   <span
                     style={{
@@ -434,7 +447,7 @@ export default function Header({
                   animation: "profileDropIn 0.18s ease-out",
                 }}
               >
-               
+
 
                 {/* Menu items */}
                 <div style={{ padding: "6px 0" }}>

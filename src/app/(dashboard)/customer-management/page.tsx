@@ -9,7 +9,7 @@ import {
   Trash2,
   RotateCcw,
 } from "lucide-react";
-import { Customer, INITIAL_CUSTOMERS } from "@/types/admin";
+import { Customer, INITIAL_CUSTOMERS } from "./types";
 import AddEditCustomerModal from "@/components/modals/AddEditCustomerModal";
 import { useToast } from "@/components/ui/Toast";
 import { confirmDelete } from "@/lib/notify";

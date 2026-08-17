@@ -15,12 +15,15 @@ import {
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import { forgotPasswordSchema, ForgotPasswordFormData } from "../login/schema";
+import { useForgotPasswordMutation } from "@/hooks/useAuthQueries";
 
 export default function ForgotPasswordPage() {
   const [selectedLang, setSelectedLang] = useState("English");
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  const forgotPasswordMutation = useForgotPasswordMutation();
+  const isSubmitting = forgotPasswordMutation.isPending;
 
   const {
     register,
@@ -31,12 +34,15 @@ export default function ForgotPasswordPage() {
     defaultValues: { email: "" },
   });
 
-  const onSubmit = async (_data: ForgotPasswordFormData) => {
-    setIsSubmitting(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    setIsSubmitting(false);
-    setIsSuccess(true);
+  const onSubmit = async (data: ForgotPasswordFormData) => {
+    try {
+      await forgotPasswordMutation.mutateAsync({
+        email: data.email.trim(),
+      });
+      setIsSuccess(true);
+    } catch {
+      // Error is handled in mutation onError toast
+    }
   };
 
   return (

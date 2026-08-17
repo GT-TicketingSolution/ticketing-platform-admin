@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -18,14 +19,21 @@ import {
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import { resetPasswordSchema, ResetPasswordFormData } from "../login/schema";
+import { useResetPasswordMutation } from "@/hooks/useAuthQueries";
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token") || "";
+
   const [selectedLang, setSelectedLang] = useState("English");
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+
+  const resetPasswordMutation = useResetPasswordMutation();
+  const isSubmitting = resetPasswordMutation.isPending;
 
   const {
     register,
@@ -43,12 +51,22 @@ export default function ResetPasswordPage() {
   const hasLetter = /[A-Za-z]/.test(watchedPassword);
   const hasNumber = /[0-9]/.test(watchedPassword);
 
-  const onSubmit = async (_data: ResetPasswordFormData) => {
-    setIsSubmitting(true);
-    // Simulate API call to reset password
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    setIsSubmitting(false);
-    setIsSuccess(true);
+  const onSubmit = async (data: ResetPasswordFormData) => {
+    if (!token) {
+      setTokenError("Missing or invalid reset token. Please check your reset link.");
+      return;
+    }
+    setTokenError(null);
+
+    try {
+      await resetPasswordMutation.mutateAsync({
+        token,
+        password: data.password,
+      });
+      setIsSuccess(true);
+    } catch {
+      // Error is handled in mutation onError toast
+    }
   };
 
   return (
@@ -267,6 +285,29 @@ export default function ResetPasswordPage() {
               >
                 Create a strong and secure new password for your account.
               </p>
+
+              {tokenError && (
+                <div
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "10px 14px",
+                    background: "#FEF2F2",
+                    border: `1px solid ${colors.status.error}`,
+                    borderRadius: "8px",
+                    color: colors.status.error,
+                    fontFamily: typography.fontFamily.sans,
+                    fontSize: "13px",
+                    marginBottom: "16px",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <AlertCircle size={18} style={{ flexShrink: 0 }} />
+                  <span>{tokenError}</span>
+                </div>
+              )}
 
               <form
                 onSubmit={handleSubmit(onSubmit)}
@@ -679,5 +720,13 @@ export default function ResetPasswordPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ResetPasswordContent />
+    </Suspense>
   );
 }
