@@ -63,3 +63,17 @@ a {
   color: inherit;
   text-decoration: none;
 }
+
+/* Notify Bolt Custom Styling */
+.notify-button-warning {
+  background-color: var(--color-brand-primary) !important;
+  color: #011B2F !important;
+  font-weight: 600 !important;
+  border-radius: 8px !important;
+  transition: all 0.2s ease !important;
+}
+
+.notify-button-warning:hover {
+  background-color: #E5AF36 !important;
+  box-shadow: 0 4px 12px rgba(244, 188, 67, 0.35) !important;
+}

@@ -63,28 +63,6 @@ const MODULE_REGISTRY: Record<string, { label: string; href: string; icon: any }
   scanner: { label: "Scanner", href: "/scanner", icon: ScanLine },
 };
 
-// ── Fallback Admin nav: Used while initial loading or if offline ──
-const ADMIN_NAV_ITEMS = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Manager Management", href: "/manager-management", icon: UserCheck },
-  { label: "Staff Management", href: "/staff-management", icon: UserCog },
-  { label: "Bookings", href: "/bookings", icon: BookOpen },
-  { label: "Transactions", href: "/transactions", icon: CircleDollarSign },
-  { label: "Invoices", href: "/invoices", icon: FileText },
-  { label: "Inventory / Capacity", href: "/inventory", icon: Boxes },
-  { label: "CCTV Monitoring", href: "/cctv-monitoring", icon: Cctv },
-  { label: "Seat Management", href: "/seat-management", icon: Armchair },
-  { label: "Attraction Management", href: "/attraction-management", icon: Landmark },
-  { label: "Customer Management", href: "/customer-management", icon: UserRound },
-  { label: "Complimentary Passes", href: "/complimentary-passes", icon: ClipboardList },
-  { label: "Reports", href: "/reports", icon: BarChart2 }
-];
-
-// ── Staff nav: Ticket Booking + Scanner only ──
-const STAFF_NAV_ITEMS = [
-  { label: "Ticket Booking", href: "/ticket-booking", icon: Ticket },
-  { label: "Scanner", href: "/scanner", icon: ScanLine },
-];
 
 function PortalTooltip({
   label,
@@ -335,8 +313,8 @@ export default function Sidebar({
   collapsed,
   drawerOpen,
   isMobile,
-  roleName = "Admin",
-  roleInitials = "AD",
+  roleName = "-",
+  roleInitials = "-",
   managerAllowedModules = null,
   onDesktopToggle,
   onDrawerClose,
@@ -346,11 +324,14 @@ export default function Sidebar({
   const [pendingPath, setPendingPath] = useState<string | null>(null);
 
   // Fetch active system modules from backend (GET /api/admin/system-modules)
-  const { data: systemModules } = useSystemModules();
+  const { data: systemModules, isError: isSystemModulesError } = useSystemModules();
 
   const navItems = useMemo(() => {
-    if (roleName === "Staff") return STAFF_NAV_ITEMS;
+    // If no authenticated role or error in fetching modules, do NOT show any sidebar items
+    if (!roleName || roleName === "-") return [];
+    if (isSystemModulesError) return [];
 
+    // Strictly drive navigation from the backend system modules response
     if (systemModules && Array.isArray(systemModules) && systemModules.length > 0) {
       const activeItems = systemModules
         .filter((mod) => String(mod.isActive).toUpperCase() === "ACTIVE" || (mod.isActive as unknown) === true)
@@ -373,17 +354,12 @@ export default function Sidebar({
         return activeItems.filter((item) => managerAllowedModules.has(item.label));
       }
 
-      if (activeItems.length > 0) {
-        return activeItems;
-      }
+      return activeItems;
     }
 
-    // Fallback if system modules not loaded yet or offline
-    if (roleName === "Manager" && managerAllowedModules) {
-      return ADMIN_NAV_ITEMS.filter((item) => managerAllowedModules.has(item.label));
-    }
-    return ADMIN_NAV_ITEMS;
-  }, [roleName, systemModules, managerAllowedModules]);
+    // Do not show hardcoded frontend sidebar content; fully driven by backend response
+    return [];
+  }, [roleName, systemModules, managerAllowedModules, isSystemModulesError]);
 
   // Sync / clear pending path when actual pathname updates
   useEffect(() => {

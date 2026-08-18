@@ -45,7 +45,7 @@ export const INITIAL_ATTRACTIONS: Attraction[] = [
     pricing: { adult: 100, child: 50, student: 60, senior: 75, foreigner: 500 },
     hasSeating: true,
     status: "Active",
-    image: "/Assets/Attraction/Toy_Train.jpg",
+    image: "/Assets/Attractions/Toy_Train.jpg",
   },
   {
     id: "ATR-002",
@@ -55,7 +55,7 @@ export const INITIAL_ATTRACTIONS: Attraction[] = [
     pricing: { adult: 200, child: 100, student: 80, senior: 150, foreigner: 600 },
     hasSeating: true,
     status: "Active",
-    image: "/Assets/Attraction/Rope.jpg",
+    image: "/Assets/Attractions/Rope.jpg",
   },
   {
     id: "ATR-003",
@@ -65,7 +65,7 @@ export const INITIAL_ATTRACTIONS: Attraction[] = [
     pricing: { adult: 120, child: 60, student: 70, senior: 90, foreigner: 600 },
     hasSeating: false,
     status: "Active",
-    image: "/Assets/Attraction/Wax.jpg",
+    image: "/Assets/Attractions/Wax.jpg",
   },
   {
     id: "ATR-004",
@@ -75,7 +75,7 @@ export const INITIAL_ATTRACTIONS: Attraction[] = [
     pricing: { adult: 100, child: 50, student: 60, senior: 75, foreigner: 500 },
     hasSeating: false,
     status: "Active",
-    image: "/Assets/Attraction/Biological.jpg",
+    image: "/Assets/Attractions/Biological.jpg",
   },
   {
     id: "ATR-005",
@@ -85,7 +85,7 @@ export const INITIAL_ATTRACTIONS: Attraction[] = [
     pricing: { adult: 80, child: 40, student: 50, senior: 60, foreigner: 400 },
     hasSeating: false,
     status: "Active",
-    image: "/Assets/Attraction/Mahal.jpg",
+    image: "/Assets/Attractions/Mahal.jpg",
   },
   {
     id: "ATR-006",
@@ -95,6 +95,6 @@ export const INITIAL_ATTRACTIONS: Attraction[] = [
     pricing: { adult: 100, child: 50, student: 60, senior: 75, foreigner: 500 },
     hasSeating: false,
     status: "Active",
-    image: "/Assets/Attraction/Fort.jpg",
+    image: "/Assets/Attractions/Mahal.jpg",
   },
 ];

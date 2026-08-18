@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Bell,
@@ -74,22 +74,39 @@ export default function Header({
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [displayRole, setDisplayRole] = useState(userRole || "Admin");
-
   // Live profile data from API
-  const { data: profileData, isLoading: profileLoading } = useProfileQuery();
+  const { data: profileData, isLoading: profileLoading, isError: isProfileError } = useProfileQuery();
   const logoutMutation = useLogoutMutation();
 
-  const displayName = profileData?.profile?.name || (profileLoading ? "Loading..." : "—");
-
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    if (userRole) {
-      setDisplayRole(userRole);
-    } else if (typeof window !== "undefined") {
-      const saved = sessionStorage.getItem("userRole");
-      if (saved) setDisplayRole(saved);
+    setMounted(true);
+  }, []);
+
+  const displayName = isProfileError
+    ? "—"
+    : profileData?.profile?.name || (profileLoading ? "Loading..." : "—");
+
+  /**
+   * Derive the displayed role label from the authoritative profile API.
+   * Falls back to '-' if error or no role (never defaults to Admin).
+   */
+  const displayRole = useMemo(() => {
+    if (isProfileError) return "-";
+    if (profileData?.profile?.role) {
+      const raw = String(profileData.profile.role).toUpperCase();
+      if (raw === "STAFF") return "Staff";
+      if (raw === "MANAGER") return "Manager";
+      if (raw === "ADMIN") return "Admin";
     }
-  }, [userRole]);
+    // Fallback: prop from dashboard layout (sourced from sessionStorage)
+    if (userRole && userRole !== "-") return userRole;
+    if (mounted && typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("userRole");
+      if (saved && saved !== "Admin" && saved !== "-") return saved;
+    }
+    return "-";
+  }, [isProfileError, profileData?.profile?.role, userRole, mounted]);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -391,6 +408,7 @@ export default function Header({
               {!isMobile && (
                 <div style={{ display: "flex", flexDirection: "column", textAlign: "left" }}>
                   <span
+                    suppressHydrationWarning
                     style={{
                       fontFamily: typography.fontFamily.sans,
                       fontWeight: typography.fontWeight.bold,
@@ -405,6 +423,7 @@ export default function Header({
                     {displayName}
                   </span>
                   <span
+                    suppressHydrationWarning
                     style={{
                       fontFamily: typography.fontFamily.sans,
                       fontWeight: typography.fontWeight.bold,
