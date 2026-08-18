@@ -1,11 +1,31 @@
 import { NextRequest } from "next/server";
-import { and, desc, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
+
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { db } from "@/db";
 
-import { bookings, bookingItems, attractions } from "@/db/schema";
+import { bookings, bookingItems, bookingSeats, attractions } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
+
+import {
+  requireModuleAccess,
+  requireAttractionAccess,
+  getAdminId,
+  getAccessibleAttractionIds,
+} from "@/lib/auth/authorization";
+
 import { success, failure } from "@/lib/api/response";
 
 // =====================================================
@@ -14,11 +34,27 @@ import { success, failure } from "@/lib/api/response";
 
 export async function GET(request: NextRequest) {
   try {
+    // ---------------------------------------------
+    // Authentication
+    // ---------------------------------------------
+
     const auth = await requireAuth(request);
 
-    if (auth.user.role !== "ADMIN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
+    // ---------------------------------------------
+    // Module authorization
+    // ---------------------------------------------
+
+    await requireModuleAccess(auth, "BOOKINGS");
+
+    // ---------------------------------------------
+    // Tenant / Admin
+    // ---------------------------------------------
+
+    const adminId = getAdminId(auth);
+
+    // ---------------------------------------------
+    // Query params
+    // ---------------------------------------------
 
     const { searchParams } = new URL(request.url);
 
@@ -41,7 +77,67 @@ export async function GET(request: NextRequest) {
 
     const offset = (page - 1) * limit;
 
-    const conditions = [isNull(bookings.deletedAt)];
+    // ---------------------------------------------
+    // BASE SECURITY CONDITIONS
+    // ---------------------------------------------
+
+    /*
+     * Every user must stay inside their admin/tenant.
+     *
+     * ADMIN:
+     *   attractions.adminId = adminId
+     *
+     * MANAGER:
+     *   attractions.adminId = adminId
+     *   +
+     *   attraction assigned to manager
+     *
+     * STAFF:
+     *   attractions.adminId = adminId
+     *   +
+     *   attraction assigned to staff
+     */
+
+    const conditions = [
+      isNull(bookings.deletedAt),
+
+      // Tenant isolation
+      eq(attractions.adminId, adminId),
+    ];
+
+    // ---------------------------------------------
+    // MANAGER / STAFF ATTRACTION ISOLATION
+    // ---------------------------------------------
+
+    if (auth.user.role !== "ADMIN") {
+      const accessibleAttractionIds = await getAccessibleAttractionIds(auth);
+
+      /*
+       * No assigned attractions means no bookings.
+       *
+       * IMPORTANT:
+       * Do not remove this condition.
+       * Returning [] is safer than allowing access.
+       */
+
+      if (accessibleAttractionIds.length === 0) {
+        return success({
+          items: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 0,
+          },
+        });
+      }
+
+      conditions.push(inArray(attractions.id, accessibleAttractionIds));
+    }
+
+    // ---------------------------------------------
+    // Search
+    // ---------------------------------------------
 
     if (search) {
       conditions.push(
@@ -53,9 +149,21 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // ---------------------------------------------
+    // Attraction filter
+    // ---------------------------------------------
+
     if (attractionId) {
+      /*
+       * This is safe because the base conditions already
+       * enforce tenant + attraction authorization.
+       */
       conditions.push(eq(bookings.attractionId, attractionId));
     }
+
+    // ---------------------------------------------
+    // Status filter
+    // ---------------------------------------------
 
     if (
       status === "PENDING" ||
@@ -64,6 +172,10 @@ export async function GET(request: NextRequest) {
     ) {
       conditions.push(eq(bookings.status, status));
     }
+
+    // ---------------------------------------------
+    // From date
+    // ---------------------------------------------
 
     if (fromDate) {
       const startDate = new Date(`${fromDate}T00:00:00.000Z`);
@@ -75,6 +187,10 @@ export async function GET(request: NextRequest) {
       conditions.push(gte(bookings.visitAt, startDate));
     }
 
+    // ---------------------------------------------
+    // To date
+    // ---------------------------------------------
+
     if (toDate) {
       const endDate = new Date(`${toDate}T23:59:59.999Z`);
 
@@ -85,26 +201,46 @@ export async function GET(request: NextRequest) {
       conditions.push(lte(bookings.visitAt, endDate));
     }
 
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    // ---------------------------------------------
+    // WHERE
+    // ---------------------------------------------
+
+    const whereClause = and(...conditions);
+
+    // ---------------------------------------------
+    // TOTAL COUNT
+    // ---------------------------------------------
 
     const [{ count }] = await db
       .select({
-        count: sql<number>`count(distinct ${bookings.id})`,
+        count: sql<number>`
+          count(distinct ${bookings.id})
+        `,
       })
       .from(bookings)
+      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
       .where(whereClause);
 
     const total = Number(count);
 
+    // ---------------------------------------------
+    // BOOKING LIST
+    // ---------------------------------------------
+
     const bookingRows = await db
       .select({
         id: bookings.id,
+
         bookingId: bookings.bookingNumber,
+
         customerName: bookings.customerName,
+
         mobileNumber: bookings.mobileNumber,
+
         bookingDate: bookings.visitAt,
 
         attractionId: attractions.id,
+
         attractionName: attractions.name,
 
         totalVisitors: sql<number>`
@@ -115,8 +251,11 @@ export async function GET(request: NextRequest) {
         `,
 
         amount: bookings.totalAmount,
+
         amountPaid: bookings.amountPaid,
+
         paymentMode: bookings.paymentMode,
+
         status: bookings.status,
       })
       .from(bookings)
@@ -139,6 +278,10 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(bookings.visitAt))
       .limit(limit)
       .offset(offset);
+
+    // ---------------------------------------------
+    // FORMAT RESPONSE
+    // ---------------------------------------------
 
     const items = bookingRows.map((booking) => ({
       id: booking.id,
@@ -169,6 +312,10 @@ export async function GET(request: NextRequest) {
       status: booking.status,
     }));
 
+    // ---------------------------------------------
+    // RESPONSE
+    // ---------------------------------------------
+
     return success({
       items,
 
@@ -181,6 +328,34 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Get bookings error:", error);
+
+    // ---------------------------------------------
+    // AUTHORIZATION ERRORS
+    // ---------------------------------------------
+
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    }
+
+    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+    }
+
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return failure(
+        "You do not have permission to access bookings.",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+      return failure(
+        "User is not associated with an admin.",
+        403,
+        "USER_HAS_NO_ADMIN",
+      );
+    }
 
     return failure("Unable to fetch bookings.", 500, "INTERNAL_SERVER_ERROR");
   }
@@ -198,9 +373,17 @@ export async function POST(request: NextRequest) {
 
     const auth = await requireAuth(request);
 
-    if (auth.user.role !== "ADMIN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
+    // ---------------------------------------------
+    // Module authorization
+    // ---------------------------------------------
+
+    await requireModuleAccess(auth, "BOOKINGS");
+
+    // ---------------------------------------------
+    // Tenant / Admin
+    // ---------------------------------------------
+
+    const adminId = getAdminId(auth);
 
     // ---------------------------------------------
     // Request body
@@ -266,7 +449,42 @@ export async function POST(request: NextRequest) {
     }
 
     // ---------------------------------------------
-    // Validate attraction
+    // ATTRACTION AUTHORIZATION
+    // ---------------------------------------------
+
+    /*
+     * This is critical.
+     *
+     * ADMIN:
+     *   attraction must belong to admin
+     *
+     * MANAGER:
+     *   attraction must be assigned to manager
+     *
+     * STAFF:
+     *   attraction must be assigned to staff
+     */
+
+    try {
+      await requireAttractionAccess(auth, attractionId);
+    } catch (error) {
+      if (error instanceof Error && error.message === "FORBIDDEN") {
+        /*
+         * Return 404 instead of revealing whether
+         * another user's attraction exists.
+         */
+        return failure(
+          "Attraction not found or access denied.",
+          404,
+          "ATTRACTION_NOT_FOUND",
+        );
+      }
+
+      throw error;
+    }
+
+    // ---------------------------------------------
+    // Validate attraction belongs to admin
     // ---------------------------------------------
 
     const [attraction] = await db
@@ -275,11 +493,28 @@ export async function POST(request: NextRequest) {
         name: attractions.name,
       })
       .from(attractions)
-      .where(eq(attractions.id, attractionId))
+      .where(
+        and(
+          eq(attractions.id, attractionId),
+
+          /*
+           * Additional tenant isolation.
+           *
+           * Even if an authorization mapping is
+           * accidentally incorrect, this prevents
+           * crossing admin boundaries.
+           */
+          eq(attractions.adminId, adminId),
+        ),
+      )
       .limit(1);
 
     if (!attraction) {
-      return failure("Attraction not found.", 404, "ATTRACTION_NOT_FOUND");
+      return failure(
+        "Attraction not found or access denied.",
+        404,
+        "ATTRACTION_NOT_FOUND",
+      );
     }
 
     // ---------------------------------------------
@@ -288,34 +523,47 @@ export async function POST(request: NextRequest) {
 
     let totalAmount = 0;
 
-    const normalizedTickets = tickets.map(
-      (ticket: { category: string; quantity: number; unitPrice: number }) => {
-        const quantity = Number(ticket.quantity);
+    let normalizedTickets;
 
-        const unitPrice = Number(ticket.unitPrice);
+    try {
+      normalizedTickets = tickets.map(
+        (ticket: { category: string; quantity: number; unitPrice: number }) => {
+          const quantity = Number(ticket.quantity);
 
-        if (
-          !ticket.category ||
-          !Number.isInteger(quantity) ||
-          quantity <= 0 ||
-          !Number.isFinite(unitPrice) ||
-          unitPrice < 0
-        ) {
-          throw new Error("INVALID_TICKET");
-        }
+          const unitPrice = Number(ticket.unitPrice);
 
-        const totalPrice = quantity * unitPrice;
+          if (
+            !ticket.category ||
+            !Number.isInteger(quantity) ||
+            quantity <= 0 ||
+            !Number.isFinite(unitPrice) ||
+            unitPrice < 0
+          ) {
+            throw new Error("INVALID_TICKET");
+          }
 
-        totalAmount += totalPrice;
+          const totalPrice = quantity * unitPrice;
 
-        return {
-          category: ticket.category,
-          quantity,
-          unitPrice: unitPrice.toFixed(2),
-          totalPrice: totalPrice.toFixed(2),
-        };
-      },
-    );
+          totalAmount += totalPrice;
+
+          return {
+            category: ticket.category.trim(),
+
+            quantity,
+
+            unitPrice: unitPrice.toFixed(2),
+
+            totalPrice: totalPrice.toFixed(2),
+          };
+        },
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "INVALID_TICKET") {
+        return failure("Invalid ticket details.", 400, "INVALID_TICKET");
+      }
+
+      throw error;
+    }
 
     // ---------------------------------------------
     // Visit datetime
@@ -338,74 +586,86 @@ export async function POST(request: NextRequest) {
     const bookingNumber = `BK-${Date.now()}`;
 
     // ---------------------------------------------
-    // Create booking
+    // Create booking transactionally
     // ---------------------------------------------
 
-    const [booking] = await db
-      .insert(bookings)
-      .values({
-        bookingNumber,
+    const result = await db.transaction(async (tx) => {
+      // -----------------------------------------
+      // Create booking
+      // -----------------------------------------
 
-        customerName: customerName.trim(),
+      const [booking] = await tx
+        .insert(bookings)
+        .values({
+          bookingNumber,
 
-        mobileNumber: mobileNumber.trim(),
+          customerName: customerName.trim(),
 
-        gstNumber: gstNumber?.trim() || null,
+          mobileNumber: mobileNumber.trim(),
 
-        attractionId,
+          gstNumber: gstNumber?.trim() || null,
 
-        visitAt,
+          attractionId,
 
-        paymentMode,
+          visitAt,
 
-        status:
-          status === "PENDING" ||
-          status === "CANCELLED" ||
-          status === "CONFIRMED"
-            ? status
-            : "CONFIRMED",
+          paymentMode,
 
-        totalAmount: totalAmount.toFixed(2),
+          status:
+            status === "PENDING" ||
+            status === "CANCELLED" ||
+            status === "CONFIRMED"
+              ? status
+              : "CONFIRMED",
 
-        amountPaid: totalAmount.toFixed(2),
+          totalAmount: totalAmount.toFixed(2),
 
-        updatedAt: new Date(),
-      })
-      .returning();
+          amountPaid: totalAmount.toFixed(2),
 
-    if (!booking) {
-      return failure("Unable to create booking.", 500, "BOOKING_CREATE_FAILED");
-    }
+          updatedAt: new Date(),
+        })
+        .returning();
 
-    // ---------------------------------------------
-    // Create booking items
-    // ---------------------------------------------
+      if (!booking) {
+        throw new Error("BOOKING_CREATE_FAILED");
+      }
 
-    await db.insert(bookingItems).values(
-      normalizedTickets.map((ticket) => ({
-        bookingId: booking.id,
-        category: ticket.category,
-        quantity: ticket.quantity,
-        unitPrice: ticket.unitPrice,
-        totalPrice: ticket.totalPrice,
-      })),
-    );
+      // -----------------------------------------
+      // Booking items
+      // -----------------------------------------
 
-    // ---------------------------------------------
-    // Create seats if provided
-    // ---------------------------------------------
-
-    if (Array.isArray(seats) && seats.length > 0) {
-      const { bookingSeats } = await import("@/db/schema");
-
-      await db.insert(bookingSeats).values(
-        seats.map((seat: { bogie?: string; seatNumber: string }) => ({
+      await tx.insert(bookingItems).values(
+        normalizedTickets.map((ticket) => ({
           bookingId: booking.id,
-          bogie: seat.bogie || null,
-          seatNumber: seat.seatNumber,
+
+          category: ticket.category,
+
+          quantity: ticket.quantity,
+
+          unitPrice: ticket.unitPrice,
+
+          totalPrice: ticket.totalPrice,
         })),
       );
-    }
+
+      // -----------------------------------------
+      // Booking seats
+      // -----------------------------------------
+
+      if (Array.isArray(seats) && seats.length > 0) {
+        await tx.insert(bookingSeats).values(
+          seats.map((seat: { bogie?: string; seatNumber: string }) => ({
+            bookingId: booking.id,
+
+            bogie: seat.bogie?.trim() || null,
+
+            seatNumber: seat.seatNumber,
+          })),
+        );
+      }
+
+      return booking;
+    });
 
     // ---------------------------------------------
     // Response
@@ -414,30 +674,30 @@ export async function POST(request: NextRequest) {
     return success(
       {
         booking: {
-          id: booking.id,
+          id: result.id,
 
-          bookingId: booking.bookingNumber,
+          bookingId: result.bookingNumber,
 
-          customerName: booking.customerName,
+          customerName: result.customerName,
 
-          mobileNumber: booking.mobileNumber,
+          mobileNumber: result.mobileNumber,
 
-          gstNumber: booking.gstNumber,
+          gstNumber: result.gstNumber,
 
           attraction: {
             id: attraction.id,
             name: attraction.name,
           },
 
-          visitAt: booking.visitAt,
+          visitAt: result.visitAt,
 
-          paymentMode: booking.paymentMode,
+          paymentMode: result.paymentMode,
 
-          status: booking.status,
+          status: result.status,
 
-          totalAmount: Number(booking.totalAmount),
+          totalAmount: Number(result.totalAmount),
 
-          amountPaid: Number(booking.amountPaid),
+          amountPaid: Number(result.amountPaid),
 
           tickets: normalizedTickets,
 
@@ -447,11 +707,43 @@ export async function POST(request: NextRequest) {
       201,
     );
   } catch (error) {
-    if (error instanceof Error && error.message === "INVALID_TICKET") {
-      return failure("Invalid ticket details.", 400, "INVALID_TICKET");
+    console.error("Create booking error:", error);
+
+    // ---------------------------------------------
+    // AUTHORIZATION ERRORS
+    // ---------------------------------------------
+
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return failure("Authentication required.", 401, "UNAUTHORIZED");
     }
 
-    console.error("Create booking error:", error);
+    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+    }
+
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return failure(
+        "You do not have permission to create bookings.",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+      return failure(
+        "User is not associated with an admin.",
+        403,
+        "USER_HAS_NO_ADMIN",
+      );
+    }
+
+    // ---------------------------------------------
+    // Booking creation error
+    // ---------------------------------------------
+
+    if (error instanceof Error && error.message === "BOOKING_CREATE_FAILED") {
+      return failure("Unable to create booking.", 500, "BOOKING_CREATE_FAILED");
+    }
 
     return failure("Unable to create booking.", 500, "INTERNAL_SERVER_ERROR");
   }

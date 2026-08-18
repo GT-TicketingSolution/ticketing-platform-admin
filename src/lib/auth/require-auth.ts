@@ -38,6 +38,7 @@ export async function requireAuth(request: Request) {
       sessionId: sessions.id,
 
       userId: users.id,
+      adminId: users.adminId,
       name: users.name,
       email: users.email,
       role: users.role,
@@ -64,6 +65,16 @@ export async function requireAuth(request: Request) {
     throw new Error("ACCOUNT_NOT_ACTIVE");
   }
 
+  if (result.role === "ADMIN") {
+    if (result.adminId !== null) {
+      throw new Error("INVALID_USER_HIERARCHY");
+    }
+  } else {
+    if (!result.adminId) {
+      throw new Error("INVALID_USER_HIERARCHY");
+    }
+  }
+
   return {
     session: {
       id: result.sessionId,
@@ -72,6 +83,7 @@ export async function requireAuth(request: Request) {
     user: {
       id: result.userId,
       name: result.name,
+      adminId: result.adminId,
       email: result.email,
       role: result.role,
       status: result.status,

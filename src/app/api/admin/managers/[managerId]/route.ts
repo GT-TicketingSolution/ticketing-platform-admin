@@ -1,13 +1,270 @@
+// // import { z } from "zod";
+
+// // import {
+// //   getManagerById,
+// //   updateManager,
+// //   disableManager,
+// // } from "@/services/manager.service";
+
+// // import { success, failure } from "@/lib/api/response";
+// // import { requireAuth } from "@/lib/auth/require-auth";
+
+// // const updateManagerSchema = z.object({
+// //   name: z.string().min(2).max(150).optional(),
+
+// //   email: z.string().email().optional(),
+
+// //   phone: z.string().max(20).optional(),
+
+// //   password: z.string().min(8).optional(),
+
+// //   status: z.enum(["ACTIVE", "SUSPENDED", "DISABLED"]).optional(),
+// // });
+
+// // type RouteContext = {
+// //   params: Promise<{
+// //     managerId: string;
+// //   }>;
+// // };
+
+// // export async function GET(request: Request, context: RouteContext) {
+// //   try {
+// //     const auth = await requireAuth(request);
+
+// //     if (auth.user.role !== "ADMIN") {
+// //       return failure("Admin access required.", 403, "FORBIDDEN");
+// //     }
+
+// //     const { managerId } = await context.params;
+
+// //     const manager = await getManagerById(managerId);
+
+// //     return success({
+// //       manager,
+// //     });
+// //   } catch (error) {
+// //     if (error instanceof Error && error.message === "MANAGER_NOT_FOUND") {
+// //       return failure("Manager not found.", 404, "MANAGER_NOT_FOUND");
+// //     }
+
+// //     console.error("Get manager error:", error);
+
+// //     return failure("Unable to fetch manager.", 500, "INTERNAL_SERVER_ERROR");
+// //   }
+// // }
+
+// // export async function PATCH(request: Request, context: RouteContext) {
+// //   try {
+// //     const auth = await requireAuth(request);
+
+// //     if (auth.user.role !== "ADMIN") {
+// //       return failure("Admin access required.", 403, "FORBIDDEN");
+// //     }
+
+// //     const { managerId } = await context.params;
+
+// //     const body = await request.json();
+
+// //     const parsed = updateManagerSchema.safeParse(body);
+
+// //     if (!parsed.success) {
+// //       return failure("Invalid manager details.", 400, "VALIDATION_ERROR");
+// //     }
+
+// //     const manager = await updateManager(managerId, parsed.data);
+
+// //     return success({
+// //       manager,
+// //     });
+// //   } catch (error) {
+// //     if (error instanceof Error && error.message === "MANAGER_NOT_FOUND") {
+// //       return failure("Manager not found.", 404, "MANAGER_NOT_FOUND");
+// //     }
+
+// //     if (error instanceof Error && error.message === "NOT_A_MANAGER") {
+// //       return failure("User is not a manager.", 400, "NOT_A_MANAGER");
+// //     }
+
+// //     if (error instanceof Error && error.message === "EMAIL_ALREADY_EXISTS") {
+// //       return failure("Email already exists.", 409, "EMAIL_ALREADY_EXISTS");
+// //     }
+
+// //     console.error("Update manager error:", error);
+
+// //     return failure("Unable to update manager.", 500, "INTERNAL_SERVER_ERROR");
+// //   }
+// // }
+
+// // export async function DELETE(request: Request, context: RouteContext) {
+// //   try {
+// //     const auth = await requireAuth(request);
+
+// //     if (auth.user.role !== "ADMIN") {
+// //       return failure("Admin access required.", 403, "FORBIDDEN");
+// //     }
+
+// //     const { managerId } = await context.params;
+
+// //     const manager = await disableManager(managerId);
+
+// //     return success({
+// //       message: "Manager disabled successfully.",
+// //       manager,
+// //     });
+// //   } catch (error) {
+// //     if (error instanceof Error && error.message === "MANAGER_NOT_FOUND") {
+// //       return failure("Manager not found.", 404, "MANAGER_NOT_FOUND");
+// //     }
+
+// //     console.error("Disable manager error:", error);
+
+// //     return failure("Unable to disable manager.", 500, "INTERNAL_SERVER_ERROR");
+// //   }
+// // }
+// import { z } from "zod";
+
+// import { getManagers, createManager } from "@/services/manager.service";
+
+// import { success, failure } from "@/lib/api/response";
+// import { requireAdmin } from "@/lib/auth/require-admin";
+
+// const createManagerSchema = z.object({
+//   name: z.string().min(2).max(150),
+
+//   email: z.string().email(),
+
+//   phone: z.string().max(20).optional(),
+
+//   password: z.string().min(8),
+
+//   status: z.enum(["ACTIVE", "SUSPENDED", "DISABLED"]).optional(),
+
+//   systemModuleIds: z.array(z.string()).default([]),
+
+//   attractionPermissions: z
+//     .array(
+//       z.object({
+//         attractionId: z.string(),
+//         moduleIds: z.array(z.string()).default([]),
+//       }),
+//     )
+//     .default([]),
+// });
+
+// export async function GET(request: Request) {
+//   try {
+//     const auth = await requireAdmin(request);
+
+//     const { searchParams } = new URL(request.url);
+
+//     const page = Math.max(Number(searchParams.get("page") ?? 1), 1);
+
+//     const limit = Math.min(
+//       Math.max(Number(searchParams.get("limit") ?? 10), 1),
+//       100,
+//     );
+
+//     const search = searchParams.get("search") ?? undefined;
+
+//     const statusParam = searchParams.get("status");
+
+//     const status =
+//       statusParam === "ACTIVE" ||
+//       statusParam === "SUSPENDED" ||
+//       statusParam === "DISABLED"
+//         ? statusParam
+//         : undefined;
+
+//     const result = await getManagers({
+//       adminId: auth.adminId,
+//       page,
+//       limit,
+//       search,
+//       status,
+//     });
+
+//     return success(result);
+//   } catch (error) {
+//     console.error("Get managers error:", error);
+
+//     return failure("Unable to fetch managers.", 500, "INTERNAL_SERVER_ERROR");
+//   }
+// }
+
+// export async function POST(request: Request) {
+//   try {
+//     const auth = await requireAdmin(request);
+
+//     const body = await request.json();
+
+//     const parsed = createManagerSchema.safeParse(body);
+
+//     if (!parsed.success) {
+//       return failure("Invalid manager details.", 400, "VALIDATION_ERROR");
+//     }
+
+//     const manager = await createManager(auth.adminId, parsed.data);
+
+//     return success(
+//       {
+//         manager,
+//       },
+//       201,
+//     );
+//   } catch (error) {
+//     if (error instanceof Error && error.message === "EMAIL_ALREADY_EXISTS") {
+//       return failure("Email already exists.", 409, "EMAIL_ALREADY_EXISTS");
+//     }
+
+//     if (error instanceof Error && error.message === "INVALID_SYSTEM_MODULE") {
+//       return failure(
+//         "One or more system modules are invalid.",
+//         400,
+//         "INVALID_SYSTEM_MODULE",
+//       );
+//     }
+
+//     if (error instanceof Error && error.message === "INVALID_ATTRACTION") {
+//       return failure(
+//         "One or more attractions are invalid.",
+//         400,
+//         "INVALID_ATTRACTION",
+//       );
+//     }
+
+//     if (
+//       error instanceof Error &&
+//       error.message === "INVALID_ATTRACTION_MODULE"
+//     ) {
+//       return failure(
+//         "One or more attraction modules are invalid.",
+//         400,
+//         "INVALID_ATTRACTION_MODULE",
+//       );
+//     }
+
+//     if (
+//       error instanceof Error &&
+//       error.message === "ATTRACTION_MODULE_MISMATCH"
+//     ) {
+//       return failure(
+//         "Attraction module does not belong to the selected attraction.",
+//         400,
+//         "ATTRACTION_MODULE_MISMATCH",
+//       );
+//     }
+
+//     console.error("Create manager error:", error);
+
+//     return failure("Unable to create manager.", 500, "INTERNAL_SERVER_ERROR");
+//   }
+// }
 import { z } from "zod";
 
-import {
-  getManagerById,
-  updateManager,
-  disableManager,
-} from "@/services/manager.service";
+import { getManagerById, updateManager } from "@/services/manager.service";
 
 import { success, failure } from "@/lib/api/response";
-import { requireAuth } from "@/lib/auth/require-auth";
+import { requireAdmin } from "@/lib/auth/require-admin";
 
 const updateManagerSchema = z.object({
   name: z.string().min(2).max(150).optional(),
@@ -27,24 +284,38 @@ type RouteContext = {
   }>;
 };
 
+/* =========================================================
+   GET /api/managers/[managerId]
+========================================================= */
+
 export async function GET(request: Request, context: RouteContext) {
   try {
-    const auth = await requireAuth(request);
-
-    if (auth.user.role !== "ADMIN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
+    const auth = await requireAdmin(request);
 
     const { managerId } = await context.params;
 
-    const manager = await getManagerById(managerId);
+    const manager = await getManagerById(auth.adminId, managerId);
 
     return success({
       manager,
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "MANAGER_NOT_FOUND") {
-      return failure("Manager not found.", 404, "MANAGER_NOT_FOUND");
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      if (error.message === "FORBIDDEN") {
+        return failure("Admin access required.", 403, "FORBIDDEN");
+      }
+
+      if (error.message === "MANAGER_NOT_FOUND") {
+        return failure("Manager not found.", 404, "MANAGER_NOT_FOUND");
+      }
     }
 
     console.error("Get manager error:", error);
@@ -53,13 +324,13 @@ export async function GET(request: Request, context: RouteContext) {
   }
 }
 
+/* =========================================================
+   PATCH /api/managers/[managerId]
+========================================================= */
+
 export async function PATCH(request: Request, context: RouteContext) {
   try {
-    const auth = await requireAuth(request);
-
-    if (auth.user.role !== "ADMIN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
+    const auth = await requireAdmin(request);
 
     const { managerId } = await context.params;
 
@@ -71,53 +342,40 @@ export async function PATCH(request: Request, context: RouteContext) {
       return failure("Invalid manager details.", 400, "VALIDATION_ERROR");
     }
 
-    const manager = await updateManager(managerId, parsed.data);
+    const manager = await updateManager(auth.adminId, managerId, parsed.data);
 
     return success({
       manager,
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "MANAGER_NOT_FOUND") {
-      return failure("Manager not found.", 404, "MANAGER_NOT_FOUND");
-    }
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
 
-    if (error instanceof Error && error.message === "NOT_A_MANAGER") {
-      return failure("User is not a manager.", 400, "NOT_A_MANAGER");
-    }
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
 
-    if (error instanceof Error && error.message === "EMAIL_ALREADY_EXISTS") {
-      return failure("Email already exists.", 409, "EMAIL_ALREADY_EXISTS");
+      if (error.message === "FORBIDDEN") {
+        return failure("Admin access required.", 403, "FORBIDDEN");
+      }
+
+      if (error.message === "MANAGER_NOT_FOUND") {
+        return failure("Manager not found.", 404, "MANAGER_NOT_FOUND");
+      }
+
+      if (error.message === "NOT_A_MANAGER") {
+        return failure("User is not a manager.", 400, "NOT_A_MANAGER");
+      }
+
+      if (error.message === "EMAIL_ALREADY_EXISTS") {
+        return failure("Email already exists.", 409, "EMAIL_ALREADY_EXISTS");
+      }
     }
 
     console.error("Update manager error:", error);
 
     return failure("Unable to update manager.", 500, "INTERNAL_SERVER_ERROR");
-  }
-}
-
-export async function DELETE(request: Request, context: RouteContext) {
-  try {
-    const auth = await requireAuth(request);
-
-    if (auth.user.role !== "ADMIN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
-
-    const { managerId } = await context.params;
-
-    const manager = await disableManager(managerId);
-
-    return success({
-      message: "Manager disabled successfully.",
-      manager,
-    });
-  } catch (error) {
-    if (error instanceof Error && error.message === "MANAGER_NOT_FOUND") {
-      return failure("Manager not found.", 404, "MANAGER_NOT_FOUND");
-    }
-
-    console.error("Disable manager error:", error);
-
-    return failure("Unable to disable manager.", 500, "INTERNAL_SERVER_ERROR");
   }
 }

@@ -43,6 +43,55 @@
       "when": 1786637907414,
       "tag": "0005_sweet_random",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786687357885,
+      "tag": "0006_worthless_iron_patriot",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786945022988,
+      "tag": "0007_wealthy_silk_fever",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786957987291,
+      "tag": "0008_tan_post",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786960760479,
+      "tag": "0009_warm_spencer_smythe",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786961357491,
+      "tag": "0010_demonic_tomorrow_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1787027699162,
+      "tag": "0011_silent_deathbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1787034081243,
+      "tag": "0012_skinny_vargas",
+      "breakpoints": true
     }
   ]
 }
