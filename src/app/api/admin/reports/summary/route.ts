@@ -1,0 +1,30 @@
+import { requireAuth } from "@/lib/auth/require-auth";
+import { getAdminId } from "@/lib/auth/get-admin-id";
+
+import { getReportSummary } from "@/services/report.service";
+
+import { success, failure } from "@/lib/api/response";
+
+export async function GET(req: Request) {
+  try {
+    const auth = await requireAuth(req);
+
+    const params = new URL(req.url).searchParams;
+
+    const data = await getReportSummary({
+      adminId: getAdminId(auth),
+
+      fromDate: params.get("fromDate") ?? undefined,
+
+      toDate: params.get("toDate") ?? undefined,
+
+      attractionId: params.get("attractionId") ?? undefined,
+    });
+
+    return success(data);
+  } catch (error) {
+    console.error(error);
+
+    return failure("Unable to generate report", 500, "REPORT_ERROR");
+  }
+}
