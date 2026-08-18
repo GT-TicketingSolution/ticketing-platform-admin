@@ -9,11 +9,31 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status, size = "md" }: StatusBadgeProps) {
-  const isActive = status === "Active";
-  const bg = isActive ? "rgba(34,197,94,0.12)" : "#FEF2F2";
-  const color = isActive ? colors.status.success : colors.status.error;
+  const normalized = (status || "").toUpperCase();
+  const isActive = normalized === "ACTIVE";
+  const isSuspended = normalized === "SUSPENDED" || normalized === "PENDING";
+  
+  const bg = isActive
+    ? "rgba(34,197,94,0.12)"
+    : isSuspended
+    ? "rgba(245,158,11,0.12)"
+    : "rgba(239,68,68,0.12)";
+  const color = isActive
+    ? colors.status.success
+    : isSuspended
+    ? "#D97706"
+    : colors.status.error;
   const fontSize = size === "sm" ? "11px" : "12px";
   const padding = size === "sm" ? "2px 8px" : "4px 12px";
+
+  const displayStatus =
+    normalized === "ACTIVE"
+      ? "Active"
+      : normalized === "DISABLED"
+      ? "Disabled"
+      : normalized === "SUSPENDED"
+      ? "Suspended"
+      : status;
 
   return (
     <span
@@ -39,7 +59,7 @@ export function StatusBadge({ status, size = "md" }: StatusBadgeProps) {
           flexShrink: 0,
         }}
       />
-      {status}
+      {displayStatus}
     </span>
   );
 }

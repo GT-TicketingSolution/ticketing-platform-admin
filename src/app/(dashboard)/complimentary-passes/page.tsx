@@ -25,7 +25,7 @@ import {
   ComplimentaryPass,
   Reference,
   ATTRACTIONS,
-} from "@/types/complimentaryPass";
+} from "./types";
 import IssueComplimentaryPassModal from "@/components/modals/IssueComplimentaryPassModal";
 import AddReferenceModal from "@/components/modals/AddReferenceModal";
 

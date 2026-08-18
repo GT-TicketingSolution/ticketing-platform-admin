@@ -15,7 +15,7 @@ import {
 import DateRangePicker from "@/components/ui/DateRangePicker";
 import ExportButtons from "@/components/ui/ExportButtons";
 import { GlobalDataTable } from "@/components/ui/GlobalDataTable";
-import { Transaction, TransactionStatus } from "@/types/transaction";
+import { Transaction, TransactionStatus } from "./types";
 import { INITIAL_TRANSACTIONS } from "@/lib/mockTransactions";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import { colors, typography } from "@/lib/theme";

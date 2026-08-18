@@ -12,7 +12,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { colors } from "@/lib/theme";
-import { Attraction } from "@/types/admin";
+import { Attraction } from "./types";
 import AttractionEmptyState from "@/components/attraction/AttractionEmptyState";
 import AddEditAttractionForm from "@/components/attraction/AddEditAttractionForm";
 import SeatAllocationModal from "@/components/modals/SeatAllocationModal";
@@ -310,6 +310,10 @@ export default function AttractionManagementPage() {
         status: data.status || "Active",
         image: data.image || "",
         description: data.description || "",
+        assignedSeatIds: (data as Attraction).assignedSeatIds || [],
+        assignedSeatNames: (data as Attraction).assignedSeatNames || [],
+        assignedSeatId: (data as Attraction).assignedSeatId || undefined,
+        assignedSeatName: (data as Attraction).assignedSeatName || undefined,
       };
       const updated = [newAttraction, ...attractions];
       setAttractions(updated);
@@ -541,8 +545,26 @@ export default function AttractionManagementPage() {
         isOpen={isSeatAllocOpen}
         onClose={() => setIsSeatAllocOpen(false)}
         attractionName={seatAllocAttraction?.name ?? ""}
-        currentSeatId={(seatAllocAttraction as (Attraction & { assignedSeatId?: string }))?.assignedSeatId}
+        currentSeatId={seatAllocAttraction?.assignedSeatId}
+        currentSeatIds={seatAllocAttraction?.assignedSeatIds}
         onSelect={handleSeatAssigned}
+        onSelectMultiple={(selectedSeats) => {
+          if (!seatAllocAttraction) return;
+          const seatNames = selectedSeats.map((s) => s.name);
+          const updated = attractions.map((a) =>
+            a.id === seatAllocAttraction.id
+              ? {
+                  ...a,
+                  assignedSeatIds: selectedSeats.map((s) => s.id!),
+                  assignedSeatNames: seatNames,
+                  assignedSeatId: selectedSeats[0]?.id,
+                  assignedSeatName: selectedSeats[0]?.name,
+                }
+              : a
+          );
+          setAttractions(updated);
+          showToast(`Assigned ${selectedSeats.length} seat layout(s) to "${seatAllocAttraction.name}"!`, "success");
+        }}
       />
       <BulkUploadModal
         isOpen={isBulkOpen}

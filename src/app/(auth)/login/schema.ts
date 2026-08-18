@@ -8,11 +8,21 @@ export const loginSchema = z.object({
   password: z
     .string()
     .min(1, "Password is required")
-    .min(6, "Password must be at least 6 characters"),
+    .min(8, "Password must be at least 8 characters")
+    .max(72, "Password must be at most 72 characters"),
 });
 
 export type LoginFormData = z.infer<typeof loginSchema>;
 export type RoleType = "Admin" | "Manager" | "Staff";
+
+/** Maps UI role labels to the backend API enum values */
+export const ROLE_MAP: Record<RoleType, "ADMIN" | "MANAGER" | "STAFF"> = {
+  Admin: "ADMIN",
+  Manager: "MANAGER",
+  Staff: "STAFF",
+};
+
+export type ApiRoleType = "ADMIN" | "MANAGER" | "STAFF";
 
 // Forgot Password
 export const forgotPasswordSchema = z.object({

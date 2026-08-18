@@ -1,15 +1,15 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Upload, Plus, Trash2, X, Check, Armchair } from "lucide-react";
-import { Attraction } from "@/types/admin";
+import { Upload, Plus, Trash2, X, Check, Armchair, ChevronDown, Search } from "lucide-react";
+import { Attraction } from "@/app/(dashboard)/attraction-management/types";
 import { confirmDelete } from "@/lib/notify";
 import { validateAttractionForm } from "@/app/(dashboard)/attraction-management/schema";
-import { SeatConfigData } from "@/components/modals/CreateSeatModal";
+import { SeatConfigData } from "@/app/(dashboard)/seat-management/types";
 
 const SEAT_STORAGE_KEY = "seat_layouts_data";
 
-// ── Shared required asterisk ─────────────────────────────────────────────────
+// ── Shared required asterisk
 const Req = () => <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>;
 
 // ── Visitor category type 
@@ -32,7 +32,7 @@ interface AddEditAttractionFormProps {
   onConfigureSeating?: (draft: Partial<Attraction>) => void;
 }
 
-// ── Add Visitor Category Modal ──────────────────────────────────────────────
+// ── Add Visitor Category Modal
 function AddVisitorCategoryModal({
   isOpen,
   onClose,
@@ -40,24 +40,28 @@ function AddVisitorCategoryModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (name: string, basePrice: string, image?: string) => void;
+  onAdd: (name: string, basePrice: string, image?: string, numberOfSeats?: string) => void;
 }) {
   const [catName, setCatName] = useState("");
   const [basePrice, setBasePrice] = useState("");
+  const [numberOfSeats, setNumberOfSeats] = useState("");
   const [image, setImage] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [imageError, setImageError] = useState(false);
   const [priceErrorMsg, setPriceErrorMsg] = useState("");
+  const [seatsErrorMsg, setSeatsErrorMsg] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
       setCatName("");
       setBasePrice("");
+      setNumberOfSeats("");
       setImage(null);
       setError("");
       setImageError(false);
       setPriceErrorMsg("");
+      setSeatsErrorMsg("");
       setTimeout(() => inputRef.current?.focus(), 80);
     }
   }, [isOpen]);
@@ -82,14 +86,17 @@ function AddVisitorCategoryModal({
     else if (catName.trim().length < 2) newErrors.name = "Name must be at least 2 characters.";
     if (!basePrice.trim()) newErrors.basePrice = "Base price is required.";
     else if (isNaN(Number(basePrice)) || Number(basePrice) < 0) newErrors.basePrice = "Base price must be a non-negative number.";
+    if (!numberOfSeats.trim()) newErrors.numberOfSeats = "Number of seats is required.";
+    else if (isNaN(Number(numberOfSeats)) || Number(numberOfSeats) <= 0) newErrors.numberOfSeats = "Must be at least 1 seat.";
 
     if (Object.keys(newErrors).length > 0) {
       setError(newErrors.name || "");
       setPriceErrorMsg(newErrors.basePrice || "");
+      setSeatsErrorMsg(newErrors.numberOfSeats || "");
       setImageError(!!newErrors.image);
       return;
     }
-    onAdd(catName.trim(), basePrice.trim(), image || "");
+    onAdd(catName.trim(), basePrice.trim(), image || "", numberOfSeats.trim());
     onClose();
   };
 
@@ -220,6 +227,28 @@ function AddVisitorCategoryModal({
             {priceErrorMsg && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{priceErrorMsg}</span>}
           </div>
 
+          <div>
+            <label style={{ display: "block", fontWeight: 700, fontSize: "12px", color: "#374151", marginBottom: "6px" }}>
+              Number of Seats<Req />
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="e.g. 10"
+              value={numberOfSeats}
+              onChange={(e) => { setNumberOfSeats(e.target.value.replace(/\D/g, "")); setSeatsErrorMsg(""); }}
+              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              style={{
+                width: "100%", height: "40px", boxSizing: "border-box",
+                border: seatsErrorMsg ? "1.5px solid #DC2626" : "1.5px solid rgba(179,175,175,0.51)",
+                borderRadius: "8px", padding: "0 14px",
+                fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "13px",
+                color: "#011B2F", outline: "none",
+              }}
+            />
+            {seatsErrorMsg && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{seatsErrorMsg}</span>}
+          </div>
+
           {/* Footer buttons */}
           <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "4px" }}>
             <button
@@ -254,19 +283,19 @@ function AddVisitorCategoryModal({
 
 // ── Default categories using local /Assets/Visitors/ images 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
-  { id: "adult",    name: "Adult",    image: "/Assets/Visitors/Adult.jpg",    basePrice: "100.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
-  { id: "child",    name: "Child",    image: "/Assets/Visitors/Child.jpg",    basePrice: "50.00",  futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
-  { id: "student",  name: "Student",  image: "/Assets/Visitors/Student.jpg",  basePrice: "60.00",  futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
-  { id: "foreigner",name: "Foreigner",image: "/Assets/Visitors/Foreigner.jpg",basePrice: "500.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
+  { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", basePrice: "100.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
+  { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", basePrice: "50.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
+  { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", basePrice: "60.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
+  { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", basePrice: "500.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
 ];
 
 // ── Helper: derive category list from an existing Attraction's pricing ─────
 function pricingToCategories(attraction: Attraction): CategoryItem[] {
   const base = [
-    { id: "adult",    name: "Adult",    image: "/Assets/Visitors/Adult.jpg",    price: attraction.pricing.adult },
-    { id: "child",    name: "Child",    image: "/Assets/Visitors/Child.jpg",    price: attraction.pricing.child },
-    { id: "student",  name: "Student",  image: "/Assets/Visitors/Student.jpg",  price: attraction.pricing.student },
-    { id: "foreigner",name: "Foreigner",image: "/Assets/Visitors/Foreigner.jpg",price: attraction.pricing.foreigner },
+    { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", price: attraction.pricing.adult },
+    { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", price: attraction.pricing.child },
+    { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", price: attraction.pricing.student },
+    { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", price: attraction.pricing.foreigner },
   ];
   return base.map((c) => ({
     id: c.id,
@@ -290,12 +319,25 @@ export default function AddEditAttractionForm({
   const [status, setStatus] = useState<"Active" | "Inactive">("Active");
   const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
   const [availableSeats, setAvailableSeats] = useState<SeatConfigData[]>([]);
+  const [isSeatDropdownOpen, setIsSeatDropdownOpen] = useState(false);
+  const seatDropdownRef = useRef<HTMLDivElement>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // ── Load seat layouts from localStorage ────────────────────────────────
+  // ── Close Seat Dropdown on outside click 
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (seatDropdownRef.current && !seatDropdownRef.current.contains(event.target as Node)) {
+        setIsSeatDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // ── Load seat layouts from localStorage 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(SEAT_STORAGE_KEY);
@@ -312,7 +354,9 @@ export default function AddEditAttractionForm({
       setName(attractionToEdit.name || "");
       setDescription(attractionToEdit.description || "");
       setStatus(attractionToEdit.status || "Active");
-      const assignedIds = (attractionToEdit as Attraction & { assignedSeatIds?: string[] }).assignedSeatIds || [];
+      const assignedIds =
+        (attractionToEdit as Attraction & { assignedSeatIds?: string[] }).assignedSeatIds ||
+        (attractionToEdit.assignedSeatId ? [attractionToEdit.assignedSeatId] : []);
       setSelectedSeatIds(assignedIds);
       setImagePreview(attractionToEdit.image || null);
       setCategories(pricingToCategories(attractionToEdit));
@@ -356,7 +400,7 @@ export default function AddEditAttractionForm({
     setIsAddCategoryModalOpen(true);
   };
 
-  const handleAddCategoryConfirm = (catName: string, basePrice: string, image?: string) => {
+  const handleAddCategoryConfirm = (catName: string, basePrice: string, image?: string, numberOfSeats?: string) => {
     setCategories((prev) => [
       ...prev,
       {
@@ -366,7 +410,7 @@ export default function AddEditAttractionForm({
         basePrice: basePrice || "00.00",
         futurePrice: "00.00",
         effectiveFrom: "",
-        numberOfSeats: "",
+        numberOfSeats: numberOfSeats || "",
       },
     ]);
   };
@@ -377,15 +421,23 @@ export default function AddEditAttractionForm({
     );
   };
 
+  const removeSelectedSeat = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setSelectedSeatIds((prev) => prev.filter((s) => s !== id));
+  };
+
+  const clearAllSeats = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedSeatIds([]);
+  };
+
   const handleDeleteCategory = async (id: string) => {
     if (categories.length <= 1) return; // silently prevent deleting last one
     const cat = categories.find((c) => c.id === id);
-    const confirmed = await confirmDelete(`visitor category "${cat?.name || "this category"}"`); 
+    const confirmed = await confirmDelete(`visitor category "${cat?.name || "this category"}"`);
     if (!confirmed) return;
     setCategories((prev) => prev.filter((c) => c.id !== id));
   };
-
-
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -414,6 +466,9 @@ export default function AddEditAttractionForm({
       return cat ? parseFloat(cat.basePrice) || 0 : 0;
     };
 
+    const assignedSeatsList = availableSeats.filter((s) => selectedSeatIds.includes(s.id!));
+    const assignedSeatNames = assignedSeatsList.map((s) => s.name);
+
     onSave({
       name: name.trim(),
       description: description.trim(),
@@ -431,7 +486,10 @@ export default function AddEditAttractionForm({
       },
       visitorCategories: categories,
       assignedSeatIds: selectedSeatIds,
-    } as Partial<Attraction> & { visitorCategories: CategoryItem[]; assignedSeatIds: string[] });
+      assignedSeatNames: assignedSeatNames,
+      assignedSeatId: selectedSeatIds[0] || undefined,
+      assignedSeatName: assignedSeatNames[0] || undefined,
+    } as Partial<Attraction> & { visitorCategories: CategoryItem[]; assignedSeatIds: string[]; assignedSeatNames: string[] });
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -711,89 +769,302 @@ export default function AddEditAttractionForm({
             ))}
           </div>
 
-          {/* Seat Allocation Section - Multi-select from Seat Management */}
-          <h3 style={{ margin: "0 0 10px 0", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "18px", color: "#0C2A42" }}>
-            Seat Allocation
-          </h3>
-
-          {availableSeats.length === 0 ? (
-            <div
-              style={{
-                background: "#F9FAFB",
-                border: "1.5px dashed #D1D5DB",
-                borderRadius: "8px",
-                padding: "14px 12px",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-            >
-              <Armchair size={16} color="#9CA3AF" />
-              <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "11px", color: "#9CA3AF" }}>
-                No seat layouts yet. Create one in Seat Management.
-              </span>
+          {/* Seat Allocation Section - Multi-select Dropdown */}
+          <div style={{ marginTop: "4px" }} ref={seatDropdownRef}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Armchair size={18} color="#0C2A42" />
+                <h3 style={{ margin: 0, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "16px", color: "#0C2A42" }}>
+                  Seat Allocation
+                </h3>
+              </div>
+              {selectedSeatIds.length > 0 && (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: "#059669",
+                    background: "#ECFDF5",
+                    border: "1px solid #A7F3D0",
+                    borderRadius: "12px",
+                    padding: "2px 8px",
+                  }}
+                >
+                  {selectedSeatIds.length} Selected
+                </span>
+              )}
             </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "210px", overflowY: "auto" }}>
-              {availableSeats.map((seat) => {
-                const isSelected = selectedSeatIds.includes(seat.id!);
-                return (
-                  <div
-                    key={seat.id}
-                    onClick={() => toggleSeatId(seat.id!)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px",
-                      padding: "8px 10px",
-                      background: isSelected ? "#EFF6FF" : "#FAFAFA",
-                      border: isSelected ? "1.5px solid #0C2A42" : "1px solid #E5E7EB",
-                      borderRadius: "8px",
-                      cursor: "pointer",
-                      transition: "all 0.15s ease",
-                      userSelect: "none",
-                    }}
-                  >
-                    {/* Check circle */}
-                    <div
+
+            <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "6px" }}>
+              Select Seat Layouts (Multiple)
+            </label>
+
+            {/* Custom Multi-Select Dropdown Container */}
+            <div style={{ position: "relative", width: "100%" }}>
+              {/* Trigger Input/Box */}
+              <div
+                onClick={() => setIsSeatDropdownOpen((prev) => !prev)}
+                style={{
+                  minHeight: "44px",
+                  boxSizing: "border-box",
+                  width: "100%",
+                  background: "#FFFFFF",
+                  border: isSeatDropdownOpen ? "1.5px solid #0C2A42" : "1.5px solid rgba(179, 175, 175, 0.51)",
+                  borderRadius: "8px",
+                  padding: "6px 12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "8px",
+                  cursor: "pointer",
+                  boxShadow: isSeatDropdownOpen ? "0 0 0 3px rgba(12, 42, 66, 0.12)" : "none",
+                  transition: "all 0.18s ease",
+                  userSelect: "none",
+                }}
+              >
+                {/* Selected Chips or Placeholder */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", flex: 1, minWidth: 0 }}>
+                  {selectedSeatIds.length === 0 ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#9CA3AF" }}>
+                      <Armchair size={15} color="#9CA3AF" />
+                      <span style={{ fontSize: "12px", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500 }}>
+                        {availableSeats.length === 0 ? "No seat layouts available" : "Select seat layout(s)..."}
+                      </span>
+                    </div>
+                  ) : (
+                    selectedSeatIds.map((id) => {
+                      const seat = availableSeats.find((s) => s.id === id);
+                      const name = seat ? seat.name : id;
+                      const seatCount = seat ? seat.rows * seat.cols : null;
+                      return (
+                        <span
+                          key={id}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            background: "#EFF6FF",
+                            border: "1px solid #BFDBFE",
+                            color: "#1E40AF",
+                            padding: "3px 8px",
+                            borderRadius: "6px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          }}
+                        >
+                          <Armchair size={12} color="#1E40AF" />
+                          <span>{name}</span>
+                          {seatCount !== null && (
+                            <span style={{ fontSize: "10px", color: "#3B82F6", fontWeight: 500 }}>
+                              ({seatCount}s)
+                            </span>
+                          )}
+                          <span
+                            onClick={(e) => removeSelectedSeat(e, id)}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              marginLeft: "2px",
+                              borderRadius: "50%",
+                              padding: "1px",
+                              color: "#6B7280",
+                              transition: "color 0.15s ease",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = "#DC2626")}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = "#6B7280")}
+                          >
+                            <X size={12} strokeWidth={2.5} />
+                          </span>
+                        </span>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Right controls: Clear all + Chevron */}
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                  {selectedSeatIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={clearAllSeats}
+                      title="Clear all selections"
                       style={{
-                        width: "18px",
-                        height: "18px",
-                        borderRadius: "50%",
-                        background: isSelected ? "#0C2A42" : "#FFFFFF",
-                        border: isSelected ? "2px solid #0C2A42" : "2px solid #D1D5DB",
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "#9CA3AF",
+                        padding: "2px",
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                        transition: "all 0.15s ease",
+                        fontSize: "11px",
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 600,
                       }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = "#DC2626")}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = "#9CA3AF")}
                     >
-                      {isSelected && <Check size={10} color="#FFFFFF" strokeWidth={3} />}
-                    </div>
+                      Clear
+                    </button>
+                  )}
+                  <ChevronDown
+                    size={16}
+                    color="#6B7280"
+                    style={{
+                      transform: isSeatDropdownOpen ? "rotate(180deg)" : "rotate(0deg)",
+                      transition: "transform 0.2s ease",
+                    }}
+                  />
+                </div>
+              </div>
 
-                    <Armchair size={14} color={isSelected ? "#0C2A42" : "#9CA3AF"} />
+              {/* Popover Dropdown Menu — Seat Data List Alone */}
+              {isSeatDropdownOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 6px)",
+                    left: 0,
+                    right: 0,
+                    zIndex: 200,
+                    background: "#FFFFFF",
+                    borderRadius: "10px",
+                    border: "1.5px solid #E2E8F0",
+                    boxShadow: "0 14px 35px rgba(12, 42, 66, 0.16)",
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Options List */}
+                  <div style={{ maxHeight: "220px", overflowY: "auto", padding: "6px" }}>
+                    {availableSeats.length === 0 ? (
+                      <div style={{ padding: "20px 14px", textAlign: "center" }}>
+                        <Armchair size={22} color="#9CA3AF" style={{ margin: "0 auto 6px auto", display: "block" }} />
+                        <p style={{ margin: "0 0 4px 0", fontSize: "12px", fontWeight: 700, color: "#374151" }}>
+                          No seat layouts created
+                        </p>
+                        <p style={{ margin: 0, fontSize: "11px", color: "#9CA3AF" }}>
+                          Please create a layout in Seat Management first.
+                        </p>
+                      </div>
+                    ) : (
+                      availableSeats.map((seat) => {
+                        const isSelected = selectedSeatIds.includes(seat.id!);
+                        return (
+                          <div
+                            key={seat.id}
+                            onClick={() => toggleSeatId(seat.id!)}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "10px",
+                              padding: "8px 10px",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              transition: "all 0.15s ease",
+                              background: isSelected ? "#EFF6FF" : "transparent",
+                              marginBottom: "2px",
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = "#F8FAFC";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = isSelected ? "#EFF6FF" : "transparent";
+                            }}
+                          >
+                            {/* Checkbox */}
+                            <div
+                              style={{
+                                width: "18px",
+                                height: "18px",
+                                borderRadius: "4px",
+                                border: `2px solid ${isSelected ? "#0C2A42" : "#CBD5E1"}`,
+                                background: isSelected ? "#0C2A42" : "#FFFFFF",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
+                                transition: "all 0.15s ease",
+                              }}
+                            >
+                              {isSelected && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
+                            </div>
 
-                    <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: "12px", color: "#011B2F" }}>
-                        {seat.name}
-                      </p>
-                      <p style={{ margin: 0, fontSize: "10px", color: "#6B7280", marginTop: "1px" }}>
-                        {seat.rows}R × {seat.cols}C &nbsp;·&nbsp; {seat.rows * seat.cols} seats
-                        {seat.hasAisle ? " · Aisle" : ""}
-                      </p>
-                    </div>
+                            <Armchair size={15} color={isSelected ? "#0C2A42" : "#9CA3AF"} style={{ flexShrink: 0 }} />
+
+                            {/* Label & Details */}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                                <span
+                                  style={{
+                                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                                    fontWeight: isSelected ? 700 : 600,
+                                    fontSize: "12px",
+                                    color: isSelected ? "#0C2A42" : "#1E293B",
+                                  }}
+                                >
+                                  {seat.name}
+                                </span>
+                                {seat.hasAisle && (
+                                  <span
+                                    style={{
+                                      fontSize: "9px",
+                                      fontWeight: 700,
+                                      color: "#059669",
+                                      background: "#ECFDF5",
+                                      padding: "1px 5px",
+                                      borderRadius: "4px",
+                                    }}
+                                  >
+                                    Aisle
+                                  </span>
+                                )}
+                              </div>
+                              <p style={{ margin: "2px 0 0 0", fontSize: "11px", color: "#64748B" }}>
+                                {seat.rows}R × {seat.cols}C &nbsp;•&nbsp; {seat.rows * seat.cols} seats
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
-                );
-              })}
+                </div>
+              )}
             </div>
-          )}
 
-          {selectedSeatIds.length > 0 && (
-            <p style={{ margin: "6px 0 0 0", fontSize: "11px", color: "#059669", fontWeight: 600 }}>
-              ✓ {selectedSeatIds.length} seat layout{selectedSeatIds.length > 1 ? "s" : ""} selected
-            </p>
-          )}
+            {/* Selected Layouts Summary */}
+            {selectedSeatIds.length > 0 && (
+              <div
+                style={{
+                  marginTop: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "6px 10px",
+                  background: "#F0FDF4",
+                  border: "1px solid #BBF7D0",
+                  borderRadius: "6px",
+                }}
+              >
+                <Check size={14} color="#16A34A" strokeWidth={2.5} />
+                <span
+                  style={{
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 600,
+                    fontSize: "11px",
+                    color: "#15803D",
+                  }}
+                >
+                  {selectedSeatIds.length} seat layout{selectedSeatIds.length > 1 ? "s" : ""} allocated ({availableSeats.filter((s) => selectedSeatIds.includes(s.id!)).reduce((sum, s) => sum + s.rows * s.cols, 0)} total seats capacity)
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

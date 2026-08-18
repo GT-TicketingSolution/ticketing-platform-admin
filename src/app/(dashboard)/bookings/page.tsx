@@ -1,19 +1,15 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Search,
   MoreVertical,
   Eye,
   Edit2,
   Trash2,
-  ChevronLeft,
-  ChevronRight,
   RotateCcw,
-  FileText,
-  FileSpreadsheet,
 } from "lucide-react";
-import { Booking, BookingStatus } from "@/types/booking";
+import { Booking, BookingStatus } from "./types";
 import { INITIAL_BOOKINGS } from "@/lib/mockBookings";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import { colors, typography } from "@/lib/theme";

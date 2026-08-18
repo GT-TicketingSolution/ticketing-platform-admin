@@ -9,7 +9,8 @@ import {
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import { INITIAL_TRANSACTIONS } from "@/lib/mockTransactions";
-import { Transaction } from "@/types/transaction";
+import { Transaction } from "@/app/(dashboard)/transactions/types";
+import { PaymentModeFilter } from "./types";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import { handleDownloadInvoicesListPDF } from "@/lib/printUtils";
 
@@ -26,7 +27,6 @@ function getInvoiceId(txn: Transaction) {
 }
 
 const PAYMENT_MODES = ["All", "Cash", "UPI", "Card"] as const;
-type PaymentModeFilter = "All" | "Cash" | "UPI" | "Card";
 const PAGE_SIZE = 10;
 
 export default function InvoicesPage() {
