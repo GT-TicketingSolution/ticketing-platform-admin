@@ -198,7 +198,6 @@ export async function createManager(
           and(
             inArray(attractions.id, attractionIds),
             eq(attractions.adminId, adminId),
-            eq(attractions.status, "ACTIVE"),
           ),
         );
 
