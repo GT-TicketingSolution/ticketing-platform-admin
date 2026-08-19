@@ -3,7 +3,9 @@
 import React, { useState, useEffect } from "react";
 import { X, Landmark } from "lucide-react";
 import { typography } from "@/lib/theme";
-import { Attraction, AttractionTicketPricing } from "@/types/admin";
+import { Attraction } from "@/types/admin";
+
+type AttractionTicketPricing = { adult: number; child: number; student: number; senior: number; foreigner: number };
 
 interface AddEditAttractionModalProps {
   isOpen: boolean;
@@ -39,9 +41,9 @@ export default function AddEditAttractionModal({
     if (attractionToEdit) {
       setName(attractionToEdit.name);
       setCategory(attractionToEdit.category);
-      setTiming(attractionToEdit.timing);
+      setTiming(attractionToEdit.timing ?? "09:00 AM - 06:00 PM");
       setHasSeating(attractionToEdit.hasSeating);
-      setStatus(attractionToEdit.status);
+      setStatus((attractionToEdit.status as "Active" | "Inactive") || "Active");
       setImage(attractionToEdit.image || "");
       setPricing(attractionToEdit.pricing);
     } else {
@@ -304,7 +306,7 @@ export default function AddEditAttractionModal({
                     min="0"
                     value={pricing[type]}
                     onChange={(e) =>
-                      setPricing((p) => ({ ...p, [type]: Number(e.target.value) }))
+                      setPricing((p: AttractionTicketPricing) => ({ ...p, [type]: Number(e.target.value) }))
                     }
                     style={{
                       width: "100%",

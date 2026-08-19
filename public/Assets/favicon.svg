@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e293b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f172a;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="ticketGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e2e8f0;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f59e0b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#d97706;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect width="64" height="64" rx="14" ry="14" fill="url(#bgGrad)" />
+
+  <!-- Ticket body -->
+  <rect x="10" y="22" width="44" height="20" rx="3" ry="3" fill="url(#ticketGrad)" />
+
+  <!-- Left notch -->
+  <circle cx="10" cy="32" r="5" fill="#1e293b" />
+
+  <!-- Right notch -->
+  <circle cx="54" cy="32" r="5" fill="#1e293b" />
+
+  <!-- Dashed divider line on ticket -->
+  <line x1="24" y1="25" x2="24" y2="39" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="2,2" />
+
+  <!-- Barcode-like lines on ticket -->
+  <rect x="28" y="27" width="2" height="10" rx="0.5" fill="#64748b" />
+  <rect x="32" y="27" width="1" height="10" rx="0.5" fill="#94a3b8" />
+  <rect x="35" y="27" width="2" height="10" rx="0.5" fill="#64748b" />
+  <rect x="39" y="27" width="1.5" height="10" rx="0.5" fill="#94a3b8" />
+  <rect x="42" y="27" width="2" height="10" rx="0.5" fill="#64748b" />
+
+  <!-- Admin star/shield badge (bottom-right) -->
+  <circle cx="49" cy="49" r="10" fill="#0f172a" />
+  <circle cx="49" cy="49" r="9" fill="url(#shieldGrad)" />
+
+  <!-- Star shape inside badge -->
+  <polygon
+    points="49,42 50.8,46.6 55.8,46.6 51.7,49.5 53.4,54.2 49,51.4 44.6,54.2 46.3,49.5 42.2,46.6 47.2,46.6"
+    fill="white"
+  />
+</svg>

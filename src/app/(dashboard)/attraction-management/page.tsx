@@ -10,57 +10,54 @@ import {
   Armchair,
   Trash2,
   ArrowLeft,
+  Loader2,
 } from "lucide-react";
 import { colors } from "@/lib/theme";
-import { Attraction } from "./types";
+import { AttractionManagement } from "./types";
+import type { CreateAttractionPayload, UpdateAttractionPayload } from "./types";
 import AttractionEmptyState from "@/components/attraction/AttractionEmptyState";
 import AddEditAttractionForm from "@/components/attraction/AddEditAttractionForm";
 import SeatAllocationModal from "@/components/modals/SeatAllocationModal";
 import BulkUploadModal from "@/components/modals/BulkUploadModal";
-import { useToast } from "@/components/ui/Toast";
 import { confirmDelete } from "@/lib/notify";
-import { SeatConfigData } from "@/components/modals/CreateSeatModal";
+import {
+  useAttractionManagementList,
+  useCreateAttraction,
+  useUpdateAttraction,
+  useDeleteAttraction,
+  useAssignSeatLayout,
+  useBulkUploadAttractions,
+} from "@/hooks/useAttractionManagementQueries";
 
-// ── SessionStorage key ─────────────────────────────────────────────────────
-const SESSION_KEY = "attractions_data";
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-function loadFromSession(): Attraction[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as Attraction[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveToSession(data: Attraction[]) {
-  if (typeof window === "undefined") return;
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify(data));
-}
-
-// ── Category badge color ───────────────────────────────────────────────────
+// ── Category badge color ──────────────────────────────────────────────────────
 const CATEGORY_COLOR: Record<string, string> = {
+  RIDE: "#F4BC43",
   Ride: "#F4BC43",
+  MONUMENT: "#F4BC43",
   Monument: "#F4BC43",
+  PARK: "#F4BC43",
   Park: "#F4BC43",
+  MUSEUM: "#F4BC43",
   Museum: "#F4BC43",
+  FORT: "#F4BC43",
   Fort: "#F4BC43",
+  SHOW: "#F4BC43",
   Show: "#F4BC43",
 };
 
-// ── Attraction Card ────────────────────────────────────────────────────────
+// ── Attraction Card ───────────────────────────────────────────────────────────
 interface AttractionCardProps {
-  attraction: Attraction;
-  onEdit: (attraction: Attraction) => void;
-  onSeating: (attraction: Attraction) => void;
-  onDelete: (attraction: Attraction) => void;
+  attraction: AttractionManagement;
+  onEdit: (a: AttractionManagement) => void;
+  onSeating: (a: AttractionManagement) => void;
+  onDelete: (a: AttractionManagement) => void;
 }
 
 function AttractionCard({ attraction, onEdit, onSeating, onDelete }: AttractionCardProps) {
   const categoryColor = CATEGORY_COLOR[attraction.category] ?? "#F4BC43";
   const [imgError, setImgError] = useState(false);
+
+  const p = attraction.pricing ?? { adult: 0, child: 0, student: 0, senior: 0, foreigner: 0 };
 
   return (
     <div
@@ -83,7 +80,7 @@ function AttractionCard({ attraction, onEdit, onSeating, onDelete }: AttractionC
       className="attraction-card-item"
     >
       <div>
-        {/* Attraction Image */}
+        {/* Image */}
         <div
           style={{
             position: "relative",
@@ -95,7 +92,7 @@ function AttractionCard({ attraction, onEdit, onSeating, onDelete }: AttractionC
           }}
         >
           {attraction.image && !imgError ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={attraction.image}
               alt={attraction.name}
@@ -141,7 +138,6 @@ function AttractionCard({ attraction, onEdit, onSeating, onDelete }: AttractionC
           <span
             style={{
               display: "block",
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
               fontWeight: 600,
               fontSize: "9px",
               color: categoryColor,
@@ -153,17 +149,17 @@ function AttractionCard({ attraction, onEdit, onSeating, onDelete }: AttractionC
 
           <div style={{ display: "flex", alignItems: "center", gap: "5px", marginTop: "12px" }}>
             <Clock size={10} color="#515252" strokeWidth={2} />
-            <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "9px", color: "rgba(81,82,82,0.84)" }}>
-              {attraction.timing}
+            <span style={{ fontWeight: 600, fontSize: "9px", color: "rgba(81,82,82,0.84)" }}>
+              {attraction.timing ?? "—"}
             </span>
           </div>
 
           <div style={{ display: "flex", alignItems: "flex-start", gap: "4px", marginTop: "10px" }}>
-            <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "9px", color: "#515252", marginTop: "1px" }}>₹</span>
-            <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "9px", lineHeight: "13px", color: "rgba(81,82,82,0.84)" }}>
-              Adult: ₹{attraction.pricing.adult} Child: ₹{attraction.pricing.child} Student: ₹{attraction.pricing.student}
+            <span style={{ fontWeight: 600, fontSize: "9px", color: "#515252", marginTop: "1px" }}>₹</span>
+            <span style={{ fontWeight: 600, fontSize: "9px", lineHeight: "13px", color: "rgba(81,82,82,0.84)" }}>
+              Adult: ₹{p.adult ?? 0} Child: ₹{p.child ?? 0} Student: ₹{p.student ?? 0}
               <br />
-              Senior: ₹{attraction.pricing.senior} Foreigner: ₹{attraction.pricing.foreigner}
+              Senior: ₹{p.senior ?? 0} Foreigner: ₹{p.foreigner ?? 0}
             </span>
           </div>
         </div>
@@ -177,17 +173,17 @@ function AttractionCard({ attraction, onEdit, onSeating, onDelete }: AttractionC
           className="btn-edit"
         >
           <Pencil size={13} color="#2372A5" strokeWidth={2} />
-          <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "12px", color: "#2372A5" }}>Edit</span>
+          <span style={{ fontWeight: 500, fontSize: "12px", color: "#2372A5" }}>Edit</span>
         </button>
 
-        {(attraction.category === "Ride" || attraction.hasSeating) && (
+        {attraction.hasSeating && (
           <button
             onClick={() => onSeating(attraction)}
             style={{ boxSizing: "border-box", flex: 1, height: "34px", background: "#FFFFFF", border: "1px solid #10B981", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", cursor: "pointer", transition: "all 0.18s ease" }}
             className="btn-seating"
           >
             <Armchair size={13} color="#10B981" strokeWidth={2} />
-            <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "12px", color: "#10B981" }}>Seating</span>
+            <span style={{ fontWeight: 500, fontSize: "12px", color: "#10B981" }}>Seating</span>
           </button>
         )}
 
@@ -197,158 +193,126 @@ function AttractionCard({ attraction, onEdit, onSeating, onDelete }: AttractionC
           className="btn-delete"
         >
           <Trash2 size={13} color="#DC2626" strokeWidth={2} />
-          <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "12px", color: "#DC2626" }}>Delete</span>
+          <span style={{ fontWeight: 500, fontSize: "12px", color: "#DC2626" }}>Delete</span>
         </button>
       </div>
     </div>
   );
 }
 
-// ── Page ────────────────────────────────────────────────────────────────────
+// ── Page ─────────────────────────────────────────────────────────────────────
 export default function AttractionManagementPage() {
-  const { showToast } = useToast();
+  // ── Queries / Mutations ─────────────────────────────────────────────────
+  const { data: attractions = [], isLoading, isError } = useAttractionManagementList();
+  const createMutation = useCreateAttraction();
+  const updateMutation = useUpdateAttraction();
+  const deleteMutation = useDeleteAttraction();
+  const bulkMutation = useBulkUploadAttractions();
+  const assignSeatMutation = useAssignSeatLayout();
 
-  // ── State ────────────────────────────────────────────────────────────────
-  const [attractions, setAttractions] = useState<Attraction[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  // ── UI State ────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<"list" | "add" | "edit" | "empty">("empty");
-
-  const [attractionToEdit, setAttractionToEdit] = useState<Attraction | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "add" | "edit">("list");
+  const [attractionToEdit, setAttractionToEdit] = useState<AttractionManagement | null>(null);
   const [isSeatAllocOpen, setIsSeatAllocOpen] = useState(false);
-  const [seatAllocAttraction, setSeatAllocAttraction] = useState<Attraction | null>(null);
+  const [seatAllocAttraction, setSeatAllocAttraction] = useState<AttractionManagement | null>(null);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
 
-  // ── Load from sessionStorage on mount ───────────────────────────────────
   useEffect(() => {
     document.title = "Attraction Management | Ticketing Platform";
-    const stored = loadFromSession();
-    setAttractions(stored);
-    
-    // Check if query params ask to open add form
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("action") === "add") {
-        setViewMode("add");
-        setHydrated(true);
-        return;
-      }
-    }
-
-    setViewMode(stored.length > 0 ? "list" : "empty");
-    setHydrated(true);
   }, []);
 
-  // ── Sync to sessionStorage whenever attractions change ──────────────────
-  useEffect(() => {
-    if (!hydrated) return;
-    saveToSession(attractions);
-    if (viewMode === "list" || viewMode === "empty") {
-      setViewMode(attractions.length > 0 ? "list" : "empty");
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attractions, hydrated]);
-
-  // ── Filtered list ────────────────────────────────────────────────────────
+  // ── Derived ─────────────────────────────────────────────────────────────
   const filtered = attractions.filter(
     (a) =>
       a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       a.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
+  const showEmptyState = !isLoading && !isError && attractions.length === 0 && viewMode === "list";
+
+  // ── Handlers ──────────────────────────────────────────────────────────
   const handleOpenAdd = () => {
     setAttractionToEdit(null);
     setViewMode("add");
   };
 
-  const handleOpenEdit = (attraction: Attraction) => {
+  const handleOpenEdit = (attraction: AttractionManagement) => {
     setAttractionToEdit(attraction);
     setViewMode("edit");
   };
 
-  const handleOpenSeating = (attraction: Attraction) => {
+  const handleOpenSeating = (attraction: AttractionManagement) => {
     setSeatAllocAttraction(attraction);
     setIsSeatAllocOpen(true);
   };
 
-  const handleSeatAssigned = (seat: SeatConfigData) => {
-    if (!seatAllocAttraction) return;
-    const updated = attractions.map((a) =>
-      a.id === seatAllocAttraction.id
-        ? { ...a, assignedSeatId: seat.id, assignedSeatName: seat.name }
-        : a
-    );
-    setAttractions(updated);
-    showToast(`Seat layout "${seat.name}" assigned to "${seatAllocAttraction.name}"!`, "success");
-  };
-
-  const handleOpenDelete = async (attraction: Attraction) => {
+  const handleOpenDelete = async (attraction: AttractionManagement) => {
     const confirmed = await confirmDelete(`attraction "${attraction.name}"`);
     if (!confirmed) return;
-
-    setAttractions((prev) => prev.filter((a) => a.id !== attraction.id));
-    showToast(`Attraction "${attraction.name}" deleted.`, "info");
+    deleteMutation.mutate(attraction.id);
   };
 
-  const handleSaveAttraction = (data: Partial<Attraction>) => {
+  // Called from AddEditAttractionForm — data is Partial<Attraction> shape
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleSaveAttraction = async (data: any) => {
     if (viewMode === "edit" && attractionToEdit) {
-      const updated = attractions.map((item) =>
-        item.id === attractionToEdit.id ? ({ ...item, ...data } as Attraction) : item
-      );
-      setAttractions(updated);
-      showToast("Attraction updated successfully!", "success");
+      const payload: UpdateAttractionPayload = {
+        name: data.name,
+        category: data.category,
+        image: data.image ?? null,
+        description: data.description ?? null,
+        timing: data.timing ?? null,
+        adultPrice: data.pricing?.adult ?? data.adultPrice,
+        childPrice: data.pricing?.child ?? data.childPrice,
+        studentPrice: data.pricing?.student ?? data.studentPrice,
+        seniorPrice: data.pricing?.senior ?? data.seniorPrice,
+        foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice,
+        hasSeating: data.hasSeating,
+      };
+      await updateMutation.mutateAsync({ id: attractionToEdit.id, data: payload });
       setViewMode("list");
     } else {
-      const newAttraction: Attraction = {
-        id: `ATR-${Date.now()}`,
-        name: data.name || "New Attraction",
-        category: (data.category as Attraction["category"]) || "Ride",
-        timing: data.timing || "09:00 AM - 06:00 PM",
-        pricing: data.pricing || { adult: 0, child: 0, student: 0, senior: 0, foreigner: 0 },
+      const payload: CreateAttractionPayload = {
+        name: data.name,
+        category: data.category,
+        image: data.image ?? null,
+        description: data.description ?? null,
+        timing: data.timing ?? null,
+        adultPrice: data.pricing?.adult ?? data.adultPrice,
+        childPrice: data.pricing?.child ?? data.childPrice,
+        studentPrice: data.pricing?.student ?? data.studentPrice,
+        seniorPrice: data.pricing?.senior ?? data.seniorPrice,
+        foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice,
         hasSeating: data.hasSeating ?? false,
-        status: data.status || "Active",
-        image: data.image || "",
-        description: data.description || "",
-        assignedSeatIds: (data as Attraction).assignedSeatIds || [],
-        assignedSeatNames: (data as Attraction).assignedSeatNames || [],
-        assignedSeatId: (data as Attraction).assignedSeatId || undefined,
-        assignedSeatName: (data as Attraction).assignedSeatName || undefined,
       };
-      const updated = [newAttraction, ...attractions];
-      setAttractions(updated);
-      showToast(`Attraction "${newAttraction.name}" created successfully!`, "success");
+      await createMutation.mutateAsync(payload);
       setViewMode("list");
     }
   };
 
-
-
-  const handleBulkUploadSuccess = (count: number) => {
-    showToast(`Successfully uploaded ${count} new attractions!`, "success");
+  const handleSeatAssigned = async (seat: { id?: string }) => {
+    if (!seatAllocAttraction || !seat.id) return;
+    await assignSeatMutation.mutateAsync({ id: seatAllocAttraction.id, seatLayoutId: seat.id });
+    setIsSeatAllocOpen(false);
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────
-  if (!hydrated) return null; // Avoid SSR mismatch
+  const handleBulkUploadSuccess = (count: number) => {
+    // count passed from BulkUploadModal (currently unused but kept for future API wiring)
+    void count;
+  };
 
+  const isSaving = createMutation.isPending || updateMutation.isPending;
+
+  // ── Render ───────────────────────────────────────────────────────────
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", boxSizing: "border-box" }}>
 
-      {/* ── EMPTY STATE ─────────────────────────────────────────────── */}
-      {viewMode === "empty" && (
-        <AttractionEmptyState
-          onAddAttraction={handleOpenAdd}
-          onBulkUpload={() => setIsBulkOpen(true)}
-        />
-      )}
-
-
-
-      {/* ── ADD / EDIT FORM VIEW ────────────────────────────────────── */}
+      {/* ── ADD / EDIT FORM ──────────────────────────────────────────── */}
       {(viewMode === "add" || viewMode === "edit") && (
         <div style={{ width: "100%", maxWidth: "1124px", display: "flex", flexDirection: "column", gap: "16px" }}>
           <button
-            onClick={() => setViewMode(attractions.length > 0 ? "list" : "empty")}
+            onClick={() => setViewMode("list")}
             style={{
               display: "flex",
               alignItems: "center",
@@ -368,15 +332,39 @@ export default function AttractionManagementPage() {
           </button>
 
           <AddEditAttractionForm
-            attractionToEdit={viewMode === "edit" ? attractionToEdit : null}
+            attractionToEdit={viewMode === "edit" ? (attractionToEdit as any) : null}
             onSave={handleSaveAttraction}
-            onCancel={() => setViewMode(attractions.length > 0 ? "list" : "empty")}
+            onCancel={() => setViewMode("list")}
           />
         </div>
       )}
 
-      {/* ── LIST VIEW ───────────────────────────────────────────────── */}
-      {viewMode === "list" && (
+      {/* ── EMPTY STATE ──────────────────────────────────────────────── */}
+      {showEmptyState && viewMode === "list" && (
+        <AttractionEmptyState
+          onAddAttraction={handleOpenAdd}
+          onBulkUpload={() => setIsBulkOpen(true)}
+        />
+      )}
+
+      {/* ── LOADING STATE ────────────────────────────────────────────── */}
+      {isLoading && viewMode === "list" && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "400px", width: "100%" }}>
+          <Loader2 size={36} color="#2372A5" style={{ animation: "spin 1s linear infinite" }} />
+        </div>
+      )}
+
+      {/* ── ERROR STATE ──────────────────────────────────────────────── */}
+      {isError && viewMode === "list" && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "400px", width: "100%" }}>
+          <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: "15px", color: "#DC2626", fontWeight: 600 }}>
+            Failed to load attractions. Please try again.
+          </p>
+        </div>
+      )}
+
+      {/* ── LIST VIEW ────────────────────────────────────────────────── */}
+      {!isLoading && !isError && attractions.length > 0 && viewMode === "list" && (
         <div
           style={{
             boxSizing: "border-box",
@@ -433,7 +421,6 @@ export default function AttractionManagementPage() {
 
             {/* Action buttons */}
             <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-              {/* + Add Attraction */}
               <button
                 onClick={handleOpenAdd}
                 style={{
@@ -460,7 +447,6 @@ export default function AttractionManagementPage() {
                 </span>
               </button>
 
-              {/* Bulk Upload */}
               <button
                 onClick={() => setIsBulkOpen(true)}
                 style={{
@@ -488,7 +474,7 @@ export default function AttractionManagementPage() {
             </div>
           </div>
 
-          {/* Cards Grid or No results */}
+          {/* Cards Grid or No-search-results */}
           {filtered.length > 0 ? (
             <div
               style={{
@@ -527,8 +513,16 @@ export default function AttractionManagementPage() {
         </div>
       )}
 
-      {/* ── Hover styles & responsive media queries ─────────────────── */}
+      {/* ── Saving overlay ───────────────────────────────────────────── */}
+      {isSaving && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.15)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+          <Loader2 size={40} color="#2372A5" style={{ animation: "spin 1s linear infinite" }} />
+        </div>
+      )}
+
+      {/* ── Hover styles ─────────────────────────────────────────────── */}
       <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .attraction-card-item:hover { transform: translateY(-3px); box-shadow: 0 10px 25px rgba(12,42,66,0.12); }
         .btn-edit:hover { background: #F0F7FF !important; }
         .btn-seating:hover { background: #ECFDF5 !important; }
@@ -540,30 +534,18 @@ export default function AttractionManagementPage() {
         }
       `}</style>
 
-      {/* ── Modals ─────────────────────────────────────────────────── */}
+      {/* ── Modals ───────────────────────────────────────────────────── */}
       <SeatAllocationModal
         isOpen={isSeatAllocOpen}
         onClose={() => setIsSeatAllocOpen(false)}
         attractionName={seatAllocAttraction?.name ?? ""}
-        currentSeatId={seatAllocAttraction?.assignedSeatId}
-        currentSeatIds={seatAllocAttraction?.assignedSeatIds}
+        currentSeatId={undefined}
+        currentSeatIds={[]}
         onSelect={handleSeatAssigned}
         onSelectMultiple={(selectedSeats) => {
-          if (!seatAllocAttraction) return;
-          const seatNames = selectedSeats.map((s) => s.name);
-          const updated = attractions.map((a) =>
-            a.id === seatAllocAttraction.id
-              ? {
-                  ...a,
-                  assignedSeatIds: selectedSeats.map((s) => s.id!),
-                  assignedSeatNames: seatNames,
-                  assignedSeatId: selectedSeats[0]?.id,
-                  assignedSeatName: selectedSeats[0]?.name,
-                }
-              : a
-          );
-          setAttractions(updated);
-          showToast(`Assigned ${selectedSeats.length} seat layout(s) to "${seatAllocAttraction.name}"!`, "success");
+          if (selectedSeats.length > 0 && seatAllocAttraction) {
+            handleSeatAssigned(selectedSeats[0]);
+          }
         }}
       />
       <BulkUploadModal

@@ -452,21 +452,16 @@ export default function ScannerPage() {
     }
   };
 
-  // Auto-start camera on mount & clean up on unmount
+  // Clean up camera stream and QR scan loop on unmount
   useEffect(() => {
-    // Small delay to ensure video element is mounted in the DOM
-    const timer = setTimeout(() => {
-      startCamera();
-    }, 300);
     return () => {
-      clearTimeout(timer);
       stopScanLoop();
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [stopScanLoop]);
 
   // Process ticket search/scan
   const handleProcessScan = useCallback(
@@ -978,37 +973,48 @@ export default function ScannerPage() {
             {/* Simulated Scanner Box — shown only when camera is OFF */}
             {!cameraActive && (
               <div
+                onClick={handleToggleCamera}
+                title="Click to activate camera"
                 style={{
                   position: "relative",
                   width: "220px",
                   height: "220px",
                   background: "radial-gradient(circle, rgba(35, 114, 165, 0.25) 0%, rgba(12, 42, 66, 0.8) 100%)",
                   borderRadius: "16px",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  border: "1.5px dashed rgba(244, 188, 67, 0.5)",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
                   boxShadow: "inset 0 0 30px rgba(0,0,0,0.5)",
+                  cursor: "pointer",
+                  transition: "all 0.2s ease",
                 }}
               >
-                <div style={{ opacity: 0.75, display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-                  <QrCode size={96} color={colors.brand.primary} />
-                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)", letterSpacing: "0.5px", fontWeight: 600 }}>
-                    STARTING CAMERA…
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                  <div
+                    style={{
+                      width: "56px",
+                      height: "56px",
+                      borderRadius: "50%",
+                      background: "rgba(244, 188, 67, 0.15)",
+                      border: `1.5px solid ${colors.brand.primary}`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: colors.brand.primary,
+                      marginBottom: "4px",
+                    }}
+                  >
+                    <Camera size={26} />
+                  </div>
+                  <span style={{ fontSize: "13px", color: "#FFFFFF", letterSpacing: "0.3px", fontWeight: 700 }}>
+                    Click to Use Camera
+                  </span>
+                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>
+                    or enter invoice manually
                   </span>
                 </div>
-                <div
-                  style={{
-                    position: "absolute",
-                    left: "10px",
-                    right: "10px",
-                    height: "3px",
-                    background: `linear-gradient(90deg, transparent, ${colors.brand.primary}, transparent)`,
-                    boxShadow: `0 0 16px ${colors.brand.primary}`,
-                    animation: "laserScan 2.2s ease-in-out infinite",
-                  }}
-                />
                 <div style={{ position: "absolute", top: 12, left: 12, width: 24, height: 24, borderTop: `4px solid ${colors.brand.primary}`, borderLeft: `4px solid ${colors.brand.primary}`, borderRadius: "6px 0 0 0" }} />
                 <div style={{ position: "absolute", top: 12, right: 12, width: 24, height: 24, borderTop: `4px solid ${colors.brand.primary}`, borderRight: `4px solid ${colors.brand.primary}`, borderRadius: "0 6px 0 0" }} />
                 <div style={{ position: "absolute", bottom: 12, left: 12, width: 24, height: 24, borderBottom: `4px solid ${colors.brand.primary}`, borderLeft: `4px solid ${colors.brand.primary}`, borderRadius: "0 0 0 6px" }} />
@@ -1024,7 +1030,7 @@ export default function ScannerPage() {
 
             <div style={{ marginTop: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
               <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.7)" }}>
-                Align invoice QR code inside the viewfinder box
+                {cameraActive ? "Align invoice QR code inside the viewfinder box" : "Click 'Use Cam' to start webcam QR scanner"}
               </span>
             </div>
           </div>

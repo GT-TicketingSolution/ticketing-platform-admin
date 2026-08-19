@@ -15,7 +15,7 @@ import CustomerInfoView from "./CustomerInfoView";
 
 export const SIDEBAR_COLLAPSE_EVENT = "tbv:sidebar-collapse";
 
-function normalizeAttractionImage(img?: string): string {
+function normalizeAttractionImage(img?: string | null): string {
   if (!img) return "/Assets/Attractions/Toy_Train.jpg";
   return img.replace("/Assets/Attraction/", "/Assets/Attractions/");
 }

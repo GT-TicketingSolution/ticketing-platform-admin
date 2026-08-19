@@ -36,9 +36,9 @@ function loadAttractionsFromSession(): Attraction[] {
     const raw = sessionStorage.getItem(SESSION_KEY);
     if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed as Attraction[];
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed as Attraction[];
     }
-  } catch {}
+  } catch { }
   return INITIAL_ATTRACTIONS;
 }
 

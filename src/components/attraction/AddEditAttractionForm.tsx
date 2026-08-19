@@ -1,13 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { Upload, Plus, Trash2, X, Check, Armchair, ChevronDown, Search } from "lucide-react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { Upload, Plus, Trash2, X, Check, Armchair, ChevronDown, Search, Loader2 } from "lucide-react";
 import { Attraction } from "@/app/(dashboard)/attraction-management/types";
 import { confirmDelete } from "@/lib/notify";
 import { validateAttractionForm } from "@/app/(dashboard)/attraction-management/schema";
 import { SeatConfigData } from "@/app/(dashboard)/seat-management/types";
-
-const SEAT_STORAGE_KEY = "seat_layouts_data";
+import { useSeatLayouts } from "@/hooks/useSeatQueries";
 
 // ── Shared required asterisk
 const Req = () => <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>;
@@ -318,13 +317,30 @@ export default function AddEditAttractionForm({
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<"Active" | "Inactive">("Active");
   const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
-  const [availableSeats, setAvailableSeats] = useState<SeatConfigData[]>([]);
   const [isSeatDropdownOpen, setIsSeatDropdownOpen] = useState(false);
   const seatDropdownRef = useRef<HTMLDivElement>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  // ── Fetch active seat layouts from backend API ────────────────────────────
+  const { data: seatData, isLoading: isSeatsLoading } = useSeatLayouts();
+  const availableSeats: SeatConfigData[] = useMemo(() => {
+    if (!seatData?.items || !Array.isArray(seatData.items)) return [];
+    return seatData.items
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        rows: s.rows,
+        cols: s.cols,
+        hasAisle: s.hasAisle,
+        aisleAfterCol: s.aisleAfterCol,
+        status: s.status,
+        totalSeats: s.totalSeats ?? s.rows * s.cols,
+      }))
+      .filter((s) => (s.status as string)?.toUpperCase() === "ACTIVE");
+  }, [seatData]);
 
   // ── Close Seat Dropdown on outside click 
   useEffect(() => {
@@ -337,26 +353,14 @@ export default function AddEditAttractionForm({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ── Load seat layouts from localStorage 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SEAT_STORAGE_KEY);
-      if (raw) {
-        const all: SeatConfigData[] = JSON.parse(raw);
-        setAvailableSeats(all.filter((s) => s.status === "Active"));
-      }
-    } catch { /* ignore */ }
-  }, []);
-
   // ── Populate form when editing ──────────────────────────────────────────
   useEffect(() => {
     if (attractionToEdit) {
       setName(attractionToEdit.name || "");
       setDescription(attractionToEdit.description || "");
-      setStatus(attractionToEdit.status || "Active");
+      setStatus((attractionToEdit.status as "Active" | "Inactive") || "Active");
       const assignedIds =
-        (attractionToEdit as Attraction & { assignedSeatIds?: string[] }).assignedSeatIds ||
-        (attractionToEdit.assignedSeatId ? [attractionToEdit.assignedSeatId] : []);
+        (attractionToEdit as Attraction & { assignedSeatIds?: string[] }).assignedSeatIds || [];
       setSelectedSeatIds(assignedIds);
       setImagePreview(attractionToEdit.image || null);
       setCategories(pricingToCategories(attractionToEdit));
@@ -941,7 +945,14 @@ export default function AddEditAttractionForm({
                 >
                   {/* Options List */}
                   <div style={{ maxHeight: "220px", overflowY: "auto", padding: "6px" }}>
-                    {availableSeats.length === 0 ? (
+                    {isSeatsLoading ? (
+                      <div style={{ padding: "24px 14px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                        <Loader2 size={22} color="#2372A5" style={{ animation: "spin 1s linear infinite" }} />
+                        <span style={{ fontSize: "12px", fontFamily: "'Plus Jakarta Sans', sans-serif", color: "#64748B", fontWeight: 500 }}>
+                          Loading seat layouts...
+                        </span>
+                      </div>
+                    ) : availableSeats.length === 0 ? (
                       <div style={{ padding: "20px 14px", textAlign: "center" }}>
                         <Armchair size={22} color="#9CA3AF" style={{ margin: "0 auto 6px auto", display: "block" }} />
                         <p style={{ margin: "0 0 4px 0", fontSize: "12px", fontWeight: 700, color: "#374151" }}>

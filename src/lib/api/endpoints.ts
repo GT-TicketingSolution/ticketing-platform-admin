@@ -63,10 +63,20 @@ export const AppUrl = {
     list: "/admin/system-modules",
   },
 
-  // Attractions Management
+  // Attractions Management (manager query hook — dropdown list)
   attraction: {
     list: "/admin/attractions",
     getModules: (attractionId: string) => `/admin/attractions/${attractionId}/modules`,
+  },
+
+  // Attraction Management CRUD
+  attractionManagement: {
+    list:   "/admin/attraction-management",
+    create: "/admin/attraction-management",
+    bulk:   "/admin/attraction-management/bulk",
+    update: (id: string) => `/admin/attraction-management/${id}`,
+    delete: (id: string) => `/admin/attraction-management/${id}`,
+    assignSeat: (id: string) => `/admin/attraction-management/${id}/seat`,
   },
 
   // Seat Layout Management
