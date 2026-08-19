@@ -53,7 +53,6 @@ const ROUTE_HEADER_MAP: Record<string, { title: string; icon: React.ElementType 
   "/customer-management": { title: "Customer Management", icon: UserRound },
   "/complimentary-passes": { title: "Complimentary Passes", icon: ClipboardList },
   "/reports": { title: "Reports", icon: BarChart2 },
-  "/user-management": { title: "User Management", icon: Users },
   "/manager-management": { title: "Manager Management", icon: UserCheck },
   "/staff-management": { title: "Staff Management", icon: UserCog },
   "/dashboard": { title: "Dashboard", icon: LayoutDashboard },

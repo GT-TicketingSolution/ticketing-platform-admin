@@ -138,7 +138,7 @@ export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardPro
 
           {/* Status badge */}
           <div style={{ display: "flex", alignItems: "center", gap: "4px", marginTop: "4px" }}>
-            {seat.status === "Active" ? (
+            {String(seat.status || "").toUpperCase() === "ACTIVE" ? (
               <span
                 style={{
                   display: "inline-flex",

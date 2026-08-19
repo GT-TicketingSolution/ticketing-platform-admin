@@ -1,26 +1,25 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { Plus, Search, RotateCcw } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Plus, Search, RotateCcw, RefreshCw } from "lucide-react";
 import { META_CONSTANTS } from "@/lib/metaConstant";
-import { useToast } from "@/components/ui/Toast";
 import { confirmDelete } from "@/lib/notify";
 import SeatEmptyState from "@/components/seat/SeatEmptyState";
 import SeatCard from "@/components/seat/SeatCard";
-import CreateSeatModal, { SeatConfigData } from "@/components/modals/CreateSeatModal";
+import CreateSeatModal from "@/components/modals/CreateSeatModal";
 import ViewSeatModal from "@/components/modals/ViewSeatModal";
-
-const SEAT_STORAGE_KEY = "seat_layouts_data";
+import {
+  useSeatLayouts,
+  useCreateSeatLayout,
+  useUpdateSeatLayout,
+  useDeleteSeatLayout,
+} from "@/hooks/useSeatQueries";
+import { SeatConfigData } from "./types";
 
 export default function SeatManagementPage() {
-  const { showToast } = useToast();
-
-  // State: seats list (initial is empty to show empty state only within viewport)
-  const [seats, setSeats] = useState<SeatConfigData[]>([]);
-  const [isLoaded, setIsLoaded] = useState<boolean>(false);
-
-  // Filters State
+  // Query / Filter State
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
 
   // Modals State
@@ -28,62 +27,86 @@ export default function SeatManagementPage() {
   const [isViewModalOpen, setIsViewModalOpen] = useState<boolean>(false);
   const [selectedSeat, setSelectedSeat] = useState<SeatConfigData | null>(null);
 
+  // Debounce search
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
   useEffect(() => {
     document.title = META_CONSTANTS.seatManagement.fullTitle;
-    try {
-      const stored = localStorage.getItem(SEAT_STORAGE_KEY);
-      if (stored) {
-        setSeats(JSON.parse(stored));
-      }
-    } catch {
-      // ignore
-    }
-    setIsLoaded(true);
   }, []);
 
-  const saveSeatsToStorage = (updated: SeatConfigData[]) => {
-    setSeats(updated);
-    try {
-      localStorage.setItem(SEAT_STORAGE_KEY, JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
-  };
+  // API Queries & Mutations
+  const apiStatus =
+    statusFilter === "Active" ? "ACTIVE" : statusFilter === "Inactive" ? "INACTIVE" : undefined;
 
-  // Filtered Seats
-  const filteredSeats = useMemo(() => {
-    return seats.filter((seat) => {
-      const matchesSearch =
-        seat.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        `${seat.rows}x${seat.cols}`.includes(searchTerm);
+  const {
+    data: seatData,
+    isLoading,
+    isFetching,
+    refetch,
+  } = useSeatLayouts({
+    search: debouncedSearch || undefined,
+    status: apiStatus,
+  });
 
-      const matchesStatus =
-        statusFilter === "All" || seat.status.toLowerCase() === statusFilter.toLowerCase();
+  const createMutation = useCreateSeatLayout();
+  const updateMutation = useUpdateSeatLayout();
+  const deleteMutation = useDeleteSeatLayout();
 
-      return matchesSearch && matchesStatus;
-    });
-  }, [seats, searchTerm, statusFilter]);
+  const items = seatData?.items ?? [];
+
+  // Convert SeatLayoutItem to SeatConfigData for modals / cards
+  const seatConfigItems: SeatConfigData[] = items.map((s) => ({
+    id: s.id,
+    name: s.name || "—",
+    rows: s.rows ?? 0,
+    cols: s.cols ?? 0,
+    hasAisle: !!s.hasAisle,
+    aisleAfterCol: s.aisleAfterCol ?? 0,
+    status: s.status,
+    totalSeats: s.totalSeats ?? (s.rows ?? 0) * (s.cols ?? 0),
+    createdAt: s.createdAt,
+  }));
 
   // Actions
-  const handleSaveSeat = (data: SeatConfigData) => {
-    if (data.id) {
-      // Edit
-      const updated = seats.map((s) => (s.id === data.id ? { ...data } : s));
-      saveSeatsToStorage(updated);
-      showToast(`Seat layout "${data.name}" updated successfully!`, "success");
-    } else {
-      // Create new
-      const newSeat: SeatConfigData = {
-        ...data,
-        id: `SEAT-${Date.now()}`,
-      };
-      const updated = [...seats, newSeat];
-      saveSeatsToStorage(updated);
-      showToast(`Seat layout "${data.name}" created successfully!`, "success");
-    }
+  const handleSaveSeat = async (data: SeatConfigData) => {
+    const statusPayload =
+      String(data.status).toUpperCase() === "ACTIVE" ? "ACTIVE" : "INACTIVE";
 
-    setSelectedSeat(null);
-    setIsCreateModalOpen(false);
+    try {
+      if (data.id) {
+        // Edit existing
+        await updateMutation.mutateAsync({
+          seatId: data.id,
+          data: {
+            name: data.name.trim(),
+            rows: data.rows,
+            cols: data.cols,
+            hasAisle: data.hasAisle,
+            aisleAfterCol: data.aisleAfterCol,
+            status: statusPayload,
+          },
+        });
+      } else {
+        // Create new
+        await createMutation.mutateAsync({
+          name: data.name.trim(),
+          rows: data.rows,
+          cols: data.cols,
+          hasAisle: data.hasAisle,
+          aisleAfterCol: data.aisleAfterCol,
+          status: statusPayload,
+        });
+      }
+      setSelectedSeat(null);
+      setIsCreateModalOpen(false);
+    } catch {
+      // Error handled by mutation onError
+    }
   };
 
   const handleOpenCreate = () => {
@@ -102,30 +125,35 @@ export default function SeatManagementPage() {
   };
 
   const handleDelete = async (seat: SeatConfigData) => {
+    if (!seat.id) return;
     const confirmed = await confirmDelete(`seat layout "${seat.name}"`);
     if (!confirmed) return;
 
-    const updated = seats.filter((s) => s.id !== seat.id);
-    saveSeatsToStorage(updated);
-    showToast(`Seat layout "${seat.name}" has been deleted.`, "info");
+    try {
+      await deleteMutation.mutateAsync(seat.id);
+    } catch {
+      // Error handled by mutation onError
+    }
   };
 
   const handleResetFilters = () => {
     setSearchTerm("");
+    setDebouncedSearch("");
     setStatusFilter("All");
   };
 
-  if (!isLoaded) return null;
+  const isSaving = createMutation.isPending || updateMutation.isPending;
+  const isFiltering = Boolean(searchTerm.trim() || statusFilter !== "All");
 
   return (
     <div style={{ width: "100%" }}>
-      {/* ── If No Seats Added Yet: Show ONLY the Empty State in Viewport (Matching Attraction Management Image 1) ── */}
-      {seats.length === 0 ? (
+      {/* ── Initial Empty State: If no seats exist in database and no search active ── */}
+      {!isLoading && items.length === 0 && !isFiltering ? (
         <SeatEmptyState onCreateSeat={handleOpenCreate} />
       ) : (
-        /* ── Once Data is Listed: Show Header with + Create Seat in Top-Right & Filter Bar & Cards Grid ── */
+        /* ── Main Data View ── */
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          {/* Top Bar with Title + Create Seat in top right */}
+          {/* Top Bar with Title & Actions */}
           <div
             style={{
               display: "flex",
@@ -144,9 +172,15 @@ export default function SeatManagementPage() {
                   fontSize: "24px",
                   lineHeight: "30px",
                   color: "#011B2F",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
                 }}
               >
                 Seat Management
+                {isFetching && !isLoading && (
+                  <RefreshCw size={16} className="animate-spin" color="#173F63" />
+                )}
               </h1>
               <p
                 style={{
@@ -161,39 +195,65 @@ export default function SeatManagementPage() {
               </p>
             </div>
 
-            {/* Top Right: Create Seat Button */}
-            <button
-              type="button"
-              onClick={handleOpenCreate}
-              style={{
-                height: "42px",
-                padding: "0 22px",
-                background: "#0C2A42",
-                border: "none",
-                borderRadius: "8px",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: 600,
-                fontSize: "14px",
-                color: "#FFFFFF",
-                cursor: "pointer",
-                boxShadow: "0 4px 14px rgba(12, 42, 66, 0.25)",
-                transition: "all 0.18s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#173F63";
-                e.currentTarget.style.transform = "translateY(-1px)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "#0C2A42";
-                e.currentTarget.style.transform = "translateY(0)";
-              }}
-            >
-              <Plus size={18} color="#FFFFFF" strokeWidth={2.5} />
-              <span>Create Seat</span>
-            </button>
+            {/* Top Right Buttons */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                title="Refresh seat layouts"
+                style={{
+                  height: "42px",
+                  padding: "0 14px",
+                  background: "#FFFFFF",
+                  border: "1px solid #D1D5DB",
+                  borderRadius: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  color: "#374151",
+                  cursor: "pointer",
+                }}
+              >
+                <RefreshCw size={15} />
+                <span>Reload</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenCreate}
+                style={{
+                  height: "42px",
+                  padding: "0 22px",
+                  background: "#0C2A42",
+                  border: "none",
+                  borderRadius: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 600,
+                  fontSize: "14px",
+                  color: "#FFFFFF",
+                  cursor: "pointer",
+                  boxShadow: "0 4px 14px rgba(12, 42, 66, 0.25)",
+                  transition: "all 0.18s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "#173F63";
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "#0C2A42";
+                  e.currentTarget.style.transform = "translateY(0)";
+                }}
+              >
+                <Plus size={18} color="#FFFFFF" strokeWidth={2.5} />
+                <span>Create Seat</span>
+              </button>
+            </div>
           </div>
 
           {/* Filters Bar */}
@@ -282,7 +342,7 @@ export default function SeatManagementPage() {
                 </select>
               </div>
 
-              {(searchTerm || statusFilter !== "All") && (
+              {isFiltering && (
                 <button
                   type="button"
                   onClick={handleResetFilters}
@@ -309,30 +369,56 @@ export default function SeatManagementPage() {
             </div>
           </div>
 
-          {/* Cards Grid */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
-              gap: "18px",
-            }}
-          >
-            {filteredSeats.map((seat) => (
-              <SeatCard
-                key={seat.id}
-                seat={seat}
-                onView={handleView}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-              />
-            ))}
-          </div>
+          {/* Loading State */}
+          {isLoading && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
+                gap: "18px",
+              }}
+            >
+              {[1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  style={{
+                    height: "355px",
+                    borderRadius: "8px",
+                    background: "#F3F4F6",
+                    border: "1.5px solid #E5E7EB",
+                  }}
+                />
+              ))}
+            </div>
+          )}
 
-          {filteredSeats.length === 0 && (
+          {/* Cards Grid */}
+          {!isLoading && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
+                gap: "18px",
+              }}
+            >
+              {seatConfigItems.map((seat) => (
+                <SeatCard
+                  key={seat.id}
+                  seat={seat}
+                  onView={handleView}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Empty Filtered Results */}
+          {!isLoading && seatConfigItems.length === 0 && (
             <div
               style={{
                 textAlign: "center",
-                padding: "40px",
+                padding: "48px 20px",
                 background: "#FFFFFF",
                 borderRadius: "8px",
                 border: "1px solid #E5E7EB",
@@ -355,6 +441,7 @@ export default function SeatManagementPage() {
         }}
         initialData={selectedSeat}
         onSave={handleSaveSeat}
+        isLoading={isSaving}
       />
 
       {/* ── View Seat Dialog Box ── */}
@@ -373,3 +460,5 @@ export default function SeatManagementPage() {
     </div>
   );
 }
+
+

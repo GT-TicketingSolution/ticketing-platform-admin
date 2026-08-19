@@ -180,7 +180,11 @@ export function useCreateManager() {
       );
     },
     onError: (error: any) => {
-      const message = error?.error?.message || error?.message || "Failed to create manager.";
+      const message =
+        error?.response?.data?.message ||
+        error?.error?.message ||
+        error?.message ||
+        "Failed to create manager.";
       showErrorOnce(message, "Error Adding Manager");
     },
   });
@@ -211,7 +215,11 @@ export function useUpdateManager() {
       );
     },
     onError: (error: any) => {
-      const message = error?.error?.message || error?.message || "Failed to update manager.";
+      const message =
+        error?.response?.data?.message ||
+        error?.error?.message ||
+        error?.message ||
+        "Failed to update manager.";
       showErrorOnce(message, "Update Failed");
     },
   });
@@ -241,7 +249,11 @@ export function useUpdateManagerPermissions() {
       showSuccessNotify("Manager permissions updated successfully.", "Permissions Updated");
     },
     onError: (error: any) => {
-      const message = error?.error?.message || error?.message || "Failed to update permissions.";
+      const message =
+        error?.response?.data?.message ||
+        error?.error?.message ||
+        error?.message ||
+        "Failed to update permissions.";
       showErrorOnce(message, "Permissions Error");
     },
   });
@@ -264,7 +276,11 @@ export function useDisableManager() {
       showSuccessNotify("Manager account has been disabled.", "Manager Disabled");
     },
     onError: (error: any) => {
-      const message = error?.error?.message || error?.message || "Failed to disable manager.";
+      const message =
+        error?.response?.data?.message ||
+        error?.error?.message ||
+        error?.message ||
+        "Failed to disable manager.";
       showErrorOnce(message, "Action Failed");
     },
   });

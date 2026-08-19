@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderOpen, Loader2 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 
 export interface Column<T> {
@@ -17,7 +17,12 @@ interface DataTableProps<T> {
   data: T[];
   keyExtractor: (item: T, index: number) => string | number;
   pageSize?: number;
-  emptyMessage?: string;
+  emptyMessage?: string | React.ReactNode;
+  emptyIcon?: React.ReactNode;
+  emptyTitle?: string;
+  emptyDescription?: string;
+  emptyAction?: React.ReactNode;
+  isLoading?: boolean;
   showSNo?: boolean;
   onRowClick?: (item: T) => void;
 }
@@ -28,6 +33,11 @@ export function DataTable<T>({
   keyExtractor,
   pageSize = 5,
   emptyMessage = "No records found.",
+  emptyIcon,
+  emptyTitle,
+  emptyDescription,
+  emptyAction,
+  isLoading = false,
   showSNo = true,
   onRowClick,
 }: DataTableProps<T>) {
@@ -103,18 +113,105 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody>
-            {currentData.length === 0 ? (
+            {isLoading ? (
               <tr>
                 <td
                   colSpan={columns.length + (showSNo ? 1 : 0)}
                   style={{
-                    padding: "36px 20px",
+                    padding: "50px 20px",
                     textAlign: "center",
-                    color: colors.text.muted,
-                    fontSize: "14px",
                   }}
                 >
-                  {emptyMessage}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "10px",
+                    }}
+                  >
+                    <Loader2
+                      size={28}
+                      color={colors.brand.accent}
+                      style={{ animation: "spin 1s linear infinite" }}
+                    />
+                    <span
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 500,
+                        color: colors.text.muted,
+                        fontFamily: typography.fontFamily.sans,
+                      }}
+                    >
+                      Loading records...
+                    </span>
+                  </div>
+                </td>
+              </tr>
+            ) : currentData.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={columns.length + (showSNo ? 1 : 0)}
+                  style={{
+                    padding: "48px 20px",
+                    textAlign: "center",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                      maxWidth: "420px",
+                      margin: "0 auto",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "52px",
+                        height: "52px",
+                        borderRadius: "50%",
+                        background: "rgba(35, 114, 165, 0.08)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      {emptyIcon || <FolderOpen size={26} color={colors.brand.accent} />}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "15px",
+                        fontWeight: 600,
+                        color: colors.text.primary,
+                        fontFamily: typography.fontFamily.sans,
+                      }}
+                    >
+                      {emptyTitle || (typeof emptyMessage === "string" ? emptyMessage : "No records found")}
+                    </div>
+                    {emptyDescription && (
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          color: colors.text.muted,
+                          fontFamily: typography.fontFamily.sans,
+                          lineHeight: "1.5",
+                        }}
+                      >
+                        {emptyDescription}
+                      </div>
+                    )}
+                    {emptyAction && (
+                      <div style={{ marginTop: "6px" }}>
+                        {emptyAction}
+                      </div>
+                    )}
+                    {!emptyTitle && !emptyDescription && typeof emptyMessage !== "string" && emptyMessage}
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -172,7 +269,7 @@ export function DataTable<T>({
         </table>
       </div>
 
-      {data.length > 0 && (
+      {!isLoading && data.length > 0 && (
         <div
           style={{
             padding: "16px 20px",

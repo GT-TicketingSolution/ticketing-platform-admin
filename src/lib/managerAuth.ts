@@ -39,11 +39,11 @@ const DEMO_MANAGERS: StoredManager[] = [
     attractionPermissions: [
       {
         attractionId: "ATR-001",
-        modules: ["Counter Assignment", "Customer Management", "Complimentary Passes", "User Management", "CCTV Monitoring"],
+        modules: ["Customer Management", "Complimentary Passes", "CCTV Monitoring"],
       },
       {
         attractionId: "ATR-002",
-        modules: ["Counter Assignment", "Customer Management", "CCTV Monitoring"],
+        modules: ["Customer Management", "CCTV Monitoring"],
       },
     ],
   },
@@ -60,7 +60,7 @@ const DEMO_MANAGERS: StoredManager[] = [
     attractionPermissions: [
       {
         attractionId: "ATR-003",
-        modules: ["Counter Assignment", "Customer Management", "Complimentary Passes"],
+        modules: ["Customer Management", "Complimentary Passes"],
       },
     ],
   },
@@ -91,7 +91,7 @@ const DEMO_MANAGERS: StoredManager[] = [
     attractionPermissions: [
       {
         attractionId: "ATR-004",
-        modules: ["Counter Assignment", "Complimentary Passes", "User Management"],
+        modules: ["Complimentary Passes", "Customer Management"],
       },
       { attractionId: "ATR-006", modules: ["Customer Management"] },
     ],

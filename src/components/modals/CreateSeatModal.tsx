@@ -11,6 +11,7 @@ interface CreateSeatModalProps {
   onClose: () => void;
   initialData?: SeatConfigData | null;
   onSave: (data: SeatConfigData) => void;
+  isLoading?: boolean;
 }
 
 export default function CreateSeatModal({
@@ -18,6 +19,7 @@ export default function CreateSeatModal({
   onClose,
   initialData,
   onSave,
+  isLoading = false,
 }: CreateSeatModalProps) {
   // Form State - No default selection for Aisle and Status
   const [name, setName] = useState<string>("");
@@ -43,7 +45,8 @@ export default function CreateSeatModal({
       setCols(initialData.cols || "");
       setHasAisle(initialData.hasAisle);
       setAisleAfterCol(initialData.aisleAfterCol ?? 1);
-      setStatus(initialData.status || "");
+      const s = String(initialData.status || "").toUpperCase();
+      setStatus(s === "ACTIVE" ? "Active" : s === "INACTIVE" ? "Inactive" : "");
     } else {
       setName("");
       setRows("");
@@ -551,22 +554,23 @@ export default function CreateSeatModal({
             <div style={{ marginTop: "auto", paddingTop: "14px" }}>
               <button
                 type="submit"
+                disabled={isLoading}
                 style={{
                   width: "100%",
                   height: "44px",
-                  background: "#F4BC43",
+                  background: isLoading ? "#E5E7EB" : "#F4BC43",
                   border: "none",
                   borderRadius: "8px",
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
                   fontWeight: 700,
                   fontSize: "14px",
-                  color: "#011B2F",
-                  cursor: "pointer",
-                  boxShadow: "0 4px 12px rgba(244,188,67,0.35)",
+                  color: isLoading ? "#9CA3AF" : "#011B2F",
+                  cursor: isLoading ? "not-allowed" : "pointer",
+                  boxShadow: isLoading ? "none" : "0 4px 12px rgba(244,188,67,0.35)",
                   transition: "all 0.18s ease",
                 }}
               >
-                Save Seat
+                {isLoading ? "Saving..." : initialData ? "Update Seat Layout" : "Save Seat"}
               </button>
             </div>
           </div>

@@ -38,7 +38,7 @@ export const AppUrl = {
     create: "/admin/staff",
     get: (staffId: string) => `/admin/staff/${staffId}`,
     update: (staffId: string) => `/admin/staff/${staffId}`,
-    disable: (staffId: string) => `/admin/staff/${staffId}`,
+    disable: (staffId: string) => `/admin/staff/${staffId}/disable`,
     delete: (staffId: string) => `/admin/staff/${staffId}`,
   },
 
@@ -67,6 +67,15 @@ export const AppUrl = {
   attraction: {
     list: "/admin/attractions",
     getModules: (attractionId: string) => `/admin/attractions/${attractionId}/modules`,
+  },
+
+  // Seat Layout Management
+  seat: {
+    list: "/admin/seats",
+    create: "/admin/seats",
+    get: (seatId: string) => `/admin/seats/${seatId}`,
+    update: (seatId: string) => `/admin/seats/${seatId}`,
+    delete: (seatId: string) => `/admin/seats/${seatId}`,
   },
 } as const;
 

@@ -9,7 +9,9 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   UserPlus,
+  UserX,
   Search,
+  SearchX,
   Eye,
   Edit2,
   Trash2,
@@ -44,6 +46,7 @@ import {
   useUpdateManager,
   useDisableManager,
   useUpdateManagerPermissions,
+  useManagerPermissions,
   useAttractions,
   type AttractionItem,
 } from "@/hooks/useManagerQueries";
@@ -51,10 +54,9 @@ import { useSystemModules, SystemModule } from "@/hooks/useSystemModuleQueries";
 
 // Sub-modules available inside each attraction
 const SUB_MODULES = [
-  "Counter Assignment",
   "Customer Management",
   "Complimentary Passes",
-  "User Management",
+  "Seat Management",
   "CCTV Monitoring",
 ];
 
@@ -69,8 +71,51 @@ function SystemModulePermissionTree({
   isLoading?: boolean;
   onChange: (modules: string[]) => void;
 }) {
+  const isExcludedModule = (mod: SystemModule) => {
+    const name = (mod.name || "").toLowerCase().trim();
+    const key = (mod.key || "").toLowerCase().replace(/[\s_-]/g, "");
+    return (
+      name === "ticket booking" ||
+      name === "scanner" ||
+      name === "manager management" ||
+      name === "attraction management" ||
+      name === "customer management" ||
+      name === "customers" ||
+      name === "complimentary passes" ||
+      name === "complimentary pass" ||
+      name === "complimentary" ||
+      name === "cctv monitoring" ||
+      name === "cctv" ||
+      name === "seat management" ||
+      name === "seats" ||
+      name === "counter assignment" ||
+      name === "user management" ||
+      key === "ticketbooking" ||
+      key === "scanner" ||
+      key === "managermanagement" ||
+      key === "attractionmanagement" ||
+      key === "customermanagement" ||
+      key === "customers" ||
+      key === "customer" ||
+      key === "complimentarypasses" ||
+      key === "complimentarypass" ||
+      key === "complimentary" ||
+      key === "cctvmonitoring" ||
+      key === "cctv" ||
+      key === "seatmanagement" ||
+      key === "seats" ||
+      key === "seat" ||
+      key === "counterassignment" ||
+      key === "usermanagement" ||
+      key === "managers" ||
+      key === "attractions"
+    );
+  };
+
   const activeModules = modules.filter(
-    (m) => String(m.isActive).toUpperCase() === "ACTIVE" || (m.isActive as unknown) === true
+    (m) =>
+      (String(m.isActive).toUpperCase() === "ACTIVE" || (m.isActive as unknown) === true) &&
+      !isExcludedModule(m)
   );
 
   const allSelected =
@@ -263,7 +308,7 @@ function getAttractionFromPermissions(
   return names.length > 0 ? names.join(", ") : "General Access";
 }
 
-//Attraction Permission Tree
+// Attraction Permission Tree
 function AttractionPermissionTree({
   enabled,
   permissions,
@@ -612,12 +657,17 @@ function ManagerManagementInner() {
   const { data: attractionsData } = useAttractions();
   const attractionsList: AttractionItem[] = attractionsData || [];
 
+  const { data: managerPermissionsData } = useManagerPermissions(
+    selectedManager?.id || "",
+    Boolean(selectedManager?.id)
+  );
+
   const createManagerMutation = useCreateManager();
   const updateManagerMutation = useUpdateManager();
   const updateManagerPermissionsMutation = useUpdateManagerPermissions();
   const disableManagerMutation = useDisableManager();
 
-  // Sync API managers when loaded — map directly from backend schema
+  // Sync API managers when loaded — strictly use backend data only
   useEffect(() => {
     if (apiManagerData?.managers) {
       const mapped: ManagerUser[] = apiManagerData.managers.map((m) => ({
@@ -638,8 +688,34 @@ function ManagerManagementInner() {
         attractionPermissions: [],
       }));
       setManagers(mapped);
+    } else {
+      setManagers([]);
     }
   }, [apiManagerData]);
+
+  // Sync permissions when single manager details are loaded
+  useEffect(() => {
+    if (managerPermissionsData && selectedManager) {
+      const sysMods = (managerPermissionsData.systemModules || []).map((sm) => sm.id);
+      const attrPerms: AttractionPermission[] = (managerPermissionsData.attractions || []).map((attr) => ({
+        attractionId: attr.id,
+        modules: (attr.modules || []).map((m) => m.name || m.id),
+      }));
+      const computedAttraction = getAttractionFromPermissions(attrPerms, attractionsList);
+
+      setSelectedManager((prev) =>
+        prev && prev.id === selectedManager.id
+          ? {
+              ...prev,
+              allowedModules: sysMods,
+              attractionManagementEnabled: attrPerms.length > 0,
+              attractionPermissions: attrPerms,
+              attraction: computedAttraction,
+            }
+          : prev
+      );
+    }
+  }, [managerPermissionsData, attractionsList]);
 
   // react-hook-form
   const {
@@ -658,7 +734,7 @@ function ManagerManagementInner() {
       password: "",
       attraction: "",
       status: "Active",
-      allowedModules: ["Bookings", "Transactions", "Invoices", "Inventory / Capacity", "Reports", "Staff Management"] as string[],
+      allowedModules: [] as string[],
       attractionManagementEnabled: false,
       attractionPermissions: [] as AttractionPermission[],
     },
@@ -667,7 +743,7 @@ function ManagerManagementInner() {
   const watchedStatus = useWatch({ control, name: "status", defaultValue: "Active" });
   const watchedEnabled = useWatch({ control, name: "attractionManagementEnabled", defaultValue: false });
   const watchedPermissions = useWatch({ control, name: "attractionPermissions", defaultValue: [] });
-  const watchedAllowedModules = useWatch({ control, name: "allowedModules", defaultValue: ["Bookings", "Transactions", "Invoices", "Inventory / Capacity", "Reports", "Staff Management"] });
+  const watchedAllowedModules = useWatch({ control, name: "allowedModules", defaultValue: [] });
 
   // Filter 
   const filteredManagers = managers.filter((m) => {
@@ -688,51 +764,61 @@ function ManagerManagementInner() {
     return statusMatches && searchMatches;
   });
 
-  // Add
+  const isFiltered =
+    searchQuery.trim() !== "" ||
+    selectedAttractionFilter !== "All" ||
+    selectedStatusFilter !== "All";
+
+  const handleResetFilters = () => {
+    setSearchQuery("");
+    setSelectedAttractionFilter("All");
+    setSelectedStatusFilter("All");
+  };
+
+  // Add Manager — sends exact backend payload format with module UUIDs
+  const resolveModuleId = (modItem: string): string => {
+    const found = systemModules.find(
+      (sm) =>
+        sm.id === modItem ||
+        sm.name.toLowerCase() === modItem.toLowerCase() ||
+        sm.key.toLowerCase() === modItem.toLowerCase()
+    );
+    return found ? found.id : modItem;
+  };
+
+  const isRemovedSubModule = (modItem: string): boolean => {
+    const lower = String(modItem).toLowerCase().trim().replace(/[\s_-]/g, "");
+    return lower === "counterassignment" || lower === "usermanagement";
+  };
+
   const onAddSubmit = async (data: AddManagerFormData) => {
-    setIsAddModalOpen(false);
     const confirmed = await confirmAdd(`manager "${data.name}"`);
-    if (!confirmed) { setIsAddModalOpen(true); return; }
+    if (!confirmed) return;
 
-    const computedAttraction = getAttractionFromPermissions(data.attractionPermissions || [], attractionsList);
-
-    const created: ManagerUser = {
-      id: `MGR-${Date.now().toString().slice(-6)}`,
-      name: data.name,
-      phone: data.phone,
-      email: data.email,
-      role: "MANAGER",
-      status: data.status === "Active" ? "ACTIVE" : "DISABLED",
-      createdAt: new Date().toISOString(),
-      lastLoginAt: null,
-      attraction: computedAttraction,
-      totalBookings: 0,
-      revenueGenerated: 0,
-      allowedModules: data.allowedModules || [],
-      attractionManagementEnabled: data.attractionManagementEnabled,
-      attractionPermissions: data.attractionManagementEnabled ? data.attractionPermissions : [],
-    };
-
-    // Try API mutation via TanStack Query
     try {
       await createManagerMutation.mutateAsync({
-        name: data.name,
-        email: data.email,
-        phone: data.phone,
+        name: data.name.trim(),
+        email: data.email.trim().toLowerCase(),
+        phone: data.phone ? data.phone.trim() : undefined,
         password: data.password,
         status: data.status === "Active" ? "ACTIVE" : "DISABLED",
-        systemModuleIds: data.allowedModules,
-        attractionPermissions: data.attractionPermissions?.map((p) => ({
-          attractionId: p.attractionId,
-          moduleIds: p.modules,
-        })),
+        systemModuleIds: data.allowedModules || [],
+        attractionPermissions: data.attractionManagementEnabled
+          ? (data.attractionPermissions || []).map((p) => ({
+              attractionId: p.attractionId,
+              moduleIds: (p.modules || [])
+                .filter((m) => !isRemovedSubModule(m))
+                .map(resolveModuleId)
+                .filter(Boolean),
+            }))
+          : [],
       });
+
+      setIsAddModalOpen(false);
+      reset();
     } catch {
       // Handled via TanStack Query onError and notify
     }
-
-    setManagers((prev) => [created, ...prev]);
-    reset();
   };
 
   // Edit
@@ -759,7 +845,10 @@ function ManagerManagementInner() {
           systemModuleIds: selectedManager.allowedModules || [],
           attractionPermissions: (selectedManager.attractionPermissions || []).map((p) => ({
             attractionId: p.attractionId,
-            moduleIds: p.modules,
+            moduleIds: (p.modules || [])
+              .filter((m) => !isRemovedSubModule(m))
+              .map(resolveModuleId)
+              .filter(Boolean),
           })),
         },
       });
@@ -1199,12 +1288,34 @@ function ManagerManagementInner() {
                           <span style={{ fontSize: "11px", color: colors.brand.primary, fontWeight: 600 }}>{attraction.category}</span>
                         </div>
                         <div style={{ padding: "10px 14px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                          {perm.modules.length > 0 ? perm.modules.map((mod) => (
-                            <span key={mod} style={{ background: "rgba(35,114,165,0.08)", color: colors.brand.accent, border: `1px solid rgba(35,114,165,0.2)`, borderRadius: "6px", padding: "4px 10px", fontSize: "12px", fontWeight: 600, fontFamily: typography.fontFamily.sans }}>
-                              {mod}
+                          {perm.modules.length > 0 ? (
+                            perm.modules.map((modId) => {
+                              const modObj = systemModules.find(
+                                (sm) => sm.id === modId || sm.name === modId
+                              );
+                              const displayName = modObj ? modObj.name : modId;
+                              return (
+                                <span
+                                  key={modId}
+                                  style={{
+                                    background: "rgba(35,114,165,0.08)",
+                                    color: colors.brand.accent,
+                                    border: `1px solid rgba(35,114,165,0.2)`,
+                                    borderRadius: "6px",
+                                    padding: "4px 10px",
+                                    fontSize: "12px",
+                                    fontWeight: 600,
+                                    fontFamily: typography.fontFamily.sans,
+                                  }}
+                                >
+                                  {displayName}
+                                </span>
+                              );
+                            })
+                          ) : (
+                            <span style={{ fontSize: "12px", color: colors.text.muted, fontFamily: typography.fontFamily.sans }}>
+                              No sub-modules assigned for this attraction
                             </span>
-                          )) : (
-                            <span style={{ fontSize: "12px", color: colors.text.muted, fontFamily: typography.fontFamily.sans }}>No sub-modules assigned for this attraction</span>
                           )}
                         </div>
                       </div>
@@ -1270,7 +1381,74 @@ function ManagerManagementInner() {
         </div>
       </div>
 
-      <DataTable columns={columns} data={filteredManagers} keyExtractor={(m) => m.id} pageSize={5} emptyMessage="No manager records found matching your search." />
+      <DataTable
+        columns={columns}
+        data={filteredManagers}
+        keyExtractor={(m) => m.id}
+        pageSize={5}
+        isLoading={isFetchingManagers}
+        emptyIcon={
+          isFiltered ? (
+            <SearchX size={26} color={colors.brand.accent} />
+          ) : (
+            <UserX size={26} color={colors.brand.accent} />
+          )
+        }
+        emptyTitle={
+          isFiltered ? "No Matching Managers Found" : "No Managers Found"
+        }
+        emptyDescription={
+          isFiltered
+            ? searchQuery.trim()
+              ? `No manager records found matching "${searchQuery}". Try adjusting your keywords or clearing your filters.`
+              : "No manager records match the selected filter criteria. Try adjusting or clearing your filters."
+            : "There are currently no manager records in the system. Click 'Add Manager' to register your first manager."
+        }
+        emptyAction={
+          isFiltered ? (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              style={{
+                padding: "8px 16px",
+                borderRadius: "8px",
+                border: `1px solid ${colors.header.border}`,
+                background: "#FFFFFF",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: colors.brand.accent,
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              }}
+            >
+              Clear Filters & Search
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(true)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 18px",
+                borderRadius: "8px",
+                background: colors.brand.primary,
+                color: colors.sidebar.activeText,
+                border: "none",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 3px 8px rgba(244,188,67,0.3)",
+              }}
+            >
+              <UserPlus size={15} />
+              <span>Add Manager</span>
+            </button>
+          )
+        }
+      />
 
       {/* Add Modal */}
       {isAddModalOpen && (

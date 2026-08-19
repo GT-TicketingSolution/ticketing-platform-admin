@@ -23,9 +23,6 @@ export const META_CONSTANTS = {
   staffManagement: {
     fullTitle: "Staff Management | Ticketing Platform",
   },
-  userManagement: {
-    fullTitle: "User Management | Ticketing Platform",
-  },
   seatManagement: {
     fullTitle: "Seat Management | Ticketing Platform",
   },

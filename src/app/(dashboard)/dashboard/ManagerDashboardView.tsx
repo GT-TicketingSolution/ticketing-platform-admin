@@ -12,10 +12,10 @@ import {
   XCircle,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
-import { INITIAL_STAFF, StaffUser } from "@/types/admin";
+import { StaffUser } from "@/types/admin";
 
 export default function ManagerDashboardView() {
-  const [staff] = useState<StaffUser[]>(INITIAL_STAFF);
+  const [staff] = useState<StaffUser[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredStaff = useMemo(() => {
@@ -23,14 +23,14 @@ export default function ManagerDashboardView() {
       (s) =>
         searchQuery === "" ||
         s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.role.some((r) => r.toLowerCase().includes(searchQuery.toLowerCase()))
+        (Array.isArray(s.role) ? s.role : [String(s.role)]).some((r) => r.toLowerCase().includes(searchQuery.toLowerCase()))
     );
   }, [staff, searchQuery]);
 
   const totalStaff = filteredStaff.length;
-  const activeStaff = filteredStaff.filter((s) => s.status === "Active").length;
+  const activeStaff = filteredStaff.filter((s) => String(s.status).toUpperCase() === "ACTIVE").length;
   const totalTicketsProcessed = useMemo(
-    () => filteredStaff.reduce((sum, s) => sum + s.ticketsIssued, 0),
+    () => filteredStaff.reduce((sum, s) => sum + (s.ticketsIssued ?? 0), 0),
     [filteredStaff]
   );
 
@@ -208,14 +208,14 @@ export default function ManagerDashboardView() {
                   <td style={{ padding: "14px 20px", fontWeight: 600 }}>{s.name}</td>
                   <td style={{ padding: "14px 20px" }}>
                     <span style={{ background: colors.bg.page, padding: "4px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, color: colors.brand.accent }}>
-                      {s.role.join(", ")}
+                      {(Array.isArray(s.role) ? s.role : [String(s.role)]).map(String).join(", ")}
                     </span>
                   </td>
-                  <td style={{ padding: "14px 20px", fontWeight: 700 }}>{s.ticketsIssued.toLocaleString()}</td>
+                  <td style={{ padding: "14px 20px", fontWeight: 700 }}>{(typeof s.ticketsIssued === 'number' ? s.ticketsIssued : 0).toLocaleString()}</td>
                   <td style={{ padding: "14px 20px" }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: 600, background: s.status === "Active" ? "#F0FDF4" : "#FEF2F2", color: s.status === "Active" ? colors.status.success : colors.status.error }}>
-                      {s.status === "Active" ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
-                      {s.status}
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: 600, background: String(s.status).toUpperCase() === "ACTIVE" ? "#F0FDF4" : "#FEF2F2", color: String(s.status).toUpperCase() === "ACTIVE" ? colors.status.success : colors.status.error }}>
+                       {String(s.status).toUpperCase() === "ACTIVE" ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                       {String(s.status).toUpperCase() === "ACTIVE" ? "Active" : "Inactive"}
                     </span>
                   </td>
                 </tr>

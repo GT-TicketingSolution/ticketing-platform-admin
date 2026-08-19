@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import {
   UserCheck,
@@ -15,121 +15,121 @@ import {
   ArrowUpRight,
   CheckCircle2,
   XCircle,
+  RefreshCw,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
-import { INITIAL_STAFF, ManagerUser, StaffUser } from "@/types/admin";
 import { exportMultiSectionXLS, XLSSection } from "@/lib/exportUtils";
 import DashboardCharts from "@/components/dashboard/DashboardCharts";
-import { extractUniqueAttractions, matchesAttractionFilter } from "@/lib/filterUtils";
+import { useDashboard } from "@/hooks/useDashboard";
+import { DashboardPeriod } from "./types";
 
 export default function AdminDashboardView() {
-  const [managers] = useState<ManagerUser[]>([]);
-  const [staff] = useState<StaffUser[]>(INITIAL_STAFF);
-
   // Filters State
   const [selectedAttraction, setSelectedAttraction] = useState<string>("All");
-  const [selectedDateRange, setSelectedDateRange] = useState<string>("all");
+  const [selectedDateRange, setSelectedDateRange] = useState<DashboardPeriod>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
 
-  const attractionOptions = useMemo(() => {
-    return ["All", ...extractUniqueAttractions(managers.map((m) => m.attraction ?? "").filter(Boolean))];
-  }, [managers]);
+  // Debounce search query
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
 
-  const filteredManagers = useMemo(() => {
-    return managers.filter((m) => {
-      const matchesLoc = matchesAttractionFilter(m.attraction ?? "", selectedAttraction);
-      const matchesSearch =
-        searchQuery === "" ||
-        m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (m.attraction ?? "").toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesLoc && matchesSearch;
-    });
-  }, [managers, selectedAttraction, searchQuery]);
+  // Fetch live dashboard data from API
+  const {
+    data,
+    isLoading,
+    isFetching,
+    error,
+    refetch,
+  } = useDashboard({
+    period: selectedDateRange,
+    attractionId: selectedAttraction === "All" ? undefined : selectedAttraction,
+    search: debouncedSearch || undefined,
+  });
 
-  const filteredStaff = useMemo(() => {
-    return staff.filter((s) => {
-      const matchesSearch =
-        searchQuery === "" ||
-        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.role.some((r) => r.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchesSearch;
-    });
-  }, [staff, searchQuery]);
+  // Extract data with strict fallbacks
+  const summary = useMemo(() => {
+    return {
+      totalManagers: data?.summary?.totalManagers ?? 0,
+      activeManagers: data?.summary?.activeManagers ?? 0,
+      totalStaff: data?.summary?.totalStaff ?? 0,
+      activeStaff: data?.summary?.activeStaff ?? 0,
+      totalBookings: data?.summary?.totalBookings ?? 0,
+      totalEarnings: data?.summary?.totalEarnings ?? 0,
+    };
+  }, [data?.summary]);
 
-  const totalManagersCount = filteredManagers.length;
-  const totalStaffCount = filteredStaff.length;
-  const totalBookingsCount = useMemo(() => {
-    return filteredManagers.reduce((sum, m) => sum + (m.totalBookings ?? 0), 0);
-  }, [filteredManagers]);
+  const attractionFilters = useMemo(() => {
+    return data?.filters?.attractions ?? [];
+  }, [data?.filters?.attractions]);
 
-  const totalEarnings = useMemo(() => {
-    return filteredManagers.reduce((sum, m) => sum + (m.revenueGenerated ?? 0), 0);
-  }, [filteredManagers]);
+  const performance = useMemo(() => {
+    return data?.performance ?? { revenue: [], bookings: [] };
+  }, [data?.performance]);
+
+  const attractionDistribution = useMemo(() => {
+    return data?.attractionDistribution ?? [];
+  }, [data?.attractionDistribution]);
+
+  const recentManagers = useMemo(() => {
+    return data?.recentManagers?.items ?? [];
+  }, [data?.recentManagers?.items]);
+
+  const totalRecentManagers = data?.recentManagers?.total ?? recentManagers.length;
 
   const handleExportXLS = () => {
+    const selectedAttractionLabel =
+      selectedAttraction === "All"
+        ? "All Attractions"
+        : attractionFilters.find((a) => a.id === selectedAttraction)?.name || selectedAttraction;
+
     const sections: XLSSection[] = [
       {
         title: "1. ADMIN DASHBOARD METRICS SUMMARY",
         headers: ["Metric Label", "Value"],
         rows: [
-          ["Total Active Managers", totalManagersCount],
-          ["Total Active Staff", totalStaffCount],
-          ["Total Bookings Processed", totalBookingsCount],
-          ["Total Revenue Earnings", `₹${totalEarnings.toLocaleString("en-IN")}`],
-          ["Selected Attraction Filter", selectedAttraction],
+          ["Total Managers", summary.totalManagers],
+          ["Active Managers", summary.activeManagers],
+          ["Total Staff", summary.totalStaff],
+          ["Active Staff", summary.activeStaff],
+          ["Total Bookings Processed", summary.totalBookings],
+          ["Total Revenue Earnings", `₹${summary.totalEarnings.toLocaleString("en-IN")}`],
+          ["Selected Period", selectedDateRange],
+          ["Selected Attraction", selectedAttractionLabel],
           ["Active Search Query", searchQuery || "None"],
           ["Export Generated At", new Date().toLocaleString()],
         ],
       },
       {
-        title: "2. MANAGERS DIRECTORY",
+        title: "2. RECENT MANAGERS OVERVIEW",
         headers: [
           "Manager ID",
           "Manager Name",
-          "Phone",
+          "Mobile",
           "Email",
           "Assigned Attraction",
           "Joined Date",
           "Total Bookings",
-          "Revenue Generated",
           "Status",
         ],
-        rows: filteredManagers.map((m) => [
-          m.id,
-          m.name,
-          m.phone ?? "—",
-          m.email,
-          m.attraction ?? "—",
-          m.createdAt ? new Date(m.createdAt).toLocaleDateString() : "—",
+        rows: recentManagers.map((m) => [
+          m.id || "—",
+          m.name || "—",
+          m.mobile || "—",
+          m.email || "—",
+          m.attraction?.name || "—",
+          m.joinedDate ? new Date(m.joinedDate).toLocaleDateString("en-IN") : "—",
           m.totalBookings ?? 0,
-          `₹${(m.revenueGenerated ?? 0).toLocaleString("en-IN")}`,
-          m.status,
-        ]),
-      },
-      {
-        title: "3. STAFF DIRECTORY",
-        headers: [
-          "Staff ID",
-          "Staff Name",
-          "Role",
-          "Joined Date",
-          "Tickets Processed",
-          "Status",
-        ],
-        rows: filteredStaff.map((s) => [
-          s.id,
-          s.name,
-          s.role.join(", "),
-          s.joinedDate,
-          s.ticketsIssued,
-          s.status,
+          m.status || "—",
         ]),
       },
     ];
 
-    exportMultiSectionXLS(`Admin_Dashboard_Report_${selectedAttraction}`, sections);
+    exportMultiSectionXLS(`Admin_Dashboard_Report_${selectedDateRange}`, sections);
   };
 
   return (
@@ -140,33 +140,115 @@ export default function AdminDashboardView() {
           display: "flex",
           flexWrap: "wrap",
           alignItems: "center",
-          justifyContent: "flex-end",
+          justifyContent: "space-between",
           gap: "16px",
         }}
       >
-        <button
-          onClick={handleExportXLS}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {isFetching && !isLoading && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                color: colors.brand.accent,
+                background: "#EFF6FF",
+                padding: "4px 10px",
+                borderRadius: "6px",
+                fontWeight: 600,
+              }}
+            >
+              <RefreshCw size={12} className="animate-spin" /> Refreshing...
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            title="Refresh dashboard"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              background: "#FFFFFF",
+              color: colors.text.primary,
+              border: `1px solid ${colors.header.border}`,
+              borderRadius: "8px",
+              padding: "10px 14px",
+              fontFamily: typography.fontFamily.sans,
+              fontWeight: 600,
+              fontSize: "13px",
+              cursor: "pointer",
+              transition: "all 0.18s ease",
+            }}
+          >
+            <RefreshCw size={15} />
+            <span>Reload</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportXLS}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              background: "#107C41",
+              color: "#FFFFFF",
+              border: "none",
+              borderRadius: "8px",
+              padding: "10px 18px",
+              fontFamily: typography.fontFamily.sans,
+              fontWeight: typography.fontWeight.semibold,
+              fontSize: "14px",
+              cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(16, 124, 65, 0.25)",
+              transition: "all 0.18s ease",
+            }}
+          >
+            <FileSpreadsheet size={18} />
+            <span>Export as XLS</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Error Banner */}
+      {error && (
+        <div
           style={{
+            background: "#FEF2F2",
+            border: "1px solid #FCA5A5",
+            borderRadius: "10px",
+            padding: "12px 18px",
+            color: "#B91C1C",
+            fontSize: "13px",
             display: "flex",
             alignItems: "center",
-            gap: "8px",
-            background: "#107C41",
-            color: "#FFFFFF",
-            border: "none",
-            borderRadius: "8px",
-            padding: "10px 18px",
-            fontFamily: typography.fontFamily.sans,
-            fontWeight: typography.fontWeight.semibold,
-            fontSize: "14px",
-            cursor: "pointer",
-            boxShadow: "0 4px 12px rgba(16, 124, 65, 0.25)",
-            transition: "all 0.18s ease",
+            justifyContent: "space-between",
           }}
         >
-          <FileSpreadsheet size={18} />
-          <span>Export as XLS</span>
-        </button>
-      </div>
+          <span>Unable to fetch dashboard data. Showing latest available statistics.</span>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            style={{
+              background: "#B91C1C",
+              color: "#FFFFFF",
+              border: "none",
+              borderRadius: "6px",
+              padding: "4px 10px",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Filters Bar */}
       <div
@@ -196,11 +278,12 @@ export default function AdminDashboardView() {
           </span>
         </div>
 
+        {/* Period Filter */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <Calendar size={16} color={colors.text.muted} />
           <select
             value={selectedDateRange}
-            onChange={(e) => setSelectedDateRange(e.target.value)}
+            onChange={(e) => setSelectedDateRange(e.target.value as DashboardPeriod)}
             style={{
               height: "38px",
               borderRadius: "8px",
@@ -219,9 +302,11 @@ export default function AdminDashboardView() {
             <option value="week">This Week</option>
             <option value="month">This Month</option>
             <option value="year">This Year</option>
+            <option value="custom">Custom</option>
           </select>
         </div>
 
+        {/* Attraction Filter (API Driven) */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <Building2 size={16} color={colors.text.muted} />
           <select
@@ -238,16 +323,19 @@ export default function AdminDashboardView() {
               outline: "none",
               cursor: "pointer",
               background: "#FFFFFF",
+              maxWidth: "240px",
             }}
           >
-            {attractionOptions.map((loc) => (
-              <option key={loc} value={loc}>
-                {loc === "All" ? "All Attractions" : loc}
+            <option value="All">All Attractions</option>
+            {attractionFilters.map((attr) => (
+              <option key={attr.id} value={attr.id}>
+                {attr.name}
               </option>
             ))}
           </select>
         </div>
 
+        {/* Search Input */}
         <div
           style={{
             display: "flex",
@@ -265,7 +353,7 @@ export default function AdminDashboardView() {
           <Search size={16} color={colors.text.muted} />
           <input
             type="text"
-            placeholder="Search by manager, staff, or attractions"
+            placeholder="Search by manager name or details..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
@@ -280,6 +368,7 @@ export default function AdminDashboardView() {
           />
           {searchQuery && (
             <button
+              type="button"
               onClick={() => setSearchQuery("")}
               style={{
                 background: "none",
@@ -303,6 +392,7 @@ export default function AdminDashboardView() {
           gap: "18px",
         }}
       >
+        {/* Total Managers */}
         <Link
           href="/manager-management?status=Active"
           prefetch={true}
@@ -331,7 +421,7 @@ export default function AdminDashboardView() {
                 display: "block",
               }}
             >
-              Total Number of Manager
+              Total Number of Managers
             </span>
             <span
               style={{
@@ -343,7 +433,7 @@ export default function AdminDashboardView() {
                 display: "block",
               }}
             >
-              {totalManagersCount}
+              {summary.totalManagers}
             </span>
             <span
               style={{
@@ -355,7 +445,7 @@ export default function AdminDashboardView() {
                 gap: "3px",
               }}
             >
-              <UserCheck size={14} /> {filteredManagers.filter((m) => m.status === "Active").length} Active Managers &bull; View Active &rarr;
+              <UserCheck size={14} /> {summary.activeManagers} Active Managers &bull; View &rarr;
             </span>
           </div>
 
@@ -374,6 +464,7 @@ export default function AdminDashboardView() {
           </div>
         </Link>
 
+        {/* Total Staff */}
         <Link
           href="/staff-management?status=Active"
           prefetch={true}
@@ -414,7 +505,7 @@ export default function AdminDashboardView() {
                 display: "block",
               }}
             >
-              {totalStaffCount}
+              {summary.totalStaff}
             </span>
             <span
               style={{
@@ -426,7 +517,7 @@ export default function AdminDashboardView() {
                 gap: "4px",
               }}
             >
-              <UserCog size={14} /> {filteredStaff.filter((s) => s.status === "Active").length} Active Staff &bull; View Active &rarr;
+              <UserCog size={14} /> {summary.activeStaff} Active Staff &bull; View &rarr;
             </span>
           </div>
 
@@ -445,6 +536,7 @@ export default function AdminDashboardView() {
           </div>
         </Link>
 
+        {/* Total Bookings */}
         <Link
           href="/bookings"
           prefetch={true}
@@ -485,7 +577,7 @@ export default function AdminDashboardView() {
                 display: "block",
               }}
             >
-              {totalBookingsCount.toLocaleString("en-IN")}
+              {summary.totalBookings.toLocaleString("en-IN")}
             </span>
             <span
               style={{
@@ -497,7 +589,7 @@ export default function AdminDashboardView() {
                 gap: "4px",
               }}
             >
-              <BookOpen size={14} /> All Attractions &bull; View &rarr;
+              <BookOpen size={14} /> Bookings &bull; View &rarr;
             </span>
           </div>
 
@@ -516,6 +608,7 @@ export default function AdminDashboardView() {
           </div>
         </Link>
 
+        {/* Total Earnings */}
         <div
           style={{
             background: colors.sidebar.bg,
@@ -550,7 +643,7 @@ export default function AdminDashboardView() {
                 display: "block",
               }}
             >
-              ₹{totalEarnings.toLocaleString("en-IN")}
+              ₹{summary.totalEarnings.toLocaleString("en-IN")}
             </span>
             <span
               style={{
@@ -582,9 +675,14 @@ export default function AdminDashboardView() {
         </div>
       </div>
 
-      <DashboardCharts />
+      {/* Performance & Distribution Charts */}
+      <DashboardCharts
+        performance={performance}
+        attractionDistribution={attractionDistribution}
+        isLoading={isLoading}
+      />
 
-      {/* Managers Table */}
+      {/* Recent Managers Table */}
       <div
         style={{
           background: "#FFFFFF",
@@ -616,7 +714,7 @@ export default function AdminDashboardView() {
               Recent Managers Overview
             </h3>
             <span style={{ fontSize: "13px", color: colors.text.muted }}>
-              Showing recent 5 of {filteredManagers.length} managers &bull; Filtered Attraction: <strong>{selectedAttraction}</strong>
+              Showing {recentManagers.length} of {totalRecentManagers} managers
             </span>
           </div>
 
@@ -673,7 +771,20 @@ export default function AdminDashboardView() {
               </tr>
             </thead>
             <tbody>
-              {filteredManagers.length === 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td
+                    colSpan={6}
+                    style={{
+                      padding: "32px",
+                      textAlign: "center",
+                      color: colors.text.muted,
+                    }}
+                  >
+                    Loading managers...
+                  </td>
+                </tr>
+              ) : recentManagers.length === 0 ? (
                 <tr>
                   <td
                     colSpan={6}
@@ -687,10 +798,18 @@ export default function AdminDashboardView() {
                   </td>
                 </tr>
               ) : (
-                [...filteredManagers]
-                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                  .slice(0, 5)
-                  .map((mgr) => (
+                recentManagers.map((mgr) => {
+                  const isStatusActive = mgr.status === "ACTIVE" || mgr.status === ("Active" as unknown);
+                  const attractionName = mgr.attraction?.name || "—";
+                  const joinedDateFormatted = mgr.joinedDate
+                    ? new Date(mgr.joinedDate).toLocaleDateString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : "—";
+
+                  return (
                     <tr
                       key={mgr.id}
                       style={{
@@ -700,12 +819,12 @@ export default function AdminDashboardView() {
                       className="table-row-hover"
                     >
                       <td style={{ padding: "14px 20px", fontWeight: 600 }}>
-                        {mgr.name}
+                        {mgr.name || "—"}
                       </td>
                       <td style={{ padding: "14px 20px" }}>
-                        <div>{mgr.email}</div>
+                        <div>{mgr.email || "—"}</div>
                         <div style={{ fontSize: "12px", color: colors.text.muted }}>
-                          {mgr.phone}
+                          {mgr.mobile || "—"}
                         </div>
                       </td>
                       <td style={{ padding: "14px 20px" }}>
@@ -719,11 +838,11 @@ export default function AdminDashboardView() {
                             color: colors.brand.accent,
                           }}
                         >
-                          {mgr.attraction}
+                          {attractionName}
                         </span>
                       </td>
                       <td style={{ padding: "14px 20px", color: colors.text.muted }}>
-                        {mgr.createdAt ? new Date(mgr.createdAt).toLocaleDateString() : "—"}
+                        {joinedDateFormatted}
                       </td>
                       <td
                         style={{
@@ -744,20 +863,21 @@ export default function AdminDashboardView() {
                             borderRadius: "20px",
                             fontSize: "12px",
                             fontWeight: 600,
-                            background: mgr.status === "Active" ? "#F0FDF4" : "#FEF2F2",
-                            color: mgr.status === "Active" ? colors.status.success : colors.status.error,
+                            background: isStatusActive ? "#F0FDF4" : "#FEF2F2",
+                            color: isStatusActive ? colors.status.success : colors.status.error,
                           }}
                         >
-                          {mgr.status === "Active" ? (
+                          {isStatusActive ? (
                             <CheckCircle2 size={13} />
                           ) : (
                             <XCircle size={13} />
                           )}
-                          {mgr.status}
+                          {mgr.status || "—"}
                         </span>
                       </td>
                     </tr>
-                  ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -780,3 +900,4 @@ export default function AdminDashboardView() {
     </div>
   );
 }
+
