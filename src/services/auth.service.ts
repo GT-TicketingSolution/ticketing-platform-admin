@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 
-import { users } from "@/db/schema";
+import { users, staffRoles } from "@/db/schema";
 
 import { verifyPassword, hashPassword } from "@/lib/auth/password";
 
@@ -63,6 +63,19 @@ export async function login(input: LoginInput) {
     throw new AuthError("INVALID_CREDENTIALS", "Invalid email or password.");
   }
 
+  let staffRolesList: string[] = [];
+
+  if (user.role === "STAFF") {
+    const staffRoleResult = await db
+      .select({
+        role: staffRoles.role,
+      })
+      .from(staffRoles)
+      .where(eq(staffRoles.staffId, user.id));
+
+    staffRolesList = staffRoleResult.map((item) => item.role);
+  }
+
   const session = await createSession(user.id);
 
   await db
@@ -80,6 +93,7 @@ export async function login(input: LoginInput) {
       name: user.name,
       email: user.email,
       role: user.role,
+      staffRoles: staffRolesList,
       status: user.status,
     },
 
@@ -119,6 +133,7 @@ export async function createUser(input: {
       name: users.name,
       email: users.email,
       role: users.role,
+
       status: users.status,
     });
 

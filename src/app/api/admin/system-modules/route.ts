@@ -86,7 +86,7 @@ export async function GET(request: Request) {
             eq(systemModules.isActive, "ACTIVE"),
           ),
         )
-        .orderBy(systemModules.name);
+        .orderBy(systemModules.sortOrder);
 
       return success(modules);
     }
@@ -123,7 +123,7 @@ export async function GET(request: Request) {
             eq(systemModules.isActive, "ACTIVE"),
           ),
         )
-        .orderBy(systemModules.name);
+        .orderBy(systemModules.sortOrder);
 
       return success(modules);
     }
