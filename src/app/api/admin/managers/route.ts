@@ -82,6 +82,8 @@ export async function POST(request: Request) {
     const parsed = createManagerSchema.safeParse(body);
 
     if (!parsed.success) {
+      console.error("CREATE MANAGER VALIDATION ERROR:", parsed.error.flatten());
+
       return failure("Invalid manager details.", 400, "VALIDATION_ERROR");
     }
 
@@ -107,36 +109,8 @@ export async function POST(request: Request) {
         return failure("Email already exists.", 409, "EMAIL_ALREADY_EXISTS");
       }
 
-      if (error.message === "INVALID_SYSTEM_MODULE") {
-        return failure(
-          "One or more system modules are invalid.",
-          400,
-          "INVALID_SYSTEM_MODULE",
-        );
-      }
-
-      if (error.message === "INVALID_ATTRACTION") {
-        return failure(
-          "One or more attractions are invalid.",
-          400,
-          "INVALID_ATTRACTION",
-        );
-      }
-
-      if (error.message === "INVALID_ATTRACTION_MODULE") {
-        return failure(
-          "One or more attraction modules are invalid.",
-          400,
-          "INVALID_ATTRACTION_MODULE",
-        );
-      }
-
-      if (error.message === "ATTRACTION_MODULE_MISMATCH") {
-        return failure(
-          "Attraction module does not belong to the selected attraction.",
-          400,
-          "ATTRACTION_MODULE_MISMATCH",
-        );
+      if (error.message === "MANAGER_NOT_FOUND") {
+        return failure("Manager not found.", 404, "MANAGER_NOT_FOUND");
       }
     }
 
