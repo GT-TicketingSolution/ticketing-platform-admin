@@ -543,3 +543,320 @@ export async function POST(request: Request) {
     return failure("Unable to create staff.", 500, "INTERNAL_SERVER_ERROR");
   }
 }
+
+const updateStaffSchema = z.object({
+  name: z.string().min(2).max(150).optional(),
+
+  email: z.string().email().optional(),
+
+  phone: z.string().max(20).optional(),
+
+  password: z.string().min(8).optional(),
+
+  roles: z.array(z.string().min(1)).optional(),
+
+  attractionIds: z.array(z.string().uuid()).optional(),
+
+  status: z.enum(["ACTIVE", "SUSPENDED", "DISABLED"]).optional(),
+});
+
+/* =========================================================
+   PATCH /api/admin/staff/[staffId]
+========================================================= */
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ staffId: string }> },
+) {
+  try {
+    /* -----------------------------------------------------
+       Authentication
+    ----------------------------------------------------- */
+
+    const auth = await requireAuth(request);
+
+    /* -----------------------------------------------------
+       Only ADMIN / MANAGER can edit staff
+    ----------------------------------------------------- */
+
+    if (auth.user.role !== "ADMIN" && auth.user.role !== "MANAGER") {
+      return failure("Admin or manager access required.", 403, "FORBIDDEN");
+    }
+
+    /* -----------------------------------------------------
+       Get staffId
+    ----------------------------------------------------- */
+
+    const { staffId } = await params;
+
+    /* -----------------------------------------------------
+       Determine admin/tenant owner
+    ----------------------------------------------------- */
+
+    const adminId =
+      auth.user.role === "ADMIN" ? auth.user.id : auth.user.adminId;
+
+    if (!adminId) {
+      return failure(
+        "Unable to determine admin ownership.",
+        403,
+        "ADMIN_CONTEXT_NOT_FOUND",
+      );
+    }
+
+    /* -----------------------------------------------------
+       Find staff
+    ----------------------------------------------------- */
+
+    const [existingStaff] = await db
+      .select({
+        id: users.id,
+        email: users.email,
+      })
+      .from(users)
+      .where(
+        and(
+          eq(users.id, staffId),
+          eq(users.role, "STAFF"),
+          eq(users.adminId, adminId),
+        ),
+      )
+      .limit(1);
+
+    if (!existingStaff) {
+      return failure("Staff member not found.", 404, "STAFF_NOT_FOUND");
+    }
+
+    /* -----------------------------------------------------
+       Validate body
+    ----------------------------------------------------- */
+
+    const body = await request.json();
+
+    const parsed = updateStaffSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return failure("Invalid staff details.", 400, "VALIDATION_ERROR");
+    }
+
+    const { name, email, phone, password, roles, attractionIds, status } =
+      parsed.data;
+
+    /* -----------------------------------------------------
+       Check duplicate email
+    ----------------------------------------------------- */
+
+    if (email) {
+      const normalizedEmail = email.trim().toLowerCase();
+
+      const [emailUser] = await db
+        .select({
+          id: users.id,
+        })
+        .from(users)
+        .where(eq(users.email, normalizedEmail))
+        .limit(1);
+
+      if (emailUser && emailUser.id !== staffId) {
+        return failure("Email already exists.", 409, "EMAIL_ALREADY_EXISTS");
+      }
+    }
+
+    /* -----------------------------------------------------
+       Validate attractions
+    ----------------------------------------------------- */
+
+    if (attractionIds) {
+      if (attractionIds.length > 0) {
+        const validAttractions = await db
+          .select({
+            id: attractions.id,
+          })
+          .from(attractions)
+          .where(
+            and(
+              inArray(attractions.id, attractionIds),
+              eq(attractions.adminId, adminId),
+            ),
+          );
+
+        const validIds = new Set(validAttractions.map((item) => item.id));
+
+        const invalidIds = attractionIds.filter((id) => !validIds.has(id));
+
+        if (invalidIds.length > 0) {
+          return failure(
+            "One or more attractions are invalid or do not belong to this admin.",
+            400,
+            "INVALID_ATTRACTION",
+          );
+        }
+      }
+    }
+
+    /* -----------------------------------------------------
+       Prepare staff update
+    ----------------------------------------------------- */
+
+    const updateData: {
+      name?: string;
+      email?: string;
+      phone?: string | null;
+      passwordHash?: string;
+      status?: "ACTIVE" | "SUSPENDED" | "DISABLED";
+    } = {};
+
+    if (name !== undefined) {
+      updateData.name = name.trim();
+    }
+
+    if (email !== undefined) {
+      updateData.email = email.trim().toLowerCase();
+    }
+
+    if (phone !== undefined) {
+      updateData.phone = phone.trim() || null;
+    }
+
+    if (status !== undefined) {
+      updateData.status = status;
+    }
+
+    /* -----------------------------------------------------
+       Hash new password
+    ----------------------------------------------------- */
+
+    if (password) {
+      updateData.passwordHash = await hashPassword(password);
+    }
+
+    /* -----------------------------------------------------
+       Update staff
+    ----------------------------------------------------- */
+
+    let updatedStaff = existingStaff;
+
+    if (Object.keys(updateData).length > 0) {
+      const [result] = await db
+        .update(users)
+        .set(updateData)
+        .where(
+          and(
+            eq(users.id, staffId),
+            eq(users.role, "STAFF"),
+            eq(users.adminId, adminId),
+          ),
+        )
+        .returning({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          phone: users.phone,
+          role: users.role,
+          status: users.status,
+          createdAt: users.createdAt,
+        });
+
+      if (!result) {
+        return failure("Unable to update staff.", 500, "STAFF_UPDATE_FAILED");
+      }
+
+      updatedStaff = result;
+    }
+
+    /* -----------------------------------------------------
+       Update roles
+    ----------------------------------------------------- */
+
+    if (roles !== undefined) {
+      await db.delete(staffRoles).where(eq(staffRoles.staffId, staffId));
+
+      if (roles.length > 0) {
+        await db.insert(staffRoles).values(
+          roles.map((role) => ({
+            staffId,
+            role: role.trim(),
+          })),
+        );
+      }
+    }
+
+    /* -----------------------------------------------------
+       Update attraction assignments
+    ----------------------------------------------------- */
+
+    if (attractionIds !== undefined) {
+      await db
+        .delete(staffAttractionAssignments)
+        .where(eq(staffAttractionAssignments.staffId, staffId));
+
+      if (attractionIds.length > 0) {
+        await db.insert(staffAttractionAssignments).values(
+          attractionIds.map((attractionId) => ({
+            staffId,
+            attractionId,
+          })),
+        );
+      }
+    }
+
+    /* -----------------------------------------------------
+       Fetch updated roles
+    ----------------------------------------------------- */
+
+    const updatedRoles = await db
+      .select({
+        id: staffRoles.id,
+        role: staffRoles.role,
+      })
+      .from(staffRoles)
+      .where(eq(staffRoles.staffId, staffId));
+
+    /* -----------------------------------------------------
+       Fetch updated attractions
+    ----------------------------------------------------- */
+
+    const updatedAttractions = await db
+      .select({
+        id: attractions.id,
+        name: attractions.name,
+      })
+      .from(staffAttractionAssignments)
+      .innerJoin(
+        attractions,
+        eq(staffAttractionAssignments.attractionId, attractions.id),
+      )
+      .where(
+        and(
+          eq(staffAttractionAssignments.staffId, staffId),
+          eq(attractions.adminId, adminId),
+        ),
+      );
+
+    /* -----------------------------------------------------
+       Response
+    ----------------------------------------------------- */
+
+    return success({
+      staff: {
+        ...updatedStaff,
+        roles: updatedRoles,
+        attractions: updatedAttractions,
+      },
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+    }
+
+    console.error("Update staff error:", error);
+
+    return failure("Unable to update staff.", 500, "INTERNAL_SERVER_ERROR");
+  }
+}
