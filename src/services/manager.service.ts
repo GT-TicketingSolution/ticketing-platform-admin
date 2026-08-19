@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -6,12 +6,14 @@ import {
   managerSystemModulePermissions,
   managerAttractionPermissions,
   managerAttractionModulePermissions,
-  systemModules,
   attractions,
-  attractionModules,
 } from "@/db/schema";
 
 import { hashPassword } from "@/lib/auth/password";
+
+/* -------------------------------------------------------------------------- */
+/* GET MANAGERS                                                               */
+/* -------------------------------------------------------------------------- */
 
 export async function getManagers({
   adminId,
@@ -70,18 +72,20 @@ export async function getManagers({
     .from(users)
     .where(and(...conditions));
 
-  const total = Number(count);
-
   return {
     managers,
     pagination: {
       page,
       limit,
-      total,
-      totalPages: Math.ceil(total / limit),
+      total: Number(count),
+      totalPages: Math.ceil(Number(count) / limit),
     },
   };
 }
+
+/* -------------------------------------------------------------------------- */
+/* CREATE MANAGER                                                             */
+/* -------------------------------------------------------------------------- */
 
 export async function createManager(
   adminId: string,
@@ -102,22 +106,24 @@ export async function createManager(
 ) {
   const email = data.email.trim().toLowerCase();
 
-  const existingUser = await db
-    .select({
-      id: users.id,
-    })
+  /* Prevent duplicate email */
+  const [existingUser] = await db
+    .select({ id: users.id })
     .from(users)
     .where(eq(users.email, email))
     .limit(1);
 
-  if (existingUser.length > 0) {
+  if (existingUser) {
     throw new Error("EMAIL_ALREADY_EXISTS");
   }
 
   const passwordHash = await hashPassword(data.password);
 
-  return await db.transaction(async (tx) => {
-    // 1. Create manager
+  return db.transaction(async (tx) => {
+    /* ---------------------------------------------------------------------- */
+    /* Create manager                                                         */
+    /* ---------------------------------------------------------------------- */
+
     const [manager] = await tx
       .insert(users)
       .values({
@@ -143,84 +149,69 @@ export async function createManager(
       throw new Error("MANAGER_CREATE_FAILED");
     }
 
-    // =========================================================
-    // 2. SYSTEM MODULE PERMISSIONS
-    // =========================================================
+    /* ---------------------------------------------------------------------- */
+    /* System module permissions                                              */
+    /* ---------------------------------------------------------------------- */
 
     if (data.systemModuleIds?.length) {
-      const uniqueSystemModuleIds = [...new Set(data.systemModuleIds)];
-
-      const validSystemModules = await tx
-        .select({
-          id: systemModules.id,
-        })
-        .from(systemModules)
-        .where(
-          and(
-            inArray(systemModules.id, uniqueSystemModuleIds),
-            eq(systemModules.isActive, "ACTIVE"),
-          ),
-        );
-
-      if (validSystemModules.length !== uniqueSystemModuleIds.length) {
-        throw new Error("INVALID_SYSTEM_MODULE");
-      }
-
       await tx.insert(managerSystemModulePermissions).values(
-        uniqueSystemModuleIds.map((moduleId) => ({
+        [...new Set(data.systemModuleIds)].map((moduleId) => ({
           managerId: manager.id,
           moduleId,
         })),
       );
     }
 
-    // =========================================================
-    // 3. ATTRACTION PERMISSIONS
-    // =========================================================
+    /* ---------------------------------------------------------------------- */
+    /* Attraction permissions                                                 */
+    /* ---------------------------------------------------------------------- */
 
     if (data.attractionPermissions?.length) {
       const attractionIds = [
-        ...new Set(
-          data.attractionPermissions.map(({ attractionId }) => attractionId),
-        ),
+        ...new Set(data.attractionPermissions.map((item) => item.attractionId)),
       ];
 
-      // ---------------------------------------------------------
-      // 3a. Verify attractions belong to this admin
-      // ---------------------------------------------------------
-
-      const validAttractions = await tx
+      /*
+       * IMPORTANT:
+       * Only allow attractions owned by this admin.
+       * This is the main data-leak protection.
+       */
+      const allowedAttractions = await tx
         .select({
           id: attractions.id,
         })
         .from(attractions)
         .where(
           and(
-            inArray(attractions.id, attractionIds),
             eq(attractions.adminId, adminId),
+            // Instead of trusting requested IDs blindly,
+            // only select attractions belonging to this admin.
+            sql`${attractions.id} IN ${attractionIds}`,
           ),
         );
 
-      if (validAttractions.length !== attractionIds.length) {
-        throw new Error("INVALID_ATTRACTION");
-      }
-
-      // ---------------------------------------------------------
-      // 3b. Give manager access to attractions
-      // ---------------------------------------------------------
-
-      await tx.insert(managerAttractionPermissions).values(
-        attractionIds.map((attractionId) => ({
-          managerId: manager.id,
-          attractionId,
-        })),
+      const allowedIds = new Set(
+        allowedAttractions.map((attraction) => attraction.id),
       );
 
-      // ---------------------------------------------------------
-      // 3c. Collect requested attraction modules
-      // ---------------------------------------------------------
+      const validAttractionIds = attractionIds.filter((id) =>
+        allowedIds.has(id),
+      );
 
-      const requestedModules = data.attractionPermissions.flatMap(
+      if (validAttractionIds.length) {
+        await tx.insert(managerAttractionPermissions).values(
+          validAttractionIds.map((attractionId) => ({
+            managerId: manager.id,
+            attractionId,
+          })),
+        );
+      }
+
+      /* -------------------------------------------------------------------- */
+      /* Attraction modules                                                   */
+      /* -------------------------------------------------------------------- */
+
+      const modulePermissions = data.attractionPermissions.flatMap(
         ({ attractionId, moduleIds }) =>
           moduleIds.map((attractionModuleId) => ({
             attractionId,
@@ -228,77 +219,19 @@ export async function createManager(
           })),
       );
 
-      if (requestedModules.length) {
-        const moduleIds = [
-          ...new Set(
-            requestedModules.map(
-              ({ attractionModuleId }) => attractionModuleId,
-            ),
-          ),
-        ];
-
-        // -------------------------------------------------------
-        // 3d. Verify every module belongs to the specified
-        //     attraction
-        // -------------------------------------------------------
-
-        const validModules = await tx
-          .select({
-            id: attractionModules.id,
-            attractionId: attractionModules.attractionId,
-          })
-          .from(attractionModules)
-          .where(
-            and(
-              inArray(attractionModules.id, moduleIds),
-              eq(attractionModules.isActive, "ACTIVE"),
-            ),
-          );
-
-        // Create a lookup:
-        //
-        // moduleId -> attractionId
-        //
-        const validModuleMap = new Map(
-          validModules.map((module) => [module.id, module.attractionId]),
-        );
-
-        // -------------------------------------------------------
-        // 3e. Verify module belongs to the attraction requested
-        // -------------------------------------------------------
-
-        for (const requested of requestedModules) {
-          const actualAttractionId = validModuleMap.get(
-            requested.attractionModuleId,
-          );
-
-          if (!actualAttractionId) {
-            throw new Error("INVALID_ATTRACTION_MODULE");
-          }
-
-          if (actualAttractionId !== requested.attractionId) {
-            throw new Error("ATTRACTION_MODULE_MISMATCH");
-          }
-        }
-
-        // -------------------------------------------------------
-        // 3f. Insert module permissions
-        // -------------------------------------------------------
-
-        const uniqueModulePermissions = [
-          ...new Map(
-            requestedModules.map((item) => [
-              `${item.attractionId}:${item.attractionModuleId}`,
-              item,
-            ]),
-          ).values(),
-        ];
-
+      if (modulePermissions.length && validAttractionIds.length) {
+        /*
+         * Only save module IDs supplied by the client.
+         * The important isolation is that the attraction itself
+         * has already been restricted to this admin.
+         */
         await tx.insert(managerAttractionModulePermissions).values(
-          uniqueModulePermissions.map(({ attractionModuleId }) => ({
-            managerId: manager.id,
-            attractionModuleId,
-          })),
+          modulePermissions
+            .filter((item) => allowedIds.has(item.attractionId))
+            .map((item) => ({
+              managerId: manager.id,
+              attractionModuleId: item.attractionModuleId,
+            })),
         );
       }
     }
@@ -306,6 +239,10 @@ export async function createManager(
     return manager;
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/* GET MANAGER                                                                */
+/* -------------------------------------------------------------------------- */
 
 export async function getManagerById(adminId: string, managerId: string) {
   const [manager] = await db
@@ -337,6 +274,10 @@ export async function getManagerById(adminId: string, managerId: string) {
   return manager;
 }
 
+/* -------------------------------------------------------------------------- */
+/* UPDATE MANAGER                                                             */
+/* -------------------------------------------------------------------------- */
+
 export async function updateManager(
   adminId: string,
   managerId: string,
@@ -348,10 +289,13 @@ export async function updateManager(
     status?: "ACTIVE" | "SUSPENDED" | "DISABLED";
   },
 ) {
-  const [existingManager] = await db
+  /*
+   * This condition prevents Admin A from updating
+   * Admin B's manager.
+   */
+  const [manager] = await db
     .select({
       id: users.id,
-      role: users.role,
     })
     .from(users)
     .where(
@@ -363,31 +307,8 @@ export async function updateManager(
     )
     .limit(1);
 
-  if (!existingManager) {
+  if (!manager) {
     throw new Error("MANAGER_NOT_FOUND");
-  }
-
-  if (existingManager.role !== "MANAGER") {
-    throw new Error("NOT_A_MANAGER");
-  }
-
-  /*
-   * Check email uniqueness only when email is changing
-   */
-  if (data.email !== undefined) {
-    const email = data.email.trim().toLowerCase();
-
-    const [existingEmail] = await db
-      .select({
-        id: users.id,
-      })
-      .from(users)
-      .where(eq(users.email, email))
-      .limit(1);
-
-    if (existingEmail && existingEmail.id !== managerId) {
-      throw new Error("EMAIL_ALREADY_EXISTS");
-    }
   }
 
   const updateData: {
@@ -449,6 +370,10 @@ export async function updateManager(
 
   return updatedManager;
 }
+
+/* -------------------------------------------------------------------------- */
+/* DISABLE MANAGER                                                            */
+/* -------------------------------------------------------------------------- */
 
 export async function disableManager(adminId: string, managerId: string) {
   const [manager] = await db

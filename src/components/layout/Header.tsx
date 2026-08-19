@@ -42,23 +42,67 @@ interface HeaderProps {
 }
 
 const ROUTE_HEADER_MAP: Record<string, { title: string; icon: React.ElementType }> = {
+  "/dashboard": { title: "Dashboard", icon: LayoutDashboard },
+  "/manager-management": { title: "Manager Management", icon: UserCheck },
+  "/staff-management": { title: "Staff Management", icon: UserCog },
   "/seat-management": { title: "Seat Management", icon: Armchair },
   "/attraction-management": { title: "Attraction Management", icon: Landmark },
   "/ticket-booking": { title: "Ticket Booking", icon: Ticket },
   "/bookings": { title: "Bookings", icon: BookOpen },
   "/transactions": { title: "Transactions", icon: CircleDollarSign },
   "/invoices": { title: "Invoices", icon: FileText },
-  "/inventory": { title: "Inventory / Capacity", icon: Boxes },
-  "/cctv-monitoring": { title: "CCTV Monitoring", icon: Cctv },
+  "/inventory": { title: "Inventory & Capacity", icon: Boxes },
   "/customer-management": { title: "Customer Management", icon: UserRound },
   "/complimentary-passes": { title: "Complimentary Passes", icon: ClipboardList },
-  "/reports": { title: "Reports", icon: BarChart2 },
-  "/manager-management": { title: "Manager Management", icon: UserCheck },
-  "/staff-management": { title: "Staff Management", icon: UserCog },
-  "/dashboard": { title: "Dashboard", icon: LayoutDashboard },
+  "/cctv-monitoring": { title: "CCTV Monitoring", icon: Cctv },
+  "/reports": { title: "Reports & Analytics", icon: BarChart2 },
   "/scanner": { title: "Ticket Scanner", icon: ScanLine },
   "/settings": { title: "Settings", icon: Settings },
 };
+
+function getRouteHeaderInfo(pathname: string, propTitle?: string): { title: string; icon: React.ElementType } {
+  if (propTitle && propTitle.trim()) {
+    return { title: propTitle, icon: Landmark };
+  }
+  const clean = (pathname || "").toLowerCase().replace(/\/$/, "");
+
+  if (clean.includes("seat")) return { title: "Seat Management", icon: Armchair };
+  if (clean.includes("attraction")) return { title: "Attraction Management", icon: Landmark };
+  if (clean.includes("ticket") || clean.includes("booking-view")) return { title: "Ticket Booking", icon: Ticket };
+  if (clean.includes("booking")) return { title: "Bookings", icon: BookOpen };
+  if (clean.includes("transaction")) return { title: "Transactions", icon: CircleDollarSign };
+  if (clean.includes("invoice")) return { title: "Invoices", icon: FileText };
+  if (clean.includes("inventory")) return { title: "Inventory & Capacity", icon: Boxes };
+  if (clean.includes("customer")) return { title: "Customer Management", icon: UserRound };
+  if (clean.includes("complimentary") || clean.includes("pass")) return { title: "Complimentary Passes", icon: ClipboardList };
+  if (clean.includes("cctv")) return { title: "CCTV Monitoring", icon: Cctv };
+  if (clean.includes("report")) return { title: "Reports & Analytics", icon: BarChart2 };
+  if (clean.includes("scanner") || clean.includes("scan")) return { title: "Ticket Scanner", icon: ScanLine };
+  if (clean.includes("manager")) return { title: "Manager Management", icon: UserCheck };
+  if (clean.includes("staff")) return { title: "Staff Management", icon: UserCog };
+  if (clean.includes("dashboard")) return { title: "Dashboard", icon: LayoutDashboard };
+  if (clean.includes("setting")) return { title: "Settings", icon: Settings };
+
+  if (ROUTE_HEADER_MAP[clean]) {
+    return ROUTE_HEADER_MAP[clean];
+  }
+  // Auto-format segment name
+  const segment = clean.split("/").filter(Boolean)[0] || "";
+  if (segment) {
+    const formatted = segment
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+    return {
+      title: formatted,
+      icon: LayoutDashboard,
+    };
+  }
+  return {
+    title: "Dashboard",
+    icon: LayoutDashboard,
+  };
+}
 
 export default function Header({
   title: propTitle = "",
@@ -109,13 +153,33 @@ export default function Header({
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Derive dynamic header info based on pathname if title prop is omitted
-  const matchedRoute = ROUTE_HEADER_MAP[pathname] || {
-    title: propTitle || "Attraction Management",
-    icon: Landmark,
-  };
-  const activeTitle = propTitle || matchedRoute.title;
+  // Derive dynamic header info based on pathname and propTitle
+  const matchedRoute = useMemo(() => getRouteHeaderInfo(pathname, propTitle), [pathname, propTitle]);
+  const activeTitle = matchedRoute.title;
   const ActiveIcon = matchedRoute.icon;
+
+  // Sync browser document.title dynamically whenever module changes
+  useEffect(() => {
+    if (typeof window === "undefined" || !activeTitle) return;
+    const fullTitle = `${activeTitle} | Ticketing Platform`;
+    document.title = fullTitle;
+
+    const raf = requestAnimationFrame(() => {
+      document.title = fullTitle;
+    });
+    const t1 = setTimeout(() => {
+      document.title = fullTitle;
+    }, 60);
+    const t2 = setTimeout(() => {
+      document.title = fullTitle;
+    }, 200);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [activeTitle, pathname]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -165,6 +229,7 @@ export default function Header({
 
   return (
     <>
+      <title>{`${activeTitle} | Ticketing Platform`}</title>
       <header
         style={{
           height: `${spacing.headerHeight}px`,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { usePathname } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 import { colors, spacing } from "@/lib/theme";
@@ -13,6 +14,25 @@ import { useProfileQuery, useLogoutMutation } from "@/hooks/useAuthQueries";
 import { SIDEBAR_COLLAPSE_EVENT } from "@/components/ticket-booking/TicketBookingView";
 import { confirmLogout } from "@/lib/notify";
 import { USER_ROLE_EVENT } from "@/hooks/useUserRole";
+
+/** Maps route pathname → browser tab title */
+const PATH_TITLE_MAP: Record<string, string> = {
+  "/dashboard":            "Dashboard | Ticketing Platform",
+  "/manager-management":   "Manager Management | Ticketing Platform",
+  "/staff-management":     "Staff Management | Ticketing Platform",
+  "/seat-management":      "Seat Management | Ticketing Platform",
+  "/attraction-management":"Attraction Management | Ticketing Platform",
+  "/ticket-booking":       "Ticket Booking | Ticketing Platform",
+  "/bookings":             "Bookings | Ticketing Platform",
+  "/transactions":         "Transactions | Ticketing Platform",
+  "/invoices":             "Invoices | Ticketing Platform",
+  "/inventory":            "Inventory & Capacity | Ticketing Platform",
+  "/customer-management":  "Customer Management | Ticketing Platform",
+  "/complimentary-passes": "Complimentary Passes | Ticketing Platform",
+  "/cctv-monitoring":      "CCTV Monitoring | Ticketing Platform",
+  "/reports":              "Reports & Analytics | Ticketing Platform",
+  "/scanner":              "Ticket Scanner | Ticketing Platform",
+};
 
 /** Breakpoint below which we switch to mobile/tablet drawer mode */
 const MOBILE_BREAKPOINT = 1024;
@@ -33,10 +53,64 @@ function toDisplayRole(raw: string | undefined | null): string {
   return "-";
 }
 
+function resolveModuleTitle(pathname: string): string {
+  const clean = (pathname || "").toLowerCase().replace(/\/$/, "");
+
+  if (clean.includes("seat")) return "Seat Management";
+  if (clean.includes("attraction")) return "Attraction Management";
+  if (clean.includes("ticket") || clean.includes("booking-view")) return "Ticket Booking";
+  if (clean.includes("booking")) return "Bookings";
+  if (clean.includes("transaction")) return "Transactions";
+  if (clean.includes("invoice")) return "Invoices";
+  if (clean.includes("inventory")) return "Inventory & Capacity";
+  if (clean.includes("customer")) return "Customer Management";
+  if (clean.includes("complimentary") || clean.includes("pass")) return "Complimentary Passes";
+  if (clean.includes("cctv")) return "CCTV Monitoring";
+  if (clean.includes("report")) return "Reports & Analytics";
+  if (clean.includes("scanner") || clean.includes("scan")) return "Ticket Scanner";
+  if (clean.includes("manager")) return "Manager Management";
+  if (clean.includes("staff")) return "Staff Management";
+  if (clean.includes("dashboard")) return "Dashboard";
+
+  const segment = clean.split("/").filter(Boolean)[0] || "";
+  if (segment) {
+    return segment
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  }
+  return "Dashboard";
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [isMobile, setIsMobile] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  /** Update browser title dynamically based on active sidebar module */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const activeName = resolveModuleTitle(pathname);
+    const fullTitle = `${activeName} | Ticketing Platform`;
+    document.title = fullTitle;
+
+    const raf = requestAnimationFrame(() => {
+      document.title = fullTitle;
+    });
+    const t1 = setTimeout(() => {
+      document.title = fullTitle;
+    }, 60);
+    const t2 = setTimeout(() => {
+      document.title = fullTitle;
+    }, 200);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [pathname]);
 
   /**
    * Eagerly prefetch the authenticated user's profile as soon as the

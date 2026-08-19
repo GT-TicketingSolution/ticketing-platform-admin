@@ -18,6 +18,9 @@ import {
   Banknote,
   X,
   Printer,
+  Calendar,
+  Clock,
+  Users,
 } from "lucide-react";
 import AddNewCustomerModal, { NewCustomer } from "./AddNewCustomerModal";
 
@@ -51,7 +54,7 @@ const SEAT_STORAGE_KEY = "seat_layouts_data";
 
 type SeatStatus = "available" | "selected" | "occupied";
 
-interface BogieState {
+interface SectionState {
   name: string;
   totalSeats: number;
   occupiedSeats: number[];
@@ -558,8 +561,29 @@ function TicketGeneratedModal({
   );
 }
 
-// ── Bogie Seat Allocation Panel ────────────────────────────────────────────────
-function SeatAllocationPanel({ bookingSummary }: { bookingSummary: BookingSummaryItem[] }) {
+// ── Section Seat Allocation Panel ──────────────────────────────────────────────
+interface SeatAllocationPanelProps {
+  bookingSummary: BookingSummaryItem[];
+  selectedSeats: string[];
+  onSelectedSeatsChange: (seats: string[], paxAssignment: Record<string, string>) => void;
+  currentTrip: number;
+  onTripChange: (trip: number) => void;
+  totalTrips: number;
+  timeSlot: string;
+  onTimeSlotChange: (slot: string) => void;
+  slotDate: string;
+}
+
+function SeatAllocationPanel({
+  bookingSummary,
+  selectedSeats,
+  onSelectedSeatsChange,
+  currentTrip,
+  onTripChange,
+  totalTrips,
+  timeSlot,
+  slotDate,
+}: SeatAllocationPanelProps) {
   const totalPax = bookingSummary.reduce((s, b) => s + b.passengers.reduce((x, p) => x + p.qty, 0), 0);
   const paxList: { label: string; idx: number }[] = [];
   bookingSummary.forEach(b => {
@@ -575,92 +599,112 @@ function SeatAllocationPanel({ bookingSummary }: { bookingSummary: BookingSummar
   });
 
   const BL = ["A", "B", "C"];
-  const TOTAL_SEATS_BOGIE = 24;
-  // Default occupied seats in Bogie A matching demo image (e.g. 01 is occ, 04 is occ, etc.)
-  const mkBogies = (occ0 = [1, 4, 13, 17, 19]): BogieState[] =>
+  const TOTAL_SEATS_SECTION = 24;
+  // Default occupied seats in Section A matching demo image (e.g. 01, 04, 13, 17, 19)
+  const mkSections = (occ0 = [1, 4, 13, 17, 19]): SectionState[] =>
     BL.map((l, i) => ({
-      name: `Bogie ${l}`,
-      totalSeats: TOTAL_SEATS_BOGIE,
+      name: `Section ${l}`,
+      totalSeats: TOTAL_SEATS_SECTION,
       occupiedSeats: i === 0 ? occ0 : [],
     }));
 
-  const [bogies, setBogies] = useState<BogieState[]>(mkBogies);
+  const [sections, setSections] = useState<SectionState[]>(mkSections);
   const [ai, setAi] = useState(0);
-  const [sel, setSel] = useState<number[]>([5, 7, 6]); // Default matching screenshot if totalPax >= 3
-  const [asgn, setAsgn] = useState<Record<string, string>>({
-    "A-05": "Adult 1",
-    "A-06": "Adult 2",
-    "A-07": "Child 1",
+
+  // Initialize selected seats numbers based on passed selectedSeats or default 2 pax (5, 6)
+  const [sel, setSel] = useState<number[]>(() => {
+    const activePrefix = "A-";
+    const initialNums: number[] = [];
+    selectedSeats.forEach(sk => {
+      if (sk.startsWith(activePrefix)) {
+        const num = parseInt(sk.replace(activePrefix, ""), 10);
+        if (!isNaN(num)) initialNums.push(num);
+      }
+    });
+    return initialNums.length > 0 ? initialNums : [5, 6];
   });
 
-  useEffect(() => {
-    if (totalPax > 0 && totalPax !== 3) {
-      // Auto adjust selection count to match current booking passenger count
-      const initial: number[] = [];
-      const newAsgn: Record<string, string> = {};
-      const candidateSeats = [5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 18, 20, 21, 22, 23, 24];
-      for (let i = 0; i < Math.min(totalPax, candidateSeats.length); i++) {
-        const s = candidateSeats[i];
-        initial.push(s);
-        const padS = String(s).padStart(2, "0");
-        if (paxList[i]) newAsgn[`A-${padS}`] = `${paxList[i].label} ${paxList[i].idx}`;
-      }
-      setSel(initial);
-      setAsgn(newAsgn);
-    }
-  }, [totalPax]);
+  const [asgn, setAsgn] = useState<Record<string, string>>(() => {
+    const initialAsgn: Record<string, string> = {
+      "A-05": "Adult 1",
+      "A-06": "Child 1",
+    };
+    return initialAsgn;
+  });
 
-  const activeBogie = bogies[ai] || bogies[0];
+  const activeSection = sections[ai] || sections[0];
   const activeLabel = BL[ai];
   const pad = (n: number) => String(n).padStart(2, "0");
+  const isLastTrip = currentTrip >= totalTrips;
+
   const stOf = (n: number): SeatStatus =>
-    activeBogie.occupiedSeats.includes(n)
+    activeSection.occupiedSeats.includes(n)
       ? "occupied"
       : sel.includes(n)
         ? "selected"
         : "available";
 
   const selKeys = sel.map(s => `${activeLabel}-${pad(s)}`);
+  const effectiveTotalPax = totalPax > 0 ? totalPax : 2;
+
+  // Calculate live available seats in active section
+  const occupiedCount = activeSection.occupiedSeats.length;
+  const availSeatsCount = Math.max(0, activeSection.totalSeats - occupiedCount - sel.length);
 
   const onSeat = (n: number) => {
     const st = stOf(n);
     const key = `${activeLabel}-${pad(n)}`;
     if (st === "occupied") return;
+
     if (st === "selected") {
-      setSel(p => p.filter(x => x !== n));
-      setAsgn(p => {
-        const x = { ...p };
-        delete x[key];
-        return x;
-      });
+      const nextSel = sel.filter(x => x !== n);
+      const nextAsgn = { ...asgn };
+      delete nextAsgn[key];
+      setSel(nextSel);
+      setAsgn(nextAsgn);
+      const nextKeys = nextSel.map(s => `${activeLabel}-${pad(s)}`);
+      onSelectedSeatsChange(nextKeys, nextAsgn);
       return;
     }
-    const maxAllowed = totalPax > 0 ? totalPax : 3;
+
+    const maxAllowed = totalPax > 0 ? totalPax : 2;
     if (sel.length < maxAllowed) {
-      const ns = [...sel, n];
-      setSel(ns);
-      const pi = ns.length - 1;
-      if (paxList[pi]) {
-        setAsgn(p => ({ ...p, [key]: `${paxList[pi].label} ${paxList[pi].idx}` }));
+      const nextSel = [...sel, n];
+      const nextAsgn = { ...asgn };
+      const pi = nextSel.length - 1;
+      const effectivePax = paxList.length > 0 ? paxList : [
+        { label: "Adult", idx: 1 },
+        { label: "Child", idx: 1 },
+      ];
+      if (effectivePax[pi]) {
+        nextAsgn[key] = `${effectivePax[pi].label} ${effectivePax[pi].idx}`;
       }
+      setSel(nextSel);
+      setAsgn(nextAsgn);
+      const nextKeys = nextSel.map(s => `${activeLabel}-${pad(s)}`);
+      onSelectedSeatsChange(nextKeys, nextAsgn);
     }
   };
 
   const newTrip = () => {
-    setBogies(BL.map(l => ({ name: `Bogie ${l}`, totalSeats: TOTAL_SEATS_BOGIE, occupiedSeats: [] })));
+    if (isLastTrip) return;
+    const nextTrip = Math.min(totalTrips, currentTrip + 1);
+    onTripChange(nextTrip);
+    setSections(BL.map(l => ({ name: `Section ${l}`, totalSeats: TOTAL_SEATS_SECTION, occupiedSeats: [] })));
     setSel([]);
     setAsgn({});
+    onSelectedSeatsChange([], {});
     setAi(0);
   };
 
   const refresh = () => {
-    setBogies(mkBogies());
+    if (isLastTrip) return;
+    setSections(mkSections());
     setSel([]);
     setAsgn({});
+    onSelectedSeatsChange([], {});
     setAi(0);
   };
-
-  const effectiveTotalPax = totalPax > 0 ? totalPax : 3;
 
   // Seat Component (58px × 29px)
   const SeatBox = ({ n }: { n: number }) => {
@@ -703,7 +747,7 @@ function SeatAllocationPanel({ bookingSummary }: { bookingSummary: BookingSummar
     );
   };
 
-  // Row pairs for bogie layout (01-24 in 4 pairs of 2 rows)
+  // Row pairs for section layout (01-24 in 4 pairs of 2 rows)
   const rowPairs = [
     [
       { left: [1, 2], right: [3] },
@@ -742,7 +786,7 @@ function SeatAllocationPanel({ bookingSummary }: { bookingSummary: BookingSummar
           flexWrap: "wrap",
         }}
       >
-        {/* ── Left Container: Bogie Progress (width: 224px) ── */}
+        {/* ── Left Container: Section Progress (width: 224px) ── */}
         <div
           style={{
             width: "224px",
@@ -759,11 +803,11 @@ function SeatAllocationPanel({ bookingSummary }: { bookingSummary: BookingSummar
           }}
         >
           <h3 style={{ margin: "0 0 4px 0", fontWeight: 700, fontSize: "14px", lineHeight: "18px", color: "#011B2F" }}>
-            Bogie Progress
+            Section Progress
           </h3>
 
-          {/* Bogie Cards */}
-          {bogies.map((b, idx) => {
+          {/* Section Cards */}
+          {sections.map((b, idx) => {
             const lbl = BL[idx];
             const isCur = idx === ai;
             const isLocked = idx > ai;
@@ -790,7 +834,7 @@ function SeatAllocationPanel({ bookingSummary }: { bookingSummary: BookingSummar
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
                   <span style={{ fontWeight: 600, fontSize: "14px", lineHeight: "18px", color: "#011B2F" }}>
-                    Bogie {lbl}
+                    Section {lbl}
                   </span>
                   <span
                     style={{
@@ -811,7 +855,7 @@ function SeatAllocationPanel({ bookingSummary }: { bookingSummary: BookingSummar
                   Seats: {b.totalSeats} {isCur ? `Available: ${avail}` : ""}
                 </p>
                 <p style={{ margin: "3px 0 0 0", fontSize: "10px", lineHeight: "13px", fontWeight: 600, color: "#6B7280" }}>
-                  {isCur ? "Currently allocating seats" : isLocked ? `Opens after Bogie ${BL[idx - 1]} is full` : "Completed"}
+                  {isCur ? "Currently allocating seats" : isLocked ? `Opens after Section ${BL[idx - 1]} is full` : "Completed"}
                 </p>
               </div>
             );
@@ -833,7 +877,7 @@ function SeatAllocationPanel({ bookingSummary }: { bookingSummary: BookingSummar
           >
             <AlertTriangle size={14} color="rgba(244, 188, 67, 0.9)" style={{ flexShrink: 0, marginTop: "1px" }} />
             <p style={{ margin: 0, fontSize: "8px", fontWeight: 500, lineHeight: "11px", color: "#835505" }}>
-              Seats are allocated sequentially by bogie. New bogie opens only after the current bogie is full.
+              Seats are allocated sequentially by section. New section opens only after the current section is full.
             </p>
           </div>
         </div>
@@ -853,6 +897,136 @@ function SeatAllocationPanel({ bookingSummary }: { bookingSummary: BookingSummar
             boxSizing: "border-box",
           }}
         >
+          {/* Top Slot, Date, Availability & Trip Metadata Bar */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+              gap: "10px",
+              background: "#F8FAFC",
+              border: "1px solid #E2E8F0",
+              borderRadius: "10px",
+              padding: "10px 14px",
+              boxSizing: "border-box",
+            }}
+          >
+            {/* Date Item */}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: "rgba(23, 63, 99, 0.08)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <Calendar size={15} color="#173F63" />
+              </div>
+              <div>
+                <div style={{ fontSize: "9px", fontWeight: 600, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.4px" }}>
+                  Date
+                </div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#011B2F" }}>{slotDate}</div>
+              </div>
+            </div>
+
+            {/* Time Slot Item */}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: "rgba(23, 63, 99, 0.08)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <Clock size={15} color="#173F63" />
+              </div>
+              <div>
+                <div style={{ fontSize: "9px", fontWeight: 600, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.4px" }}>
+                  Timing Slot
+                </div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#011B2F" }}>{timeSlot}</div>
+              </div>
+            </div>
+
+            {/* Available Seats Item */}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: "rgba(34, 197, 94, 0.12)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <Users size={15} color="#16A34A" />
+              </div>
+              <div>
+                <div style={{ fontSize: "9px", fontWeight: 600, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.4px" }}>
+                  Available Seats
+                </div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#15803D" }}>
+                  {availSeatsCount} / {activeSection.totalSeats} Seats
+                </div>
+              </div>
+            </div>
+
+            {/* Trip Progress Item */}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: isLastTrip ? "rgba(239, 68, 68, 0.12)" : "rgba(244, 188, 67, 0.18)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <RotateCcw size={15} color={isLastTrip ? "#DC2626" : "#B45309"} />
+              </div>
+              <div>
+                <div style={{ fontSize: "9px", fontWeight: 600, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.4px" }}>
+                  Trip Status
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#011B2F" }}>
+                    Trip {currentTrip} of {totalTrips}
+                  </span>
+                  {isLastTrip && (
+                    <span
+                      style={{
+                        background: "#FEE2E2",
+                        color: "#DC2626",
+                        fontSize: "8px",
+                        fontWeight: 700,
+                        padding: "1px 5px",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      Last Trip
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Header Row: Title & Action Buttons */}
           <div
             style={{
@@ -864,64 +1038,70 @@ function SeatAllocationPanel({ bookingSummary }: { bookingSummary: BookingSummar
             }}
           >
             <h4 style={{ margin: 0, fontWeight: 700, fontSize: "14px", lineHeight: "18px", color: "#011B2F" }}>
-              Select Seats – Bogie {activeLabel}
+              Select Seats – Section {activeLabel}
             </h4>
 
             <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
               <button
                 type="button"
+                disabled={isLastTrip}
                 onClick={e => {
                   e.stopPropagation();
                   newTrip();
                 }}
+                title={isLastTrip ? "Last trip for today reached (5/5). No next trip available." : "Make New Trip"}
                 style={{
                   width: "158px",
                   height: "35px",
-                  background: "#FFFFFF",
-                  border: "1.5px solid #2576AB",
+                  background: isLastTrip ? "#F3F4F6" : "#FFFFFF",
+                  border: isLastTrip ? "1.5px solid #D1D5DB" : "1.5px solid #2576AB",
                   borderRadius: "6px",
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
                   fontWeight: 600,
                   fontSize: "12px",
                   lineHeight: "15px",
-                  color: "#173F63",
-                  cursor: "pointer",
+                  color: isLastTrip ? "#9CA3AF" : "#173F63",
+                  cursor: isLastTrip ? "not-allowed" : "pointer",
+                  opacity: isLastTrip ? 0.65 : 1,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   gap: "6px",
-                  transition: "background 0.15s",
+                  transition: "all 0.15s",
                 }}
               >
-                <Plus size={16} color="#173F63" strokeWidth={2.5} /> Make New Trip
+                <Plus size={16} color={isLastTrip ? "#9CA3AF" : "#173F63"} strokeWidth={2.5} /> Make New Trip
               </button>
 
               <button
                 type="button"
+                disabled={isLastTrip}
                 onClick={e => {
                   e.stopPropagation();
                   refresh();
                 }}
+                title={isLastTrip ? "Last trip reached for today." : "Refresh Seats"}
                 style={{
                   width: "158px",
                   height: "35px",
-                  background: "#FFFFFF",
-                  border: "1.5px solid #2576AB",
+                  background: isLastTrip ? "#F3F4F6" : "#FFFFFF",
+                  border: isLastTrip ? "1.5px solid #D1D5DB" : "1.5px solid #2576AB",
                   borderRadius: "6px",
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
                   fontWeight: 600,
                   fontSize: "12px",
                   lineHeight: "15px",
-                  color: "#173F63",
-                  cursor: "pointer",
+                  color: isLastTrip ? "#9CA3AF" : "#173F63",
+                  cursor: isLastTrip ? "not-allowed" : "pointer",
+                  opacity: isLastTrip ? 0.65 : 1,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   gap: "6px",
-                  transition: "background 0.15s",
+                  transition: "all 0.15s",
                 }}
               >
-                <RotateCcw size={15} color="#173F63" strokeWidth={2} /> Refresh Seats
+                <RotateCcw size={15} color={isLastTrip ? "#9CA3AF" : "#173F63"} strokeWidth={2} /> Refresh Seats
               </button>
             </div>
           </div>
@@ -942,7 +1122,7 @@ function SeatAllocationPanel({ bookingSummary }: { bookingSummary: BookingSummar
           >
             <AlertCircle size={16} color="rgba(6, 78, 124, 0.9)" style={{ flexShrink: 0 }} />
             <p style={{ margin: 0, fontSize: "10px", fontWeight: 600, lineHeight: "13px", color: "#2D6B92" }}>
-              Please select {effectiveTotalPax} seat{effectiveTotalPax !== 1 ? "s" : ""}. You can only select seats from the active bogie.
+              Please select {effectiveTotalPax} seat{effectiveTotalPax !== 1 ? "s" : ""}. You can only select seats from the active section.
             </p>
           </div>
 
@@ -982,7 +1162,7 @@ function SeatAllocationPanel({ bookingSummary }: { bookingSummary: BookingSummar
                           ))}
                         </div>
 
-                        {/* Center AISLE (shown on 1st row of first pair or stretched) */}
+                        {/* Center AISLE */}
                         <div
                           style={{
                             width: "38px",
@@ -1066,7 +1246,6 @@ function SeatAllocationPanel({ bookingSummary }: { bookingSummary: BookingSummar
                     ? paxList
                     : [
                       { label: "Adult", idx: 1 },
-                      { label: "Adult", idx: 2 },
                       { label: "Child", idx: 1 },
                     ]
                   ).map((p, i) => {
@@ -1141,7 +1320,7 @@ function SeatAllocationPanel({ bookingSummary }: { bookingSummary: BookingSummar
                 {[
                   { l: "Passengers to Assign", v: String(effectiveTotalPax), c: "#011B2F" },
                   { l: "Seats Assigned", v: `${sel.length}/${effectiveTotalPax}`, c: "#F4BC43" },
-                  { l: "Current Bogie", v: activeLabel, c: "#011B2F" },
+                  { l: "Current Section", v: activeLabel, c: "#011B2F" },
                   { l: "Seat Numbers", v: selKeys.join(",") || "—", c: "#011B2F" },
                 ].map((row, i) => (
                   <React.Fragment key={i}>
@@ -1213,6 +1392,21 @@ export default function CustomerInfoView({
 
   // Seat allocation accordion
   const [isSeatAllocExpanded, setIsSeatAllocExpanded] = useState(false);
+
+  // Seat allocation state (lifted so accordion header can show seat names)
+  const TOTAL_TRIPS_PER_DAY = 5;
+  const [selectedSeats, setSelectedSeats] = useState<string[]>(["A-05", "A-06"]);
+  const [paxAssignment, setPaxAssignment] = useState<Record<string, string>>({ "A-05": "Adult 1", "A-06": "Child 1" });
+  const [currentTrip, setCurrentTrip] = useState(1);
+  const [timeSlot, setTimeSlot] = useState("10:00 AM – 10:20 AM");
+
+  // Today's formatted date for the slot
+  const slotDate = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+
+  function handleSelectedSeatsChange(seats: string[], assignment: Record<string, string>) {
+    setSelectedSeats(seats);
+    setPaxAssignment(assignment);
+  }
 
   const grandTotal = bookingSummary.reduce((s, b) => s + b.totalAmount, 0);
 
@@ -1925,20 +2119,55 @@ export default function CustomerInfoView({
           }}
           onClick={() => setIsSeatAllocExpanded((p) => !p)}
         >
-          <div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <h4 style={{ margin: 0, fontWeight: 600, fontSize: "16px", lineHeight: "20px", color: "#011B2F" }}>
               Seat Allocation
             </h4>
             <p style={{ margin: "2px 0 0", fontWeight: 500, fontSize: "12px", color: "#6B7280" }}>
               Choose seats for this booking
             </p>
+            {/* Show assigned seat codes when collapsed */}
+            {!isSeatAllocExpanded && selectedSeats.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>
+                {selectedSeats.map((sk) => (
+                  <span
+                    key={sk}
+                    style={{
+                      background: "rgba(255, 220, 145, 0.61)",
+                      border: "1px solid rgba(244, 188, 67, 0.5)",
+                      borderRadius: "5px",
+                      padding: "2px 9px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      color: "#9A5C00",
+                      letterSpacing: "0.3px",
+                    }}
+                  >
+                    {sk}
+                  </span>
+                ))}
+                <span style={{ fontSize: "11px", fontWeight: 500, color: "#6B7280", alignSelf: "center" }}>
+                  — Trip {currentTrip} of {TOTAL_TRIPS_PER_DAY} · {timeSlot} · {slotDate}
+                </span>
+              </div>
+            )}
           </div>
           {isSeatAllocExpanded ? <ChevronUp size={22} color="#173F63" /> : <ChevronDown size={22} color="#173F63" />}
         </div>
 
         {isSeatAllocExpanded && (
           <div style={{ borderTop: "1px solid #E2E8F0" }} onClick={e => e.stopPropagation()}>
-            <SeatAllocationPanel bookingSummary={bookingSummary} />
+            <SeatAllocationPanel
+              bookingSummary={bookingSummary}
+              selectedSeats={selectedSeats}
+              onSelectedSeatsChange={handleSelectedSeatsChange}
+              currentTrip={currentTrip}
+              onTripChange={setCurrentTrip}
+              totalTrips={TOTAL_TRIPS_PER_DAY}
+              timeSlot={timeSlot}
+              onTimeSlotChange={setTimeSlot}
+              slotDate={slotDate}
+            />
           </div>
         )}
       </div>

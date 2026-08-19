@@ -11,13 +11,24 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Ticket Booking Platform – Admin",
+  title: {
+    template: "%s | Ticketing Platform",
+    default: "Dashboard | Ticketing Platform",
+  },
   description: "Admin panel for the Ticket Booking Platform",
+  icons: {
+    icon: "/Assets/favicon.svg",
+    shortcut: "/Assets/favicon.svg",
+    apple: "/Assets/favicon.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${plusJakartaSans.variable} h-full`}>
+      <head>
+        <link rel="icon" type="image/svg+xml" href="/Assets/favicon.svg" />
+      </head>
       <body style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
         <QueryProvider>
           <ToastProvider>{children}</ToastProvider>
