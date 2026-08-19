@@ -13,7 +13,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: {
     template: "%s | Ticketing Platform",
-    default: "Dashboard | Ticketing Platform",
+    default: "Login | Ticketing Platform",
   },
   description: "Admin panel for the Ticket Booking Platform",
   icons: {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
@@ -16,6 +16,12 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [selectedLang, setSelectedLang] = useState("English");
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      document.title = "Login | Ticketing Platform";
+    }
+  }, []);
 
   // TanStack Query Login Mutation
   const loginMutation = useLoginMutation();
@@ -49,7 +55,9 @@ export default function LoginPage() {
   };
 
   return (
-    <div
+    <>
+      <title>Login | Ticketing Platform</title>
+      <div
       style={{
         position: "relative",
         minHeight: "100vh",
@@ -520,5 +528,6 @@ export default function LoginPage() {
         }
       `}</style>
     </div>
+    </>
   );
 }

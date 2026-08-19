@@ -297,33 +297,59 @@ export default function ScannerPage() {
   const lastScannedRef = useRef<string>("");        // prevent duplicate scans
   const scanCooldownRef = useRef<boolean>(false);    // 2.5s cooldown between scans
 
-  // Play audio tones for validation feedback
+  // Play audio tones for validation feedback (alert buzzer for invalid/expired bill)
   const playSound = useCallback((type: "success" | "error" | "admit") => {
     if (!audioEnabled || typeof window === "undefined") return;
     try {
       const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!AudioContextClass) return;
       const ctx = new AudioContextClass();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
+      if (ctx.state === "suspended") {
+        ctx.resume();
+      }
 
       if (type === "success" || type === "admit") {
+        // High-pitched pleasant double chime for valid admission
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.connect(gain);
+        gain.connect(ctx.destination);
         osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
         osc.frequency.setValueAtTime(880, ctx.currentTime + 0.1); // A5
-        gain.gain.setValueAtTime(0.15, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
         osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.25);
+        osc.stop(ctx.currentTime + 0.3);
       } else {
-        osc.type = "sawtooth";
-        osc.frequency.setValueAtTime(220, ctx.currentTime); // A3
-        osc.frequency.setValueAtTime(140, ctx.currentTime + 0.15); // C#3
-        gain.gain.setValueAtTime(0.2, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.35);
+        // Distinct double warning buzzer alarm to immediately alert staff of invalid/expired bill
+        const now = ctx.currentTime;
+
+        // First buzz
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = "sawtooth";
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.frequency.setValueAtTime(220, now);
+        osc1.frequency.setValueAtTime(130, now + 0.08);
+        gain1.gain.setValueAtTime(0.35, now);
+        gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.16);
+        osc1.start(now);
+        osc1.stop(now + 0.16);
+
+        // Second buzz
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = "sawtooth";
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.frequency.setValueAtTime(220, now + 0.2);
+        osc2.frequency.setValueAtTime(110, now + 0.28);
+        gain2.gain.setValueAtTime(0.35, now + 0.2);
+        gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.38);
+        osc2.start(now + 0.2);
+        osc2.stop(now + 0.38);
       }
     } catch {
       // Audio context might be restricted
@@ -849,13 +875,13 @@ export default function ScannerPage() {
           overflow: "hidden",
         }}
       >
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", minHeight: "380px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", minHeight: "auto" }}>
           
           {/* LEFT: QR Code Camera & Viewfinder Box */}
           <div
             style={{
               background: colors.sidebar.bg,
-              padding: "24px",
+              padding: "20px 24px",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
@@ -929,7 +955,7 @@ export default function ScannerPage() {
             <canvas ref={canvasRef} style={{ display: "none" }} />
 
             {/* ── Camera Viewfinder: video always mounted so ref is never null ── */}
-            <div style={{ position: "relative", width: "100%", height: "260px", display: cameraActive ? "flex" : "none", alignItems: "center", justifyContent: "center", overflow: "hidden", borderRadius: "12px" }}>
+            <div style={{ position: "relative", width: "100%", height: "240px", display: cameraActive ? "flex" : "none", alignItems: "center", justifyContent: "center", overflow: "hidden", borderRadius: "12px", marginTop: "32px" }}>
               <video
                 ref={videoRef}
                 playsInline
@@ -977,8 +1003,8 @@ export default function ScannerPage() {
                 title="Click to activate camera"
                 style={{
                   position: "relative",
-                  width: "220px",
-                  height: "220px",
+                  width: "200px",
+                  height: "200px",
                   background: "radial-gradient(circle, rgba(35, 114, 165, 0.25) 0%, rgba(12, 42, 66, 0.8) 100%)",
                   borderRadius: "16px",
                   border: "1.5px dashed rgba(244, 188, 67, 0.5)",
@@ -989,13 +1015,14 @@ export default function ScannerPage() {
                   boxShadow: "inset 0 0 30px rgba(0,0,0,0.5)",
                   cursor: "pointer",
                   transition: "all 0.2s ease",
+                  marginTop: "32px",
                 }}
               >
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
                   <div
                     style={{
-                      width: "56px",
-                      height: "56px",
+                      width: "50px",
+                      height: "50px",
                       borderRadius: "50%",
                       background: "rgba(244, 188, 67, 0.15)",
                       border: `1.5px solid ${colors.brand.primary}`,
@@ -1003,10 +1030,10 @@ export default function ScannerPage() {
                       alignItems: "center",
                       justifyContent: "center",
                       color: colors.brand.primary,
-                      marginBottom: "4px",
+                      marginBottom: "2px",
                     }}
                   >
-                    <Camera size={26} />
+                    <Camera size={24} />
                   </div>
                   <span style={{ fontSize: "13px", color: "#FFFFFF", letterSpacing: "0.3px", fontWeight: 700 }}>
                     Click to Use Camera
@@ -1015,10 +1042,10 @@ export default function ScannerPage() {
                     or enter invoice manually
                   </span>
                 </div>
-                <div style={{ position: "absolute", top: 12, left: 12, width: 24, height: 24, borderTop: `4px solid ${colors.brand.primary}`, borderLeft: `4px solid ${colors.brand.primary}`, borderRadius: "6px 0 0 0" }} />
-                <div style={{ position: "absolute", top: 12, right: 12, width: 24, height: 24, borderTop: `4px solid ${colors.brand.primary}`, borderRight: `4px solid ${colors.brand.primary}`, borderRadius: "0 6px 0 0" }} />
-                <div style={{ position: "absolute", bottom: 12, left: 12, width: 24, height: 24, borderBottom: `4px solid ${colors.brand.primary}`, borderLeft: `4px solid ${colors.brand.primary}`, borderRadius: "0 0 0 6px" }} />
-                <div style={{ position: "absolute", bottom: 12, right: 12, width: 24, height: 24, borderBottom: `4px solid ${colors.brand.primary}`, borderRight: `4px solid ${colors.brand.primary}`, borderRadius: "0 0 6px 0" }} />
+                <div style={{ position: "absolute", top: 10, left: 10, width: 20, height: 20, borderTop: `3px solid ${colors.brand.primary}`, borderLeft: `3px solid ${colors.brand.primary}`, borderRadius: "4px 0 0 0" }} />
+                <div style={{ position: "absolute", top: 10, right: 10, width: 20, height: 20, borderTop: `3px solid ${colors.brand.primary}`, borderRight: `3px solid ${colors.brand.primary}`, borderRadius: "0 4px 0 0" }} />
+                <div style={{ position: "absolute", bottom: 10, left: 10, width: 20, height: 20, borderBottom: `3px solid ${colors.brand.primary}`, borderLeft: `3px solid ${colors.brand.primary}`, borderRadius: "0 0 0 4px" }} />
+                <div style={{ position: "absolute", bottom: 10, right: 10, width: 20, height: 20, borderBottom: `3px solid ${colors.brand.primary}`, borderRight: `3px solid ${colors.brand.primary}`, borderRadius: "0 0 4px 0" }} />
               </div>
             )}
 
@@ -1028,26 +1055,26 @@ export default function ScannerPage() {
               </div>
             )}
 
-            <div style={{ marginTop: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
               <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.7)" }}>
                 {cameraActive ? "Align invoice QR code inside the viewfinder box" : "Click 'Use Cam' to start webcam QR scanner"}
               </span>
             </div>
           </div>
 
-          {/* RIGHT: Quick Validation & Manual Search Form */}
-          <div style={{ padding: "24px", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: "18px" }}>
+          {/* RIGHT: Validation & Manual Search Form */}
+          <div style={{ padding: "24px", display: "flex", flexDirection: "column", justifyContent: "center", gap: "16px" }}>
             <div>
               <h2 style={{ margin: "0 0 6px 0", fontSize: "17px", fontWeight: 700, color: colors.text.primary, display: "flex", alignItems: "center", gap: "8px" }}>
                 <Search size={18} color={colors.brand.accent} />
                 Validate Invoice or Ticket
               </h2>
               <p style={{ margin: 0, fontSize: "13px", color: colors.text.muted }}>
-                Enter invoice number, ticket barcode, or choose a quick demo pass to test gate validation.
+                Enter invoice number or ticket barcode to instantly validate gate admission.
               </p>
 
               {/* Manual Entry Form */}
-              <form onSubmit={handleManualSubmit} style={{ marginTop: "16px", display: "flex", gap: "8px" }}>
+              <form onSubmit={handleManualSubmit} style={{ marginTop: "14px", display: "flex", gap: "8px" }}>
                 <div style={{ position: "relative", flex: 1 }}>
                   <input
                     ref={inputRef}
@@ -1115,51 +1142,36 @@ export default function ScannerPage() {
               </form>
             </div>
 
-            {/* Quick Demo Test Presets */}
-            <div style={{ background: "#F8FAFC", border: `1px solid ${colors.header.border}`, borderRadius: "10px", padding: "14px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                <span style={{ fontSize: "12px", fontWeight: 700, color: colors.text.primary, textTransform: "uppercase", letterSpacing: "0.4px" }}>
-                  ⚡ Quick Test Scenarios (1-Click)
+            {/* Quick Status / Instructions Card */}
+            <div
+              style={{
+                background: "#F8FAFC",
+                border: `1px solid ${colors.header.border}`,
+                borderRadius: "10px",
+                padding: "12px 14px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "12px", fontWeight: 700, color: colors.text.primary, display: "flex", alignItems: "center", gap: "6px" }}>
+                  <ScanLine size={14} color={colors.brand.accent} />
+                  Supported Formats
                 </span>
-                <span style={{ fontSize: "11px", color: colors.text.muted }}>Simulates visitor scan</span>
+                <span style={{ fontSize: "11px", fontWeight: 600, color: "#16A34A", background: "#DCFCE7", padding: "2px 8px", borderRadius: "10px" }}>
+                  Active Scanner
+                </span>
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {[
-                  { id: "TKT-9021", label: "🟢 Valid (Today - Family)" },
-                  { id: "TKT-9022", label: "🟢 Valid (Today - Solo)" },
-                  { id: "TKT-9023", label: "🔴 Expired (Yesterday)" },
-                  { id: "TKT-9024", label: "🟡 Future Date Pass" },
-                  { id: "TKT-9025", label: "🟠 Already Used" },
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => handleProcessScan(item.id)}
-                    style={{
-                      background: "#FFFFFF",
-                      border: `1px solid ${colors.header.border}`,
-                      borderRadius: "6px",
-                      padding: "6px 10px",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: colors.text.primary,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      transition: "all 0.15s ease",
-                    }}
-                    className="quick-btn"
-                  >
-                    <span>{item.label}</span>
-                  </button>
-                ))}
-              </div>
+              <p style={{ margin: 0, fontSize: "12px", color: colors.text.muted, lineHeight: "17px" }}>
+                Supports printed ticket barcodes, digital PDF invoice QR codes, and complimentary visitor passes.
+              </p>
             </div>
 
             {/* Gate Assistant Tip */}
-            <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "12px", color: colors.text.muted }}>
-              <Info size={15} color={colors.brand.accent} style={{ flexShrink: 0, marginTop: "2px" }} />
-              <span>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "12px", color: colors.text.muted, background: "#FEF9C3", padding: "10px 12px", borderRadius: "8px", border: "1px solid #FEF08A" }}>
+              <Info size={15} color="#CA8A04" style={{ flexShrink: 0, marginTop: "2px" }} />
+              <span style={{ color: "#854D0E" }}>
                 <strong>Gate Rule:</strong> Only tickets scheduled for <strong>Today ({formatDisplayDate(todayDateStr)})</strong> are authorized for entry. Past or future tickets must be denied.
               </span>
             </div>

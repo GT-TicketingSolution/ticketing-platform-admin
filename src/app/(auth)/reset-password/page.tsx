@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
@@ -31,6 +31,12 @@ function ResetPasswordContent() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [tokenError, setTokenError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      document.title = "Reset Password | Ticketing Platform";
+    }
+  }, []);
 
   const resetPasswordMutation = useResetPasswordMutation();
   const isSubmitting = resetPasswordMutation.isPending;
@@ -70,7 +76,9 @@ function ResetPasswordContent() {
   };
 
   return (
-    <div
+    <>
+      <title>Reset Password | Ticketing Platform</title>
+      <div
       style={{
         position: "relative",
         minHeight: "100vh",
@@ -720,6 +728,7 @@ function ResetPasswordContent() {
         }
       `}</style>
     </div>
+    </>
   );
 }
 
