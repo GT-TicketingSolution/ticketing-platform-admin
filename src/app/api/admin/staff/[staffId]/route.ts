@@ -860,3 +860,112 @@ export async function PATCH(
     return failure("Unable to update staff.", 500, "INTERNAL_SERVER_ERROR");
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ staffId: string }> },
+) {
+  try {
+    /* -----------------------------------------------------
+       Authentication
+    ----------------------------------------------------- */
+
+    const auth = await requireAuth(request);
+
+    /* -----------------------------------------------------
+       Authorization
+       Only ADMIN can delete staff
+    ----------------------------------------------------- */
+
+    if (auth.user.role !== "ADMIN") {
+      return failure("Admin access required.", 403, "FORBIDDEN");
+    }
+
+    /* -----------------------------------------------------
+       Get staffId
+    ----------------------------------------------------- */
+
+    const { staffId } = await params;
+
+    /* -----------------------------------------------------
+       Admin ownership
+    ----------------------------------------------------- */
+
+    const adminId = auth.user.id;
+
+    /* -----------------------------------------------------
+       Check staff exists and belongs to this admin
+    ----------------------------------------------------- */
+
+    const [staff] = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+      })
+      .from(users)
+      .where(
+        and(
+          eq(users.id, staffId),
+          eq(users.role, "STAFF"),
+          eq(users.adminId, adminId),
+        ),
+      )
+      .limit(1);
+
+    if (!staff) {
+      return failure("Staff member not found.", 404, "STAFF_NOT_FOUND");
+    }
+
+    /* -----------------------------------------------------
+       Delete attraction assignments
+    ----------------------------------------------------- */
+
+    await db
+      .delete(staffAttractionAssignments)
+      .where(eq(staffAttractionAssignments.staffId, staffId));
+
+    /* -----------------------------------------------------
+       Delete staff roles
+    ----------------------------------------------------- */
+
+    await db.delete(staffRoles).where(eq(staffRoles.staffId, staffId));
+
+    /* -----------------------------------------------------
+       Delete staff user
+    ----------------------------------------------------- */
+
+    await db
+      .delete(users)
+      .where(
+        and(
+          eq(users.id, staffId),
+          eq(users.role, "STAFF"),
+          eq(users.adminId, adminId),
+        ),
+      );
+
+    /* -----------------------------------------------------
+       Response
+    ----------------------------------------------------- */
+
+    return success({
+      message: "Staff deleted successfully.",
+      staffId,
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+    }
+
+    console.error("Delete staff error:", error);
+
+    return failure("Unable to delete staff.", 500, "INTERNAL_SERVER_ERROR");
+  }
+}
