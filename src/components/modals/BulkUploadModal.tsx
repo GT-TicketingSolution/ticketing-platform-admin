@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Upload, Download, FileSpreadsheet } from "lucide-react";
+import { X, Upload, Download, FileSpreadsheet, Loader2 } from "lucide-react";
 
 interface BulkUploadModalProps {
   isOpen: boolean;
@@ -477,19 +477,30 @@ export default function BulkUploadModal({
                 style={{
                   boxSizing: "border-box",
                   width: "153px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
                   height: "44px",
-                  background: "#F4BC43",
+                  background: isUploading ? "#E5E7EB" : "#F4BC43",
                   borderRadius: "8px",
                   border: "none",
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
                   fontWeight: 700,
                   fontSize: "14px",
-                  color: "#011B2F",
+                  color: isUploading ? "#6B7280" : "#011B2F",
                   cursor: isUploading ? "not-allowed" : "pointer",
-                  boxShadow: "0 4px 12px rgba(244, 188, 67, 0.3)",
+                  boxShadow: isUploading ? "none" : "0 4px 12px rgba(244, 188, 67, 0.3)",
                 }}
               >
-                {isUploading ? "Uploading..." : "Upload File"}
+                {isUploading ? (
+                  <>
+                    <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                    <span>Uploading...</span>
+                  </>
+                ) : (
+                  <span>Upload File</span>
+                )}
               </button>
             </div>
           </div>
@@ -504,6 +515,10 @@ export default function BulkUploadModal({
           .section-template-grid {
             grid-template-columns: 1fr !important;
           }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
         }
       `}</style>
     </div>

@@ -380,14 +380,14 @@ export default function ChangePasswordModal({
                 height: "44px",
                 border: "none",
                 borderRadius: "8px",
-                background: colors.brand.primary,
-                color: colors.sidebar.activeText,
+                background: (isSubmitting || success) ? "#E5E7EB" : colors.brand.primary,
+                color: (isSubmitting || success) ? "#6B7280" : colors.sidebar.activeText,
                 fontFamily: typography.fontFamily.sans,
                 fontWeight: typography.fontWeight.bold,
                 fontSize: "14px",
                 cursor: isSubmitting || success ? "not-allowed" : "pointer",
-                boxShadow: "0 4px 12px rgba(244, 188, 67, 0.3)",
-                opacity: isSubmitting || success ? 0.85 : 1,
+                boxShadow: (isSubmitting || success) ? "none" : "0 4px 12px rgba(244, 188, 67, 0.3)",
+                opacity: 1,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -395,8 +395,19 @@ export default function ChangePasswordModal({
                 transition: "opacity 0.2s ease",
               }}
             >
-              <KeyRound size={16} />
-              {isSubmitting ? "Saving..." : success ? "✓ Saved!" : "Update Password"}
+              {isSubmitting ? (
+                <>
+                  <KeyRound size={16} style={{ animation: "spin 1s linear infinite" }} />
+                  <span>Saving...</span>
+                </>
+              ) : success ? (
+                "✓ Saved!"
+              ) : (
+                <>
+                  <KeyRound size={16} />
+                  <span>Update Password</span>
+                </>
+              )}
             </button>
           </div>
         </form>
@@ -406,6 +417,10 @@ export default function ChangePasswordModal({
         @keyframes cpModalSlideIn {
           from { opacity: 0; transform: translateY(-14px) scale(0.98); }
           to   { opacity: 1; transform: translateY(0)     scale(1);    }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
         }
       `}</style>
     </div>

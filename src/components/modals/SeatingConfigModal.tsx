@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Loader2 } from "lucide-react";
 import { Attraction } from "@/types/admin";
 
 // ── Types
@@ -19,6 +19,7 @@ interface SeatingConfigModalProps {
   attraction?: Attraction | null;
   initialConfig?: Partial<SeatingConfig>;
   onSave?: (config: SeatingConfig) => void;
+  isSaving?: boolean;
 }
 
 // ── Constants
@@ -317,6 +318,7 @@ export default function SeatingConfigModal({
   attraction,
   initialConfig,
   onSave,
+  isSaving = false,
 }: SeatingConfigModalProps) {
   const [rows, setRows] = useState(initialConfig?.rows ?? 8);
   const [leftCols, setLeftCols] = useState(initialConfig?.leftCols ?? 2);
@@ -693,30 +695,33 @@ export default function SeatingConfigModal({
             <button
               type="button"
               onClick={handleApply}
+              disabled={isSaving}
               style={{
                 height: "44px",
                 padding: "0 32px",
-                background: "#F4BC43",
+                background: isSaving ? "#E5E7EB" : "#F4BC43",
                 border: "none",
                 borderRadius: "8px",
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
                 fontWeight: 700,
                 fontSize: "14px",
-                color: "#011B2F",
-                cursor: "pointer",
-                boxShadow: "0 4px 14px rgba(244, 188, 67, 0.38)",
+                color: isSaving ? "#6B7280" : "#011B2F",
+                cursor: isSaving ? "not-allowed" : "pointer",
+                boxShadow: isSaving ? "none" : "0 4px 14px rgba(244, 188, 67, 0.38)",
                 transition: "background 0.15s, transform 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#E5AF36";
-                e.currentTarget.style.transform = "translateY(-1px)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "#F4BC43";
-                e.currentTarget.style.transform = "translateY(0)";
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
               }}
             >
-              Apply
+              {isSaving ? (
+                <>
+                  <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                  <span>Applying...</span>
+                </>
+              ) : (
+                <span>Apply</span>
+              )}
             </button>
           </div>
         </div>

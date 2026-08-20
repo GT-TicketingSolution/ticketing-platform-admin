@@ -137,11 +137,11 @@ export default function ViewSeatModal({
                   gap: "4px",
                   fontSize: "12px",
                   fontWeight: 700,
-                  color: seat.status === "Active" ? "#059669" : "#DC2626",
+                  color: String(seat.status || "").toUpperCase() === "ACTIVE" ? "#059669" : "#DC2626",
                 }}
               >
-                {seat.status === "Active" ? <CheckCircle size={14} /> : <XCircle size={14} />}
-                {seat.status}
+                {String(seat.status || "").toUpperCase() === "ACTIVE" ? <CheckCircle size={14} /> : <XCircle size={14} />}
+                {String(seat.status || "").toUpperCase() === "ACTIVE" ? "Active" : "Inactive"}
               </span>
             </div>
           </div>

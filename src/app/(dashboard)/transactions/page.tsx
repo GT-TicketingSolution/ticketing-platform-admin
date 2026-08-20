@@ -307,6 +307,7 @@ export default function TransactionsPage() {
         <ExportButtons
           onExportPDF={handleExportPDF}
           onExportExcel={handleExportExcel}
+          disabled={filteredTransactions.length === 0}
         />
       </div>
 

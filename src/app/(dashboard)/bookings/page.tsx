@@ -276,6 +276,7 @@ export default function BookingsPage() {
         <ExportButtons
           onExportPDF={handleExportPDF}
           onExportExcel={handleExportExcel}
+          disabled={isLoading || filteredBookings.length === 0}
         />
       </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, AlertCircle, Check } from "lucide-react";
+import { X, AlertCircle, Check, Loader2 } from "lucide-react";
 import { Customer } from "@/types/admin";
 import { typography } from "@/lib/theme";
 import { validateCustomer } from "@/app/(dashboard)/customer-management/schema";
@@ -11,6 +11,7 @@ interface AddEditCustomerModalProps {
   onClose: () => void;
   customer: Customer | null; // Null means adding a new customer, non-null means editing
   onSave: (customerData: { name: string; mobile: string; gstn: string; id?: string }) => void;
+  isSaving?: boolean;
 }
 
 export default function AddEditCustomerModal({
@@ -18,6 +19,7 @@ export default function AddEditCustomerModal({
   onClose,
   customer,
   onSave,
+  isSaving = false,
 }: AddEditCustomerModalProps) {
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState("");
@@ -364,31 +366,31 @@ export default function AddEditCustomerModal({
               style={{
                 width: "125px",
                 height: "36px",
-                background: "#F4BC43",
                 borderRadius: "8px",
                 border: "none",
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
                 fontWeight: 700,
                 fontSize: "14px",
                 lineHeight: "18px",
-                color: "#011B2F",
-                cursor: "pointer",
+                color: isSaving ? "#6B7280" : "#011B2F",
+                cursor: isSaving ? "not-allowed" : "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                boxShadow: "0 4px 10px rgba(244, 188, 67, 0.3)",
+                gap: "6px",
+                boxShadow: isSaving ? "none" : "0 4px 10px rgba(244, 188, 67, 0.3)",
                 transition: "all 0.2s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "#E5AF36";
-                e.currentTarget.style.transform = "translateY(-1px)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "#F4BC43";
-                e.currentTarget.style.transform = "translateY(0)";
+                background: isSaving ? "#E5E7EB" : "#F4BC43",
               }}
             >
-              Save
+              {isSaving ? (
+                <>
+                  <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <span>Save</span>
+              )}
             </button>
           </div>
         </form>

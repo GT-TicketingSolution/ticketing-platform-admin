@@ -77,6 +77,15 @@ export function useLoginMutation() {
       );
     },
     onSuccess: (data) => {
+      if (data?.user?.role) {
+        const rawRole = String(data.user.role).toUpperCase();
+        const formattedRole =
+          rawRole === "STAFF" ? "Staff" : rawRole === "MANAGER" ? "Manager" : "Admin";
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("userRole", formattedRole);
+          window.dispatchEvent(new Event("ticketing_user_role_changed"));
+        }
+      }
       /**
        * Invalidate the profile cache key so useProfileQuery (already running
        * in DashboardLayout) immediately refetches GET /api/auth/profile with
@@ -85,10 +94,9 @@ export function useLoginMutation() {
        * user object, not the { profile: {...} } shape the query expects.
        */
       queryClient.invalidateQueries({ queryKey: authKeys.profile() });
-      showSuccessNotify(
-        `Welcome back, ${data?.user?.name || "User"}!`,
-        "Login Successful"
-      );
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("ticketing_welcome_user", data?.user?.name || "User");
+      }
     },
     onError: (error: any) => {
       const serverMessage =

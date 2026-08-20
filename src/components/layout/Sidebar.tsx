@@ -63,28 +63,6 @@ const MODULE_REGISTRY: Record<string, { label: string; href: string; icon: any }
   scanner: { label: "Scanner", href: "/scanner", icon: ScanLine },
 };
 
-// ── Fallback Admin nav: Used while initial loading or if offline ──
-const ADMIN_NAV_ITEMS = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Manager Management", href: "/manager-management", icon: UserCheck },
-  { label: "Staff Management", href: "/staff-management", icon: UserCog },
-  { label: "Bookings", href: "/bookings", icon: BookOpen },
-  { label: "Transactions", href: "/transactions", icon: CircleDollarSign },
-  { label: "Invoices", href: "/invoices", icon: FileText },
-  { label: "Inventory / Capacity", href: "/inventory", icon: Boxes },
-  { label: "CCTV Monitoring", href: "/cctv-monitoring", icon: Cctv },
-  { label: "Seat Management", href: "/seat-management", icon: Armchair },
-  { label: "Attraction Management", href: "/attraction-management", icon: Landmark },
-  { label: "Customer Management", href: "/customer-management", icon: UserRound },
-  { label: "Complimentary Passes", href: "/complimentary-passes", icon: ClipboardList },
-  { label: "Reports", href: "/reports", icon: BarChart2 }
-];
-
-// ── Staff nav: Ticket Booking + Scanner only ──
-const STAFF_NAV_ITEMS = [
-  { label: "Ticket Booking", href: "/ticket-booking", icon: Ticket },
-  { label: "Scanner", href: "/scanner", icon: ScanLine },
-];
 
 function PortalTooltip({
   label,
@@ -335,22 +313,24 @@ export default function Sidebar({
   collapsed,
   drawerOpen,
   isMobile,
-  roleName = "Admin",
-  roleInitials = "AD",
+  roleName = "-",
+  roleInitials = "-",
   managerAllowedModules = null,
   onDesktopToggle,
   onDrawerClose,
   onLogout,
 }: SidebarProps) {
   const pathname = usePathname();
-  const [pendingPath, setPendingPath] = useState<string | null>(null);
 
   // Fetch active system modules from backend (GET /api/admin/system-modules)
-  const { data: systemModules } = useSystemModules();
+  const { data: systemModules, isLoading: isModulesLoading, isError: isSystemModulesError } = useSystemModules();
 
   const navItems = useMemo(() => {
-    if (roleName === "Staff") return STAFF_NAV_ITEMS;
+    // If no authenticated role or error in fetching modules, do NOT show any sidebar items
+    if (!roleName || roleName === "-") return [];
+    if (isSystemModulesError) return [];
 
+    // Strictly drive navigation from the backend system modules response
     if (systemModules && Array.isArray(systemModules) && systemModules.length > 0) {
       const activeItems = systemModules
         .filter((mod) => String(mod.isActive).toUpperCase() === "ACTIVE" || (mod.isActive as unknown) === true)
@@ -373,22 +353,11 @@ export default function Sidebar({
         return activeItems.filter((item) => managerAllowedModules.has(item.label));
       }
 
-      if (activeItems.length > 0) {
-        return activeItems;
-      }
+      return activeItems;
     }
 
-    // Fallback if system modules not loaded yet or offline
-    if (roleName === "Manager" && managerAllowedModules) {
-      return ADMIN_NAV_ITEMS.filter((item) => managerAllowedModules.has(item.label));
-    }
-    return ADMIN_NAV_ITEMS;
-  }, [roleName, systemModules, managerAllowedModules]);
-
-  // Sync / clear pending path when actual pathname updates
-  useEffect(() => {
-    setPendingPath(null);
-  }, [pathname]);
+    return [];
+  }, [roleName, systemModules, managerAllowedModules, isSystemModulesError]);
 
   // Close drawer on route change
   const closeDrawer = useCallback(onDrawerClose, [onDrawerClose]);
@@ -434,8 +403,6 @@ export default function Sidebar({
       overflowX: isIconOnly ? "visible" : "hidden",
       transition: "width 0.25s cubic-bezier(0.4,0,0.2,1)",
     };
-
-  const activePath = pendingPath ?? pathname;
 
   return (
     <>
@@ -503,10 +470,7 @@ export default function Sidebar({
                 {roleName}
               </span>
             </div>
-          ) : (
-            // Collapsed icon-only mode: show ONLY the menu toggle button centered
-            null
-          )}
+          ) : null}
 
           {/* Toggle buttons */}
           {isMobile ? (
@@ -561,26 +525,72 @@ export default function Sidebar({
 
         {/* ── Navigation (dynamically rendered from system modules) ── */}
         <nav style={{ flex: 1, padding: "8px 0", marginTop: "20px" }}>
-          {navItems.map((item) => {
-            const isActive =
-              activePath === item.href ||
-              (item.href !== "/dashboard" && activePath.startsWith(item.href));
-            return (
-              <NavItem
-                key={item.href}
-                label={item.label}
-                href={item.href}
-                icon={item.icon}
-                isActive={isActive}
-                isIconOnly={isIconOnly}
-                onClick={() => setPendingPath(item.href)}
-              />
-            );
-          })}
+          {isModulesLoading ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "0 10px" }}>
+              {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+                <div
+                  key={n}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: isIconOnly ? 0 : "12px",
+                    padding: isIconOnly ? "9px 0" : "8px 10px",
+                    borderRadius: "8px",
+                    justifyContent: isIconOnly ? "center" : "flex-start",
+                  }}
+                >
+                  <div
+                    className="sidebar-sk"
+                    style={{
+                      width: "20px",
+                      height: "20px",
+                      borderRadius: "4px",
+                      flexShrink: 0,
+                    }}
+                  />
+                  {!isIconOnly && (
+                    <div
+                      className="sidebar-sk"
+                      style={{
+                        height: "16px",
+                        width: n % 2 === 0 ? "70%" : "85%",
+                        borderRadius: "4px",
+                      }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            navItems.map((item) => {
+              const isActive =
+                pathname === item.href ||
+                (item.href !== "/dashboard" && pathname.startsWith(item.href));
+              return (
+                <NavItem
+                  key={item.href}
+                  label={item.label}
+                  href={item.href}
+                  icon={item.icon}
+                  isActive={isActive}
+                  isIconOnly={isIconOnly}
+                />
+              );
+            })
+          )}
         </nav>
 
         {/* ── Scoped styles ── */}
         <style>{`
+          @keyframes sidebarShimmer {
+            0% { opacity: 0.25; }
+            50% { opacity: 0.6; }
+            100% { opacity: 0.25; }
+          }
+          .sidebar-sk {
+            background: rgba(255, 255, 255, 0.15);
+            animation: sidebarShimmer 1.5s ease-in-out infinite;
+          }
           .sidebar-toggle-btn:hover {
             background: ${colors.sidebar.hoverBg} !important;
           }

@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { X, Armchair, Check, Search } from "lucide-react";
+import React, { useState, useEffect, useMemo } from "react";
+import { X, Armchair, Check, Search, Loader2 } from "lucide-react";
 import { SeatConfigData } from "@/components/modals/CreateSeatModal";
+import { useSeatLayouts } from "@/hooks/useSeatQueries";
 
 interface SeatAllocationModalProps {
   isOpen: boolean;
@@ -12,9 +13,8 @@ interface SeatAllocationModalProps {
   currentSeatIds?: string[];
   onSelect: (seat: SeatConfigData) => void;
   onSelectMultiple?: (seats: SeatConfigData[]) => void;
+  isLoading?: boolean;
 }
-
-const SEAT_STORAGE_KEY = "seat_layouts_data";
 
 export default function SeatAllocationModal({
   isOpen,
@@ -24,10 +24,25 @@ export default function SeatAllocationModal({
   currentSeatIds,
   onSelect,
   onSelectMultiple,
+  isLoading = false,
 }: SeatAllocationModalProps) {
-  const [seats, setSeats] = useState<SeatConfigData[]>([]);
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const { data: seatData, isLoading: isSeatsLoading } = useSeatLayouts();
+  const seats: SeatConfigData[] = useMemo(() => {
+    if (!seatData?.items || !Array.isArray(seatData.items)) return [];
+    return seatData.items.map((s) => ({
+      id: s.id,
+      name: s.name,
+      rows: s.rows,
+      cols: s.cols,
+      hasAisle: s.hasAisle,
+      aisleAfterCol: s.aisleAfterCol,
+      status: s.status,
+      totalSeats: s.totalSeats ?? s.rows * s.cols,
+    }));
+  }, [seatData]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -38,20 +53,13 @@ export default function SeatAllocationModal({
       : [];
     setSelectedIds(initial);
     setSearch("");
-    try {
-      const raw = localStorage.getItem(SEAT_STORAGE_KEY);
-      if (raw) setSeats(JSON.parse(raw));
-      else setSeats([]);
-    } catch {
-      setSeats([]);
-    }
   }, [isOpen, currentSeatId, currentSeatIds]);
 
   if (!isOpen) return null;
 
   const filtered = seats.filter(
     (s) =>
-      s.status === "Active" &&
+      (s.status as string)?.toUpperCase() === "ACTIVE" &&
       s.name.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -265,7 +273,14 @@ export default function SeatAllocationModal({
 
         {/* Seat List */}
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 24px" }}>
-          {filtered.length === 0 ? (
+          {isSeatsLoading ? (
+            <div style={{ textAlign: "center", padding: "48px 20px", display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" }}>
+              <Loader2 size={28} color="#2372A5" style={{ animation: "spin 1s linear infinite" }} />
+              <span style={{ fontSize: "13px", color: "#64748B", fontWeight: 500 }}>
+                Loading seat layouts...
+              </span>
+            </div>
+          ) : filtered.length === 0 ? (
             <div
               style={{
                 textAlign: "center",
@@ -410,24 +425,35 @@ export default function SeatAllocationModal({
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={selectedIds.length === 0}
+            disabled={selectedIds.length === 0 || isLoading}
             style={{
               flex: 1,
               height: "42px",
-              background: selectedIds.length > 0 ? "#0C2A42" : "#D1D5DB",
+              background: (selectedIds.length > 0 && !isLoading) ? "#0C2A42" : "#D1D5DB",
               border: "none",
               borderRadius: "8px",
               fontFamily: "'Plus Jakarta Sans', sans-serif",
               fontWeight: 700,
               fontSize: "14px",
-              color: selectedIds.length > 0 ? "#FFFFFF" : "#9CA3AF",
-              cursor: selectedIds.length > 0 ? "pointer" : "not-allowed",
+              color: (selectedIds.length > 0 && !isLoading) ? "#FFFFFF" : "#9CA3AF",
+              cursor: (selectedIds.length > 0 && !isLoading) ? "pointer" : "not-allowed",
               transition: "all 0.15s ease",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
             }}
           >
-            {selectedIds.length > 1
-              ? `Assign ${selectedIds.length} Seat Layouts`
-              : "Assign Seat Layout"}
+            {isLoading ? (
+              <>
+                <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                <span>Assigning...</span>
+              </>
+            ) : selectedIds.length > 1 ? (
+              `Assign ${selectedIds.length} Seat Layouts`
+            ) : (
+              "Assign Seat Layout"
+            )}
           </button>
         </div>
       </div>

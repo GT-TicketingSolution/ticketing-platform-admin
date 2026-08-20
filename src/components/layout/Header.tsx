@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Bell,
@@ -42,24 +42,67 @@ interface HeaderProps {
 }
 
 const ROUTE_HEADER_MAP: Record<string, { title: string; icon: React.ElementType }> = {
+  "/dashboard": { title: "Dashboard", icon: LayoutDashboard },
+  "/manager-management": { title: "Manager Management", icon: UserCheck },
+  "/staff-management": { title: "Staff Management", icon: UserCog },
   "/seat-management": { title: "Seat Management", icon: Armchair },
   "/attraction-management": { title: "Attraction Management", icon: Landmark },
   "/ticket-booking": { title: "Ticket Booking", icon: Ticket },
   "/bookings": { title: "Bookings", icon: BookOpen },
   "/transactions": { title: "Transactions", icon: CircleDollarSign },
   "/invoices": { title: "Invoices", icon: FileText },
-  "/inventory": { title: "Inventory / Capacity", icon: Boxes },
-  "/cctv-monitoring": { title: "CCTV Monitoring", icon: Cctv },
+  "/inventory": { title: "Inventory & Capacity", icon: Boxes },
   "/customer-management": { title: "Customer Management", icon: UserRound },
   "/complimentary-passes": { title: "Complimentary Passes", icon: ClipboardList },
-  "/reports": { title: "Reports", icon: BarChart2 },
-  "/user-management": { title: "User Management", icon: Users },
-  "/manager-management": { title: "Manager Management", icon: UserCheck },
-  "/staff-management": { title: "Staff Management", icon: UserCog },
-  "/dashboard": { title: "Dashboard", icon: LayoutDashboard },
+  "/cctv-monitoring": { title: "CCTV Monitoring", icon: Cctv },
+  "/reports": { title: "Reports & Analytics", icon: BarChart2 },
   "/scanner": { title: "Ticket Scanner", icon: ScanLine },
   "/settings": { title: "Settings", icon: Settings },
 };
+
+function getRouteHeaderInfo(pathname: string, propTitle?: string): { title: string; icon: React.ElementType } {
+  if (propTitle && propTitle.trim()) {
+    return { title: propTitle, icon: Landmark };
+  }
+  const clean = (pathname || "").toLowerCase().replace(/\/$/, "");
+
+  if (clean.includes("seat")) return { title: "Seat Management", icon: Armchair };
+  if (clean.includes("attraction")) return { title: "Attraction Management", icon: Landmark };
+  if (clean.includes("ticket") || clean.includes("booking-view")) return { title: "Ticket Booking", icon: Ticket };
+  if (clean.includes("booking")) return { title: "Bookings", icon: BookOpen };
+  if (clean.includes("transaction")) return { title: "Transactions", icon: CircleDollarSign };
+  if (clean.includes("invoice")) return { title: "Invoices", icon: FileText };
+  if (clean.includes("inventory")) return { title: "Inventory & Capacity", icon: Boxes };
+  if (clean.includes("customer")) return { title: "Customer Management", icon: UserRound };
+  if (clean.includes("complimentary") || clean.includes("pass")) return { title: "Complimentary Passes", icon: ClipboardList };
+  if (clean.includes("cctv")) return { title: "CCTV Monitoring", icon: Cctv };
+  if (clean.includes("report")) return { title: "Reports & Analytics", icon: BarChart2 };
+  if (clean.includes("scanner") || clean.includes("scan")) return { title: "Ticket Scanner", icon: ScanLine };
+  if (clean.includes("manager")) return { title: "Manager Management", icon: UserCheck };
+  if (clean.includes("staff")) return { title: "Staff Management", icon: UserCog };
+  if (clean.includes("dashboard")) return { title: "Dashboard", icon: LayoutDashboard };
+  if (clean.includes("setting")) return { title: "Settings", icon: Settings };
+
+  if (ROUTE_HEADER_MAP[clean]) {
+    return ROUTE_HEADER_MAP[clean];
+  }
+  // Auto-format segment name
+  const segment = clean.split("/").filter(Boolean)[0] || "";
+  if (segment) {
+    const formatted = segment
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+    return {
+      title: formatted,
+      icon: LayoutDashboard,
+    };
+  }
+  return {
+    title: "Dashboard",
+    icon: LayoutDashboard,
+  };
+}
 
 export default function Header({
   title: propTitle = "",
@@ -74,32 +117,69 @@ export default function Header({
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [displayRole, setDisplayRole] = useState(userRole || "Admin");
-
   // Live profile data from API
-  const { data: profileData, isLoading: profileLoading } = useProfileQuery();
+  const { data: profileData, isLoading: profileLoading, isError: isProfileError } = useProfileQuery();
   const logoutMutation = useLogoutMutation();
 
-  const displayName = profileData?.profile?.name || (profileLoading ? "Loading..." : "—");
-
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    if (userRole) {
-      setDisplayRole(userRole);
-    } else if (typeof window !== "undefined") {
-      const saved = sessionStorage.getItem("userRole");
-      if (saved) setDisplayRole(saved);
+    setMounted(true);
+  }, []);
+
+  const displayName = isProfileError
+    ? "—"
+    : profileData?.profile?.name || "—";
+
+  /**
+   * Derive the displayed role label from the authoritative profile API.
+   * Falls back to '-' if error or no role (never defaults to Admin).
+   */
+  const displayRole = useMemo(() => {
+    if (isProfileError) return "-";
+    if (profileData?.profile?.role) {
+      const raw = String(profileData.profile.role).toUpperCase();
+      if (raw === "STAFF") return "Staff";
+      if (raw === "MANAGER") return "Manager";
+      if (raw === "ADMIN") return "Admin";
     }
-  }, [userRole]);
+    // Fallback: prop from dashboard layout (sourced from sessionStorage)
+    if (userRole && userRole !== "-") return userRole;
+    if (mounted && typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("userRole");
+      if (saved && saved !== "Admin" && saved !== "-") return saved;
+    }
+    return "-";
+  }, [isProfileError, profileData?.profile?.role, userRole, mounted]);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Derive dynamic header info based on pathname if title prop is omitted
-  const matchedRoute = ROUTE_HEADER_MAP[pathname] || {
-    title: propTitle || "Attraction Management",
-    icon: Landmark,
-  };
-  const activeTitle = propTitle || matchedRoute.title;
+  // Derive dynamic header info based on pathname and propTitle
+  const matchedRoute = useMemo(() => getRouteHeaderInfo(pathname, propTitle), [pathname, propTitle]);
+  const activeTitle = matchedRoute.title;
   const ActiveIcon = matchedRoute.icon;
+
+  // Sync browser document.title dynamically whenever module changes
+  useEffect(() => {
+    if (typeof window === "undefined" || !activeTitle) return;
+    const fullTitle = `${activeTitle} | Ticketing Platform`;
+    document.title = fullTitle;
+
+    const raf = requestAnimationFrame(() => {
+      document.title = fullTitle;
+    });
+    const t1 = setTimeout(() => {
+      document.title = fullTitle;
+    }, 60);
+    const t2 = setTimeout(() => {
+      document.title = fullTitle;
+    }, 200);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [activeTitle, pathname]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -149,6 +229,7 @@ export default function Header({
 
   return (
     <>
+      <title>{`${activeTitle} | Ticketing Platform`}</title>
       <header
         style={{
           height: `${spacing.headerHeight}px`,
@@ -389,22 +470,26 @@ export default function Header({
 
               {/* Name + Role (hidden on mobile) */}
               {!isMobile && (
-                <div style={{ display: "flex", flexDirection: "column", textAlign: "left" }}>
+                <div style={{ display: "flex", flexDirection: "column", textAlign: "left", minWidth: "50px" }}>
+                  {profileLoading && !profileData ? (
+                    <div style={{ height: "13px", width: "65px", background: "#E2E8F0", borderRadius: "4px", margin: "2px 0" }} />
+                  ) : (
+                    <span
+                      suppressHydrationWarning
+                      style={{
+                        fontFamily: typography.fontFamily.sans,
+                        fontWeight: typography.fontWeight.bold,
+                        fontSize: "14px",
+                        lineHeight: "18px",
+                        color: colors.header.userNameText,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {displayName}
+                    </span>
+                  )}
                   <span
-                    style={{
-                      fontFamily: typography.fontFamily.sans,
-                      fontWeight: typography.fontWeight.bold,
-                      fontSize: "14px",
-                      lineHeight: "18px",
-                      color: colors.header.userNameText,
-                      whiteSpace: "nowrap",
-                      opacity: profileLoading ? 0.5 : 1,
-                      transition: "opacity 0.2s ease",
-                    }}
-                  >
-                    {displayName}
-                  </span>
-                  <span
+                    suppressHydrationWarning
                     style={{
                       fontFamily: typography.fontFamily.sans,
                       fontWeight: typography.fontWeight.bold,

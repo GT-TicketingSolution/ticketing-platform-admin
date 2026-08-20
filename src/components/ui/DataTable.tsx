@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderOpen, Loader2 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 
 export interface Column<T> {
@@ -17,7 +17,12 @@ interface DataTableProps<T> {
   data: T[];
   keyExtractor: (item: T, index: number) => string | number;
   pageSize?: number;
-  emptyMessage?: string;
+  emptyMessage?: string | React.ReactNode;
+  emptyIcon?: React.ReactNode;
+  emptyTitle?: string;
+  emptyDescription?: string;
+  emptyAction?: React.ReactNode;
+  isLoading?: boolean;
   showSNo?: boolean;
   onRowClick?: (item: T) => void;
 }
@@ -28,6 +33,11 @@ export function DataTable<T>({
   keyExtractor,
   pageSize = 5,
   emptyMessage = "No records found.",
+  emptyIcon,
+  emptyTitle,
+  emptyDescription,
+  emptyAction,
+  isLoading = false,
   showSNo = true,
   onRowClick,
 }: DataTableProps<T>) {
@@ -103,18 +113,97 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody>
-            {currentData.length === 0 ? (
+            {isLoading ? (
+              Array.from({ length: pageSize > 8 ? 8 : Math.max(5, pageSize) }).map((_, rIdx) => (
+                <tr
+                  key={`skeleton-row-${rIdx}`}
+                  style={{
+                    borderBottom: `1px solid ${colors.header.border}`,
+                    height: "48px",
+                  }}
+                >
+                  {showSNo && (
+                    <td style={{ padding: "14px 20px", textAlign: "center" }}>
+                      <div className="table-sk" style={{ height: "14px", width: "24px", margin: "0 auto", borderRadius: "4px" }} />
+                    </td>
+                  )}
+                  {columns.map((col, cIdx) => (
+                    <td key={cIdx} style={{ padding: "14px 20px" }}>
+                      <div
+                        className="table-sk"
+                        style={{
+                          height: "14px",
+                          width: cIdx === 0 ? "75%" : cIdx % 2 === 1 ? "55%" : "65%",
+                          borderRadius: "4px",
+                        }}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : currentData.length === 0 ? (
               <tr>
                 <td
                   colSpan={columns.length + (showSNo ? 1 : 0)}
                   style={{
-                    padding: "36px 20px",
+                    padding: "48px 20px",
                     textAlign: "center",
-                    color: colors.text.muted,
-                    fontSize: "14px",
                   }}
                 >
-                  {emptyMessage}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                      maxWidth: "420px",
+                      margin: "0 auto",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "52px",
+                        height: "52px",
+                        borderRadius: "50%",
+                        background: "rgba(35, 114, 165, 0.08)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      {emptyIcon || <FolderOpen size={26} color={colors.brand.accent} />}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "15px",
+                        fontWeight: 600,
+                        color: colors.text.primary,
+                        fontFamily: typography.fontFamily.sans,
+                      }}
+                    >
+                      {emptyTitle || (typeof emptyMessage === "string" ? emptyMessage : "No records found")}
+                    </div>
+                    {emptyDescription && (
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          color: colors.text.muted,
+                          fontFamily: typography.fontFamily.sans,
+                          lineHeight: "1.5",
+                        }}
+                      >
+                        {emptyDescription}
+                      </div>
+                    )}
+                    {emptyAction && (
+                      <div style={{ marginTop: "6px" }}>
+                        {emptyAction}
+                      </div>
+                    )}
+                    {!emptyTitle && !emptyDescription && typeof emptyMessage !== "string" && emptyMessage}
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -172,7 +261,7 @@ export function DataTable<T>({
         </table>
       </div>
 
-      {data.length > 0 && (
+      {!isLoading && data.length > 0 && (
         <div
           style={{
             padding: "16px 20px",
@@ -282,6 +371,15 @@ export function DataTable<T>({
       )}
 
       <style>{`
+        @keyframes tableShimmer {
+          0%   { background-position: -600px 0; }
+          100% { background-position: 600px 0; }
+        }
+        .table-sk {
+          background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+          background-size: 600px 100%;
+          animation: tableShimmer 1.4s infinite linear;
+        }
         .datatable-row-hover:hover {
           background: #F8FAFC !important;
         }

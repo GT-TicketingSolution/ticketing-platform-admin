@@ -38,7 +38,7 @@ export const AppUrl = {
     create: "/admin/staff",
     get: (staffId: string) => `/admin/staff/${staffId}`,
     update: (staffId: string) => `/admin/staff/${staffId}`,
-    disable: (staffId: string) => `/admin/staff/${staffId}`,
+    disable: (staffId: string) => `/admin/staff/${staffId}/disable`,
     delete: (staffId: string) => `/admin/staff/${staffId}`,
   },
 
@@ -63,10 +63,29 @@ export const AppUrl = {
     list: "/admin/system-modules",
   },
 
-  // Attractions Management
+  // Attractions Management (manager query hook — dropdown list)
   attraction: {
     list: "/admin/attractions",
     getModules: (attractionId: string) => `/admin/attractions/${attractionId}/modules`,
+  },
+
+  // Attraction Management CRUD
+  attractionManagement: {
+    list:   "/admin/attraction-management",
+    create: "/admin/attraction-management",
+    bulk:   "/admin/attraction-management/bulk",
+    update: (id: string) => `/admin/attraction-management/${id}`,
+    delete: (id: string) => `/admin/attraction-management/${id}`,
+    assignSeat: (id: string) => `/admin/attraction-management/${id}/seat`,
+  },
+
+  // Seat Layout Management
+  seat: {
+    list: "/admin/seats",
+    create: "/admin/seats",
+    get: (seatId: string) => `/admin/seats/${seatId}`,
+    update: (seatId: string) => `/admin/seats/${seatId}`,
+    delete: (seatId: string) => `/admin/seats/${seatId}`,
   },
 } as const;
 

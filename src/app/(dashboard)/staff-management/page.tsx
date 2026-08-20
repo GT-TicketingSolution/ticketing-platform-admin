@@ -4,63 +4,153 @@ import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Search,
+  SearchX,
   Plus,
   Edit2,
   Trash2,
   Building,
   Ticket,
   Eye,
+  EyeOff,
   ArrowLeft,
   Filter,
   X,
-  FileText,
-  FileSpreadsheet,
+  UserX,
+  UserPlus,
+  Loader2,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
-import { INITIAL_STAFF, StaffUser } from "./types";
-import { INITIAL_ATTRACTIONS, Attraction } from "@/app/(dashboard)/attraction-management/types";
+import { StaffUser } from "./types";
 import { DataTable, Column } from "@/components/ui/DataTable";
 import { useToast } from "@/components/ui/Toast";
 import { confirmAdd, confirmDelete, confirmStatusChange } from "@/lib/notify";
-import { filterAttractionsByRole } from "@/lib/managerAuth";
 import { staffSchema } from "./schema";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusToggle from "@/components/ui/StatusToggle";
 import StatusFilterSelect from "@/components/ui/StatusFilterSelect";
 import MultiSelectDropdown from "@/components/ui/MultiSelectDropdown";
-import { matchesStatusFilter } from "@/lib/filterUtils";
-import { useUserRole } from "@/hooks/useUserRole";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { handleDownloadStaffListPDF, handleExportStaffCSV } from "@/lib/printUtils";
 import ExportButtons from "@/components/ui/ExportButtons";
+import {
+  useStaffList,
+  useCreateStaff,
+  useUpdateStaff,
+  useDisableStaff,
+  useDeleteStaff,
+} from "@/hooks/useStaffQueries";
+import { useAttractions, AttractionItem } from "@/hooks/useManagerQueries";
 
 const MultiSelect = MultiSelectDropdown;
 
+const STAFF_ROLES = ["Counter Operator", "Validator", "Helpdesk", "Supervisor"];
+
 function StaffManagementInner() {
   const { showToast } = useToast();
-
   const searchParams = useSearchParams();
-  const { role: userRole } = useUserRole();
-  const [staffList, setStaffList] = useState<StaffUser[]>(INITIAL_STAFF);
-  const [attractions, setAttractions] = useState<Attraction[]>(INITIAL_ATTRACTIONS);
+
+  // Filters State
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedAttractionFilter, setSelectedAttractionFilter] = useState("All");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>(
     searchParams.get("status") ?? "All"
   );
 
+  // Debounce search
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [search]);
+
   useEffect(() => {
     document.title = META_CONSTANTS.staffManagement.fullTitle;
-    const scoped = filterAttractionsByRole(INITIAL_ATTRACTIONS, userRole);
-    setAttractions(scoped);
-    if (scoped.length > 0) {
-      setFormData((prev) => ({ ...prev, assignedAttraction: [scoped[0].name] }));
-    }
-  }, [userRole]);
+  }, []);
+
+  // Attractions Query
+  const { data: attractionsData = [] } = useAttractions();
+  const attractionsList: AttractionItem[] = attractionsData;
+
+  // Status mapping for API
+  const apiStatus =
+    selectedStatusFilter === "Active" || selectedStatusFilter === "ACTIVE"
+      ? "ACTIVE"
+      : selectedStatusFilter === "Inactive" || selectedStatusFilter === "DISABLED"
+        ? "DISABLED"
+        : undefined;
+
+  // Staff Queries & Mutations
+  const {
+    data: staffData,
+    isLoading: isFetchingStaff,
+    isFetching,
+  } = useStaffList({
+    search: debouncedSearch || undefined,
+    status: apiStatus,
+    attractionId: selectedAttractionFilter !== "All" ? selectedAttractionFilter : undefined,
+  });
+
+  const createStaffMutation = useCreateStaff();
+  const updateStaffMutation = useUpdateStaff();
+  const disableStaffMutation = useDisableStaff();
+  const deleteStaffMutation = useDeleteStaff();
+
+  const rawStaffItems = staffData?.items ?? [];
+
+  // Normalize staff items for display
+  const staffList: StaffUser[] = rawStaffItems.map((s) => {
+    // Normalize a single role item — API may return string OR {id, role} object
+    const normalizeRole = (r: any): string => {
+      if (typeof r === "string") return r;
+      if (r && typeof r === "object") {
+        return r.role || r.name || r.key || r.title || String(r);
+      }
+      return String(r);
+    };
+
+    const rolesArr: string[] = Array.isArray(s.role)
+      ? (s.role as any[]).map(normalizeRole)
+      : Array.isArray(s.roles)
+        ? (s.roles as any[]).map(normalizeRole)
+        : typeof s.role === "string" && s.role
+          ? [s.role]
+          : s.role && typeof s.role === "object"
+            ? [normalizeRole(s.role)]
+            : ["STAFF"];
+
+    const attractionNames =
+      s.assignedAttraction && s.assignedAttraction.length > 0
+        ? s.assignedAttraction
+        : s.attractions && s.attractions.length > 0
+          ? s.attractions.map((a) => a.name)
+          : [];
+
+    return {
+      id: s.id,
+      name: s.name || "—",
+      email: s.email || "—",
+      phone: s.phone ?? "—",
+      role: rolesArr,
+      roles: rolesArr,
+      assignedAttraction: attractionNames,
+      attractions: s.attractions || [],
+      attractionIds: s.attractionIds || s.attractions?.map((a) => a.id) || [],
+      joinedDate: s.joinedDate
+        ? new Date(s.joinedDate).toLocaleDateString("en-IN")
+        : s.createdAt
+          ? new Date(s.createdAt).toLocaleDateString("en-IN")
+          : "—",
+      status: s.status,
+      ticketsIssued: s.ticketsIssued ?? 0,
+    };
+  });
 
   // Modal & Selection States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [showAddPassword, setShowAddPassword] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -69,9 +159,10 @@ function StaffManagementInner() {
     name: "",
     email: "",
     phone: "",
+    password: "",
     role: [] as string[],
     assignedAttraction: [] as string[],
-    status: "Active" as StaffUser["status"],
+    status: "Active" as "Active" | "Inactive",
   });
 
   // Validation errors from Zod
@@ -82,6 +173,7 @@ function StaffManagementInner() {
       name: "",
       email: "",
       phone: "",
+      password: "",
       role: [],
       assignedAttraction: [],
       status: "Active",
@@ -89,24 +181,17 @@ function StaffManagementInner() {
     setFormErrors({});
   };
 
-  // Filtered List
-  const filtered = staffList.filter((s) => {
-    const managerAssignedNames =
-      userRole === "Manager" ? attractions.map((a) => a.name.toLowerCase()) : null;
-    const isAllowedForManager =
-      !managerAssignedNames ||
-      managerAssignedNames.some((n) => s.assignedAttraction.some((a) => a.toLowerCase() === n));
+  const isStaffFiltered =
+    search.trim() !== "" ||
+    selectedAttractionFilter !== "All" ||
+    selectedStatusFilter !== "All";
 
-    const matchesAttraction = selectedAttractionFilter === "All" || s.assignedAttraction.includes(selectedAttractionFilter);
-    const matchesStatus = matchesStatusFilter(s.status, selectedStatusFilter);
-    const matchesSearch =
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.email.toLowerCase().includes(search.toLowerCase()) ||
-      s.assignedAttraction.some((a) => a.toLowerCase().includes(search.toLowerCase())) ||
-      s.role.some((r) => r.toLowerCase().includes(search.toLowerCase())) ||
-      s.status.toLowerCase().includes(search.toLowerCase());
-    return isAllowedForManager && matchesAttraction && matchesStatus && matchesSearch;
-  });
+  const handleResetStaffFilters = () => {
+    setSearch("");
+    setDebouncedSearch("");
+    setSelectedAttractionFilter("All");
+    setSelectedStatusFilter("All");
+  };
 
   // Handlers
   const handleOpenAddModal = () => {
@@ -116,13 +201,18 @@ function StaffManagementInner() {
 
   const handleOpenEdit = (staff: StaffUser) => {
     setSelectedStaff(staff);
+    const roleArr = Array.isArray(staff.role) ? staff.role : [String(staff.role)];
+    const attrArr = staff.assignedAttraction || [];
+    const isAct = String(staff.status).toUpperCase() === "ACTIVE";
+
     setFormData({
       name: staff.name,
       email: staff.email,
-      phone: staff.phone,
-      role: [...staff.role],
-      assignedAttraction: [...staff.assignedAttraction],
-      status: staff.status,
+      phone: staff.phone && staff.phone !== "—" ? staff.phone : "",
+      password: "",
+      role: [...roleArr],
+      assignedAttraction: [...attrArr],
+      status: isAct ? "Active" : "Inactive",
     });
     setIsEditing(true);
   };
@@ -141,30 +231,39 @@ function StaffManagementInner() {
       setFormErrors(errs);
       return;
     }
-    setFormErrors({});
-    setIsAddModalOpen(false);
 
-    const confirmed = await confirmAdd(`staff member "${formData.name}"`);
-    if (!confirmed) {
-      setIsAddModalOpen(true);
+    if (!formData.password?.trim()) {
+      setFormErrors((p) => ({ ...p, password: "Password is required for new staff accounts" }));
       return;
     }
 
-    const newStaff: StaffUser = {
-      id: `STF-${Date.now().toString().slice(-3)}`,
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone,
-      role: formData.role,
-      assignedAttraction: formData.assignedAttraction,
-      joinedDate: new Date().toISOString().slice(0, 10),
-      status: formData.status,
-      ticketsIssued: 0,
-    };
+    setFormErrors({});
 
-    setStaffList((prev) => [newStaff, ...prev]);
-    resetForm();
-    showToast(`Staff member "${newStaff.name}" added successfully!`, "success");
+    const confirmed = await confirmAdd(`staff member "${formData.name}"`);
+    if (!confirmed) {
+      return;
+    }
+
+    // Map selected attraction names to IDs
+    const attractionIds = formData.assignedAttraction
+      .map((name) => attractionsList.find((a) => a.name === name)?.id)
+      .filter(Boolean) as string[];
+
+    try {
+      await createStaffMutation.mutateAsync({
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        password: formData.password,
+        roles: formData.role.length > 0 ? formData.role : ["STAFF"],
+        attractionIds: attractionIds.length > 0 ? attractionIds : [],
+        status: formData.status === "Active" ? "ACTIVE" : "DISABLED",
+      });
+      setIsAddModalOpen(false);
+      resetForm();
+    } catch {
+      // Handled by onError in mutation
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -183,52 +282,79 @@ function StaffManagementInner() {
     }
     setFormErrors({});
 
-    const updated: StaffUser = {
-      ...selectedStaff,
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone,
-      role: formData.role,
-      assignedAttraction: formData.assignedAttraction,
-      status: formData.status,
-    };
+    const attractionIds = formData.assignedAttraction
+      .map((name) => attractionsList.find((a) => a.name === name)?.id)
+      .filter(Boolean) as string[];
 
-    setStaffList((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-    setSelectedStaff(updated);
-    setIsEditing(false);
-    showToast(`Staff member "${updated.name}" updated successfully!`, "success");
+    try {
+      await updateStaffMutation.mutateAsync({
+        staffId: selectedStaff.id,
+        data: {
+          name: formData.name.trim(),
+          email: formData.email.trim(),
+          phone: formData.phone.trim(),
+          password: formData.password?.trim() ? formData.password : undefined,
+          roles: formData.role.length > 0 ? formData.role : ["STAFF"],
+          attractionIds: attractionIds.length > 0 ? attractionIds : [],
+          status: formData.status === "Active" ? "ACTIVE" : "DISABLED",
+        },
+      });
+
+      setSelectedStaff({
+        ...selectedStaff,
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        role: formData.role,
+        roles: formData.role,
+        assignedAttraction: formData.assignedAttraction,
+        status: formData.status === "Active" ? "ACTIVE" : "DISABLED",
+      });
+      setIsEditing(false);
+    } catch {
+      // Handled by onError
+    }
   };
 
   const handleDeleteStaff = async (id: string) => {
     const target = staffList.find((s) => s.id === id);
-    const prev = selectedStaff;
-    setSelectedStaff(null);
-
     const confirmed = await confirmDelete(`staff member "${target?.name ?? id}"`);
-    if (!confirmed) {
-      setSelectedStaff(prev);
-      return;
-    }
+    if (!confirmed) return;
 
-    setStaffList((prev) => prev.filter((s) => s.id !== id));
-    showToast(`Staff member "${target?.name ?? id}" has been deleted.`, "info");
+    try {
+      await deleteStaffMutation.mutateAsync(id);
+      setSelectedStaff(null);
+      setIsEditing(false);
+    } catch {
+      // Handled by onError
+    }
   };
 
   const handleStatusToggle = async (staff: StaffUser, newStatus: StaffUser["status"]) => {
     const confirmed = await confirmStatusChange(staff.name, newStatus);
     if (!confirmed) return;
 
-    const updated = { ...staff, status: newStatus };
-    setStaffList((prev) => prev.map((s) => (s.id === staff.id ? updated : s)));
-    if (selectedStaff?.id === staff.id) {
-      setSelectedStaff(updated);
+    try {
+      if (newStatus === "Inactive" || newStatus === "DISABLED" || newStatus === "Disabled") {
+        await disableStaffMutation.mutateAsync(staff.id);
+      } else {
+        await updateStaffMutation.mutateAsync({
+          staffId: staff.id,
+          data: { status: "ACTIVE" },
+        });
+      }
+
+      if (selectedStaff?.id === staff.id) {
+        setSelectedStaff({ ...selectedStaff, status: newStatus });
+      }
+    } catch {
+      // Handled by onError
     }
-    showToast(`Status of "${staff.name}" updated to "${newStatus}".`, "success");
   };
 
   // Export Handlers
   const handleExportPDF = () => {
-    if (filtered.length === 0) {
+    if (staffList.length === 0) {
       showToast("No staff data matches current filters", "info");
       return;
     }
@@ -237,30 +363,35 @@ function StaffManagementInner() {
     if (selectedStatusFilter !== "All") parts.push(`Status: ${selectedStatusFilter}`);
     if (search) parts.push(`Search: "${search}"`);
     const filterInfo = parts.length > 0 ? parts.join(" | ") : "All Staff";
-    handleDownloadStaffListPDF(filtered, filterInfo);
-    showToast(`Generated PDF report for ${filtered.length} staff members`, "success");
+    handleDownloadStaffListPDF(staffList, filterInfo);
+    showToast(`Generated PDF report for ${staffList.length} staff members`, "success");
   };
 
   const handleExportExcel = () => {
-    if (filtered.length === 0) {
+    if (staffList.length === 0) {
       showToast("No staff data matches current filters", "info");
       return;
     }
     const label = selectedAttractionFilter !== "All" ? selectedAttractionFilter : "All";
-    handleExportStaffCSV(filtered, label);
-    showToast(`Exported ${filtered.length} staff members to CSV`, "success");
+    handleExportStaffCSV(staffList, label);
+    showToast(`Exported ${staffList.length} staff members to CSV`, "success");
   };
 
   // DataTable Columns
   const handleRowClick = (s: StaffUser) => {
     setSelectedStaff(s);
+    const roleArr = Array.isArray(s.role) ? s.role : [String(s.role)];
+    const attrArr = s.assignedAttraction || [];
+    const isAct = String(s.status).toUpperCase() === "ACTIVE";
+
     setFormData({
       name: s.name,
       email: s.email,
-      phone: s.phone,
-      role: [...s.role],
-      assignedAttraction: [...s.assignedAttraction],
-      status: s.status,
+      phone: s.phone && s.phone !== "—" ? s.phone : "",
+      password: "",
+      role: [...roleArr],
+      assignedAttraction: [...attrArr],
+      status: isAct ? "Active" : "Inactive",
     });
     setIsEditing(false);
   };
@@ -287,67 +418,89 @@ function StaffManagementInner() {
           >
             {s.name.charAt(0)}
           </div>
-          <div style={{ fontWeight: 700, color: colors.text.primary, fontSize: "14px" }}>
-            {s.name}
+          <div>
+            <div style={{ fontWeight: 700, color: colors.text.primary, fontSize: "14px" }}>
+              {s.name}
+            </div>
+            <div style={{ fontSize: "12px", color: colors.text.muted }}>
+              {s.email}
+            </div>
           </div>
         </div>
       ),
     },
     {
-      header: "Role",
+      header: "Phone",
       cell: (s) => (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-          {s.role.map((r) => (
-            <span
-              key={r}
-              style={{
-                background: "rgba(35,114,165,0.08)",
-                color: colors.brand.accent,
-                padding: "3px 8px",
-                borderRadius: "12px",
-                fontSize: "12px",
-                fontWeight: 600,
-                fontFamily: typography.fontFamily.sans,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {r}
-            </span>
-          ))}
-        </div>
+        <span style={{ fontSize: "13px", color: colors.text.primary, fontWeight: 500 }}>
+          {s.phone || "—"}
+        </span>
       ),
+    },
+    {
+      header: "Role",
+      cell: (s) => {
+        const roles = Array.isArray(s.role) ? s.role : [String(s.role)];
+        return (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+            {roles.map((r) => (
+              <span
+                key={r}
+                style={{
+                  background: "rgba(35,114,165,0.08)",
+                  color: colors.brand.accent,
+                  padding: "3px 8px",
+                  borderRadius: "12px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  fontFamily: typography.fontFamily.sans,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {r}
+              </span>
+            ))}
+          </div>
+        );
+      },
     },
     {
       header: "Attraction",
-      cell: (s) => (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-          {s.assignedAttraction.map((a) => (
-            <span
-              key={a}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                background: "rgba(35,114,165,0.06)",
-                color: "#2372A5",
-                padding: "3px 8px",
-                borderRadius: "12px",
-                fontSize: "12px",
-                fontWeight: 600,
-                fontFamily: typography.fontFamily.sans,
-                whiteSpace: "nowrap",
-              }}
-            >
-              <Building size={11} />
-              {a}
-            </span>
-          ))}
-        </div>
-      ),
+      cell: (s) => {
+        const attrs = s.assignedAttraction && s.assignedAttraction.length > 0 ? s.assignedAttraction : ["—"];
+        return (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+            {attrs.map((a, idx) => (
+              <span
+                key={`${a}-${idx}`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  background: "rgba(35,114,165,0.06)",
+                  color: "#2372A5",
+                  padding: "3px 8px",
+                  borderRadius: "12px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  fontFamily: typography.fontFamily.sans,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {a !== "—" && <Building size={11} />}
+                {a}
+              </span>
+            ))}
+          </div>
+        );
+      },
     },
     {
       header: "Status",
-      cell: (s) => <StatusBadge status={s.status} />,
+      cell: (s) => {
+        const isAct = String(s.status).toUpperCase() === "ACTIVE";
+        return <StatusBadge status={isAct ? "Active" : "Inactive"} />;
+      },
     },
     {
       header: "Action",
@@ -356,22 +509,32 @@ function StaffManagementInner() {
         <button
           onClick={() => handleRowClick(s)}
           style={{
-            display: "inline-flex", alignItems: "center", gap: "6px",
-            background: "rgba(35,114,165,0.1)", color: colors.brand.accent,
-            border: `1px solid ${colors.brand.accent}`, borderRadius: "6px",
-            padding: "6px 12px", fontSize: "13px", fontWeight: 600,
-            cursor: "pointer", fontFamily: typography.fontFamily.sans,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            background: "rgba(35,114,165,0.1)",
+            color: colors.brand.accent,
+            border: `1px solid ${colors.brand.accent}`,
+            borderRadius: "6px",
+            padding: "6px 12px",
+            fontSize: "13px",
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: typography.fontFamily.sans,
           }}
         >
-          <Eye size={15} /><span>View</span>
+          <Eye size={15} />
+          <span>View</span>
         </button>
       ),
     },
   ];
 
-
   // ─── Detail / Edit View ──────────────────────────────────────────────────
   if (selectedStaff) {
+    const isAct = String(selectedStaff.status).toUpperCase() === "ACTIVE";
+    const selectedRoles = Array.isArray(selectedStaff.role) ? selectedStaff.role : [String(selectedStaff.role)];
+
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
         {/* Top bar */}
@@ -439,15 +602,15 @@ function StaffManagementInner() {
                 </span>
                 <span
                   style={{
-                    background: selectedStaff.status === "Active" ? "#F0FDF4" : "#FEF2F2",
-                    color: selectedStaff.status === "Active" ? colors.status.success : colors.status.error,
+                    background: isAct ? "#F0FDF4" : "#FEF2F2",
+                    color: isAct ? colors.status.success : colors.status.error,
                     padding: "2px 10px",
                     borderRadius: "12px",
                     fontSize: "12px",
                     fontWeight: 700,
                   }}
                 >
-                  {selectedStaff.status}
+                  {isAct ? "Active" : "Disabled"}
                 </span>
               </div>
               <p
@@ -458,7 +621,12 @@ function StaffManagementInner() {
                   margin: "2px 0 0",
                 }}
               >
-                Assigned Attractions: <strong>{selectedStaff.assignedAttraction.join(", ")}</strong>
+                Assigned Attractions:{" "}
+                <strong>
+                  {selectedStaff.assignedAttraction && selectedStaff.assignedAttraction.length > 0
+                    ? selectedStaff.assignedAttraction.join(", ")
+                    : "None"}
+                </strong>
               </p>
             </div>
           </div>
@@ -467,6 +635,7 @@ function StaffManagementInner() {
             {isEditing ? (
               <>
                 <button
+                  type="button"
                   onClick={() => setIsEditing(false)}
                   style={{
                     padding: "9px 16px",
@@ -482,30 +651,40 @@ function StaffManagementInner() {
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={handleSaveEdit}
+                  disabled={updateStaffMutation.isPending}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "6px",
                     padding: "9px 18px",
                     borderRadius: "8px",
-                    background: colors.brand.primary,
-                    color: colors.sidebar.activeText,
+                    background: updateStaffMutation.isPending ? "#E5E7EB" : colors.brand.primary,
+                    color: updateStaffMutation.isPending ? "#6B7280" : colors.sidebar.activeText,
                     border: "none",
                     fontSize: "13px",
                     fontWeight: 700,
-                    cursor: "pointer",
+                    cursor: updateStaffMutation.isPending ? "not-allowed" : "pointer",
                     fontFamily: typography.fontFamily.sans,
-                    boxShadow: "0 4px 12px rgba(244,188,67,0.3)",
+                    boxShadow: updateStaffMutation.isPending ? "none" : "0 4px 12px rgba(244,188,67,0.3)",
                   }}
                 >
-                  Save Changes
+                  {updateStaffMutation.isPending ? (
+                    <>
+                      <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                      <span>Saving Changes...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
                 </button>
               </>
             ) : (
               <>
                 <button
-                  onClick={() => setIsEditing(true)}
+                  type="button"
+                  onClick={() => handleOpenEdit(selectedStaff)}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -525,6 +704,7 @@ function StaffManagementInner() {
                   <span>Edit Staff Member</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleDeleteStaff(selectedStaff.id)}
                   style={{
                     display: "inline-flex",
@@ -576,11 +756,16 @@ function StaffManagementInner() {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
               <div>
-                <label style={{ fontSize: "13px", fontWeight: 600, display: "block" }}>Full Name</label>
+                <label style={{ fontSize: "13px", fontWeight: 600, display: "block" }}>
+                  Full Name
+                </label>
                 <input
                   type="text"
                   value={formData.name}
-                  onChange={(e) => { setFormData({ ...formData, name: e.target.value }); setFormErrors((p) => ({ ...p, name: "" })); }}
+                  onChange={(e) => {
+                    setFormData({ ...formData, name: e.target.value });
+                    setFormErrors((p) => ({ ...p, name: "" }));
+                  }}
                   style={{
                     width: "100%",
                     height: "40px",
@@ -592,14 +777,23 @@ function StaffManagementInner() {
                     boxSizing: "border-box",
                   }}
                 />
-                {formErrors.name && <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>{formErrors.name}</span>}
+                {formErrors.name && (
+                  <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>
+                    {formErrors.name}
+                  </span>
+                )}
               </div>
               <div>
-                <label style={{ fontSize: "13px", fontWeight: 600, display: "block" }}>Email</label>
+                <label style={{ fontSize: "13px", fontWeight: 600, display: "block" }}>
+                  Email Address
+                </label>
                 <input
                   type="email"
                   value={formData.email}
-                  onChange={(e) => { setFormData({ ...formData, email: e.target.value }); setFormErrors((p) => ({ ...p, email: "" })); }}
+                  onChange={(e) => {
+                    setFormData({ ...formData, email: e.target.value });
+                    setFormErrors((p) => ({ ...p, email: "" }));
+                  }}
                   style={{
                     width: "100%",
                     height: "40px",
@@ -611,7 +805,60 @@ function StaffManagementInner() {
                     boxSizing: "border-box",
                   }}
                 />
-                {formErrors.email && <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>{formErrors.email}</span>}
+                {formErrors.email && (
+                  <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>
+                    {formErrors.email}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              <div>
+                <label style={{ fontSize: "13px", fontWeight: 600, display: "block" }}>
+                  Phone Number
+                </label>
+                <input
+                  type="text"
+                  maxLength={10}
+                  value={formData.phone}
+                  onChange={(e) => {
+                    setFormData({ ...formData, phone: e.target.value.replace(/\D/g, "").slice(0, 10) });
+                    setFormErrors((p) => ({ ...p, phone: "" }));
+                  }}
+                  style={{
+                    width: "100%",
+                    height: "40px",
+                    borderRadius: "8px",
+                    border: `1.5px solid ${formErrors.phone ? "#EF4444" : "#CBD5E1"}`,
+                    padding: "0 12px",
+                    marginTop: "4px",
+                    fontSize: "14px",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: "13px", fontWeight: 600, display: "block" }}>
+                  Password (leave blank to keep current)
+                </label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  style={{
+                    width: "100%",
+                    height: "40px",
+                    borderRadius: "8px",
+                    border: "1.5px solid #CBD5E1",
+                    padding: "0 12px",
+                    marginTop: "4px",
+                    fontSize: "14px",
+                    boxSizing: "border-box",
+                  }}
+                />
               </div>
             </div>
 
@@ -619,17 +866,23 @@ function StaffManagementInner() {
               <MultiSelect
                 label="Assigned Attraction"
                 required
-                options={attractions.map((a) => a.name)}
+                options={attractionsList.map((a) => a.name)}
                 selected={formData.assignedAttraction}
-                onChange={(vals) => { setFormData({ ...formData, assignedAttraction: vals }); setFormErrors((p) => ({ ...p, assignedAttraction: "" })); }}
+                onChange={(vals) => {
+                  setFormData({ ...formData, assignedAttraction: vals });
+                  setFormErrors((p) => ({ ...p, assignedAttraction: "" }));
+                }}
                 error={formErrors.assignedAttraction}
               />
               <MultiSelect
                 label="Staff Role"
                 required
-                options={["Counter Operator", "Validator", "Helpdesk", "Supervisor"]}
+                options={STAFF_ROLES}
                 selected={formData.role}
-                onChange={(vals) => { setFormData({ ...formData, role: vals }); setFormErrors((p) => ({ ...p, role: "" })); }}
+                onChange={(vals) => {
+                  setFormData({ ...formData, role: vals });
+                  setFormErrors((p) => ({ ...p, role: "" }));
+                }}
                 error={formErrors.role}
               />
             </div>
@@ -644,42 +897,109 @@ function StaffManagementInner() {
         ) : (
           // ── Read-Only Detail Cards ────────────────────────────────────────
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            {/* Row 1: Personal Info + Status/Tickets */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
               {/* Personal Info */}
-              <div style={{ background: "#FFFFFF", borderRadius: "16px", padding: "24px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", border: "1px solid #F1F5F9" }}>
-                <h3 style={{ margin: "0 0 16px 0", fontSize: "14px", fontWeight: 700, color: colors.text.muted, textTransform: "uppercase", letterSpacing: "0.5px", fontFamily: typography.fontFamily.sans }}>
+              <div
+                style={{
+                  background: "#FFFFFF",
+                  borderRadius: "16px",
+                  padding: "24px",
+                  boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
+                  border: "1px solid #F1F5F9",
+                }}
+              >
+                <h3
+                  style={{
+                    margin: "0 0 16px 0",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    color: colors.text.muted,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                    fontFamily: typography.fontFamily.sans,
+                  }}
+                >
                   Personal Information
                 </h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "#0C2A42", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "18px", flexShrink: 0 }}>
+                    <div
+                      style={{
+                        width: "48px",
+                        height: "48px",
+                        borderRadius: "50%",
+                        background: "#0C2A42",
+                        color: "#FFFFFF",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 700,
+                        fontSize: "18px",
+                        flexShrink: 0,
+                      }}
+                    >
                       {selectedStaff.name.charAt(0)}
                     </div>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: "16px", color: "#011B2F" }}>{selectedStaff.name}</div>
-                      <div style={{ fontSize: "12px", color: colors.text.muted }}>{selectedStaff.id}</div>
+                      <div style={{ fontWeight: 700, fontSize: "16px", color: "#011B2F" }}>
+                        {selectedStaff.name}
+                      </div>
+                      <div style={{ fontSize: "12px", color: colors.text.muted }}>
+                        {selectedStaff.id}
+                      </div>
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", paddingTop: "8px", borderTop: "1px solid #F1F5F9" }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "12px",
+                      paddingTop: "8px",
+                      borderTop: "1px solid #F1F5F9",
+                    }}
+                  >
                     <div>
-                      <div style={{ fontSize: "11px", color: colors.text.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.4px" }}>Email</div>
-                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#1E293B", marginTop: "2px" }}>{selectedStaff.email}</div>
+                      <div style={{ fontSize: "11px", color: colors.text.muted, fontWeight: 600 }}>
+                        Email
+                      </div>
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#1E293B", marginTop: "2px" }}>
+                        {selectedStaff.email}
+                      </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: "11px", color: colors.text.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.4px" }}>Phone</div>
-                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#1E293B", marginTop: "2px" }}>{selectedStaff.phone}</div>
+                      <div style={{ fontSize: "11px", color: colors.text.muted, fontWeight: 600 }}>
+                        Phone
+                      </div>
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#1E293B", marginTop: "2px" }}>
+                        {selectedStaff.phone}
+                      </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: "11px", color: colors.text.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.4px" }}>Joined Date</div>
-                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#1E293B", marginTop: "2px" }}>{selectedStaff.joinedDate}</div>
+                      <div style={{ fontSize: "11px", color: colors.text.muted, fontWeight: 600 }}>
+                        Joined Date
+                      </div>
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#1E293B", marginTop: "2px" }}>
+                        {selectedStaff.joinedDate}
+                      </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: "11px", color: colors.text.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.4px" }}>Role</div>
+                      <div style={{ fontSize: "11px", color: colors.text.muted, fontWeight: 600 }}>
+                        Role
+                      </div>
                       <div style={{ marginTop: "4px", display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                        {selectedStaff.role.map((r) => (
-                          <span key={r} style={{ background: "rgba(35,114,165,0.1)", color: colors.brand.accent, padding: "2px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: 700 }}>
+                        {selectedRoles.map((r) => (
+                          <span
+                            key={r}
+                            style={{
+                              background: "rgba(35,114,165,0.1)",
+                              color: colors.brand.accent,
+                              padding: "2px 8px",
+                              borderRadius: "4px",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                            }}
+                          >
                             {r}
                           </span>
                         ))}
@@ -690,29 +1010,76 @@ function StaffManagementInner() {
               </div>
 
               {/* Performance & Status */}
-              <div style={{ background: "#FFFFFF", borderRadius: "16px", padding: "24px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", border: "1px solid #F1F5F9" }}>
-                <h3 style={{ margin: "0 0 16px 0", fontSize: "14px", fontWeight: 700, color: colors.text.muted, textTransform: "uppercase", letterSpacing: "0.5px", fontFamily: typography.fontFamily.sans }}>
-                  Performance & Account Status
+              <div
+                style={{
+                  background: "#FFFFFF",
+                  borderRadius: "16px",
+                  padding: "24px",
+                  boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
+                  border: "1px solid #F1F5F9",
+                }}
+              >
+                <h3
+                  style={{
+                    margin: "0 0 16px 0",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    color: colors.text.muted,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                    fontFamily: typography.fontFamily.sans,
+                  }}
+                >
+                  Performance &amp; Account Status
                 </h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  {/* Tickets stat */}
-                  <div style={{ background: "rgba(35,114,165,0.05)", borderRadius: "12px", padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div
+                    style={{
+                      background: "rgba(35,114,165,0.05)",
+                      borderRadius: "12px",
+                      padding: "16px 20px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
                     <div>
-                      <div style={{ fontSize: "11px", color: colors.text.muted, fontWeight: 600, textTransform: "uppercase" }}>Total Tickets Processed</div>
-                      <div style={{ fontSize: "28px", fontWeight: 800, color: "#0C2A42", fontFamily: typography.fontFamily.sans, marginTop: "4px" }}>
-                        {selectedStaff.ticketsIssued.toLocaleString()}
+                      <div style={{ fontSize: "11px", color: colors.text.muted, fontWeight: 600 }}>
+                        Total Tickets Processed
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "28px",
+                          fontWeight: 800,
+                          color: "#0C2A42",
+                          fontFamily: typography.fontFamily.sans,
+                          marginTop: "4px",
+                        }}
+                      >
+                        {(selectedStaff.ticketsIssued ?? 0).toLocaleString()}
                       </div>
                     </div>
-                    <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: colors.brand.primary, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div
+                      style={{
+                        width: "48px",
+                        height: "48px",
+                        borderRadius: "12px",
+                        background: colors.brand.primary,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
                       <Ticket size={24} color="#0C2A42" />
                     </div>
                   </div>
 
-                  {/* Status */}
                   <div>
-                    <div style={{ fontSize: "11px", color: colors.text.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "8px" }}>Account Status</div>
+                    <div style={{ fontSize: "11px", color: colors.text.muted, fontWeight: 600, marginBottom: "8px" }}>
+                      Account Status
+                    </div>
                     <StatusToggle
-                      value={selectedStaff.status}
+                      value={isAct ? "Active" : "Inactive"}
                       onChange={(st) => handleStatusToggle(selectedStaff, st)}
                     />
                   </div>
@@ -720,20 +1087,57 @@ function StaffManagementInner() {
               </div>
             </div>
 
-            {/* Row 2: Attraction Assignment */}
-            <div style={{ background: "#FFFFFF", borderRadius: "16px", padding: "24px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", border: "1px solid #F1F5F9" }}>
-              <h3 style={{ margin: "0 0 16px 0", fontSize: "14px", fontWeight: 700, color: colors.text.muted, textTransform: "uppercase", letterSpacing: "0.5px", fontFamily: typography.fontFamily.sans }}>
+            {/* Attraction Assignment */}
+            <div
+              style={{
+                background: "#FFFFFF",
+                borderRadius: "16px",
+                padding: "24px",
+                boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
+                border: "1px solid #F1F5F9",
+              }}
+            >
+              <h3
+                style={{
+                  margin: "0 0 16px 0",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  color: colors.text.muted,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  fontFamily: typography.fontFamily.sans,
+                }}
+              >
                 Attraction Assignment
               </h3>
               <div>
-                <div style={{ fontSize: "11px", color: colors.text.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.4px" }}>Assigned Attraction</div>
                 <div style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                  {selectedStaff.assignedAttraction.map((a) => (
-                    <span key={a} style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#F8FAFC", border: "1px solid #CBD5E1", color: "#0F172A", padding: "6px 12px", borderRadius: "8px", fontSize: "14px", fontWeight: 700 }}>
-                      <Building size={14} color="#2372A5" />
-                      {a}
+                  {selectedStaff.assignedAttraction && selectedStaff.assignedAttraction.length > 0 ? (
+                    selectedStaff.assignedAttraction.map((a, idx) => (
+                      <span
+                        key={`${a}-${idx}`}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          background: "#F8FAFC",
+                          border: "1px solid #CBD5E1",
+                          color: "#0F172A",
+                          padding: "6px 12px",
+                          borderRadius: "8px",
+                          fontSize: "14px",
+                          fontWeight: 700,
+                        }}
+                      >
+                        <Building size={14} color="#2372A5" />
+                        {a}
+                      </span>
+                    ))
+                  ) : (
+                    <span style={{ fontSize: "13px", color: colors.text.muted }}>
+                      No attractions assigned.
                     </span>
-                  ))}
+                  )}
                 </div>
               </div>
             </div>
@@ -743,7 +1147,7 @@ function StaffManagementInner() {
     );
   }
 
-  // ─── Main Staff List View 
+  // ─── Main Staff List View ─────────────────────────────────────────────────
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* Header Bar */}
@@ -756,32 +1160,36 @@ function StaffManagementInner() {
           gap: "12px",
         }}
       >
-        <ExportButtons
-          onExportPDF={handleExportPDF}
-          onExportExcel={handleExportExcel}
-        />
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <ExportButtons
+            onExportPDF={handleExportPDF}
+            onExportExcel={handleExportExcel}
+            disabled={isFetchingStaff || staffList.length === 0}
+          />
 
-        <button
-          onClick={handleOpenAddModal}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            background: colors.brand.primary,
-            color: colors.sidebar.activeText,
-            border: "none",
-            borderRadius: "8px",
-            padding: "10px 18px",
-            fontFamily: typography.fontFamily.sans,
-            fontWeight: typography.fontWeight.bold,
-            fontSize: "14px",
-            cursor: "pointer",
-            boxShadow: "0 4px 12px rgba(244, 188, 67, 0.3)",
-          }}
-        >
-          <Plus size={18} />
-          <span>Add New Staff</span>
-        </button>
+          <button
+            type="button"
+            onClick={handleOpenAddModal}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              background: colors.brand.primary,
+              color: colors.sidebar.activeText,
+              border: "none",
+              borderRadius: "8px",
+              padding: "10px 18px",
+              fontFamily: typography.fontFamily.sans,
+              fontWeight: typography.fontWeight.bold,
+              fontSize: "14px",
+              cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(244, 188, 67, 0.3)",
+            }}
+          >
+            <Plus size={18} />
+            <span>Add New Staff</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter & Search Bar */}
@@ -825,11 +1233,12 @@ function StaffManagementInner() {
               outline: "none",
               cursor: "pointer",
               background: "#FFFFFF",
+              maxWidth: "220px",
             }}
           >
             <option value="All">All Attractions</option>
-            {attractions.map((att) => (
-              <option key={att.id} value={att.name}>
+            {attractionsList.map((att) => (
+              <option key={att.id} value={att.id}>
                 {att.name}
               </option>
             ))}
@@ -859,7 +1268,7 @@ function StaffManagementInner() {
           <Search size={18} color={colors.text.muted} />
           <input
             type="text"
-            placeholder="Search staff by name, attraction, role, or counter..."
+            placeholder="Search staff by name, email, or phone..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{
@@ -875,15 +1284,74 @@ function StaffManagementInner() {
         </div>
       </div>
 
-      {/* Click-to-view hint */}
-
       {/* DataTable */}
       <DataTable
         columns={columns}
-        data={filtered}
+        data={staffList}
         keyExtractor={(s) => s.id}
-        pageSize={5}
-        emptyMessage="No staff records found matching your search."
+        pageSize={10}
+        isLoading={isFetchingStaff}
+        emptyIcon={
+          isStaffFiltered ? (
+            <SearchX size={26} color={colors.brand.accent} />
+          ) : (
+            <UserX size={26} color={colors.brand.accent} />
+          )
+        }
+        emptyTitle={
+          isStaffFiltered ? "No Matching Staff Found" : "No Staff Members Found"
+        }
+        emptyDescription={
+          isStaffFiltered
+            ? search.trim()
+              ? `No staff records found matching "${search}". Try adjusting your keywords or clearing your filters.`
+              : "No staff records match the selected filter criteria. Try adjusting or clearing your filters."
+            : "There are currently no staff records in the system. Click 'Add Staff' to register your first staff member."
+        }
+        emptyAction={
+          isStaffFiltered ? (
+            <button
+              type="button"
+              onClick={handleResetStaffFilters}
+              style={{
+                padding: "8px 16px",
+                borderRadius: "8px",
+                border: `1px solid ${colors.header.border}`,
+                background: "#FFFFFF",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: colors.brand.accent,
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              }}
+            >
+              Clear Filters &amp; Search
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleOpenAddModal}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 18px",
+                borderRadius: "8px",
+                background: colors.brand.primary,
+                color: colors.sidebar.activeText,
+                border: "none",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 3px 8px rgba(244,188,67,0.3)",
+              }}
+            >
+              <UserPlus size={15} />
+              <span>Add Staff</span>
+            </button>
+          )
+        }
       />
 
       {/* Add Staff Modal */}
@@ -926,6 +1394,7 @@ function StaffManagementInner() {
                 Add New Staff Member
               </h2>
               <button
+                type="button"
                 onClick={() => {
                   setIsAddModalOpen(false);
                   resetForm();
@@ -956,7 +1425,10 @@ function StaffManagementInner() {
                   type="text"
                   placeholder="Enter staff full name"
                   value={formData.name}
-                  onChange={(e) => { setFormData({ ...formData, name: e.target.value }); setFormErrors((p) => ({ ...p, name: "" })); }}
+                  onChange={(e) => {
+                    setFormData({ ...formData, name: e.target.value });
+                    setFormErrors((p) => ({ ...p, name: "" }));
+                  }}
                   style={{
                     width: "100%",
                     height: "40px",
@@ -968,7 +1440,11 @@ function StaffManagementInner() {
                     boxSizing: "border-box",
                   }}
                 />
-                {formErrors.name && <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>{formErrors.name}</span>}
+                {formErrors.name && (
+                  <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>
+                    {formErrors.name}
+                  </span>
+                )}
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -996,7 +1472,11 @@ function StaffManagementInner() {
                       boxSizing: "border-box",
                     }}
                   />
-                  {formErrors.phone && <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>{formErrors.phone}</span>}
+                  {formErrors.phone && (
+                    <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>
+                      {formErrors.phone}
+                    </span>
+                  )}
                 </div>
                 <div>
                   <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary }}>
@@ -1006,7 +1486,10 @@ function StaffManagementInner() {
                     type="email"
                     placeholder="staff@gmail.com"
                     value={formData.email}
-                    onChange={(e) => { setFormData({ ...formData, email: e.target.value }); setFormErrors((p) => ({ ...p, email: "" })); }}
+                    onChange={(e) => {
+                      setFormData({ ...formData, email: e.target.value });
+                      setFormErrors((p) => ({ ...p, email: "" }));
+                    }}
                     style={{
                       width: "100%",
                       height: "40px",
@@ -1018,25 +1501,87 @@ function StaffManagementInner() {
                       boxSizing: "border-box",
                     }}
                   />
-                  {formErrors.email && <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>{formErrors.email}</span>}
+                  {formErrors.email && (
+                    <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>
+                      {formErrors.email}
+                    </span>
+                  )}
                 </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary }}>
+                  Password <span style={{ color: "#EF4444" }}>*</span>
+                </label>
+                <div style={{ position: "relative", display: "flex", alignItems: "center", marginTop: "4px" }}>
+                  <input
+                    type={showAddPassword ? "text" : "password"}
+                    placeholder="Enter secure password"
+                    value={formData.password}
+                    onChange={(e) => {
+                      setFormData({ ...formData, password: e.target.value });
+                      setFormErrors((p) => ({ ...p, password: "" }));
+                    }}
+                    style={{
+                      width: "100%",
+                      height: "40px",
+                      borderRadius: "8px",
+                      border: `1.5px solid ${formErrors.password ? "#EF4444" : "#CBD5E1"}`,
+                      padding: "0 40px 0 12px",
+                      fontSize: "14px",
+                      boxSizing: "border-box",
+                      outline: "none",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAddPassword((prev) => !prev)}
+                    style={{
+                      position: "absolute",
+                      right: "10px",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: colors.text.muted,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "4px",
+                    }}
+                    tabIndex={-1}
+                    aria-label={showAddPassword ? "Hide password" : "Show password"}
+                  >
+                    {showAddPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                {formErrors.password && (
+                  <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>
+                    {formErrors.password}
+                  </span>
+                )}
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <MultiSelect
                   label="Assigned Attraction"
                   required
-                  options={attractions.map((a) => a.name)}
+                  options={attractionsList.map((a) => a.name)}
                   selected={formData.assignedAttraction}
-                  onChange={(vals) => { setFormData({ ...formData, assignedAttraction: vals }); setFormErrors((p) => ({ ...p, assignedAttraction: "" })); }}
+                  onChange={(vals) => {
+                    setFormData({ ...formData, assignedAttraction: vals });
+                    setFormErrors((p) => ({ ...p, assignedAttraction: "" }));
+                  }}
                   error={formErrors.assignedAttraction}
                 />
                 <MultiSelect
                   label="Staff Role"
                   required
-                  options={["Counter Operator", "Validator", "Helpdesk", "Supervisor"]}
+                  options={STAFF_ROLES}
                   selected={formData.role}
-                  onChange={(vals) => { setFormData({ ...formData, role: vals }); setFormErrors((p) => ({ ...p, role: "" })); }}
+                  onChange={(vals) => {
+                    setFormData({ ...formData, role: vals });
+                    setFormErrors((p) => ({ ...p, role: "" }));
+                  }}
                   error={formErrors.role}
                 />
               </div>
@@ -1083,32 +1628,41 @@ function StaffManagementInner() {
                 </button>
                 <button
                   type="submit"
+                  disabled={createStaffMutation.isPending}
                   style={{
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
                     padding: "10px 22px",
                     borderRadius: "8px",
-                    background: colors.brand.primary,
-                    color: colors.sidebar.activeText,
+                    background: createStaffMutation.isPending ? "#E5E7EB" : colors.brand.primary,
+                    color: createStaffMutation.isPending ? "#6B7280" : colors.sidebar.activeText,
                     border: "none",
                     fontSize: "14px",
                     fontWeight: 700,
-                    cursor: "pointer",
+                    cursor: createStaffMutation.isPending ? "not-allowed" : "pointer",
                     fontFamily: typography.fontFamily.sans,
-                    boxShadow: "0 4px 12px rgba(244,188,67,0.3)",
+                    boxShadow: createStaffMutation.isPending ? "none" : "0 4px 12px rgba(244,188,67,0.3)",
                   }}
                 >
-                  <Plus size={16} />
-                  <span>Create Staff Member</span>
+                  {createStaffMutation.isPending ? (
+                    <>
+                      <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                      <span>Creating Staff Member...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={16} />
+                      <span>Create Staff Member</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
           </div>
-        </div >
-      )
-      }
-    </div >
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1122,3 +1676,4 @@ export default function StaffManagementPage() {
     </Suspense>
   );
 }
+

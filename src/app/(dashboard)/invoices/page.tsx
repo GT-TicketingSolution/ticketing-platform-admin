@@ -292,7 +292,11 @@ export default function InvoicesPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: "20px", width: "100%" }}>
       {/* ── Top Export Buttons Row ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
-        <ExportButtons onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} />
+        <ExportButtons
+          onExportPDF={handleExportPDF}
+          onExportExcel={handleExportExcel}
+          disabled={filteredInvoices.length === 0}
+        />
       </div>
 
       {/* ── Stats Cards ── */}

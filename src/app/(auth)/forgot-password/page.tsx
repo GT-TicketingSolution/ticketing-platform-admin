@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -21,6 +21,12 @@ export default function ForgotPasswordPage() {
   const [selectedLang, setSelectedLang] = useState("English");
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      document.title = "Forgot Password | Ticketing Platform";
+    }
+  }, []);
 
   const forgotPasswordMutation = useForgotPasswordMutation();
   const isSubmitting = forgotPasswordMutation.isPending;
@@ -46,7 +52,9 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div
+    <>
+      <title>Forgot Password | Ticketing Platform</title>
+      <div
       style={{
         position: "relative",
         minHeight: "100vh",
@@ -501,5 +509,6 @@ export default function ForgotPasswordPage() {
         }
       `}</style>
     </div>
+    </>
   );
 }

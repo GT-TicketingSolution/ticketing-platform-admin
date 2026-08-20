@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { X, ChevronDown } from "lucide-react";
+import { X, ChevronDown, Loader2 } from "lucide-react";
 import { ComplimentaryPass, Reference, ATTRACTIONS } from "@/types/complimentaryPass";
 import { validatePass } from "@/app/(dashboard)/complimentary-passes/schema";
 
@@ -11,6 +11,7 @@ interface IssueComplimentaryPassModalProps {
   passToEdit: ComplimentaryPass | null;
   references: Reference[];
   onSave: (data: Omit<ComplimentaryPass, "id" | "passId">) => void;
+  isSaving?: boolean;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -51,6 +52,7 @@ export default function IssueComplimentaryPassModal({
   passToEdit,
   references,
   onSave,
+  isSaving = false,
 }: IssueComplimentaryPassModalProps) {
   const [visitorName, setVisitorName] = useState("");
   const [mobile, setMobile] = useState("");
@@ -467,25 +469,42 @@ export default function IssueComplimentaryPassModal({
             </button>
             <button
               type="submit"
+              disabled={isSaving}
               style={{
                 height: "36px",
                 padding: "0 30px",
-                background: "#F4BC43",
+                background: isSaving ? "#E5E7EB" : "#F4BC43",
                 border: "none",
                 borderRadius: "8px",
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
                 fontWeight: 700,
                 fontSize: "14px",
-                color: "#011B2F",
-                cursor: "pointer",
-                boxShadow: "0 4px 12px rgba(244,188,67,0.3)",
+                color: isSaving ? "#6B7280" : "#011B2F",
+                cursor: isSaving ? "not-allowed" : "pointer",
+                boxShadow: isSaving ? "none" : "0 4px 12px rgba(244,188,67,0.3)",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
               }}
             >
-              Add
+              {isSaving ? (
+                <>
+                  <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <span>Add</span>
+              )}
             </button>
           </div>
         </form>
       </div>
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

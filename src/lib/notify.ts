@@ -5,6 +5,7 @@
  */
 
 import { showNotify, setNotifyDefaults } from "notify-bolt";
+import { showToast } from "@/components/ui/Toast";
 
 // Global defaults configuration
 setNotifyDefaults({
@@ -18,29 +19,15 @@ setNotifyDefaults({
 });
 
 /**
- * Reusable helper to show success notify-bolt modal.
+ * Reusable helper to show success notifications via Toast message across the entire application.
  */
-export function showSuccessNotify(message: string = "This is a test message!", title: string = "") {
-  return showNotify({
-    title,
-    message,
-    variant: "classic",
-    status: "success",
-    allowOutsideClick: true,
-    animation: "slide-up",
-    size: "sm",
-    showCloseIcon: true,
-    showDenyButton: false,
-    showCancelButton: false,
-    showConfirmButton: true,
-    confirmButtonText: "OK",
-    focusConfirm: true,
-    celebrate: false,
-  });
+export function showSuccessNotify(message: string = "Operation completed successfully!", title: string = "") {
+  const text = message || title || "Operation completed successfully!";
+  showToast(text, "success");
 }
 
 /**
- * Reusable helper to show error notify-bolt modal without auto-closing.
+ * Reusable helper to show error notify-bolt modal without auto-closing (for API errors).
  */
 export function showErrorNotify(message: string = "An error occurred.", title: string = "Error") {
   return showNotify({
@@ -74,7 +61,7 @@ export async function confirmDelete(itemLabel: string): Promise<boolean> {
       allowOutsideClick: true,
       animation: "slide-up",
       size: "sm",
-      showCloseIcon: false,
+      showCloseIcon: true,
       showConfirmButton: true,
       showCancelButton: true,
       confirmButtonText: "Yes",
@@ -101,7 +88,7 @@ export async function confirmAdd(itemLabel: string): Promise<boolean> {
       allowOutsideClick: true,
       animation: "slide-up",
       size: "sm",
-      showCloseIcon: false,
+      showCloseIcon: true,
       showConfirmButton: true,
       showCancelButton: true,
       confirmButtonText: "Yes",
@@ -128,7 +115,7 @@ export async function confirmNotify(recipient: string): Promise<boolean> {
       allowOutsideClick: true,
       animation: "slide-up",
       size: "sm",
-      showCloseIcon: false,
+      showCloseIcon: true,
       showConfirmButton: true,
       showCancelButton: true,
       confirmButtonText: "Yes",
@@ -158,7 +145,7 @@ export async function confirmStatusChange(
       allowOutsideClick: true,
       animation: "slide-up",
       size: "sm",
-      showCloseIcon: false,
+      showCloseIcon: true,
       showConfirmButton: true,
       showCancelButton: true,
       confirmButtonText: "Yes",
@@ -171,8 +158,11 @@ export async function confirmStatusChange(
     return false;
   }
 }
+
 /**
  * Confirm before logging out — warns the user their session will be ended.
+ * No cancel button; top-right close icon provided instead.
+ * "Yes, Logout" button styled in theme yellow (#F4BC43).
  */
 export async function confirmLogout(): Promise<boolean> {
   try {
@@ -184,12 +174,23 @@ export async function confirmLogout(): Promise<boolean> {
       allowOutsideClick: true,
       animation: "slide-up",
       size: "sm",
-      showCloseIcon: false,
+      showCloseIcon: true,
       showConfirmButton: true,
-      showCancelButton: true,
+      showCancelButton: false,
       confirmButtonText: "Yes, Logout",
-      cancelButtonText: "Cancel",
-      focusConfirm: false,
+      focusConfirm: true,
+      style: {
+        button: {
+          backgroundColor: "#F4BC43",
+          color: "#011B2F",
+          fontWeight: 600,
+          borderRadius: "8px",
+          padding: "8px 24px",
+          border: "none",
+          cursor: "pointer",
+          boxShadow: "0 2px 8px rgba(244, 188, 67, 0.3)",
+        },
+      },
       celebrate: false,
     });
     return result === "confirm";
