@@ -47,6 +47,12 @@ export async function POST(request: Request) {
     const inserted = await db
       .insert(attractionManagement)
       .values(data)
+      .onConflictDoNothing({
+        target: [
+          attractionManagement.adminId,
+          attractionManagement.attractionId,
+        ],
+      })
       .returning();
 
     return success({

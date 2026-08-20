@@ -1479,3 +1479,41 @@ export const complimentaryPasses = pgTable(
     deletedIdx: index("complimentary_pass_deleted_idx").on(table.isDeleted),
   }),
 );
+
+export const attractionManagementSeatLayouts = pgTable(
+  "attraction_management_seat_layouts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    attractionManagementId: uuid("attraction_management_id")
+      .notNull()
+      .references(() => attractionManagement.id, {
+        onDelete: "cascade",
+      }),
+
+    seatLayoutId: uuid("seat_layout_id")
+      .notNull()
+      .references(() => seatLayouts.id, {
+        onDelete: "cascade",
+      }),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    attractionSeatLayoutUnique: unique(
+      "attraction_management_seat_layout_unique",
+    ).on(table.attractionManagementId, table.seatLayoutId),
+
+    attractionManagementIdx: index(
+      "attraction_management_seat_layout_attraction_idx",
+    ).on(table.attractionManagementId),
+
+    seatLayoutIdx: index("attraction_management_seat_layout_layout_idx").on(
+      table.seatLayoutId,
+    ),
+  }),
+);

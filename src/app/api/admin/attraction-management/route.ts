@@ -1,28 +1,33 @@
 import { eq, inArray } from "drizzle-orm";
 
 import { db } from "@/db";
-import { attractions, attractionManagement } from "@/db/schema";
+import {
+  attractions,
+  attractionManagement,
+  attractionManagementSeatLayouts,
+  seatLayouts,
+} from "@/db/schema";
 
 import { success, failure } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { getAccessibleAttractionIds } from "@/lib/auth/authorization";
 
 // =====================================================
-// GET ALL ATTRATIONS
+// GET ALL ATTRACTIONS
 // =====================================================
 
 export async function GET(request: Request) {
   try {
     const auth = await requireAuth(request);
 
-    let result;
+    let managementData;
 
-    // ============================
+    // =====================================================
     // ADMIN
-    // ============================
+    // =====================================================
 
     if (auth.user.role === "ADMIN") {
-      result = await db
+      managementData = await db
         .select({
           id: attractionManagement.id,
 
@@ -53,6 +58,9 @@ export async function GET(request: Request) {
           description: attractionManagement.description,
 
           status: attractions.status,
+
+          // Existing legacy column
+          seatLayoutId: attractionManagement.seatLayoutId,
         })
         .from(attractionManagement)
         .innerJoin(
@@ -62,9 +70,9 @@ export async function GET(request: Request) {
         .where(eq(attractionManagement.adminId, auth.user.id));
     }
 
-    // ============================
+    // =====================================================
     // MANAGER / STAFF
-    // ============================
+    // =====================================================
     else {
       const allowedIds = await getAccessibleAttractionIds(auth);
 
@@ -72,7 +80,7 @@ export async function GET(request: Request) {
         return success([]);
       }
 
-      result = await db
+      managementData = await db
         .select({
           id: attractionManagement.id,
 
@@ -103,16 +111,84 @@ export async function GET(request: Request) {
           description: attractionManagement.description,
 
           status: attractions.status,
+
+          // Existing legacy column
+          seatLayoutId: attractionManagement.seatLayoutId,
         })
         .from(attractionManagement)
-
         .innerJoin(
           attractions,
           eq(attractionManagement.attractionId, attractions.id),
         )
-
         .where(inArray(attractionManagement.attractionId, allowedIds));
     }
+
+    // =====================================================
+    // NO DATA
+    // =====================================================
+
+    if (!managementData.length) {
+      return success([]);
+    }
+
+    // =====================================================
+    // GET ALL SEAT LAYOUT MAPPINGS
+    // =====================================================
+
+    const managementIds = managementData.map((item) => item.id);
+
+    const seatLayoutMappings = await db
+      .select({
+        attractionManagementId:
+          attractionManagementSeatLayouts.attractionManagementId,
+
+        seatLayoutId: attractionManagementSeatLayouts.seatLayoutId,
+
+        seatLayout: seatLayouts,
+      })
+      .from(attractionManagementSeatLayouts)
+      .innerJoin(
+        seatLayouts,
+        eq(attractionManagementSeatLayouts.seatLayoutId, seatLayouts.id),
+      )
+      .where(
+        inArray(
+          attractionManagementSeatLayouts.attractionManagementId,
+          managementIds,
+        ),
+      );
+
+    // =====================================================
+    // GROUP SEAT LAYOUTS BY ATTRACTION
+    // =====================================================
+
+    const seatLayoutsByManagementId = new Map<
+      string,
+      typeof seatLayoutMappings
+    >();
+
+    for (const mapping of seatLayoutMappings) {
+      const existing =
+        seatLayoutsByManagementId.get(mapping.attractionManagementId) ?? [];
+
+      existing.push(mapping);
+
+      seatLayoutsByManagementId.set(mapping.attractionManagementId, existing);
+    }
+
+    // =====================================================
+    // FINAL RESPONSE
+    // =====================================================
+
+    const result = managementData.map((item) => {
+      const mappings = seatLayoutsByManagementId.get(item.id) ?? [];
+
+      return {
+        ...item,
+
+        seatLayouts: mappings.map((mapping) => mapping.seatLayout),
+      };
+    });
 
     return success(result);
   } catch (error) {
@@ -218,66 +294,164 @@ export async function POST(request: Request) {
       foreignerPrice = 0,
 
       hasSeating = false,
+
+      // NEW
+      seatLayoutIds = [],
     } = body;
+
+    // ======================================
+    // VALIDATION
+    // ======================================
 
     if (!name || !category) {
       return failure("Name and category are required", 400, "VALIDATION_ERROR");
     }
 
+    if (!Array.isArray(seatLayoutIds)) {
+      return failure("seatLayoutIds must be an array", 400, "VALIDATION_ERROR");
+    }
+
+    // If seating is enabled, at least one seat layout is required
+    if (hasSeating && seatLayoutIds.length === 0) {
+      return failure(
+        "At least one seat layout is required when seating is enabled",
+        400,
+        "VALIDATION_ERROR",
+      );
+    }
+
+    // If seating is disabled, ignore seat layouts
+    const finalSeatLayoutIds = hasSeating ? seatLayoutIds : [];
+
     // ======================================
-    // CREATE MAIN ATTRACTION
+    // REMOVE DUPLICATE SEAT LAYOUT IDS
     // ======================================
 
-    const attraction = await db
-      .insert(attractions)
-      .values({
-        adminId: auth.user.id,
-
-        name,
-
-        // your UI category maps to type
-        type: category,
-      })
-      .returning();
+    const uniqueSeatLayoutIds = [...new Set(finalSeatLayoutIds)];
 
     // ======================================
-    // CREATE MANAGEMENT DETAILS
+    // VERIFY SEAT LAYOUTS EXIST
     // ======================================
 
-    const management = await db
-      .insert(attractionManagement)
-      .values({
-        adminId: auth.user.id,
+    if (uniqueSeatLayoutIds.length > 0) {
+      const existingSeatLayouts = await db
+        .select({
+          id: seatLayouts.id,
+        })
+        .from(seatLayouts)
+        .where(inArray(seatLayouts.id, uniqueSeatLayoutIds));
 
-        attractionId: attraction[0].id,
+      const existingIds = new Set(
+        existingSeatLayouts.map((layout) => layout.id),
+      );
 
-        image,
+      const invalidSeatLayoutIds = uniqueSeatLayoutIds.filter(
+        (id) => !existingIds.has(id),
+      );
 
-        description,
+      if (invalidSeatLayoutIds.length > 0) {
+        return failure(
+          `Invalid seat layout IDs: ${invalidSeatLayoutIds.join(", ")}`,
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+    }
 
-        timing,
+    // ======================================
+    // TRANSACTION
+    // ======================================
 
-        adultPrice,
+    const result = await db.transaction(async (tx) => {
+      // ======================================
+      // CREATE MAIN ATTRACTION
+      // ======================================
 
-        childPrice,
+      const attraction = await tx
+        .insert(attractions)
+        .values({
+          adminId: auth.user.id,
+          name,
+          type: category,
+        })
+        .returning();
 
-        studentPrice,
+      // ======================================
+      // CREATE MANAGEMENT DETAILS
+      // ======================================
 
-        seniorPrice,
+      const management = await tx
+        .insert(attractionManagement)
+        .values({
+          adminId: auth.user.id,
 
-        foreignerPrice,
+          attractionId: attraction[0].id,
 
-        hasSeating,
-      })
-      .returning();
+          image: image ?? null,
 
-    return success({
-      attraction: attraction[0],
-      management: management[0],
+          description: description ?? null,
+
+          timing: timing ?? null,
+
+          adultPrice,
+
+          childPrice,
+
+          studentPrice,
+
+          seniorPrice,
+
+          foreignerPrice,
+
+          hasSeating,
+
+          // Keep old column for now.
+          // If there is exactly one layout, store it here.
+          seatLayoutId:
+            uniqueSeatLayoutIds.length === 1 ? uniqueSeatLayoutIds[0] : null,
+        })
+        .returning();
+
+      // ======================================
+      // CREATE SEAT LAYOUT MAPPINGS
+      // ======================================
+
+      let seatLayoutMappings: (typeof attractionManagementSeatLayouts.$inferSelect)[] =
+        [];
+
+      if (uniqueSeatLayoutIds.length > 0) {
+        seatLayoutMappings = await tx
+          .insert(attractionManagementSeatLayouts)
+          .values(
+            uniqueSeatLayoutIds.map((seatLayoutId) => ({
+              attractionManagementId: management[0].id,
+              seatLayoutId,
+            })),
+          )
+          .returning();
+      }
+
+      return {
+        attraction: attraction[0],
+        management: management[0],
+        seatLayouts: seatLayoutMappings,
+      };
     });
-  } catch (error) {
-    console.error("Create attraction error:", error);
 
-    return failure("Unable to create attraction", 500, "INTERNAL_SERVER_ERROR");
+    // ======================================
+    // RESPONSE
+    // ======================================
+
+    return success(result);
+  } catch (error) {
+    console.error("========== CREATE ATTRACTION ERROR ==========");
+    console.error(error);
+    console.error("==============================================");
+
+    return failure(
+      error instanceof Error ? error.message : "Unable to create attraction",
+      500,
+      "INTERNAL_SERVER_ERROR",
+    );
   }
 }
