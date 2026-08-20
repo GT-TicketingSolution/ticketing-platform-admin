@@ -527,7 +527,13 @@ export async function POST(request: NextRequest) {
 
     try {
       normalizedTickets = tickets.map(
-        (ticket: { category: string; quantity: number; unitPrice: number }) => {
+        (ticket: {
+          attractionId?: string;
+          category: string;
+          quantity: number;
+          unitPrice: number;
+        }) => {
+          const ticketAttractionId = ticket.attractionId || attractionId;
           const quantity = Number(ticket.quantity);
 
           const unitPrice = Number(ticket.unitPrice);
@@ -547,6 +553,7 @@ export async function POST(request: NextRequest) {
           totalAmount += totalPrice;
 
           return {
+            attractionId: ticketAttractionId,
             category: ticket.category.trim(),
 
             quantity,
@@ -639,6 +646,7 @@ export async function POST(request: NextRequest) {
           bookingId: booking.id,
 
           category: ticket.category,
+          attractionId: ticket.attractionId,
 
           quantity: ticket.quantity,
 
@@ -654,13 +662,20 @@ export async function POST(request: NextRequest) {
 
       if (Array.isArray(seats) && seats.length > 0) {
         await tx.insert(bookingSeats).values(
-          seats.map((seat: { bogie?: string; seatNumber: string }) => ({
-            bookingId: booking.id,
-
-            bogie: seat.bogie?.trim() || null,
-
-            seatNumber: seat.seatNumber,
-          })),
+          seats.map(
+            (seat: {
+              slotId: string;
+              visitDate: string;
+              bogie?: string;
+              seatNumber: string;
+            }) => ({
+              bookingId: booking.id,
+              slotId: seat.slotId,
+              visitDate: seat.visitDate,
+              bogie: seat.bogie?.trim() || null,
+              seatNumber: seat.seatNumber.trim(),
+            }),
+          ),
         );
       }
 
