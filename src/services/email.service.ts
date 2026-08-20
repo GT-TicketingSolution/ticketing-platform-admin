@@ -1,21 +1,46 @@
+import { Resend } from "resend";
+
+import { passwordResetEmail } from "@/lib/email-templates/password-reset";
+
 interface SendPasswordResetEmailParams {
   email: string;
   name: string;
   resetUrl: string;
 }
 
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 export async function sendPasswordResetEmail({
   email,
   name,
   resetUrl,
 }: SendPasswordResetEmailParams) {
-  console.log("========================================");
+  const html = passwordResetEmail({
+    resetUrl,
+    name,
+  });
 
-  console.log("PASSWORD RESET EMAIL");
+  const fromEmail =
+    process.env.RESEND_AUTH_FROM_EMAIL ?? "onboarding@resend.dev";
 
-  console.log(`To: ${email}`);
-  console.log(`Name: ${name}`);
-  console.log(`Reset URL: ${resetUrl}`);
+  const fromName = process.env.RESEND_AUTH_FROM_NAME ?? "Ticketing Solution";
 
-  console.log("========================================");
+  const subject = process.env.RESEND_AUTH_SUBJECT ?? "Reset Your Password";
+
+  const { data, error } = await resend.emails.send({
+    from: `${fromName} <${fromEmail}>`,
+    to: [email],
+    subject,
+    html,
+  });
+
+  if (error) {
+    console.error("Password reset email failed:", error);
+
+    throw new Error("EMAIL_SEND_FAILED");
+  }
+
+  console.log(`Password reset email sent successfully to ${email}`);
+
+  return data;
 }
