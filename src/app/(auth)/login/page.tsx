@@ -19,7 +19,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      document.title = "Login | Ticketing Platform";
+      document.title = "Login | Ticketing Solution";
     }
   }, []);
 
@@ -56,7 +56,7 @@ export default function LoginPage() {
 
   return (
     <>
-      <title>Login | Ticketing Platform</title>
+      <title>Login | Ticketing Solution</title>
       <div
       style={{
         position: "relative",

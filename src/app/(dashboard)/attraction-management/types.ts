@@ -16,6 +16,16 @@ export interface AttractionManagement {
   hasSeating: boolean;
   description: string | null;
   status: string;
+  seatLayouts?: Array<{
+    id: string;
+    name: string;
+    rows?: number;
+    cols?: number;
+    hasAisle?: boolean;
+    aisleAfterCol?: number;
+    totalSeats?: number;
+  }>;
+  seatLayoutIds?: string[];
 }
 
 // ── Create payload ───────────────────────────────────────────────────────────
@@ -31,6 +41,7 @@ export interface CreateAttractionPayload {
   seniorPrice?: number;
   foreignerPrice?: number;
   hasSeating?: boolean;
+  seatLayoutIds?: string[];
 }
 
 // ── Update payload ───────────────────────────────────────────────────────────
@@ -46,6 +57,7 @@ export interface UpdateAttractionPayload {
   seniorPrice?: number;
   foreignerPrice?: number;
   hasSeating?: boolean;
+  seatLayoutIds?: string[];
 }
 
 // ── Bulk upload ──────────────────────────────────────────────────────────────
@@ -54,14 +66,25 @@ export interface BulkAttractionItem {
   image?: string | null;
   description?: string | null;
   timing?: string | null;
+
   adultPrice?: number;
   childPrice?: number;
   studentPrice?: number;
   seniorPrice?: number;
   foreignerPrice?: number;
+
   hasSeating?: boolean;
 }
+
 export type BulkAttractionPayload = BulkAttractionItem[];
+
+export interface BulkUploadResponse {
+  message: string;
+  data: Array<{
+    id: string;
+    attractionId: string;
+  }>;
+}
 
 // ── Legacy UI type alias (for backward compat in other files) ────────────────
 // This is intentionally minimal — the source of truth is AttractionManagement

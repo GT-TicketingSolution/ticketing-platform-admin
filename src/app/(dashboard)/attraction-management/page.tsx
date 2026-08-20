@@ -7,7 +7,6 @@ import {
   Upload,
   Clock,
   Pencil,
-  Armchair,
   Trash2,
   ArrowLeft,
   Loader2,
@@ -17,7 +16,6 @@ import { AttractionManagement } from "./types";
 import type { CreateAttractionPayload, UpdateAttractionPayload } from "./types";
 import AttractionEmptyState from "@/components/attraction/AttractionEmptyState";
 import AddEditAttractionForm from "@/components/attraction/AddEditAttractionForm";
-import SeatAllocationModal from "@/components/modals/SeatAllocationModal";
 import BulkUploadModal from "@/components/modals/BulkUploadModal";
 import { confirmDelete } from "@/lib/notify";
 import {
@@ -25,7 +23,6 @@ import {
   useCreateAttraction,
   useUpdateAttraction,
   useDeleteAttraction,
-  useAssignSeatLayout,
   useBulkUploadAttractions,
 } from "@/hooks/useAttractionManagementQueries";
 
@@ -43,17 +40,18 @@ const CATEGORY_COLOR: Record<string, string> = {
   Fort: "#F4BC43",
   SHOW: "#F4BC43",
   Show: "#F4BC43",
+  ATTRACTION: "#F4BC43",
+  Attraction: "#F4BC43",
 };
 
 // ── Attraction Card ───────────────────────────────────────────────────────────
 interface AttractionCardProps {
   attraction: AttractionManagement;
   onEdit: (a: AttractionManagement) => void;
-  onSeating: (a: AttractionManagement) => void;
   onDelete: (a: AttractionManagement) => void;
 }
 
-function AttractionCard({ attraction, onEdit, onSeating, onDelete }: AttractionCardProps) {
+function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
   const categoryColor = CATEGORY_COLOR[attraction.category] ?? "#F4BC43";
   const [imgError, setImgError] = useState(false);
 
@@ -176,17 +174,6 @@ function AttractionCard({ attraction, onEdit, onSeating, onDelete }: AttractionC
           <span style={{ fontWeight: 500, fontSize: "12px", color: "#2372A5" }}>Edit</span>
         </button>
 
-        {attraction.hasSeating && (
-          <button
-            onClick={() => onSeating(attraction)}
-            style={{ boxSizing: "border-box", flex: 1, height: "34px", background: "#FFFFFF", border: "1px solid #10B981", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", cursor: "pointer", transition: "all 0.18s ease" }}
-            className="btn-seating"
-          >
-            <Armchair size={13} color="#10B981" strokeWidth={2} />
-            <span style={{ fontWeight: 500, fontSize: "12px", color: "#10B981" }}>Seating</span>
-          </button>
-        )}
-
         <button
           onClick={() => onDelete(attraction)}
           style={{ boxSizing: "border-box", flex: 1, height: "34px", background: "#FFFFFF", border: "1px solid #DC2626", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", cursor: "pointer", transition: "all 0.18s ease" }}
@@ -208,18 +195,15 @@ export default function AttractionManagementPage() {
   const updateMutation = useUpdateAttraction();
   const deleteMutation = useDeleteAttraction();
   const bulkMutation = useBulkUploadAttractions();
-  const assignSeatMutation = useAssignSeatLayout();
 
   // ── UI State ────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "add" | "edit">("list");
   const [attractionToEdit, setAttractionToEdit] = useState<AttractionManagement | null>(null);
-  const [isSeatAllocOpen, setIsSeatAllocOpen] = useState(false);
-  const [seatAllocAttraction, setSeatAllocAttraction] = useState<AttractionManagement | null>(null);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
 
   useEffect(() => {
-    document.title = "Attraction Management | Ticketing Platform";
+    document.title = "Attraction Management | Ticketing Solution";
   }, []);
 
   // ── Derived ─────────────────────────────────────────────────────────────
@@ -242,11 +226,6 @@ export default function AttractionManagementPage() {
     setViewMode("edit");
   };
 
-  const handleOpenSeating = (attraction: AttractionManagement) => {
-    setSeatAllocAttraction(attraction);
-    setIsSeatAllocOpen(true);
-  };
-
   const handleOpenDelete = async (attraction: AttractionManagement) => {
     const confirmed = await confirmDelete(`attraction "${attraction.name}"`);
     if (!confirmed) return;
@@ -257,6 +236,9 @@ export default function AttractionManagementPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSaveAttraction = async (data: any) => {
     try {
+      const selectedSeats: string[] = data.assignedSeatIds ?? data.seatLayoutIds ?? [];
+      const hasSeating = Boolean(data.hasSeating ?? (selectedSeats.length > 0));
+
       if (viewMode === "edit" && attractionToEdit) {
         const payload: UpdateAttractionPayload = {
           name: data.name,
@@ -264,12 +246,13 @@ export default function AttractionManagementPage() {
           image: data.image ?? null,
           description: data.description ?? null,
           timing: data.timing ?? null,
-          adultPrice: data.pricing?.adult ?? data.adultPrice,
-          childPrice: data.pricing?.child ?? data.childPrice,
-          studentPrice: data.pricing?.student ?? data.studentPrice,
-          seniorPrice: data.pricing?.senior ?? data.seniorPrice,
-          foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice,
-          hasSeating: data.hasSeating,
+          adultPrice: data.pricing?.adult ?? data.adultPrice ?? 0,
+          childPrice: data.pricing?.child ?? data.childPrice ?? 0,
+          studentPrice: data.pricing?.student ?? data.studentPrice ?? 0,
+          seniorPrice: data.pricing?.senior ?? data.seniorPrice ?? 0,
+          foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice ?? 0,
+          hasSeating,
+          seatLayoutIds: selectedSeats,
         };
         await updateMutation.mutateAsync({ id: attractionToEdit.id, data: payload });
       } else {
@@ -279,28 +262,19 @@ export default function AttractionManagementPage() {
           image: data.image ?? null,
           description: data.description ?? null,
           timing: data.timing ?? null,
-          adultPrice: data.pricing?.adult ?? data.adultPrice,
-          childPrice: data.pricing?.child ?? data.childPrice,
-          studentPrice: data.pricing?.student ?? data.studentPrice,
-          seniorPrice: data.pricing?.senior ?? data.seniorPrice,
-          foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice,
-          hasSeating: data.hasSeating ?? false,
+          adultPrice: data.pricing?.adult ?? data.adultPrice ?? 0,
+          childPrice: data.pricing?.child ?? data.childPrice ?? 0,
+          studentPrice: data.pricing?.student ?? data.studentPrice ?? 0,
+          seniorPrice: data.pricing?.senior ?? data.seniorPrice ?? 0,
+          foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice ?? 0,
+          hasSeating,
+          seatLayoutIds: selectedSeats,
         };
         await createMutation.mutateAsync(payload);
       }
       setViewMode("list");
     } catch {
       // Handled by onError in mutation; keep form open
-    }
-  };
-
-  const handleSeatAssigned = async (seat: { id?: string }) => {
-    if (!seatAllocAttraction || !seat.id) return;
-    try {
-      await assignSeatMutation.mutateAsync({ id: seatAllocAttraction.id, seatLayoutId: seat.id });
-      setIsSeatAllocOpen(false);
-    } catch {
-      // Keep modal open on error
     }
   };
 
@@ -546,7 +520,6 @@ export default function AttractionManagementPage() {
                   key={attraction.id}
                   attraction={attraction}
                   onEdit={handleOpenEdit}
-                  onSeating={handleOpenSeating}
                   onDelete={handleOpenDelete}
                 />
               ))}
@@ -590,7 +563,6 @@ export default function AttractionManagementPage() {
         }
         .attraction-card-item:hover { transform: translateY(-3px); box-shadow: 0 10px 25px rgba(12,42,66,0.12); }
         .btn-edit:hover { background: #F0F7FF !important; }
-        .btn-seating:hover { background: #ECFDF5 !important; }
         .btn-delete:hover { background: #FEF2F2 !important; }
         .btn-add-attraction:hover { background: #173F63 !important; transform: translateY(-1px); }
         .btn-bulk-upload:hover { background: #F0F4F8 !important; transform: translateY(-1px); }
@@ -600,20 +572,6 @@ export default function AttractionManagementPage() {
       `}</style>
 
       {/* ── Modals ───────────────────────────────────────────────────── */}
-      <SeatAllocationModal
-        isOpen={isSeatAllocOpen}
-        onClose={() => setIsSeatAllocOpen(false)}
-        attractionName={seatAllocAttraction?.name ?? ""}
-        currentSeatId={undefined}
-        currentSeatIds={[]}
-        onSelect={handleSeatAssigned}
-        isLoading={assignSeatMutation.isPending}
-        onSelectMultiple={(selectedSeats) => {
-          if (selectedSeats.length > 0 && seatAllocAttraction) {
-            handleSeatAssigned(selectedSeats[0]);
-          }
-        }}
-      />
       <BulkUploadModal
         isOpen={isBulkOpen}
         onClose={() => setIsBulkOpen(false)}

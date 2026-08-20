@@ -2,11 +2,141 @@
 
 import React, { useState } from "react";
 import { X, Upload, Download, FileSpreadsheet, Loader2 } from "lucide-react";
+import { useBulkUploadAttractions } from "@/hooks/useAttractionManagementQueries";
+import { useToast } from "@/components/ui/Toast";
+import type { BulkAttractionPayload } from "@/app/(dashboard)/attraction-management/types";
 
 interface BulkUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUploadSuccess: (newAttractionsCount: number) => void;
+}
+
+// ── CSV Parser Helpers ────────────────────────────────────────────────────────
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let insideQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (insideQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+    } else if (char === "," && !insideQuotes) {
+      result.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+function parseCsvToBulkPayload(csvText: string): BulkAttractionPayload {
+  const lines = csvText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  if (lines.length < 2) {
+    throw new Error("CSV file must contain a header row and at least one data row.");
+  }
+
+  // Normalize header keys: lowercase and alphanumeric only
+  const headers = parseCsvLine(lines[0]).map((h) =>
+    h.toLowerCase().replace(/[^a-z0-9]/g, "")
+  );
+
+  const items: BulkAttractionPayload = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCsvLine(lines[i]);
+    if (values.length === 0 || (values.length === 1 && !values[0])) continue;
+
+    const rowObj: Record<string, string> = {};
+    headers.forEach((h, idx) => {
+      rowObj[h] = values[idx] !== undefined ? values[idx].trim() : "";
+    });
+
+    const attractionId =
+      rowObj["attractionname"] ||
+      rowObj["name"] ||
+      rowObj["attraction"] ||
+      rowObj["attractionid"] ||
+      rowObj["id"] ||
+      "";
+
+    if (!attractionId) {
+      continue;
+    }
+
+    const parseBool = (val?: string) => {
+      if (!val) return false;
+      const lower = val.toLowerCase().trim();
+      return lower === "true" || lower === "yes" || lower === "1";
+    };
+
+    const parseNum = (val?: string) => {
+      if (!val) return 0;
+      const cleaned = val.replace(/[^0-9.-]+/g, "");
+      const num = Number(cleaned);
+      return isNaN(num) ? 0 : num;
+    };
+
+    items.push({
+      attractionId,
+      image: rowObj["image"] || rowObj["imageurl"] || null,
+      description: rowObj["description"] || rowObj["desc"] || null,
+      timing: rowObj["timing"] || rowObj["timings"] || rowObj["time"] || null,
+      adultPrice: parseNum(rowObj["adultprice"] || rowObj["adult"]),
+      childPrice: parseNum(rowObj["childprice"] || rowObj["child"]),
+      studentPrice: parseNum(rowObj["studentprice"] || rowObj["student"]),
+      seniorPrice: parseNum(rowObj["seniorprice"] || rowObj["senior"]),
+      foreignerPrice: parseNum(rowObj["foreignerprice"] || rowObj["foreigner"]),
+      hasSeating: parseBool(rowObj["hasseating"] || rowObj["seating"]),
+    });
+  }
+
+  if (items.length === 0) {
+    throw new Error("No valid attraction records with an 'attractionName' were found in the CSV.");
+  }
+
+  return items;
+}
+
+async function parseFileToPayload(file: File): Promise<BulkAttractionPayload> {
+  const text = await file.text();
+  if (file.name.toLowerCase().endsWith(".json")) {
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) {
+      throw new Error("JSON file must contain an array of attraction objects.");
+    }
+    return parsed.map((item: any, idx: number) => {
+      const attractionIdentifier = item.attractionName || item.name || item.attractionId || item.id;
+      if (!attractionIdentifier) {
+        throw new Error(`Item ${idx + 1} is missing required 'attractionName'.`);
+      }
+      return {
+        attractionId: String(attractionIdentifier).trim(),
+        image: item.image ?? null,
+        description: item.description ?? null,
+        timing: item.timing ?? null,
+        adultPrice: typeof item.adultPrice === "number" ? item.adultPrice : (Number(item.adultPrice) || 0),
+        childPrice: typeof item.childPrice === "number" ? item.childPrice : (Number(item.childPrice) || 0),
+        studentPrice: typeof item.studentPrice === "number" ? item.studentPrice : (Number(item.studentPrice) || 0),
+        seniorPrice: typeof item.seniorPrice === "number" ? item.seniorPrice : (Number(item.seniorPrice) || 0),
+        foreignerPrice: typeof item.foreignerPrice === "number" ? item.foreignerPrice : (Number(item.foreignerPrice) || 0),
+        hasSeating: typeof item.hasSeating === "boolean" ? item.hasSeating : Boolean(item.hasSeating),
+      };
+    });
+  }
+  return parseCsvToBulkPayload(text);
 }
 
 export default function BulkUploadModal({
@@ -16,7 +146,10 @@ export default function BulkUploadModal({
 }: BulkUploadModalProps) {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+
+  const bulkUploadMutation = useBulkUploadAttractions();
+  const { showToast } = useToast();
+  const isUploading = bulkUploadMutation.isPending;
 
   if (!isOpen) return null;
 
@@ -45,22 +178,37 @@ export default function BulkUploadModal({
     }
   };
 
-  const handleUpload = () => {
-    setIsUploading(true);
-    setTimeout(() => {
-      setIsUploading(false);
-      onUploadSuccess(3);
+  const handleUpload = async () => {
+    if (!selectedFile) {
+      showToast("Please select a file to upload.", "error");
+      return;
+    }
+
+    try {
+      const payload = await parseFileToPayload(selectedFile);
+      if (!payload || payload.length === 0) {
+        showToast("No valid attraction records found in the file.", "error");
+        return;
+      }
+
+      const result = await bulkUploadMutation.mutateAsync(payload);
+      const count = Array.isArray(result?.data) ? result.data.length : payload.length;
+      onUploadSuccess(count);
+      setSelectedFile(null);
       onClose();
-    }, 1200);
+    } catch (err: any) {
+      const errorMsg = err?.message || "Failed to process file for upload.";
+      showToast(errorMsg, "error");
+    }
   };
 
   const handleDownloadTemplate = () => {
-    // Generate sample CSV for download
+    // Generate sample CSV for download with attractionName column
     const csvContent =
       "data:text/csv;charset=utf-8," +
-      "Attraction Name,Category,Timing,Adult Price,Child Price,Student Price,Senior Price,Foreigner Price,Has Seating,Status\n" +
-      "Nahargarh Toy Train,Ride,09:00 AM - 06:00 PM,100,50,60,75,500,Yes,Active\n" +
-      "Wax Museum,Museum,10:00 AM - 06:00 PM,200,100,120,150,800,No,Active\n";
+      "attractionName,image,description,timing,adultPrice,childPrice,studentPrice,seniorPrice,foreignerPrice,hasSeating\n" +
+      "Toy Train,https://example.com/toy-train.jpg,Toy train ride,09:00 AM - 06:00 PM,100,50,70,60,200,true\n" +
+      "Rope Way,https://example.com/rope-way.jpg,Rope way ride,10:00 AM - 05:00 PM,200,100,150,120,400,true\n";
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -189,9 +337,8 @@ export default function BulkUploadModal({
                   width: "100%",
                   minHeight: "180px",
                   background: dragActive ? "#F0F9FF" : "#F8FAFC",
-                  border: `1.5px ${dragActive ? "dashed" : "solid"} ${
-                    dragActive ? "#2372A5" : "rgba(179, 175, 175, 0.51)"
-                  }`,
+                  border: `1.5px ${dragActive ? "dashed" : "solid"} ${dragActive ? "#2372A5" : "rgba(179, 175, 175, 0.51)"
+                    }`,
                   borderRadius: "12px",
                   display: "flex",
                   flexDirection: "column",
@@ -204,7 +351,7 @@ export default function BulkUploadModal({
               >
                 <input
                   type="file"
-                  accept=".csv, .xlsx, .xls"
+                  accept=".csv, .xlsx, .xls, .json"
                   onChange={handleFileChange}
                   style={{
                     position: "absolute",

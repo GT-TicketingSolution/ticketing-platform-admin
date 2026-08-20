@@ -17,21 +17,21 @@ import { USER_ROLE_EVENT } from "@/hooks/useUserRole";
 
 /** Maps route pathname → browser tab title */
 const PATH_TITLE_MAP: Record<string, string> = {
-  "/dashboard":            "Dashboard | Ticketing Platform",
-  "/manager-management":   "Manager Management | Ticketing Platform",
-  "/staff-management":     "Staff Management | Ticketing Platform",
-  "/seat-management":      "Seat Management | Ticketing Platform",
-  "/attraction-management":"Attraction Management | Ticketing Platform",
-  "/ticket-booking":       "Ticket Booking | Ticketing Platform",
-  "/bookings":             "Bookings | Ticketing Platform",
-  "/transactions":         "Transactions | Ticketing Platform",
-  "/invoices":             "Invoices | Ticketing Platform",
-  "/inventory":            "Inventory & Capacity | Ticketing Platform",
-  "/customer-management":  "Customer Management | Ticketing Platform",
-  "/complimentary-passes": "Complimentary Passes | Ticketing Platform",
-  "/cctv-monitoring":      "CCTV Monitoring | Ticketing Platform",
-  "/reports":              "Reports & Analytics | Ticketing Platform",
-  "/scanner":              "Ticket Scanner | Ticketing Platform",
+  "/dashboard":            "Dashboard | Ticketing Solution",
+  "/manager-management":   "Manager Management | Ticketing Solution",
+  "/staff-management":     "Staff Management | Ticketing Solution",
+  "/seat-management":      "Seat Management | Ticketing Solution",
+  "/attraction-management":"Attraction Management | Ticketing Solution",
+  "/ticket-booking":       "Ticket Booking | Ticketing Solution",
+  "/bookings":             "Bookings | Ticketing Solution",
+  "/transactions":         "Transactions | Ticketing Solution",
+  "/invoices":             "Invoices | Ticketing Solution",
+  "/inventory":            "Inventory & Capacity | Ticketing Solution",
+  "/customer-management":  "Customer Management | Ticketing Solution",
+  "/complimentary-passes": "Complimentary Passes | Ticketing Solution",
+  "/cctv-monitoring":      "CCTV Monitoring | Ticketing Solution",
+  "/reports":              "Reports & Analytics | Ticketing Solution",
+  "/scanner":              "Ticket Scanner | Ticketing Solution",
 };
 
 /** Breakpoint below which we switch to mobile/tablet drawer mode */
@@ -92,7 +92,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (typeof window === "undefined") return;
     const activeName = resolveModuleTitle(pathname);
-    const fullTitle = `${activeName} | Ticketing Platform`;
+    const fullTitle = `${activeName} | Ticketing Solution`;
     document.title = fullTitle;
 
     const raf = requestAnimationFrame(() => {

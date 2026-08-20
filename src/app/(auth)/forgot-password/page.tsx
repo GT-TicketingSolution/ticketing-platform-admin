@@ -24,7 +24,7 @@ export default function ForgotPasswordPage() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      document.title = "Forgot Password | Ticketing Platform";
+      document.title = "Forgot Password | Ticketing Solution";
     }
   }, []);
 
@@ -53,7 +53,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <>
-      <title>Forgot Password | Ticketing Platform</title>
+      <title>Forgot Password | Ticketing Solution</title>
       <div
       style={{
         position: "relative",

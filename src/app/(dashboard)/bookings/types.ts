@@ -1,5 +1,10 @@
-export type BookingStatus = "Confirmed" | "Cancelled" | "Pending";
+// Booking types — re-exported from hooks for backward compatibility
+export type { BookingListItem, BookingDetailItem, BookingListParams, BookingListResponse, UpdateBookingPayload } from "@/hooks/useBookingQueries";
 
+// Legacy status type
+export type BookingStatus = "PENDING" | "CONFIRMED" | "CANCELLED";
+
+// Legacy TicketSummaryItem (used by printUtils and older components)
 export interface TicketSummaryItem {
   category: "Adult" | "Child" | "Student" | "Senior" | "Foreigner";
   quantity: number;
@@ -7,19 +12,20 @@ export interface TicketSummaryItem {
   total: number;
 }
 
+// Legacy Booking type kept for printUtils, mockBookings, reportsData, transactions
 export interface Booking {
-  id: string; // e.g. BK-2026-1001
+  id: string;
   customerName: string;
   mobileNumber: string;
   gstn?: string;
-  dateTime: string; // e.g. 08 Jul 2026, 09:15 AM
-  visitDate: string; // e.g. 2026-07-08
+  dateTime: string;
+  visitDate: string;
   attraction: string;
-  visitors: string; // e.g. "2 Adults", "2 Adults + 1 Child"
+  visitors: string;
   totalVisitors: number;
   amount: number;
   amountPaid: number;
-  status: BookingStatus;
+  status: "Confirmed" | "Cancelled" | "Pending";
   paymentMode: "Cash" | "UPI" | "Credit Card" | "Debit Card" | "Net Banking";
   bogie?: string;
   seats?: string;
