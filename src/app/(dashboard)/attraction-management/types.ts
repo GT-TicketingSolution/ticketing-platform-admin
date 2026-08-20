@@ -16,6 +16,16 @@ export interface AttractionManagement {
   hasSeating: boolean;
   description: string | null;
   status: string;
+  seatLayouts?: Array<{
+    id: string;
+    name: string;
+    rows?: number;
+    cols?: number;
+    hasAisle?: boolean;
+    aisleAfterCol?: number;
+    totalSeats?: number;
+  }>;
+  seatLayoutIds?: string[];
 }
 
 // ── Create payload ───────────────────────────────────────────────────────────
@@ -31,6 +41,7 @@ export interface CreateAttractionPayload {
   seniorPrice?: number;
   foreignerPrice?: number;
   hasSeating?: boolean;
+  seatLayoutIds?: string[];
 }
 
 // ── Update payload ───────────────────────────────────────────────────────────
@@ -46,6 +57,7 @@ export interface UpdateAttractionPayload {
   seniorPrice?: number;
   foreignerPrice?: number;
   hasSeating?: boolean;
+  seatLayoutIds?: string[];
 }
 
 // ── Bulk upload ──────────────────────────────────────────────────────────────

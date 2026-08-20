@@ -203,7 +203,7 @@ export default function AttractionManagementPage() {
   const [isBulkOpen, setIsBulkOpen] = useState(false);
 
   useEffect(() => {
-    document.title = "Attraction Management | Ticketing Platform";
+    document.title = "Attraction Management | Ticketing Solution";
   }, []);
 
   // ── Derived ─────────────────────────────────────────────────────────────
@@ -236,6 +236,9 @@ export default function AttractionManagementPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSaveAttraction = async (data: any) => {
     try {
+      const selectedSeats: string[] = data.assignedSeatIds ?? data.seatLayoutIds ?? [];
+      const hasSeating = Boolean(data.hasSeating ?? (selectedSeats.length > 0));
+
       if (viewMode === "edit" && attractionToEdit) {
         const payload: UpdateAttractionPayload = {
           name: data.name,
@@ -243,12 +246,13 @@ export default function AttractionManagementPage() {
           image: data.image ?? null,
           description: data.description ?? null,
           timing: data.timing ?? null,
-          adultPrice: data.pricing?.adult ?? data.adultPrice,
-          childPrice: data.pricing?.child ?? data.childPrice,
-          studentPrice: data.pricing?.student ?? data.studentPrice,
-          seniorPrice: data.pricing?.senior ?? data.seniorPrice,
-          foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice,
-          hasSeating: data.hasSeating,
+          adultPrice: data.pricing?.adult ?? data.adultPrice ?? 0,
+          childPrice: data.pricing?.child ?? data.childPrice ?? 0,
+          studentPrice: data.pricing?.student ?? data.studentPrice ?? 0,
+          seniorPrice: data.pricing?.senior ?? data.seniorPrice ?? 0,
+          foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice ?? 0,
+          hasSeating,
+          seatLayoutIds: selectedSeats,
         };
         await updateMutation.mutateAsync({ id: attractionToEdit.id, data: payload });
       } else {
@@ -258,12 +262,13 @@ export default function AttractionManagementPage() {
           image: data.image ?? null,
           description: data.description ?? null,
           timing: data.timing ?? null,
-          adultPrice: data.pricing?.adult ?? data.adultPrice,
-          childPrice: data.pricing?.child ?? data.childPrice,
-          studentPrice: data.pricing?.student ?? data.studentPrice,
-          seniorPrice: data.pricing?.senior ?? data.seniorPrice,
-          foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice,
-          hasSeating: data.hasSeating ?? false,
+          adultPrice: data.pricing?.adult ?? data.adultPrice ?? 0,
+          childPrice: data.pricing?.child ?? data.childPrice ?? 0,
+          studentPrice: data.pricing?.student ?? data.studentPrice ?? 0,
+          seniorPrice: data.pricing?.senior ?? data.seniorPrice ?? 0,
+          foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice ?? 0,
+          hasSeating,
+          seatLayoutIds: selectedSeats,
         };
         await createMutation.mutateAsync(payload);
       }

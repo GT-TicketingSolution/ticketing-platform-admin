@@ -65,8 +65,10 @@ function parseCsvToBulkPayload(csvText: string): BulkAttractionPayload {
     });
 
     const attractionId =
-      rowObj["attractionid"] ||
+      rowObj["attractionname"] ||
+      rowObj["name"] ||
       rowObj["attraction"] ||
+      rowObj["attractionid"] ||
       rowObj["id"] ||
       "";
 
@@ -102,7 +104,7 @@ function parseCsvToBulkPayload(csvText: string): BulkAttractionPayload {
   }
 
   if (items.length === 0) {
-    throw new Error("No valid attraction records with an 'attractionId' were found in the CSV.");
+    throw new Error("No valid attraction records with an 'attractionName' were found in the CSV.");
   }
 
   return items;
@@ -116,11 +118,12 @@ async function parseFileToPayload(file: File): Promise<BulkAttractionPayload> {
       throw new Error("JSON file must contain an array of attraction objects.");
     }
     return parsed.map((item: any, idx: number) => {
-      if (!item.attractionId) {
-        throw new Error(`Item ${idx + 1} is missing required 'attractionId'.`);
+      const attractionIdentifier = item.attractionName || item.name || item.attractionId || item.id;
+      if (!attractionIdentifier) {
+        throw new Error(`Item ${idx + 1} is missing required 'attractionName'.`);
       }
       return {
-        attractionId: String(item.attractionId).trim(),
+        attractionId: String(attractionIdentifier).trim(),
         image: item.image ?? null,
         description: item.description ?? null,
         timing: item.timing ?? null,
@@ -200,12 +203,12 @@ export default function BulkUploadModal({
   };
 
   const handleDownloadTemplate = () => {
-    // Generate sample CSV for download with exact payload fields
+    // Generate sample CSV for download with attractionName column
     const csvContent =
       "data:text/csv;charset=utf-8," +
-      "attractionId,image,description,timing,adultPrice,childPrice,studentPrice,seniorPrice,foreignerPrice,hasSeating\n" +
-      "toy-train-id,https://example.com/toy-train.jpg,Toy train ride,09:00 AM - 06:00 PM,100,50,70,60,200,true\n" +
-      "rope-way-id,https://example.com/rope-way.jpg,Rope way ride,10:00 AM - 05:00 PM,200,100,150,120,400,true\n";
+      "attractionName,image,description,timing,adultPrice,childPrice,studentPrice,seniorPrice,foreignerPrice,hasSeating\n" +
+      "Toy Train,https://example.com/toy-train.jpg,Toy train ride,09:00 AM - 06:00 PM,100,50,70,60,200,true\n" +
+      "Rope Way,https://example.com/rope-way.jpg,Rope way ride,10:00 AM - 05:00 PM,200,100,150,120,400,true\n";
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);

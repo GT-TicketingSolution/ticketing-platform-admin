@@ -161,7 +161,7 @@ export default function Header({
   // Sync browser document.title dynamically whenever module changes
   useEffect(() => {
     if (typeof window === "undefined" || !activeTitle) return;
-    const fullTitle = `${activeTitle} | Ticketing Platform`;
+    const fullTitle = `${activeTitle} | Ticketing Solution`;
     document.title = fullTitle;
 
     const raf = requestAnimationFrame(() => {
@@ -229,7 +229,7 @@ export default function Header({
 
   return (
     <>
-      <title>{`${activeTitle} | Ticketing Platform`}</title>
+      <title>{`${activeTitle} | Ticketing Solution`}</title>
       <header
         style={{
           height: `${spacing.headerHeight}px`,

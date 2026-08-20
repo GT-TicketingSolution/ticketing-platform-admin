@@ -15,7 +15,7 @@ export const visitorCategorySchema = z.object({
     .refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
       message: "Base price must be a non-negative number",
     }),
-  image: z.string().min(1, "Category image is required"),
+  image: z.string().optional().nullable(),
   futurePrice: z
     .string()
     .optional()
@@ -36,11 +36,11 @@ export const attractionSchema = z.object({
     .min(1, "Attraction name is required")
     .min(2, "Attraction name must be at least 2 characters")
     .max(80, "Attraction name cannot exceed 80 characters"),
-  description: z
+  category: z
     .string()
-    .min(1, "Description is required")
-    .min(5, "Description must be at least 5 characters"),
-  image: z.string().min(1, "Attraction image is required"),
+    .min(1, "Category is required"),
+  description: z.string().optional().nullable(),
+  image: z.string().optional().nullable(),
   status: z.enum(["Active", "Inactive"] as const),
   hasSeating: z.boolean(),
 });
@@ -69,7 +69,7 @@ export type SeatingConfigFormData = z.infer<typeof seatingConfigSchema>;
 /**
  * Helper validation function for Visitor Category
  */
-export function validateVisitorCategory(data: { name: string; basePrice: string; image?: string; futurePrice?: string; effectiveFrom?: string }) {
+export function validateVisitorCategory(data: { name: string; basePrice: string; image?: string | null; futurePrice?: string; effectiveFrom?: string }) {
   const result = visitorCategorySchema.safeParse(data);
   if (!result.success) {
     const errors: Record<string, string> = {};
@@ -85,10 +85,11 @@ export function validateVisitorCategory(data: { name: string; basePrice: string;
 /**
  * Helper validation function for Attraction Form
  */
-export function validateAttractionForm(data: { name: string; description: string; image?: string | null; status: "Active" | "Inactive"; hasSeating: boolean }) {
+export function validateAttractionForm(data: { name: string; category: string; description?: string | null; image?: string | null; status: "Active" | "Inactive"; hasSeating: boolean }) {
   const result = attractionSchema.safeParse({
     ...data,
-    image: data.image || "",
+    description: data.description ?? "",
+    image: data.image ?? "",
   });
   if (!result.success) {
     const errors: Record<string, string> = {};

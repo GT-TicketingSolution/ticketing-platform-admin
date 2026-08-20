@@ -7,6 +7,7 @@ import { confirmDelete } from "@/lib/notify";
 import { validateAttractionForm } from "@/app/(dashboard)/attraction-management/schema";
 import { SeatConfigData } from "@/app/(dashboard)/seat-management/types";
 import { useSeatLayouts } from "@/hooks/useSeatQueries";
+import { useAttractionManagementList } from "@/hooks/useAttractionManagementQueries";
 
 // ── Shared required asterisk
 const Req = () => <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>;
@@ -37,17 +38,18 @@ function AddVisitorCategoryModal({
   isOpen,
   onClose,
   onAdd,
+  existingCategories = [],
 }: {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (name: string, basePrice: string, image?: string, numberOfSeats?: string) => void;
+  existingCategories?: string[];
 }) {
   const [catName, setCatName] = useState("");
   const [basePrice, setBasePrice] = useState("");
   const [numberOfSeats, setNumberOfSeats] = useState("");
   const [image, setImage] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [imageError, setImageError] = useState(false);
   const [priceErrorMsg, setPriceErrorMsg] = useState("");
   const [seatsErrorMsg, setSeatsErrorMsg] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -59,7 +61,6 @@ function AddVisitorCategoryModal({
       setNumberOfSeats("");
       setImage(null);
       setError("");
-      setImageError(false);
       setPriceErrorMsg("");
       setSeatsErrorMsg("");
       setTimeout(() => inputRef.current?.focus(), 80);
@@ -74,16 +75,25 @@ function AddVisitorCategoryModal({
     const reader = new FileReader();
     reader.onload = (ev) => {
       setImage(ev.target?.result as string);
-      setImageError(false);
     };
     reader.readAsDataURL(file);
   };
 
   const handleAdd = () => {
     const newErrors: Record<string, string> = {};
-    if (!image) newErrors.image = "Category image is required.";
-    if (!catName.trim()) newErrors.name = "Category name is required.";
-    else if (catName.trim().length < 2) newErrors.name = "Name must be at least 2 characters.";
+    const trimmedName = catName.trim();
+    if (!trimmedName) {
+      newErrors.name = "Category name is required.";
+    } else if (trimmedName.length < 2) {
+      newErrors.name = "Name must be at least 2 characters.";
+    } else if (
+      existingCategories.some(
+        (existingName) => existingName.trim().toLowerCase() === trimmedName.toLowerCase()
+      )
+    ) {
+      newErrors.name = "A visitor category with this name already exists.";
+    }
+
     if (!basePrice.trim()) newErrors.basePrice = "Base price is required.";
     else if (isNaN(Number(basePrice)) || Number(basePrice) < 0) newErrors.basePrice = "Base price must be a non-negative number.";
     if (!numberOfSeats.trim()) newErrors.numberOfSeats = "Number of seats is required.";
@@ -93,10 +103,9 @@ function AddVisitorCategoryModal({
       setError(newErrors.name || "");
       setPriceErrorMsg(newErrors.basePrice || "");
       setSeatsErrorMsg(newErrors.numberOfSeats || "");
-      setImageError(!!newErrors.image);
       return;
     }
-    onAdd(catName.trim(), basePrice.trim(), image || "", numberOfSeats.trim());
+    onAdd(trimmedName, basePrice.trim(), image || "", numberOfSeats.trim());
     onClose();
   };
 
@@ -142,11 +151,11 @@ function AddVisitorCategoryModal({
                 height: "72px",
                 borderRadius: "50%",
                 overflow: "hidden",
-                border: imageError ? "2px dashed #DC2626" : "2px dashed #2372A5",
+                border: "2px dashed #2372A5",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                background: imageError ? "#FEF2F2" : "#F8FAFC",
+                background: "#F8FAFC",
                 position: "relative",
               }}
             >
@@ -154,7 +163,7 @@ function AddVisitorCategoryModal({
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img src={image} alt="Category preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
-                <Upload size={24} color={imageError ? "#DC2626" : "#2372A5"} />
+                <Upload size={24} color="#2372A5" />
               )}
             </div>
             <label
@@ -163,16 +172,16 @@ function AddVisitorCategoryModal({
                 boxSizing: "border-box",
                 padding: "4px 12px",
                 background: "#FFFFFF",
-                border: imageError ? "1.5px dashed #DC2626" : "1.5px dashed #2372A5",
+                border: "1.5px dashed #2372A5",
                 borderRadius: "6px",
                 cursor: "pointer",
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
                 fontWeight: 600,
                 fontSize: "11px",
-                color: imageError ? "#DC2626" : "#2372A5",
+                color: "#2372A5",
               }}
             >
-              {image ? "Change Image" : "Upload Category Image"}
+              {image ? "Change Image" : "Upload Category Image (Optional)"}
             </label>
             <input
               id="modal-cat-img-upload"
@@ -181,7 +190,6 @@ function AddVisitorCategoryModal({
               onChange={handleImageChange}
               style={{ display: "none" }}
             />
-            {imageError && !error && <span style={{ fontSize: "11px", color: "#DC2626" }}>Category image is required.</span>}
           </div>
 
           <div>
@@ -291,17 +299,18 @@ const DEFAULT_CATEGORIES: CategoryItem[] = [
 
 // ── Helper: derive category list from an existing Attraction's pricing ─────
 function pricingToCategories(attraction: Attraction): CategoryItem[] {
+  const pricing = attraction?.pricing || ({} as any);
   const base = [
-    { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", price: attraction.pricing.adult },
-    { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", price: attraction.pricing.child },
-    { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", price: attraction.pricing.student },
-    { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", price: attraction.pricing.foreigner },
+    { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", price: pricing.adult },
+    { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", price: pricing.child },
+    { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", price: pricing.student },
+    { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", price: pricing.foreigner },
   ];
   return base.map((c) => ({
     id: c.id,
     name: c.name,
     image: c.image,
-    basePrice: String(c.price ?? "00.00"),
+    basePrice: String(c.price != null ? c.price : "00.00"),
     futurePrice: "00.00",
     effectiveFrom: "",
     numberOfSeats: "",
@@ -317,11 +326,13 @@ export default function AddEditAttractionForm({
 }: AddEditAttractionFormProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("Ride");
+  const [category, setCategory] = useState("");
   const [status, setStatus] = useState<"Active" | "Inactive">("Active");
   const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
   const [isSeatDropdownOpen, setIsSeatDropdownOpen] = useState(false);
   const seatDropdownRef = useRef<HTMLDivElement>(null);
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
@@ -329,6 +340,26 @@ export default function AddEditAttractionForm({
   // ── Operating hours (display-only, no booking enforcement) 
   const [openTime, setOpenTime] = useState("09:00");
   const [closeTime, setCloseTime] = useState("18:00");
+
+  // ── Fetch active attractions to extract categories purely from backend ───
+  const { data: attractionManagementData = [] } = useAttractionManagementList();
+  const availableCategories = useMemo(() => {
+    const set = new Set<string>();
+    if (Array.isArray(attractionManagementData)) {
+      attractionManagementData.forEach((item) => {
+        if (item.category && typeof item.category === "string" && item.category.trim()) {
+          set.add(item.category.trim());
+        }
+      });
+    }
+    return Array.from(set);
+  }, [attractionManagementData]);
+
+  const filteredCategories = useMemo(() => {
+    const q = category.trim().toLowerCase();
+    if (!q) return availableCategories;
+    return availableCategories.filter((c) => c.toLowerCase().includes(q));
+  }, [availableCategories, category]);
 
   // ── Fetch active seat layouts from backend API ────────────────────────────
   const { data: seatData, isLoading: isSeatsLoading } = useSeatLayouts();
@@ -348,11 +379,14 @@ export default function AddEditAttractionForm({
       .filter((s) => (s.status as string)?.toUpperCase() === "ACTIVE");
   }, [seatData]);
 
-  // ── Close Seat Dropdown on outside click 
+  // ── Close Seat & Category Dropdowns on outside click 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (seatDropdownRef.current && !seatDropdownRef.current.contains(event.target as Node)) {
         setIsSeatDropdownOpen(false);
+      }
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
+        setIsCategoryDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -365,15 +399,21 @@ export default function AddEditAttractionForm({
     return s.toUpperCase() === "INACTIVE" ? "Inactive" : "Active";
   };
 
-  // ── Populate form when editing ──────────────────────────────────────────
+  // ── Populate form when editing 
   useEffect(() => {
     if (attractionToEdit) {
       setName(attractionToEdit.name || "");
       setDescription(attractionToEdit.description || "");
-      setCategory(attractionToEdit.category || "Ride");
+      setCategory(attractionToEdit.category || "");
       setStatus(normalizeStatus(attractionToEdit.status));
       const assignedIds =
-        (attractionToEdit as Attraction & { assignedSeatIds?: string[] }).assignedSeatIds || [];
+        (attractionToEdit as any).assignedSeatIds ||
+        (attractionToEdit as any).seatLayoutIds ||
+        ((attractionToEdit as any).seatLayouts && Array.isArray((attractionToEdit as any).seatLayouts) && (attractionToEdit as any).seatLayouts.length > 0
+          ? (attractionToEdit as any).seatLayouts.map((l: any) => l.id)
+          : null) ||
+        ((attractionToEdit as any).seatLayoutId ? [(attractionToEdit as any).seatLayoutId] : []) ||
+        [];
       setSelectedSeatIds(assignedIds);
       setImagePreview(attractionToEdit.image || null);
       setCategories(pricingToCategories(attractionToEdit));
@@ -399,7 +439,7 @@ export default function AddEditAttractionForm({
       // Reset for new attraction
       setName("");
       setDescription("");
-      setCategory("Ride");
+      setCategory("");
       setStatus("Active");
       setSelectedSeatIds([]);
       setImagePreview(null);
@@ -453,15 +493,19 @@ export default function AddEditAttractionForm({
     ]);
   };
 
-  const toggleSeatId = (id: string) => {
-    setSelectedSeatIds((prev) =>
-      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
-    );
+  // Always append — same seat can be added multiple times
+  const addSeatId = (id: string) => {
+    setSelectedSeatIds((prev) => [...prev, id]);
   };
 
-  const removeSelectedSeat = (e: React.MouseEvent, id: string) => {
+  // Remove only one occurrence of the seat (by the first index found)
+  const removeSelectedSeat = (e: React.MouseEvent, index: number) => {
     e.stopPropagation();
-    setSelectedSeatIds((prev) => prev.filter((s) => s !== id));
+    setSelectedSeatIds((prev) => {
+      const next = [...prev];
+      next.splice(index, 1);
+      return next;
+    });
   };
 
   const clearAllSeats = (e: React.MouseEvent) => {
@@ -483,6 +527,7 @@ export default function AddEditAttractionForm({
     // ── Schema-based validation ────────────────────────────────────────
     const validation = validateAttractionForm({
       name: name.trim(),
+      category: category.trim(),
       description: description.trim(),
       image: imagePreview,
       status,
@@ -524,7 +569,7 @@ export default function AddEditAttractionForm({
       description: description.trim(),
       status,
       hasSeating: selectedSeatIds.length > 0,
-      category: category.trim() || "Ride",
+      category: category.trim(),
       timing: timingString,
       image: imagePreview || "",
       pricing: {
@@ -536,10 +581,11 @@ export default function AddEditAttractionForm({
       },
       visitorCategories: categories,
       assignedSeatIds: selectedSeatIds,
+      seatLayoutIds: selectedSeatIds,
       assignedSeatNames: assignedSeatNames,
       assignedSeatId: selectedSeatIds[0] || undefined,
       assignedSeatName: assignedSeatNames[0] || undefined,
-    } as Partial<Attraction> & { visitorCategories: CategoryItem[]; assignedSeatIds: string[]; assignedSeatNames: string[] });
+    } as any);
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -608,42 +654,182 @@ export default function AddEditAttractionForm({
               {formErrors.name && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{formErrors.name}</span>}
             </div>
 
-            {/* Attraction Category */}
-            <div style={{ flex: "1 1 160px" }} id="field-category">
+            {/* Attraction Category - Typable & Dropdown Select */}
+            <div style={{ flex: "1 1 160px", position: "relative" }} id="field-category" ref={categoryDropdownRef}>
               <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
                 Category<Req />
               </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                style={{
-                  boxSizing: "border-box",
-                  width: "100%",
-                  height: "38px",
-                  background: "#FFFFFF",
-                  border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                  borderRadius: "8px",
-                  padding: "0 12px",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 500,
-                  fontSize: "12px",
-                  color: "rgba(55, 65, 81, 0.89)",
-                  outline: "none",
-                  cursor: "pointer",
-                  appearance: "auto",
-                }}
-              >
-                <option value="Ride">Ride</option>
-                <option value="Museum">Museum</option>
-                <option value="Park">Park</option>
-                <option value="Monument">Monument</option>
-                <option value="Fort">Fort</option>
-                <option value="Show">Show</option>
-                <option value="ATTRACTION">Attraction</option>
-                {category && !["Ride", "Museum", "Park", "Monument", "Fort", "Show", "ATTRACTION"].includes(category) && (
-                  <option value={category}>{category}</option>
+              <div style={{ position: "relative", width: "100%" }}>
+                <input
+                  type="text"
+                  placeholder="Type or select category..."
+                  value={category}
+                  onChange={(e) => {
+                    setCategory(e.target.value);
+                    setIsCategoryDropdownOpen(true);
+                  }}
+                  onFocus={() => setIsCategoryDropdownOpen(true)}
+                  style={{
+                    boxSizing: "border-box",
+                    width: "100%",
+                    height: "38px",
+                    background: "#FFFFFF",
+                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                    borderRadius: "8px",
+                    padding: "0 34px 0 12px",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 500,
+                    fontSize: "12px",
+                    color: "rgba(55, 65, 81, 0.89)",
+                    outline: "none",
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsCategoryDropdownOpen((prev) => !prev)}
+                  tabIndex={-1}
+                  style={{
+                    position: "absolute",
+                    right: "8px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "4px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#6B7280",
+                  }}
+                >
+                  <ChevronDown
+                    size={16}
+                    style={{
+                      transform: isCategoryDropdownOpen ? "rotate(180deg)" : "rotate(0deg)",
+                      transition: "transform 0.2s ease",
+                    }}
+                  />
+                </button>
+
+                {/* Dropdown Menu */}
+                {isCategoryDropdownOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 4px)",
+                      left: 0,
+                      right: 0,
+                      zIndex: 250,
+                      background: "#FFFFFF",
+                      borderRadius: "8px",
+                      border: "1.5px solid #E2E8F0",
+                      boxShadow: "0 10px 25px rgba(12, 42, 66, 0.15)",
+                      maxHeight: "200px",
+                      overflowY: "auto",
+                      padding: "4px",
+                    }}
+                  >
+                    {filteredCategories.length === 0 ? (
+                      <div
+                        onClick={() => {
+                          if (category.trim()) {
+                            setIsCategoryDropdownOpen(false);
+                          }
+                        }}
+                        style={{
+                          padding: "8px 12px",
+                          fontSize: "12px",
+                          fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          color: "#2372A5",
+                          fontWeight: 600,
+                          cursor: category.trim() ? "pointer" : "default",
+                          borderRadius: "4px",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (category.trim()) e.currentTarget.style.background = "#F0F7FF";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "transparent";
+                        }}
+                      >
+                        {category.trim() ? `+ Use "${category.trim()}"` : "No matching categories"}
+                      </div>
+                    ) : (
+                      <>
+                        {filteredCategories.map((cat) => {
+                          const isSelected = category.trim().toLowerCase() === cat.toLowerCase();
+                          return (
+                            <div
+                              key={cat}
+                              onClick={() => {
+                                setCategory(cat);
+                                setIsCategoryDropdownOpen(false);
+                              }}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                padding: "8px 12px",
+                                fontSize: "12px",
+                                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                                fontWeight: isSelected ? 700 : 500,
+                                color: isSelected ? "#0C2A42" : "#374151",
+                                background: isSelected ? "#EFF6FF" : "transparent",
+                                borderRadius: "4px",
+                                cursor: "pointer",
+                                transition: "background 0.15s ease",
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isSelected) e.currentTarget.style.background = "#F8FAFC";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = isSelected ? "#EFF6FF" : "transparent";
+                              }}
+                            >
+                              <span>{cat}</span>
+                              {isSelected && <Check size={14} color="#0C2A42" strokeWidth={2.5} />}
+                            </div>
+                          );
+                        })}
+                        {category.trim() &&
+                          !availableCategories.some(
+                            (c) => c.toLowerCase() === category.trim().toLowerCase()
+                          ) && (
+                            <div
+                              onClick={() => {
+                                setIsCategoryDropdownOpen(false);
+                              }}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                padding: "8px 12px",
+                                fontSize: "12px",
+                                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                                fontWeight: 600,
+                                color: "#2372A5",
+                                borderTop: "1px solid #E2E8F0",
+                                marginTop: "4px",
+                                cursor: "pointer",
+                                borderRadius: "4px",
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = "#F0F7FF")}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                            >
+                              <span>+ Use custom &quot;{category.trim()}&quot;</span>
+                            </div>
+                          )}
+                      </>
+                    )}
+                  </div>
                 )}
-              </select>
+              </div>
+              {formErrors.category && (
+                <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>
+                  {formErrors.category}
+                </span>
+              )}
             </div>
           </div>
 
@@ -748,7 +934,8 @@ export default function AddEditAttractionForm({
             {/* Description */}
             <div style={{ flex: "1 1 260px" }} id="field-description">
               <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
-                Description<Req />
+                Description
+                <span style={{ marginLeft: "4px", fontWeight: 400, fontSize: "11px", color: "#9CA3AF" }}>(Optional)</span>
               </label>
               <div style={{ position: "relative", maxWidth: "313px" }}>
                 <textarea
@@ -761,7 +948,7 @@ export default function AddEditAttractionForm({
                     width: "100%",
                     height: "176px",
                     background: "#FFFFFF",
-                    border: formErrors.description ? "1.5px solid #DC2626" : "1.5px solid rgba(179, 175, 175, 0.51)",
+                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
                     borderRadius: "8px",
                     padding: "12px 15px 28px 15px",
                     fontFamily: "'Plus Jakarta Sans', sans-serif",
@@ -786,13 +973,13 @@ export default function AddEditAttractionForm({
                   {description.length}/500
                 </span>
               </div>
-              {formErrors.description && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{formErrors.description}</span>}
             </div>
 
             {/* Attraction Image Dropzone */}
             <div style={{ flex: "1 1 260px" }} id="field-image">
               <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
-                Attraction image<Req />
+                Attraction image
+                <span style={{ marginLeft: "4px", fontWeight: 400, fontSize: "11px", color: "#9CA3AF" }}>(Optional)</span>
               </label>
               <div
                 style={{
@@ -820,23 +1007,41 @@ export default function AddEditAttractionForm({
                       alt="Preview"
                       style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
                     />
-                    <label
-                      htmlFor="attraction-image-upload"
-                      style={{
-                        position: "absolute",
-                        bottom: "8px",
-                        right: "8px",
-                        background: "rgba(12,42,66,0.85)",
-                        color: "#FFFFFF",
-                        fontSize: "10px",
-                        padding: "4px 8px",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        zIndex: 2,
-                      }}
-                    >
-                      Change
-                    </label>
+                    <div style={{ position: "absolute", bottom: "8px", right: "8px", display: "flex", gap: "6px", zIndex: 2 }}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setImagePreview(null);
+                        }}
+                        style={{
+                          background: "rgba(220, 38, 38, 0.85)",
+                          color: "#FFFFFF",
+                          fontSize: "10px",
+                          fontWeight: 600,
+                          padding: "4px 8px",
+                          borderRadius: "4px",
+                          border: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Remove
+                      </button>
+                      <label
+                        htmlFor="attraction-image-upload"
+                        style={{
+                          background: "rgba(12,42,66,0.85)",
+                          color: "#FFFFFF",
+                          fontSize: "10px",
+                          fontWeight: 600,
+                          padding: "4px 8px",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Change
+                      </label>
+                    </div>
                   </>
                 ) : (
                   <>
@@ -881,7 +1086,6 @@ export default function AddEditAttractionForm({
                   style={{ display: "none" }}
                 />
               </div>
-              {formErrors.image && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{formErrors.image}</span>}
             </div>
           </div>
         </div>
@@ -1018,13 +1222,13 @@ export default function AddEditAttractionForm({
                       </span>
                     </div>
                   ) : (
-                    selectedSeatIds.map((id) => {
+                    selectedSeatIds.map((id, chipIndex) => {
                       const seat = availableSeats.find((s) => s.id === id);
                       const name = seat ? seat.name : id;
                       const seatCount = seat ? seat.rows * seat.cols : null;
                       return (
                         <span
-                          key={id}
+                          key={chipIndex}
                           style={{
                             display: "inline-flex",
                             alignItems: "center",
@@ -1047,7 +1251,7 @@ export default function AddEditAttractionForm({
                             </span>
                           )}
                           <span
-                            onClick={(e) => removeSelectedSeat(e, id)}
+                            onClick={(e) => removeSelectedSeat(e, chipIndex)}
                             style={{
                               display: "inline-flex",
                               alignItems: "center",
@@ -1146,11 +1350,12 @@ export default function AddEditAttractionForm({
                       </div>
                     ) : (
                       availableSeats.map((seat) => {
-                        const isSelected = selectedSeatIds.includes(seat.id!);
+                        const count = selectedSeatIds.filter((id) => id === seat.id).length;
+                        const isSelected = count > 0;
                         return (
                           <div
                             key={seat.id}
-                            onClick={() => toggleSeatId(seat.id!)}
+                            onClick={() => addSeatId(seat.id!)}
                             style={{
                               display: "flex",
                               alignItems: "center",
@@ -1163,29 +1368,32 @@ export default function AddEditAttractionForm({
                               marginBottom: "2px",
                             }}
                             onMouseEnter={(e) => {
-                              if (!isSelected) e.currentTarget.style.background = "#F8FAFC";
+                              e.currentTarget.style.background = isSelected ? "#E0EDFF" : "#F8FAFC";
                             }}
                             onMouseLeave={(e) => {
                               e.currentTarget.style.background = isSelected ? "#EFF6FF" : "transparent";
                             }}
                           >
-                            {/* Checkbox */}
-                            <div
-                              style={{
-                                width: "18px",
-                                height: "18px",
-                                borderRadius: "4px",
-                                border: `2px solid ${isSelected ? "#0C2A42" : "#CBD5E1"}`,
-                                background: isSelected ? "#0C2A42" : "#FFFFFF",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                flexShrink: 0,
-                                transition: "all 0.15s ease",
-                              }}
-                            >
-                              {isSelected && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
-                            </div>
+                            {count > 0 && (
+                              <span
+                                style={{
+                                  minWidth: "20px",
+                                  height: "20px",
+                                  borderRadius: "50%",
+                                  background: "#0C2A42",
+                                  color: "#FFFFFF",
+                                  fontSize: "10px",
+                                  fontWeight: 700,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  flexShrink: 0,
+                                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                                }}
+                              >
+                                {count}
+                              </span>
+                            )}
 
                             <Armchair size={15} color={isSelected ? "#0C2A42" : "#9CA3AF"} style={{ flexShrink: 0 }} />
 
@@ -1326,12 +1534,33 @@ export default function AddEditAttractionForm({
                   position: "relative",
                 }}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={cat.image}
-                  alt={cat.name}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
+                {cat.image ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={cat.image}
+                    alt={cat.name}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      background: "linear-gradient(135deg, #0C2A42 0%, #2372A5 100%)",
+                      color: "#FFFFFF",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 700,
+                      fontSize: "18px",
+                    }}
+                  >
+                    {cat.name ? cat.name.charAt(0).toUpperCase() : "C"}
+                  </div>
+                )}
               </div>
 
               {/* Upload Image Button */}
@@ -1628,6 +1857,7 @@ export default function AddEditAttractionForm({
         isOpen={isAddCategoryModalOpen}
         onClose={() => setIsAddCategoryModalOpen(false)}
         onAdd={handleAddCategoryConfirm}
+        existingCategories={categories.map((c) => c.name)}
       />
     </form>
   );

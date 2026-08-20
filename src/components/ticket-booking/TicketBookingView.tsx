@@ -690,7 +690,7 @@ export default function TicketBookingView() {
   const [availableTripsMap, setAvailableTripsMap] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    document.title = "Ticket Booking | Ticketing Platform";
+    document.title = "Ticket Booking | Ticketing Solution";
     const attractions = loadAttractions().filter((a) => a.status === "Active");
     setAllAttractions(attractions);
     // Initialize available trips map

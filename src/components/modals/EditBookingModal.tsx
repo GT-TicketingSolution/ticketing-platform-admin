@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { X, Save, AlertCircle, Loader2 } from "lucide-react";
-import { Booking } from "@/types/booking";
+import { BookingListItem } from "@/hooks/useBookingQueries";
 import { colors, typography } from "@/lib/theme";
 
 // ─── Schema-based validation 
@@ -99,10 +99,10 @@ const inputStyle = (hasError: boolean): React.CSSProperties => ({
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 interface EditBookingModalProps {
-  booking: Booking | null;
+  booking: BookingListItem | null;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (updatedBooking: Booking) => void;
+  onSave: (bookingId: string, customerName: string, mobileNumber: string) => void;
   isSaving?: boolean;
 }
 
@@ -144,11 +144,7 @@ export default function EditBookingModal({
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
-    onSave({
-      ...booking,
-      customerName: customerName.trim(),
-      mobileNumber: mobileNumber.trim(),
-    });
+    onSave(booking!.id, customerName.trim(), mobileNumber.trim());
   };
 
   return (
@@ -199,7 +195,7 @@ export default function EditBookingModal({
                 margin: 0,
               }}
             >
-              Edit Booking ({booking.id})
+              Edit Booking ({booking.bookingId})
             </h3>
             <span style={{ fontSize: "12px", color: colors.text.muted, fontFamily: typography.fontFamily.sans }}>
               Update customer name and mobile number
