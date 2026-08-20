@@ -494,8 +494,8 @@ export default function LoginPage() {
               style={{
                 width: "100%",
                 height: "42px",
-                background: colors.login.btnBg,
-                color: colors.login.btnText,
+                background: isSubmitting ? "#9CA3AF" : colors.login.btnBg,
+                color: isSubmitting ? "#4B5563" : colors.login.btnText,
                 border: "none",
                 borderRadius: "8px",
                 fontFamily: typography.fontFamily.sans,
@@ -508,9 +508,10 @@ export default function LoginPage() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                boxShadow: "0 4px 12px rgba(244, 188, 67, 0.3)",
+                boxShadow: isSubmitting ? "none" : "0 4px 12px rgba(244, 188, 67, 0.3)",
+                opacity: isSubmitting ? 0.75 : 1,
               }}
-              className="login-btn"
+              className={isSubmitting ? "login-btn-disabled" : "login-btn"}
             >
               {isSubmitting ? "Logging in..." : "Login"}
             </button>
@@ -525,6 +526,9 @@ export default function LoginPage() {
         }
         .login-btn:active {
           transform: scale(0.99);
+        }
+        .login-btn-disabled {
+          pointer-events: none;
         }
       `}</style>
     </div>

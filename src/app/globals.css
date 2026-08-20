@@ -51,9 +51,11 @@ body {
 aside::-webkit-scrollbar {
   width: 4px;
 }
+
 aside::-webkit-scrollbar-track {
   background: transparent;
 }
+
 aside::-webkit-scrollbar-thumb {
   background: #2372A5;
   border-radius: 4px;
@@ -76,4 +78,14 @@ a {
 .notify-button-warning:hover {
   background-color: #E5AF36 !important;
   box-shadow: 0 4px 12px rgba(244, 188, 67, 0.35) !important;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }

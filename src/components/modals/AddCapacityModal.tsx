@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, PlusCircle, Check } from "lucide-react";
+import { X, PlusCircle, Check, Loader2 } from "lucide-react";
 import { typography } from "@/lib/theme";
 import { useToast } from "@/components/ui/Toast";
 import { validateAddCapacitySchema } from "@/app/(dashboard)/inventory/schema";
@@ -444,20 +444,29 @@ export default function AddCapacityModal({
                 padding: "10px 24px",
                 borderRadius: "10px",
                 border: "none",
-                background: "#F4BC43",
-                color: "#011B2F",
+                background: isSubmitting ? "#E5E7EB" : "#F4BC43",
+                color: isSubmitting ? "#6B7280" : "#011B2F",
                 fontSize: "14px",
                 fontWeight: 700,
                 fontFamily: typography.fontFamily.sans,
-                cursor: "pointer",
+                cursor: isSubmitting ? "not-allowed" : "pointer",
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
-                boxShadow: "0 4px 12px rgba(244, 188, 67, 0.35)",
+                boxShadow: isSubmitting ? "none" : "0 4px 12px rgba(244, 188, 67, 0.35)",
               }}
             >
-              <Check size={18} />
-              {isSubmitting ? "Updating..." : "Confirm & Add Capacity"}
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
+                  <span>Updating...</span>
+                </>
+              ) : (
+                <>
+                  <Check size={18} />
+                  <span>Confirm &amp; Add Capacity</span>
+                </>
+              )}
             </button>
           </div>
         </form>

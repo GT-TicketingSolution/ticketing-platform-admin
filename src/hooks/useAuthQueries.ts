@@ -94,10 +94,9 @@ export function useLoginMutation() {
        * user object, not the { profile: {...} } shape the query expects.
        */
       queryClient.invalidateQueries({ queryKey: authKeys.profile() });
-      showSuccessNotify(
-        `Welcome back, ${data?.user?.name || "User"}!`,
-        "Login Successful"
-      );
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("ticketing_welcome_user", data?.user?.name || "User");
+      }
     },
     onError: (error: any) => {
       const serverMessage =

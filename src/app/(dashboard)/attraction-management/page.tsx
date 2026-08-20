@@ -256,45 +256,52 @@ export default function AttractionManagementPage() {
   // Called from AddEditAttractionForm — data is Partial<Attraction> shape
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSaveAttraction = async (data: any) => {
-    if (viewMode === "edit" && attractionToEdit) {
-      const payload: UpdateAttractionPayload = {
-        name: data.name,
-        category: data.category,
-        image: data.image ?? null,
-        description: data.description ?? null,
-        timing: data.timing ?? null,
-        adultPrice: data.pricing?.adult ?? data.adultPrice,
-        childPrice: data.pricing?.child ?? data.childPrice,
-        studentPrice: data.pricing?.student ?? data.studentPrice,
-        seniorPrice: data.pricing?.senior ?? data.seniorPrice,
-        foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice,
-        hasSeating: data.hasSeating,
-      };
-      await updateMutation.mutateAsync({ id: attractionToEdit.id, data: payload });
+    try {
+      if (viewMode === "edit" && attractionToEdit) {
+        const payload: UpdateAttractionPayload = {
+          name: data.name,
+          category: data.category,
+          image: data.image ?? null,
+          description: data.description ?? null,
+          timing: data.timing ?? null,
+          adultPrice: data.pricing?.adult ?? data.adultPrice,
+          childPrice: data.pricing?.child ?? data.childPrice,
+          studentPrice: data.pricing?.student ?? data.studentPrice,
+          seniorPrice: data.pricing?.senior ?? data.seniorPrice,
+          foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice,
+          hasSeating: data.hasSeating,
+        };
+        await updateMutation.mutateAsync({ id: attractionToEdit.id, data: payload });
+      } else {
+        const payload: CreateAttractionPayload = {
+          name: data.name,
+          category: data.category,
+          image: data.image ?? null,
+          description: data.description ?? null,
+          timing: data.timing ?? null,
+          adultPrice: data.pricing?.adult ?? data.adultPrice,
+          childPrice: data.pricing?.child ?? data.childPrice,
+          studentPrice: data.pricing?.student ?? data.studentPrice,
+          seniorPrice: data.pricing?.senior ?? data.seniorPrice,
+          foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice,
+          hasSeating: data.hasSeating ?? false,
+        };
+        await createMutation.mutateAsync(payload);
+      }
       setViewMode("list");
-    } else {
-      const payload: CreateAttractionPayload = {
-        name: data.name,
-        category: data.category,
-        image: data.image ?? null,
-        description: data.description ?? null,
-        timing: data.timing ?? null,
-        adultPrice: data.pricing?.adult ?? data.adultPrice,
-        childPrice: data.pricing?.child ?? data.childPrice,
-        studentPrice: data.pricing?.student ?? data.studentPrice,
-        seniorPrice: data.pricing?.senior ?? data.seniorPrice,
-        foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice,
-        hasSeating: data.hasSeating ?? false,
-      };
-      await createMutation.mutateAsync(payload);
-      setViewMode("list");
+    } catch {
+      // Handled by onError in mutation; keep form open
     }
   };
 
   const handleSeatAssigned = async (seat: { id?: string }) => {
     if (!seatAllocAttraction || !seat.id) return;
-    await assignSeatMutation.mutateAsync({ id: seatAllocAttraction.id, seatLayoutId: seat.id });
-    setIsSeatAllocOpen(false);
+    try {
+      await assignSeatMutation.mutateAsync({ id: seatAllocAttraction.id, seatLayoutId: seat.id });
+      setIsSeatAllocOpen(false);
+    } catch {
+      // Keep modal open on error
+    }
   };
 
   const handleBulkUploadSuccess = (count: number) => {
@@ -335,6 +342,7 @@ export default function AttractionManagementPage() {
             attractionToEdit={viewMode === "edit" ? (attractionToEdit as any) : null}
             onSave={handleSaveAttraction}
             onCancel={() => setViewMode("list")}
+            isSaving={isSaving}
           />
         </div>
       )}
@@ -347,10 +355,59 @@ export default function AttractionManagementPage() {
         />
       )}
 
-      {/* ── LOADING STATE ────────────────────────────────────────────── */}
+      {/* ── LOADING SKELETON STATE ────────────────────────────────────── */}
       {isLoading && viewMode === "list" && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "400px", width: "100%" }}>
-          <Loader2 size={36} color="#2372A5" style={{ animation: "spin 1s linear infinite" }} />
+        <div
+          style={{
+            boxSizing: "border-box",
+            width: "100%",
+            maxWidth: "1124px",
+            background: "#FFFFFF",
+            border: "1px solid rgba(0, 0, 0, 0.43)",
+            borderRadius: "20px",
+            padding: "24px",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
+              gap: "20px",
+            }}
+          >
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+              <div
+                key={i}
+                style={{
+                  boxSizing: "border-box",
+                  width: "100%",
+                  maxWidth: "237px",
+                  minHeight: "355px",
+                  background: "#FFFFFF",
+                  border: "1.5px solid rgba(179, 175, 175, 0.3)",
+                  borderRadius: "8px",
+                  padding: "6px",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  margin: "0 auto",
+                }}
+              >
+                <div>
+                  <div className="attr-sk" style={{ width: "100%", height: "150px", borderRadius: "8px", marginBottom: "8px" }} />
+                  <div className="attr-sk" style={{ width: "70%", height: "18px", borderRadius: "4px", marginBottom: "8px" }} />
+                  <div className="attr-sk" style={{ width: "40%", height: "14px", borderRadius: "4px", marginBottom: "12px" }} />
+                  <div className="attr-sk" style={{ width: "90%", height: "12px", borderRadius: "4px", marginBottom: "6px" }} />
+                  <div className="attr-sk" style={{ width: "80%", height: "12px", borderRadius: "4px" }} />
+                </div>
+                <div style={{ display: "flex", gap: "6px", marginTop: "12px" }}>
+                  <div className="attr-sk" style={{ height: "30px", flex: 1, borderRadius: "6px" }} />
+                  <div className="attr-sk" style={{ height: "30px", flex: 1, borderRadius: "6px" }} />
+                  <div className="attr-sk" style={{ height: "30px", flex: 1, borderRadius: "6px" }} />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -522,7 +579,15 @@ export default function AttractionManagementPage() {
 
       {/* ── Hover styles ─────────────────────────────────────────────── */}
       <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes attrShimmer {
+          0%   { background-position: -600px 0; }
+          100% { background-position: 600px 0; }
+        }
+        .attr-sk {
+          background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+          background-size: 600px 100%;
+          animation: attrShimmer 1.4s infinite linear;
+        }
         .attraction-card-item:hover { transform: translateY(-3px); box-shadow: 0 10px 25px rgba(12,42,66,0.12); }
         .btn-edit:hover { background: #F0F7FF !important; }
         .btn-seating:hover { background: #ECFDF5 !important; }
@@ -542,6 +607,7 @@ export default function AttractionManagementPage() {
         currentSeatId={undefined}
         currentSeatIds={[]}
         onSelect={handleSeatAssigned}
+        isLoading={assignSeatMutation.isPending}
         onSelectMultiple={(selectedSeats) => {
           if (selectedSeats.length > 0 && seatAllocAttraction) {
             handleSeatAssigned(selectedSeats[0]);

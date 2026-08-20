@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Plus, Search, RotateCcw, RefreshCw } from "lucide-react";
+import { Plus, Search, RotateCcw } from "lucide-react";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import { confirmDelete } from "@/lib/notify";
 import SeatEmptyState from "@/components/seat/SeatEmptyState";
@@ -47,7 +47,6 @@ export default function SeatManagementPage() {
     data: seatData,
     isLoading,
     isFetching,
-    refetch,
   } = useSeatLayouts({
     search: debouncedSearch || undefined,
     status: apiStatus,
@@ -178,9 +177,6 @@ export default function SeatManagementPage() {
                 }}
               >
                 Seat Management
-                {isFetching && !isLoading && (
-                  <RefreshCw size={16} className="animate-spin" color="#173F63" />
-                )}
               </h1>
               <p
                 style={{
@@ -197,30 +193,6 @@ export default function SeatManagementPage() {
 
             {/* Top Right Buttons */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <button
-                type="button"
-                onClick={() => refetch()}
-                title="Refresh seat layouts"
-                style={{
-                  height: "42px",
-                  padding: "0 14px",
-                  background: "#FFFFFF",
-                  border: "1px solid #D1D5DB",
-                  borderRadius: "8px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 600,
-                  fontSize: "13px",
-                  color: "#374151",
-                  cursor: "pointer",
-                }}
-              >
-                <RefreshCw size={15} />
-                <span>Reload</span>
-              </button>
-
               <button
                 type="button"
                 onClick={handleOpenCreate}

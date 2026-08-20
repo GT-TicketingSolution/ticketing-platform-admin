@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, CreditCard, Save } from "lucide-react";
+import { X, CreditCard, Save, Loader2 } from "lucide-react";
 import { Transaction, TransactionStatus } from "@/types/transaction";
 import { colors, typography } from "@/lib/theme";
 
@@ -10,6 +10,7 @@ interface EditTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (updated: Transaction) => void;
+  isSaving?: boolean;
 }
 
 export default function EditTransactionModal({
@@ -17,6 +18,7 @@ export default function EditTransactionModal({
   isOpen,
   onClose,
   onSave,
+  isSaving = false,
 }: EditTransactionModalProps) {
   const [formData, setFormData] = useState<Partial<Transaction>>({});
 
@@ -324,23 +326,33 @@ export default function EditTransactionModal({
             </button>
             <button
               type="submit"
+              disabled={isSaving}
               style={{
                 height: "40px",
                 padding: "0 22px",
                 borderRadius: "6px",
                 border: "none",
-                background: "#0C2A42",
-                color: "#FFFFFF",
+                background: isSaving ? "#E5E7EB" : "#0C2A42",
+                color: isSaving ? "#6B7280" : "#FFFFFF",
                 fontSize: "13px",
                 fontWeight: 600,
-                cursor: "pointer",
+                cursor: isSaving ? "not-allowed" : "pointer",
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
               }}
             >
-              <Save size={16} />
-              <span>Save Changes</span>
+              {isSaving ? (
+                <>
+                  <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <>
+                  <Save size={16} />
+                  <span>Save Changes</span>
+                </>
+              )}
             </button>
           </div>
         </form>

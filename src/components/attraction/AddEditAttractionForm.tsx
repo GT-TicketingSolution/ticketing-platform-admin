@@ -29,6 +29,7 @@ interface AddEditAttractionFormProps {
   onCancel: () => void;
   /** Called when user checks 'Requires seat allocation' — passes the partially-built attraction */
   onConfigureSeating?: (draft: Partial<Attraction>) => void;
+  isSaving?: boolean;
 }
 
 // ── Add Visitor Category Modal
@@ -312,6 +313,7 @@ export default function AddEditAttractionForm({
   onSave,
   onCancel,
   onConfigureSeating,
+  isSaving = false,
 }: AddEditAttractionFormProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -1392,27 +1394,36 @@ export default function AddEditAttractionForm({
 
         <button
           type="submit"
+          disabled={isSaving}
           style={{
             boxSizing: "border-box",
-            width: "153px",
+            minWidth: "153px",
             height: "48px",
-            background: "#F4BC43",
+            background: isSaving ? "#E5E7EB" : "#F4BC43",
             borderRadius: "8px",
             border: "none",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            cursor: "pointer",
+            gap: "8px",
+            cursor: isSaving ? "not-allowed" : "pointer",
             fontFamily: "'Plus Jakarta Sans', sans-serif",
             fontWeight: 700,
             fontSize: "14px",
-            color: "#011B2F",
-            boxShadow: "0 4px 12px rgba(244, 188, 67, 0.3)",
+            color: isSaving ? "#6B7280" : "#011B2F",
+            boxShadow: isSaving ? "none" : "0 4px 12px rgba(244, 188, 67, 0.3)",
             transition: "all 0.18s ease",
           }}
           className="btn-form-save"
         >
-          {attractionToEdit ? "Save" : "Add"}
+          {isSaving ? (
+            <>
+              <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+              <span>{attractionToEdit ? "Saving..." : "Adding..."}</span>
+            </>
+          ) : (
+            <span>{attractionToEdit ? "Save" : "Add"}</span>
+          )}
         </button>
       </div>
 
@@ -1425,6 +1436,10 @@ export default function AddEditAttractionForm({
             padding: 16px !important;
             border-radius: 12px !important;
           }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
         }
       `}</style>
 

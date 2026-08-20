@@ -13,6 +13,7 @@ import {
   Search,
   SearchX,
   Eye,
+  EyeOff,
   Edit2,
   Trash2,
   X,
@@ -27,6 +28,7 @@ import {
   TrendingUp,
   ChevronDown,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import {
@@ -648,6 +650,7 @@ function ManagerManagementInner() {
   );
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [showAddPassword, setShowAddPassword] = useState(false);
   const [selectedManager, setSelectedManager] = useState<ManagerUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -735,13 +738,13 @@ function ManagerManagementInner() {
       attraction: "",
       status: "Active",
       allowedModules: [] as string[],
-      attractionManagementEnabled: false,
+      attractionManagementEnabled: true,
       attractionPermissions: [] as AttractionPermission[],
     },
   });
 
   const watchedStatus = useWatch({ control, name: "status", defaultValue: "Active" });
-  const watchedEnabled = useWatch({ control, name: "attractionManagementEnabled", defaultValue: false });
+  const watchedEnabled = useWatch({ control, name: "attractionManagementEnabled", defaultValue: true });
   const watchedPermissions = useWatch({ control, name: "attractionPermissions", defaultValue: [] });
   const watchedAllowedModules = useWatch({ control, name: "allowedModules", defaultValue: [] });
 
@@ -824,6 +827,10 @@ function ManagerManagementInner() {
   // Edit
   const handleSaveEdit = async () => {
     if (!selectedManager) return;
+    if (!selectedManager.attractionPermissions || selectedManager.attractionPermissions.length === 0) {
+      showToast("At least one attraction must be assigned to the manager", "warning");
+      return;
+    }
     const computedAttraction = getAttractionFromPermissions(selectedManager.attractionPermissions || [], attractionsList);
     const updated = { ...selectedManager, attraction: computedAttraction };
 
@@ -1063,9 +1070,54 @@ function ManagerManagementInner() {
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             {isEditing ? (
               <>
-                <button onClick={() => setIsEditing(false)} style={{ padding: "9px 16px", borderRadius: "8px", border: `1px solid ${colors.login.inputBorder}`, background: "#FFFFFF", fontSize: "13px", fontWeight: 600, cursor: "pointer", fontFamily: typography.fontFamily.sans }}>Cancel</button>
-                <button onClick={handleSaveEdit} style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "9px 18px", borderRadius: "8px", background: colors.brand.primary, color: colors.sidebar.activeText, border: "none", fontSize: "13px", fontWeight: 700, cursor: "pointer", fontFamily: typography.fontFamily.sans, boxShadow: "0 4px 12px rgba(244,188,67,0.3)" }}>
-                  <Check size={16} /><span>Save Changes</span>
+                <button
+                  type="button"
+                  disabled={updateManagerMutation.isPending || updateManagerPermissionsMutation.isPending}
+                  onClick={() => setIsEditing(false)}
+                  style={{
+                    padding: "9px 16px",
+                    borderRadius: "8px",
+                    border: `1px solid ${colors.login.inputBorder}`,
+                    background: "#FFFFFF",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: (updateManagerMutation.isPending || updateManagerPermissionsMutation.isPending) ? "not-allowed" : "pointer",
+                    fontFamily: typography.fontFamily.sans,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={updateManagerMutation.isPending || updateManagerPermissionsMutation.isPending}
+                  onClick={handleSaveEdit}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "9px 18px",
+                    borderRadius: "8px",
+                    background: (updateManagerMutation.isPending || updateManagerPermissionsMutation.isPending) ? "#E5E7EB" : colors.brand.primary,
+                    color: (updateManagerMutation.isPending || updateManagerPermissionsMutation.isPending) ? "#6B7280" : colors.sidebar.activeText,
+                    border: "none",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: (updateManagerMutation.isPending || updateManagerPermissionsMutation.isPending) ? "not-allowed" : "pointer",
+                    fontFamily: typography.fontFamily.sans,
+                    boxShadow: (updateManagerMutation.isPending || updateManagerPermissionsMutation.isPending) ? "none" : "0 4px 12px rgba(244,188,67,0.3)",
+                  }}
+                >
+                  {(updateManagerMutation.isPending || updateManagerPermissionsMutation.isPending) ? (
+                    <>
+                      <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                      <span>Saving Changes...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check size={16} />
+                      <span>Save Changes</span>
+                    </>
+                  )}
                 </button>
               </>
             ) : (
@@ -1343,6 +1395,7 @@ function ManagerManagementInner() {
         <ExportButtons
           onExportPDF={handleExportPDF}
           onExportExcel={handleExportExcel}
+          disabled={isFetchingManagers || filteredManagers.length === 0}
         />
 
         <button
@@ -1493,7 +1546,34 @@ function ManagerManagementInner() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", alignItems: "flex-start" }}>
                 <div>
                   <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary, fontFamily: typography.fontFamily.sans }}>Login Password <span style={{ color: "#EF4444" }}>*</span></label>
-                  <input type="password" placeholder="Min. 6 characters" {...register("password")} style={inputStyle(!!errors.password)} />
+                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                    <input
+                      type={showAddPassword ? "text" : "password"}
+                      placeholder="Min. 6 characters"
+                      {...register("password")}
+                      style={{ ...inputStyle(!!errors.password), paddingRight: "40px" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAddPassword((prev) => !prev)}
+                      style={{
+                        position: "absolute",
+                        right: "10px",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: colors.text.muted,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "4px",
+                      }}
+                      tabIndex={-1}
+                      aria-label={showAddPassword ? "Hide password" : "Show password"}
+                    >
+                      {showAddPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
                   <FieldError message={errors.password?.message} />
                 </div>
                 <div>
@@ -1524,18 +1604,61 @@ function ManagerManagementInner() {
                   attractions={attractionsList}
                   onEnabledChange={(v) => {
                     setValue("attractionManagementEnabled", v, { shouldValidate: true });
-                    if (!v) setValue("attractionPermissions", []);
+                    if (!v) setValue("attractionPermissions", [], { shouldValidate: true });
                   }}
-                  onPermissionsChange={(p) => setValue("attractionPermissions", p)}
+                  onPermissionsChange={(p) => setValue("attractionPermissions", p, { shouldValidate: true })}
                 />
+                <FieldError message={errors.attractionPermissions?.message} />
               </div>
 
               <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "12px", marginTop: "12px", paddingTop: "16px", borderTop: `1px solid ${colors.header.border}` }}>
-                <button type="button" onClick={() => { setIsAddModalOpen(false); reset(); }} style={{ padding: "10px 18px", borderRadius: "8px", border: `1px solid ${colors.login.inputBorder}`, background: "#FFFFFF", fontSize: "14px", fontWeight: 600, cursor: "pointer", fontFamily: typography.fontFamily.sans }}>
+                <button
+                  type="button"
+                  disabled={createManagerMutation.isPending}
+                  onClick={() => { setIsAddModalOpen(false); reset(); }}
+                  style={{
+                    padding: "10px 18px",
+                    borderRadius: "8px",
+                    border: `1px solid ${colors.login.inputBorder}`,
+                    background: "#FFFFFF",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    cursor: createManagerMutation.isPending ? "not-allowed" : "pointer",
+                    fontFamily: typography.fontFamily.sans,
+                  }}
+                >
                   Cancel
                 </button>
-                <button type="submit" style={{ display: "flex", alignItems: "center", gap: "6px", padding: "10px 22px", borderRadius: "8px", background: colors.brand.primary, color: colors.sidebar.activeText, border: "none", fontSize: "14px", fontWeight: 700, cursor: "pointer", fontFamily: typography.fontFamily.sans, boxShadow: "0 4px 12px rgba(244,188,67,0.3)" }}>
-                  <UserPlus size={16} /><span>Create Manager</span>
+                <button
+                  type="submit"
+                  disabled={createManagerMutation.isPending}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "10px 22px",
+                    borderRadius: "8px",
+                    background: createManagerMutation.isPending ? "#E5E7EB" : colors.brand.primary,
+                    color: createManagerMutation.isPending ? "#6B7280" : colors.sidebar.activeText,
+                    border: "none",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    cursor: createManagerMutation.isPending ? "not-allowed" : "pointer",
+                    fontFamily: typography.fontFamily.sans,
+                    boxShadow: createManagerMutation.isPending ? "none" : "0 4px 12px rgba(244,188,67,0.3)",
+                  }}
+                >
+                  {createManagerMutation.isPending ? (
+                    <>
+                      <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                      <span>Creating Manager...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus size={16} />
+                      <span>Create Manager</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

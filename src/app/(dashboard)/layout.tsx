@@ -12,7 +12,7 @@ import {
 } from "@/lib/managerAuth";
 import { useProfileQuery, useLogoutMutation } from "@/hooks/useAuthQueries";
 import { SIDEBAR_COLLAPSE_EVENT } from "@/components/ticket-booking/TicketBookingView";
-import { confirmLogout } from "@/lib/notify";
+import { confirmLogout, showSuccessNotify } from "@/lib/notify";
 import { USER_ROLE_EVENT } from "@/hooks/useUserRole";
 
 /** Maps route pathname → browser tab title */
@@ -124,6 +124,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       const saved = sessionStorage.getItem("userRole");
       if (saved && saved !== "Admin" && saved !== "-") {
         setMountedRole(saved);
+      }
+
+      // Check if user just logged in and show welcome toast once on dashboard entry
+      const flashUser = sessionStorage.getItem("ticketing_welcome_user");
+      if (flashUser) {
+        sessionStorage.removeItem("ticketing_welcome_user");
+        showSuccessNotify(`Welcome back, ${flashUser}!`, "Login Successful");
       }
     }
   }, []);

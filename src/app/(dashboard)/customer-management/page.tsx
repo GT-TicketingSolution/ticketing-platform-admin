@@ -85,6 +85,7 @@ export default function CustomerManagementPage() {
       setCustomers((prev) => [...prev, newCustomer]);
       showToast("New customer added successfully!");
     }
+    setIsAddEditModalOpen(false);
   };
 
   const handleDeleteCustomer = async (cust: Customer) => {
@@ -219,6 +220,7 @@ export default function CustomerManagementPage() {
           onExportExcel={handleExportCSV}
           pdfLabel="Export PDF"
           excelLabel="Export Excel"
+          disabled={filteredCustomers.length === 0}
         />
 
         {/* Add Customer */}

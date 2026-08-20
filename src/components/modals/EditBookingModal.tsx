@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Save, AlertCircle } from "lucide-react";
+import { X, Save, AlertCircle, Loader2 } from "lucide-react";
 import { Booking } from "@/types/booking";
 import { colors, typography } from "@/lib/theme";
 
@@ -103,6 +103,7 @@ interface EditBookingModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (updatedBooking: Booking) => void;
+  isSaving?: boolean;
 }
 
 export default function EditBookingModal({
@@ -110,6 +111,7 @@ export default function EditBookingModal({
   isOpen,
   onClose,
   onSave,
+  isSaving = false,
 }: EditBookingModalProps) {
   const [customerName, setCustomerName] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
@@ -309,24 +311,34 @@ export default function EditBookingModal({
             </button>
             <button
               type="submit"
+              disabled={isSaving}
               style={{
                 height: "40px",
                 padding: "0 22px",
                 borderRadius: "8px",
                 border: "none",
-                background: colors.brand.primary,
-                color: colors.sidebar.bg,
+                background: isSaving ? "#E5E7EB" : colors.brand.primary,
+                color: isSaving ? "#6B7280" : colors.sidebar.bg,
                 fontSize: "14px",
                 fontWeight: 600,
                 fontFamily: typography.fontFamily.sans,
-                cursor: "pointer",
+                cursor: isSaving ? "not-allowed" : "pointer",
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
               }}
             >
-              <Save size={16} />
-              Save Changes
+              {isSaving ? (
+                <>
+                  <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <>
+                  <Save size={16} />
+                  <span>Save Changes</span>
+                </>
+              )}
             </button>
           </div>
         </form>

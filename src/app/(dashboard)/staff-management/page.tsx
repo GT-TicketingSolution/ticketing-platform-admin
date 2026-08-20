@@ -11,12 +11,13 @@ import {
   Building,
   Ticket,
   Eye,
+  EyeOff,
   ArrowLeft,
   Filter,
   X,
   UserX,
   UserPlus,
-  RefreshCw,
+  Loader2,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import { StaffUser } from "./types";
@@ -86,7 +87,6 @@ function StaffManagementInner() {
     data: staffData,
     isLoading: isFetchingStaff,
     isFetching,
-    refetch,
   } = useStaffList({
     search: debouncedSearch || undefined,
     status: apiStatus,
@@ -150,6 +150,7 @@ function StaffManagementInner() {
 
   // Modal & Selection States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [showAddPassword, setShowAddPassword] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -237,11 +238,9 @@ function StaffManagementInner() {
     }
 
     setFormErrors({});
-    setIsAddModalOpen(false);
 
     const confirmed = await confirmAdd(`staff member "${formData.name}"`);
     if (!confirmed) {
-      setIsAddModalOpen(true);
       return;
     }
 
@@ -260,9 +259,10 @@ function StaffManagementInner() {
         attractionIds: attractionIds.length > 0 ? attractionIds : [],
         status: formData.status === "Active" ? "ACTIVE" : "DISABLED",
       });
+      setIsAddModalOpen(false);
       resetForm();
     } catch {
-      setIsAddModalOpen(true);
+      // Handled by onError in mutation
     }
   };
 
@@ -660,17 +660,24 @@ function StaffManagementInner() {
                     gap: "6px",
                     padding: "9px 18px",
                     borderRadius: "8px",
-                    background: colors.brand.primary,
-                    color: colors.sidebar.activeText,
+                    background: updateStaffMutation.isPending ? "#E5E7EB" : colors.brand.primary,
+                    color: updateStaffMutation.isPending ? "#6B7280" : colors.sidebar.activeText,
                     border: "none",
                     fontSize: "13px",
                     fontWeight: 700,
                     cursor: updateStaffMutation.isPending ? "not-allowed" : "pointer",
                     fontFamily: typography.fontFamily.sans,
-                    boxShadow: "0 4px 12px rgba(244,188,67,0.3)",
+                    boxShadow: updateStaffMutation.isPending ? "none" : "0 4px 12px rgba(244,188,67,0.3)",
                   }}
                 >
-                  {updateStaffMutation.isPending ? "Saving..." : "Save Changes"}
+                  {updateStaffMutation.isPending ? (
+                    <>
+                      <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                      <span>Saving Changes...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
                 </button>
               </>
             ) : (
@@ -1148,58 +1155,16 @@ function StaffManagementInner() {
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent: "flex-end",
           flexWrap: "wrap",
           gap: "12px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          {isFetching && !isFetchingStaff && (
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                fontSize: "12px",
-                color: colors.brand.accent,
-                background: "#EFF6FF",
-                padding: "4px 10px",
-                borderRadius: "6px",
-                fontWeight: 600,
-              }}
-            >
-              <RefreshCw size={12} className="animate-spin" /> Syncing...
-            </span>
-          )}
-        </div>
-
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <button
-            type="button"
-            onClick={() => refetch()}
-            title="Refresh staff list"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              background: "#FFFFFF",
-              color: colors.text.primary,
-              border: `1px solid ${colors.header.border}`,
-              borderRadius: "8px",
-              padding: "10px 14px",
-              fontFamily: typography.fontFamily.sans,
-              fontWeight: 600,
-              fontSize: "13px",
-              cursor: "pointer",
-            }}
-          >
-            <RefreshCw size={15} />
-            <span>Reload</span>
-          </button>
-
           <ExportButtons
             onExportPDF={handleExportPDF}
             onExportExcel={handleExportExcel}
+            disabled={isFetchingStaff || staffList.length === 0}
           />
 
           <button
@@ -1548,25 +1513,47 @@ function StaffManagementInner() {
                 <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary }}>
                   Password <span style={{ color: "#EF4444" }}>*</span>
                 </label>
-                <input
-                  type="password"
-                  placeholder="Enter secure password"
-                  value={formData.password}
-                  onChange={(e) => {
-                    setFormData({ ...formData, password: e.target.value });
-                    setFormErrors((p) => ({ ...p, password: "" }));
-                  }}
-                  style={{
-                    width: "100%",
-                    height: "40px",
-                    borderRadius: "8px",
-                    border: `1.5px solid ${formErrors.password ? "#EF4444" : "#CBD5E1"}`,
-                    padding: "0 12px",
-                    marginTop: "4px",
-                    fontSize: "14px",
-                    boxSizing: "border-box",
-                  }}
-                />
+                <div style={{ position: "relative", display: "flex", alignItems: "center", marginTop: "4px" }}>
+                  <input
+                    type={showAddPassword ? "text" : "password"}
+                    placeholder="Enter secure password"
+                    value={formData.password}
+                    onChange={(e) => {
+                      setFormData({ ...formData, password: e.target.value });
+                      setFormErrors((p) => ({ ...p, password: "" }));
+                    }}
+                    style={{
+                      width: "100%",
+                      height: "40px",
+                      borderRadius: "8px",
+                      border: `1.5px solid ${formErrors.password ? "#EF4444" : "#CBD5E1"}`,
+                      padding: "0 40px 0 12px",
+                      fontSize: "14px",
+                      boxSizing: "border-box",
+                      outline: "none",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAddPassword((prev) => !prev)}
+                    style={{
+                      position: "absolute",
+                      right: "10px",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: colors.text.muted,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "4px",
+                    }}
+                    tabIndex={-1}
+                    aria-label={showAddPassword ? "Hide password" : "Show password"}
+                  >
+                    {showAddPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
                 {formErrors.password && (
                   <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>
                     {formErrors.password}
@@ -1648,18 +1635,27 @@ function StaffManagementInner() {
                     gap: "6px",
                     padding: "10px 22px",
                     borderRadius: "8px",
-                    background: colors.brand.primary,
-                    color: colors.sidebar.activeText,
+                    background: createStaffMutation.isPending ? "#E5E7EB" : colors.brand.primary,
+                    color: createStaffMutation.isPending ? "#6B7280" : colors.sidebar.activeText,
                     border: "none",
                     fontSize: "14px",
                     fontWeight: 700,
                     cursor: createStaffMutation.isPending ? "not-allowed" : "pointer",
                     fontFamily: typography.fontFamily.sans,
-                    boxShadow: "0 4px 12px rgba(244,188,67,0.3)",
+                    boxShadow: createStaffMutation.isPending ? "none" : "0 4px 12px rgba(244,188,67,0.3)",
                   }}
                 >
-                  <Plus size={16} />
-                  <span>{createStaffMutation.isPending ? "Creating..." : "Create Staff Member"}</span>
+                  {createStaffMutation.isPending ? (
+                    <>
+                      <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                      <span>Creating Staff Member...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={16} />
+                      <span>Create Staff Member</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

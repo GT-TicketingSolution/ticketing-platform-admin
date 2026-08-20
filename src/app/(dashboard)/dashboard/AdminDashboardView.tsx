@@ -15,7 +15,6 @@ import {
   ArrowUpRight,
   CheckCircle2,
   XCircle,
-  RefreshCw,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import { exportMultiSectionXLS, XLSSection } from "@/lib/exportUtils";
@@ -44,7 +43,6 @@ export default function AdminDashboardView() {
     isLoading,
     isFetching,
     error,
-    refetch,
   } = useDashboard({
     period: selectedDateRange,
     attractionId: selectedAttraction === "All" ? undefined : selectedAttraction,
@@ -145,67 +143,51 @@ export default function AdminDashboardView() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          {isFetching && !isLoading && (
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                fontSize: "12px",
-                color: colors.brand.accent,
-                background: "#EFF6FF",
-                padding: "4px 10px",
-                borderRadius: "6px",
-                fontWeight: 600,
-              }}
-            >
-              <RefreshCw size={12} className="animate-spin" /> Refreshing...
-            </span>
-          )}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <button
             type="button"
-            onClick={() => refetch()}
-            title="Refresh dashboard"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              background: "#FFFFFF",
-              color: colors.text.primary,
-              border: `1px solid ${colors.header.border}`,
-              borderRadius: "8px",
-              padding: "10px 14px",
-              fontFamily: typography.fontFamily.sans,
-              fontWeight: 600,
-              fontSize: "13px",
-              cursor: "pointer",
-              transition: "all 0.18s ease",
-            }}
-          >
-            <RefreshCw size={15} />
-            <span>Reload</span>
-          </button>
-
-          <button
-            type="button"
             onClick={handleExportXLS}
+            disabled={isLoading || (summary.totalManagers === 0 && summary.totalBookings === 0)}
+            title={
+              isLoading || (summary.totalManagers === 0 && summary.totalBookings === 0)
+                ? "No records available to export in dashboard"
+                : "Export dashboard report as XLS"
+            }
             style={{
               display: "flex",
               alignItems: "center",
               gap: "8px",
-              background: "#107C41",
-              color: "#FFFFFF",
-              border: "none",
+              background:
+                isLoading || (summary.totalManagers === 0 && summary.totalBookings === 0)
+                  ? "#E2E8F0"
+                  : "#107C41",
+              color:
+                isLoading || (summary.totalManagers === 0 && summary.totalBookings === 0)
+                  ? "#94A3B8"
+                  : "#FFFFFF",
+              border:
+                isLoading || (summary.totalManagers === 0 && summary.totalBookings === 0)
+                  ? "1px solid #CBD5E1"
+                  : "none",
               borderRadius: "8px",
               padding: "10px 18px",
               fontFamily: typography.fontFamily.sans,
               fontWeight: typography.fontWeight.semibold,
               fontSize: "14px",
-              cursor: "pointer",
-              boxShadow: "0 4px 12px rgba(16, 124, 65, 0.25)",
+              cursor:
+                isLoading || (summary.totalManagers === 0 && summary.totalBookings === 0)
+                  ? "not-allowed"
+                  : "pointer",
+              opacity:
+                isLoading || (summary.totalManagers === 0 && summary.totalBookings === 0)
+                  ? 0.7
+                  : 1,
+              boxShadow:
+                isLoading || (summary.totalManagers === 0 && summary.totalBookings === 0)
+                  ? "none"
+                  : "0 4px 12px rgba(16, 124, 65, 0.25)",
               transition: "all 0.18s ease",
             }}
           >
@@ -225,28 +207,9 @@ export default function AdminDashboardView() {
             padding: "12px 18px",
             color: "#B91C1C",
             fontSize: "13px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
           }}
         >
           <span>Unable to fetch dashboard data. Showing latest available statistics.</span>
-          <button
-            type="button"
-            onClick={() => refetch()}
-            style={{
-              background: "#B91C1C",
-              color: "#FFFFFF",
-              border: "none",
-              borderRadius: "6px",
-              padding: "4px 10px",
-              fontSize: "12px",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Retry
-          </button>
         </div>
       )}
 
@@ -385,6 +348,38 @@ export default function AdminDashboardView() {
       </div>
 
       {/* Metric Stat Cards Grid */}
+      {isLoading ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+            gap: "18px",
+          }}
+        >
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              style={{
+                background: "#FFFFFF",
+                borderRadius: "12px",
+                padding: "20px",
+                boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                border: "1px solid #E2E8F0",
+              }}
+            >
+              <div style={{ flex: 1 }}>
+                <div className="dash-sk" style={{ height: "14px", width: "130px", borderRadius: "4px", marginBottom: "12px" }} />
+                <div className="dash-sk" style={{ height: "28px", width: "70px", borderRadius: "6px", marginBottom: "10px" }} />
+                <div className="dash-sk" style={{ height: "12px", width: "160px", borderRadius: "4px" }} />
+              </div>
+              <div className="dash-sk" style={{ width: "48px", height: "48px", borderRadius: "12px" }} />
+            </div>
+          ))}
+        </div>
+      ) : (
       <div
         style={{
           display: "grid",
@@ -674,6 +669,7 @@ export default function AdminDashboardView() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Performance & Distribution Charts */}
       <DashboardCharts
@@ -694,7 +690,7 @@ export default function AdminDashboardView() {
       >
         <div
           style={{
-            padding: "18px 24px",
+            padding: "16px 20px",
             borderBottom: `1px solid ${colors.header.border}`,
             display: "flex",
             alignItems: "center",
@@ -702,7 +698,7 @@ export default function AdminDashboardView() {
           }}
         >
           <div>
-            <h3
+            <h2
               style={{
                 fontFamily: typography.fontFamily.sans,
                 fontWeight: typography.fontWeight.bold,
@@ -711,33 +707,32 @@ export default function AdminDashboardView() {
                 margin: 0,
               }}
             >
-              Recent Managers Overview
-            </h3>
-            <span style={{ fontSize: "13px", color: colors.text.muted }}>
-              Showing {recentManagers.length} of {totalRecentManagers} managers
-            </span>
+              Recent Managers Activity
+            </h2>
+            <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: colors.text.muted }}>
+              Latest managers registered and their performance overview
+            </p>
           </div>
 
           <Link
             href="/manager-management"
             prefetch={true}
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
+              fontFamily: typography.fontFamily.sans,
               fontSize: "13px",
               fontWeight: 600,
               color: colors.brand.accent,
               textDecoration: "none",
-              padding: "6px 14px",
-              borderRadius: "8px",
-              border: `1px solid ${colors.header.border}`,
-              background: "#FFFFFF",
-              transition: "all 0.18s ease",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              padding: "6px 12px",
+              borderRadius: "6px",
+              transition: "all 0.15s ease",
             }}
             className="view-all-link"
           >
-            View All →
+            View All ({totalRecentManagers}) &rarr;
           </Link>
         </div>
 
@@ -772,18 +767,35 @@ export default function AdminDashboardView() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr>
-                  <td
-                    colSpan={6}
+                  Array.from({ length: 5 }).map((_, rIdx) => (
+                  <tr
+                    key={`mgr-skeleton-${rIdx}`}
                     style={{
-                      padding: "32px",
-                      textAlign: "center",
-                      color: colors.text.muted,
+                      borderBottom: `1px solid ${colors.header.border}`,
+                      height: "56px",
                     }}
                   >
-                    Loading managers...
-                  </td>
-                </tr>
+                    <td style={{ padding: "14px 20px" }}>
+                      <div className="dash-sk" style={{ height: "14px", width: "120px", borderRadius: "4px" }} />
+                    </td>
+                    <td style={{ padding: "14px 20px" }}>
+                      <div className="dash-sk" style={{ height: "14px", width: "150px", borderRadius: "4px", marginBottom: "4px" }} />
+                      <div className="dash-sk" style={{ height: "12px", width: "100px", borderRadius: "4px" }} />
+                    </td>
+                    <td style={{ padding: "14px 20px" }}>
+                      <div className="dash-sk" style={{ height: "24px", width: "100px", borderRadius: "6px" }} />
+                    </td>
+                    <td style={{ padding: "14px 20px" }}>
+                      <div className="dash-sk" style={{ height: "14px", width: "90px", borderRadius: "4px" }} />
+                    </td>
+                    <td style={{ padding: "14px 20px" }}>
+                      <div className="dash-sk" style={{ height: "14px", width: "50px", borderRadius: "4px" }} />
+                    </td>
+                    <td style={{ padding: "14px 20px" }}>
+                      <div className="dash-sk" style={{ height: "24px", width: "75px", borderRadius: "20px" }} />
+                    </td>
+                  </tr>
+                ))
               ) : recentManagers.length === 0 ? (
                 <tr>
                   <td
@@ -885,6 +897,15 @@ export default function AdminDashboardView() {
       </div>
 
       <style>{`
+        @keyframes dashShimmer {
+          0%   { background-position: -600px 0; }
+          100% { background-position: 600px 0; }
+        }
+        .dash-sk {
+          background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+          background-size: 600px 100%;
+          animation: dashShimmer 1.4s infinite linear;
+        }
         .table-row-hover:hover {
           background: #F8FAFC !important;
         }

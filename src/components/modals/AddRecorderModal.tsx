@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Check } from "lucide-react";
+import { X, Check, Loader2 } from "lucide-react";
 import { typography } from "@/lib/theme";
 import { useToast } from "@/components/ui/Toast";
 
@@ -21,6 +21,7 @@ interface AddRecorderModalProps {
   onClose: () => void;
   onAddRecorder: (data: RecorderData) => void;
   initialData?: RecorderData | null;
+  isLoading?: boolean;
 }
 
 export default function AddRecorderModal({
@@ -28,6 +29,7 @@ export default function AddRecorderModal({
   onClose,
   onAddRecorder,
   initialData,
+  isLoading = false,
 }: AddRecorderModalProps) {
   const { showToast } = useToast();
   const [recorderName, setRecorderName] = useState("");
@@ -563,21 +565,34 @@ export default function AddRecorderModal({
             </button>
             <button
               type="submit"
+              disabled={isLoading}
               style={{
-                width: "153px",
+                minWidth: "153px",
                 height: "48px",
-                background: "#F4BC43",
+                background: isLoading ? "#E5E7EB" : "#F4BC43",
                 border: "none",
                 borderRadius: "8px",
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
                 fontWeight: 700,
                 fontSize: "14px",
-                color: "#011B2F",
-                cursor: "pointer",
-                boxShadow: "0 4px 12px rgba(244, 188, 67, 0.3)",
+                color: isLoading ? "#6B7280" : "#011B2F",
+                cursor: isLoading ? "not-allowed" : "pointer",
+                boxShadow: isLoading ? "none" : "0 4px 12px rgba(244, 188, 67, 0.3)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                padding: "0 18px",
               }}
             >
-              {initialData ? "Save Changes" : "Add Recorder"}
+              {isLoading ? (
+                <>
+                  <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                  <span>{initialData ? "Saving..." : "Adding..."}</span>
+                </>
+              ) : (
+                <span>{initialData ? "Save Changes" : "Add Recorder"}</span>
+              )}
             </button>
           </div>
         </form>

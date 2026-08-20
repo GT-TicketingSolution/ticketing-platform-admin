@@ -321,10 +321,9 @@ export default function Sidebar({
   onLogout,
 }: SidebarProps) {
   const pathname = usePathname();
-  const [pendingPath, setPendingPath] = useState<string | null>(null);
 
   // Fetch active system modules from backend (GET /api/admin/system-modules)
-  const { data: systemModules, isError: isSystemModulesError } = useSystemModules();
+  const { data: systemModules, isLoading: isModulesLoading, isError: isSystemModulesError } = useSystemModules();
 
   const navItems = useMemo(() => {
     // If no authenticated role or error in fetching modules, do NOT show any sidebar items
@@ -357,14 +356,8 @@ export default function Sidebar({
       return activeItems;
     }
 
-    // Do not show hardcoded frontend sidebar content; fully driven by backend response
     return [];
   }, [roleName, systemModules, managerAllowedModules, isSystemModulesError]);
-
-  // Sync / clear pending path when actual pathname updates
-  useEffect(() => {
-    setPendingPath(null);
-  }, [pathname]);
 
   // Close drawer on route change
   const closeDrawer = useCallback(onDrawerClose, [onDrawerClose]);
@@ -410,8 +403,6 @@ export default function Sidebar({
       overflowX: isIconOnly ? "visible" : "hidden",
       transition: "width 0.25s cubic-bezier(0.4,0,0.2,1)",
     };
-
-  const activePath = pendingPath ?? pathname;
 
   return (
     <>
@@ -479,10 +470,7 @@ export default function Sidebar({
                 {roleName}
               </span>
             </div>
-          ) : (
-            // Collapsed icon-only mode: show ONLY the menu toggle button centered
-            null
-          )}
+          ) : null}
 
           {/* Toggle buttons */}
           {isMobile ? (
@@ -537,26 +525,72 @@ export default function Sidebar({
 
         {/* ── Navigation (dynamically rendered from system modules) ── */}
         <nav style={{ flex: 1, padding: "8px 0", marginTop: "20px" }}>
-          {navItems.map((item) => {
-            const isActive =
-              activePath === item.href ||
-              (item.href !== "/dashboard" && activePath.startsWith(item.href));
-            return (
-              <NavItem
-                key={item.href}
-                label={item.label}
-                href={item.href}
-                icon={item.icon}
-                isActive={isActive}
-                isIconOnly={isIconOnly}
-                onClick={() => setPendingPath(item.href)}
-              />
-            );
-          })}
+          {isModulesLoading ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "0 10px" }}>
+              {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+                <div
+                  key={n}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: isIconOnly ? 0 : "12px",
+                    padding: isIconOnly ? "9px 0" : "8px 10px",
+                    borderRadius: "8px",
+                    justifyContent: isIconOnly ? "center" : "flex-start",
+                  }}
+                >
+                  <div
+                    className="sidebar-sk"
+                    style={{
+                      width: "20px",
+                      height: "20px",
+                      borderRadius: "4px",
+                      flexShrink: 0,
+                    }}
+                  />
+                  {!isIconOnly && (
+                    <div
+                      className="sidebar-sk"
+                      style={{
+                        height: "16px",
+                        width: n % 2 === 0 ? "70%" : "85%",
+                        borderRadius: "4px",
+                      }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            navItems.map((item) => {
+              const isActive =
+                pathname === item.href ||
+                (item.href !== "/dashboard" && pathname.startsWith(item.href));
+              return (
+                <NavItem
+                  key={item.href}
+                  label={item.label}
+                  href={item.href}
+                  icon={item.icon}
+                  isActive={isActive}
+                  isIconOnly={isIconOnly}
+                />
+              );
+            })
+          )}
         </nav>
 
         {/* ── Scoped styles ── */}
         <style>{`
+          @keyframes sidebarShimmer {
+            0% { opacity: 0.25; }
+            50% { opacity: 0.6; }
+            100% { opacity: 0.25; }
+          }
+          .sidebar-sk {
+            background: rgba(255, 255, 255, 0.15);
+            animation: sidebarShimmer 1.5s ease-in-out infinite;
+          }
           .sidebar-toggle-btn:hover {
             background: ${colors.sidebar.hoverBg} !important;
           }

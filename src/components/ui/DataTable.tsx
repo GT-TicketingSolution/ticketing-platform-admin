@@ -114,41 +114,33 @@ export function DataTable<T>({
           </thead>
           <tbody>
             {isLoading ? (
-              <tr>
-                <td
-                  colSpan={columns.length + (showSNo ? 1 : 0)}
+              Array.from({ length: pageSize > 8 ? 8 : Math.max(5, pageSize) }).map((_, rIdx) => (
+                <tr
+                  key={`skeleton-row-${rIdx}`}
                   style={{
-                    padding: "50px 20px",
-                    textAlign: "center",
+                    borderBottom: `1px solid ${colors.header.border}`,
+                    height: "48px",
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "10px",
-                    }}
-                  >
-                    <Loader2
-                      size={28}
-                      color={colors.brand.accent}
-                      style={{ animation: "spin 1s linear infinite" }}
-                    />
-                    <span
-                      style={{
-                        fontSize: "14px",
-                        fontWeight: 500,
-                        color: colors.text.muted,
-                        fontFamily: typography.fontFamily.sans,
-                      }}
-                    >
-                      Loading records...
-                    </span>
-                  </div>
-                </td>
-              </tr>
+                  {showSNo && (
+                    <td style={{ padding: "14px 20px", textAlign: "center" }}>
+                      <div className="table-sk" style={{ height: "14px", width: "24px", margin: "0 auto", borderRadius: "4px" }} />
+                    </td>
+                  )}
+                  {columns.map((col, cIdx) => (
+                    <td key={cIdx} style={{ padding: "14px 20px" }}>
+                      <div
+                        className="table-sk"
+                        style={{
+                          height: "14px",
+                          width: cIdx === 0 ? "75%" : cIdx % 2 === 1 ? "55%" : "65%",
+                          borderRadius: "4px",
+                        }}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))
             ) : currentData.length === 0 ? (
               <tr>
                 <td
@@ -379,6 +371,15 @@ export function DataTable<T>({
       )}
 
       <style>{`
+        @keyframes tableShimmer {
+          0%   { background-position: -600px 0; }
+          100% { background-position: 600px 0; }
+        }
+        .table-sk {
+          background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+          background-size: 600px 100%;
+          animation: tableShimmer 1.4s infinite linear;
+        }
         .datatable-row-hover:hover {
           background: #F8FAFC !important;
         }

@@ -13,6 +13,7 @@ interface SeatAllocationModalProps {
   currentSeatIds?: string[];
   onSelect: (seat: SeatConfigData) => void;
   onSelectMultiple?: (seats: SeatConfigData[]) => void;
+  isLoading?: boolean;
 }
 
 export default function SeatAllocationModal({
@@ -23,6 +24,7 @@ export default function SeatAllocationModal({
   currentSeatIds,
   onSelect,
   onSelectMultiple,
+  isLoading = false,
 }: SeatAllocationModalProps) {
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -423,24 +425,35 @@ export default function SeatAllocationModal({
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={selectedIds.length === 0}
+            disabled={selectedIds.length === 0 || isLoading}
             style={{
               flex: 1,
               height: "42px",
-              background: selectedIds.length > 0 ? "#0C2A42" : "#D1D5DB",
+              background: (selectedIds.length > 0 && !isLoading) ? "#0C2A42" : "#D1D5DB",
               border: "none",
               borderRadius: "8px",
               fontFamily: "'Plus Jakarta Sans', sans-serif",
               fontWeight: 700,
               fontSize: "14px",
-              color: selectedIds.length > 0 ? "#FFFFFF" : "#9CA3AF",
-              cursor: selectedIds.length > 0 ? "pointer" : "not-allowed",
+              color: (selectedIds.length > 0 && !isLoading) ? "#FFFFFF" : "#9CA3AF",
+              cursor: (selectedIds.length > 0 && !isLoading) ? "pointer" : "not-allowed",
               transition: "all 0.15s ease",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
             }}
           >
-            {selectedIds.length > 1
-              ? `Assign ${selectedIds.length} Seat Layouts`
-              : "Assign Seat Layout"}
+            {isLoading ? (
+              <>
+                <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                <span>Assigning...</span>
+              </>
+            ) : selectedIds.length > 1 ? (
+              `Assign ${selectedIds.length} Seat Layouts`
+            ) : (
+              "Assign Seat Layout"
+            )}
           </button>
         </div>
       </div>

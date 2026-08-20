@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 import { Reference } from "@/types/complimentaryPass";
 import { validateReference } from "@/app/(dashboard)/complimentary-passes/schema";
 
@@ -10,6 +10,7 @@ interface AddReferenceModalProps {
   onClose: () => void;
   refToEdit: Reference | null;
   onSave: (data: Omit<Reference, "id">) => void;
+  isSaving?: boolean;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -49,6 +50,7 @@ export default function AddReferenceModal({
   onClose,
   refToEdit,
   onSave,
+  isSaving = false,
 }: AddReferenceModalProps) {
   const [referenceName, setReferenceName] = useState("");
   const [department, setDepartment] = useState("");
@@ -290,21 +292,32 @@ export default function AddReferenceModal({
             </button>
             <button
               type="submit"
+              disabled={isSaving}
               style={{
                 height: "36px",
-                padding: "0 40px",
-                background: "#F4BC43",
+                padding: "0 30px",
+                background: isSaving ? "#E5E7EB" : "#F4BC43",
                 border: "none",
                 borderRadius: "8px",
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
                 fontWeight: 700,
                 fontSize: "14px",
-                color: "#011B2F",
-                cursor: "pointer",
-                boxShadow: "0 4px 12px rgba(244,188,67,0.3)",
+                color: isSaving ? "#6B7280" : "#011B2F",
+                cursor: isSaving ? "not-allowed" : "pointer",
+                boxShadow: isSaving ? "none" : "0 4px 12px rgba(244,188,67,0.3)",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
               }}
             >
-              Add
+              {isSaving ? (
+                <>
+                  <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <span>Add</span>
+              )}
             </button>
           </div>
         </form>

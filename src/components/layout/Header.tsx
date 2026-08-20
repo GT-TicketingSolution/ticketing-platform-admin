@@ -128,7 +128,7 @@ export default function Header({
 
   const displayName = isProfileError
     ? "—"
-    : profileData?.profile?.name || (profileLoading ? "Loading..." : "—");
+    : profileData?.profile?.name || "—";
 
   /**
    * Derive the displayed role label from the authoritative profile API.
@@ -470,22 +470,24 @@ export default function Header({
 
               {/* Name + Role (hidden on mobile) */}
               {!isMobile && (
-                <div style={{ display: "flex", flexDirection: "column", textAlign: "left" }}>
-                  <span
-                    suppressHydrationWarning
-                    style={{
-                      fontFamily: typography.fontFamily.sans,
-                      fontWeight: typography.fontWeight.bold,
-                      fontSize: "14px",
-                      lineHeight: "18px",
-                      color: colors.header.userNameText,
-                      whiteSpace: "nowrap",
-                      opacity: profileLoading ? 0.5 : 1,
-                      transition: "opacity 0.2s ease",
-                    }}
-                  >
-                    {displayName}
-                  </span>
+                <div style={{ display: "flex", flexDirection: "column", textAlign: "left", minWidth: "50px" }}>
+                  {profileLoading && !profileData ? (
+                    <div style={{ height: "13px", width: "65px", background: "#E2E8F0", borderRadius: "4px", margin: "2px 0" }} />
+                  ) : (
+                    <span
+                      suppressHydrationWarning
+                      style={{
+                        fontFamily: typography.fontFamily.sans,
+                        fontWeight: typography.fontWeight.bold,
+                        fontSize: "14px",
+                        lineHeight: "18px",
+                        color: colors.header.userNameText,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {displayName}
+                    </span>
+                  )}
                   <span
                     suppressHydrationWarning
                     style={{

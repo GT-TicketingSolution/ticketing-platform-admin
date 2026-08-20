@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { X, Armchair, MoveHorizontal } from "lucide-react";
+import { X, Armchair, MoveHorizontal, Loader2 } from "lucide-react";
 
 import { SeatConfigData } from "@/app/(dashboard)/seat-management/types";
 export type { SeatConfigData };
@@ -568,9 +568,20 @@ export default function CreateSeatModal({
                   cursor: isLoading ? "not-allowed" : "pointer",
                   boxShadow: isLoading ? "none" : "0 4px 12px rgba(244,188,67,0.35)",
                   transition: "all 0.18s ease",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
                 }}
               >
-                {isLoading ? "Saving..." : initialData ? "Update Seat Layout" : "Save Seat"}
+                {isLoading ? (
+                  <>
+                    <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <span>{initialData ? "Update Seat Layout" : "Save Seat"}</span>
+                )}
               </button>
             </div>
           </div>
@@ -949,6 +960,12 @@ export default function CreateSeatModal({
           </div>
         </form>
       </div>
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
