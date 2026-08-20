@@ -57,6 +57,15 @@ export async function requireAuth(request: Request) {
     )
     .limit(1);
 
+  console.log("AUTH RESULT:", {
+    sessionId: result?.sessionId,
+    userId: result?.userId,
+    email: result?.email,
+    role: result?.role,
+    status: result?.status,
+    adminId: result?.adminId,
+  });
+
   if (!result) {
     throw new Error("UNAUTHORIZED");
   }

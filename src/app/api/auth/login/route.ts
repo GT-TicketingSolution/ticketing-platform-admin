@@ -31,7 +31,11 @@ export async function POST(request: Request) {
     await setSessionCookie(result.session.rawToken, result.session.expiresAt);
 
     const redirectTo =
-      result.user.role === "STAFF" ? "/ticket-booking" : "/dashboard";
+      result.user.role === "STAFF"
+        ? result.user.staffRoles.includes("VALIDATOR")
+          ? "/scanner"
+          : "/ticket-booking"
+        : "/dashboard";
 
     return success({
       user: result.user,
