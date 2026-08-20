@@ -1,10 +1,10 @@
 import { db } from "@/db";
-
-import { attractionManagement } from "@/db/schema";
+import { attractions, attractionManagement } from "@/db/schema";
 
 import { success, failure } from "@/lib/api/response";
-
 import { requireAuth } from "@/lib/auth/require-auth";
+
+import { eq, and } from "drizzle-orm";
 
 export async function POST(request: Request) {
   try {
@@ -16,49 +16,97 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    if (!Array.isArray(body)) {
+    if (!Array.isArray(body) || body.length === 0) {
       return failure("Invalid bulk data", 400, "VALIDATION_ERROR");
     }
 
-    const data = body.map((item) => ({
-      adminId: auth.user.id,
+    const results = [];
 
-      attractionId: item.attractionId,
+    for (const item of body) {
+      // ==========================================
+      // VALIDATE ATTRACTION NAME
+      // ==========================================
 
-      image: item.image ?? null,
+      if (!item.name) {
+        return failure("Attraction name is required", 400, "VALIDATION_ERROR");
+      }
 
-      description: item.description ?? null,
+      // ==========================================
+      // FIND ATTRACTION BY NAME
+      // ==========================================
 
-      timing: item.timing ?? null,
+      const attraction = await db
+        .select({
+          id: attractions.id,
+          name: attractions.name,
+        })
+        .from(attractions)
+        .where(
+          and(
+            eq(attractions.name, item.name),
+            eq(attractions.adminId, auth.user.id),
+          ),
+        )
+        .limit(1);
 
-      adultPrice: item.adultPrice ?? 0,
+      if (!attraction.length) {
+        return failure(
+          `Attraction "${item.name}" not found`,
+          404,
+          "ATTRACTION_NOT_FOUND",
+        );
+      }
 
-      childPrice: item.childPrice ?? 0,
+      const attractionId = attraction[0].id;
 
-      studentPrice: item.studentPrice ?? 0,
+      // ==========================================
+      // INSERT MANAGEMENT DETAILS
+      // ==========================================
 
-      seniorPrice: item.seniorPrice ?? 0,
+      const inserted = await db
+        .insert(attractionManagement)
+        .values({
+          adminId: auth.user.id,
 
-      foreignerPrice: item.foreignerPrice ?? 0,
+          attractionId,
 
-      hasSeating: item.hasSeating ?? false,
-    }));
+          image: item.image ?? null,
 
-    const inserted = await db
-      .insert(attractionManagement)
-      .values(data)
-      .onConflictDoNothing({
-        target: [
-          attractionManagement.adminId,
-          attractionManagement.attractionId,
-        ],
-      })
-      .returning();
+          description: item.description ?? null,
+
+          timing: item.timing ?? null,
+
+          adultPrice: item.adultPrice ?? 0,
+
+          childPrice: item.childPrice ?? 0,
+
+          studentPrice: item.studentPrice ?? 0,
+
+          seniorPrice: item.seniorPrice ?? 0,
+
+          foreignerPrice: item.foreignerPrice ?? 0,
+
+          hasSeating: item.hasSeating ?? false,
+        })
+        .onConflictDoNothing({
+          target: [
+            attractionManagement.adminId,
+            attractionManagement.attractionId,
+          ],
+        })
+        .returning();
+
+      if (inserted.length > 0) {
+        results.push({
+          attraction: attraction[0],
+          management: inserted[0],
+        });
+      }
+    }
 
     return success({
-      message: `${inserted.length} attractions uploaded successfully`,
-
-      data: inserted,
+      message: `${results.length} attractions uploaded successfully`,
+      data: results,
     });
   } catch (error) {
     console.error("Bulk upload error:", error);
