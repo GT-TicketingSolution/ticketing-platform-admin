@@ -21,10 +21,27 @@ export async function POST(request: Request) {
     await requestPasswordReset(parsed.data.email);
 
     return success({
-      message:
-        "If an account exists with this email, a password reset link has been sent.",
+      message: "Password reset link has been sent.",
     });
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "USER_NOT_FOUND") {
+        return failure(
+          "No account found with this email address.",
+          404,
+          "USER_NOT_FOUND",
+        );
+      }
+
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure(
+          "This account is not active.",
+          403,
+          "ACCOUNT_NOT_ACTIVE",
+        );
+      }
+    }
+
     console.error("Forgot password error:", error);
 
     return failure(

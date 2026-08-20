@@ -39,6 +39,10 @@ export async function GET(request: Request) {
 
     const adminId = getAdminId(auth);
 
+    // console.log("GET CUSTOMER DEBUG");
+    // console.log("GET AUTH USER:", auth.user);
+    // console.log("GET ADMIN ID:", adminId);
+
     const result = await getCustomers({
       adminId,
       page,

@@ -1,14 +1,36 @@
 import { NextRequest } from "next/server";
 
-import { getInvoices } from "@/services/invoice.service";
-import { failure, success } from "@/lib/api/response";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
+
+import { db } from "@/db";
+
+import {
+  transactions,
+  bookings,
+  attractions,
+  bookingItems,
+  managerAttractionPermissions,
+} from "@/db/schema";
+
 import { requireAuth } from "@/lib/auth/require-auth";
+import { success, failure } from "@/lib/api/response";
 
 export async function GET(request: NextRequest) {
   try {
-    // --------------------------------------------------
-    // AUTH
-    // --------------------------------------------------
+    // =====================================================
+    // AUTHENTICATION
+    // =====================================================
 
     const auth = await requireAuth(request);
 
@@ -16,19 +38,20 @@ export async function GET(request: NextRequest) {
       return failure("Admin or manager access required.", 403, "FORBIDDEN");
     }
 
-    // --------------------------------------------------
+    // =====================================================
     // TENANT
-    // --------------------------------------------------
+    // =====================================================
 
-    const adminId = auth.user.adminId ?? auth.user.id;
+    const adminId =
+      auth.user.role === "ADMIN" ? auth.user.id : auth.user.adminId;
 
     if (!adminId) {
       return failure("Admin context not found.", 403, "ADMIN_CONTEXT_REQUIRED");
     }
 
-    // --------------------------------------------------
+    // =====================================================
     // QUERY PARAMS
-    // --------------------------------------------------
+    // =====================================================
 
     const { searchParams } = new URL(request.url);
 
@@ -39,33 +62,375 @@ export async function GET(request: NextRequest) {
       100,
     );
 
-    const search = searchParams.get("search")?.trim() || undefined;
+    const offset = (page - 1) * limit;
 
-    const paymentMode = searchParams.get("paymentMode")?.trim() || undefined;
+    const search = searchParams.get("search")?.trim() || "";
 
-    const dateFrom = searchParams.get("dateFrom")?.trim() || undefined;
+    const paymentMode = searchParams.get("paymentMode")?.trim().toUpperCase();
 
-    const dateTo = searchParams.get("dateTo")?.trim() || undefined;
+    const dateFrom = searchParams.get("dateFrom")?.trim();
 
-    // --------------------------------------------------
-    // GET INVOICES
-    // --------------------------------------------------
+    const dateTo = searchParams.get("dateTo")?.trim();
 
-    const data = await getInvoices({
-      adminId,
-      page,
-      limit,
-      search,
-      paymentMode,
-      dateFrom,
-      dateTo,
+    // =====================================================
+    // BASE CONDITIONS
+    // =====================================================
+
+    const conditions = [
+      // Transaction not deleted
+      isNull(transactions.deletedAt),
+
+      // Booking not deleted
+      isNull(bookings.deletedAt),
+
+      // Tenant isolation
+      eq(attractions.adminId, adminId),
+    ];
+
+    // =====================================================
+    // MANAGER ATTRACTION ACCESS
+    // =====================================================
+
+    if (auth.user.role === "MANAGER") {
+      const managerAttractions = await db
+        .select({
+          attractionId: managerAttractionPermissions.attractionId,
+        })
+        .from(managerAttractionPermissions)
+        .innerJoin(
+          attractions,
+          eq(managerAttractionPermissions.attractionId, attractions.id),
+        )
+        .where(
+          and(
+            eq(managerAttractionPermissions.managerId, auth.user.id),
+            eq(attractions.adminId, adminId),
+            eq(attractions.status, "ACTIVE"),
+          ),
+        );
+
+      const allowedAttractionIds = managerAttractions.map(
+        (item) => item.attractionId,
+      );
+
+      if (allowedAttractionIds.length === 0) {
+        return success({
+          summary: {
+            totalRevenue: 0,
+            totalInvoices: 0,
+            paidInvoices: 0,
+          },
+
+          items: [],
+
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 0,
+          },
+        });
+      }
+
+      conditions.push(inArray(attractions.id, allowedAttractionIds));
+    }
+
+    // =====================================================
+    // SEARCH
+    // =====================================================
+
+    if (search) {
+      conditions.push(
+        or(
+          ilike(transactions.invoiceNumber, `%${search}%`),
+
+          ilike(transactions.transactionNumber, `%${search}%`),
+
+          ilike(bookings.bookingNumber, `%${search}%`),
+
+          ilike(bookings.customerName, `%${search}%`),
+
+          ilike(bookings.mobileNumber, `%${search}%`),
+
+          ilike(attractions.name, `%${search}%`),
+        )!,
+      );
+    }
+
+    // =====================================================
+    // PAYMENT MODE
+    // =====================================================
+
+    if (paymentMode && paymentMode !== "ALL") {
+      if (
+        paymentMode !== "CASH" &&
+        paymentMode !== "UPI" &&
+        paymentMode !== "CARD" &&
+        paymentMode !== "ONLINE"
+      ) {
+        return failure("Invalid payment mode.", 400, "INVALID_PAYMENT_MODE");
+      }
+
+      conditions.push(
+        eq(
+          transactions.paymentMode,
+          paymentMode as "CASH" | "UPI" | "CARD" | "ONLINE",
+        ),
+      );
+    }
+
+    // =====================================================
+    // DATE FROM
+    // =====================================================
+
+    if (dateFrom) {
+      const startDate = new Date(`${dateFrom}T00:00:00.000Z`);
+
+      if (Number.isNaN(startDate.getTime())) {
+        return failure("Invalid dateFrom.", 400, "INVALID_DATE_FROM");
+      }
+
+      conditions.push(gte(transactions.createdAt, startDate));
+    }
+
+    // =====================================================
+    // DATE TO
+    // =====================================================
+
+    if (dateTo) {
+      const endDate = new Date(`${dateTo}T23:59:59.999Z`);
+
+      if (Number.isNaN(endDate.getTime())) {
+        return failure("Invalid dateTo.", 400, "INVALID_DATE_TO");
+      }
+
+      conditions.push(lte(transactions.createdAt, endDate));
+    }
+
+    const whereClause = and(...conditions);
+
+    // =====================================================
+    // TOTAL INVOICES
+    // =====================================================
+
+    const [countResult] = await db
+      .select({
+        count: sql<number>`COUNT(${transactions.id})`,
+      })
+      .from(transactions)
+      .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+      .where(whereClause);
+
+    const totalInvoices = Number(countResult?.count || 0);
+
+    // =====================================================
+    // TOTAL REVENUE
+    // =====================================================
+
+    const [revenueResult] = await db
+      .select({
+        totalRevenue: sql<string>`
+          COALESCE(
+            SUM(${transactions.amount}),
+            0
+          )
+        `,
+      })
+      .from(transactions)
+      .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+      .where(and(...conditions, eq(transactions.status, "SUCCESSFUL")));
+
+    const totalRevenue = Number(revenueResult?.totalRevenue || 0);
+
+    // =====================================================
+    // PAID INVOICES
+    // =====================================================
+
+    const [paidResult] = await db
+      .select({
+        count: sql<number>`COUNT(${transactions.id})`,
+      })
+      .from(transactions)
+      .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+      .where(and(...conditions, eq(transactions.status, "SUCCESSFUL")));
+
+    const paidInvoices = Number(paidResult?.count || 0);
+
+    // =====================================================
+    // INVOICE LIST
+    // =====================================================
+
+    const invoiceRows = await db
+      .select({
+        // Transaction UUID
+        id: transactions.id,
+
+        // Invoice number
+        invoiceId: transactions.invoiceNumber,
+
+        // Transaction number
+        transactionId: transactions.transactionNumber,
+
+        // Booking UUID
+        bookingUuid: bookings.id,
+
+        // Booking number
+        bookingId: bookings.bookingNumber,
+
+        customerName: bookings.customerName,
+
+        mobileNumber: bookings.mobileNumber,
+
+        gstNumber: bookings.gstNumber,
+
+        dateTime: transactions.createdAt,
+
+        visitAt: bookings.visitAt,
+
+        attractionId: attractions.id,
+
+        attractionName: attractions.name,
+
+        amount: transactions.amount,
+
+        paymentMode: transactions.paymentMode,
+
+        status: transactions.status,
+      })
+      .from(transactions)
+      .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+      .where(whereClause)
+      .orderBy(desc(transactions.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    // =====================================================
+    // BOOKING ITEMS
+    // =====================================================
+
+    const bookingIds = invoiceRows.map((row) => row.bookingUuid);
+
+    const itemRows =
+      bookingIds.length > 0
+        ? await db
+            .select({
+              bookingId: bookingItems.bookingId,
+
+              category: bookingItems.category,
+
+              quantity: bookingItems.quantity,
+
+              unitPrice: bookingItems.unitPrice,
+
+              totalPrice: bookingItems.totalPrice,
+            })
+            .from(bookingItems)
+            .where(inArray(bookingItems.bookingId, bookingIds))
+        : [];
+
+    // =====================================================
+    // GROUP VISITORS
+    // =====================================================
+
+    const visitorMap = new Map<string, Map<string, number>>();
+
+    for (const item of itemRows) {
+      if (!visitorMap.has(item.bookingId)) {
+        visitorMap.set(item.bookingId, new Map<string, number>());
+      }
+
+      const categoryMap = visitorMap.get(item.bookingId)!;
+
+      categoryMap.set(
+        item.category,
+        (categoryMap.get(item.category) || 0) + Number(item.quantity || 0),
+      );
+    }
+
+    // =====================================================
+    // FORMAT ITEMS
+    // =====================================================
+
+    const items = invoiceRows.map((invoice, index) => {
+      const categories = visitorMap.get(invoice.bookingUuid);
+
+      const visitors = categories
+        ? Array.from(categories.entries())
+            .map(([category, quantity]) => `${quantity} ${category}`)
+            .join(" + ")
+        : "0";
+
+      return {
+        sNo: offset + index + 1,
+
+        // Invoice number
+        invoiceId: invoice.invoiceId || invoice.transactionId,
+
+        // Customer
+        customerName: invoice.customerName,
+
+        mobileNumber: invoice.mobileNumber,
+
+        gstNumber: invoice.gstNumber,
+
+        // Date
+        dateTime: invoice.dateTime,
+
+        visitAt: invoice.visitAt,
+
+        // Attraction
+        attraction: {
+          id: invoice.attractionId,
+
+          name: invoice.attractionName,
+        },
+
+        // Visitors
+        visitors,
+
+        // Payment
+        amount: Number(invoice.amount),
+
+        paymentMode: invoice.paymentMode,
+
+        status: invoice.status,
+
+        // References
+        transactionId: invoice.transactionId,
+
+        bookingId: invoice.bookingId,
+      };
     });
 
-    // --------------------------------------------------
+    // =====================================================
     // RESPONSE
-    // --------------------------------------------------
+    // =====================================================
 
-    return success(data);
+    return success({
+      summary: {
+        totalRevenue,
+
+        totalInvoices,
+
+        paidInvoices,
+      },
+
+      items,
+
+      pagination: {
+        page,
+
+        limit,
+
+        total: totalInvoices,
+
+        totalPages: totalInvoices === 0 ? 0 : Math.ceil(totalInvoices / limit),
+      },
+    });
   } catch (error) {
     console.error("Get invoices error:", error);
 
