@@ -20,6 +20,7 @@ import {
 import { colors, typography } from "@/lib/theme";
 import { resetPasswordSchema, ResetPasswordFormData } from "../login/schema";
 import { useResetPasswordMutation } from "@/hooks/useAuthQueries";
+import { META_CONSTANTS } from "@/lib/metaConstant";
 
 function ResetPasswordContent() {
   const searchParams = useSearchParams();
@@ -34,7 +35,7 @@ function ResetPasswordContent() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      document.title = "Reset Password | Ticketing Platform";
+      document.title = META_CONSTANTS.resetPassword.fullTitle;
     }
   }, []);
 
@@ -77,7 +78,7 @@ function ResetPasswordContent() {
 
   return (
     <>
-      <title>Reset Password | Ticketing Platform</title>
+      <title>{META_CONSTANTS.resetPassword.fullTitle}</title>
       <div
       style={{
         position: "relative",

@@ -317,6 +317,7 @@ export default function AddEditAttractionForm({
 }: AddEditAttractionFormProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("Ride");
   const [status, setStatus] = useState<"Active" | "Inactive">("Active");
   const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
   const [isSeatDropdownOpen, setIsSeatDropdownOpen] = useState(false);
@@ -325,6 +326,9 @@ export default function AddEditAttractionForm({
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  // ── Operating hours (display-only, no booking enforcement) 
+  const [openTime, setOpenTime] = useState("09:00");
+  const [closeTime, setCloseTime] = useState("18:00");
 
   // ── Fetch active seat layouts from backend API ────────────────────────────
   const { data: seatData, isLoading: isSeatsLoading } = useSeatLayouts();
@@ -355,25 +359,53 @@ export default function AddEditAttractionForm({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // ── Helper to normalize status ──────────────────────────────────────────
+  const normalizeStatus = (s: string | undefined): "Active" | "Inactive" => {
+    if (!s) return "Active";
+    return s.toUpperCase() === "INACTIVE" ? "Inactive" : "Active";
+  };
+
   // ── Populate form when editing ──────────────────────────────────────────
   useEffect(() => {
     if (attractionToEdit) {
       setName(attractionToEdit.name || "");
       setDescription(attractionToEdit.description || "");
-      setStatus((attractionToEdit.status as "Active" | "Inactive") || "Active");
+      setCategory(attractionToEdit.category || "Ride");
+      setStatus(normalizeStatus(attractionToEdit.status));
       const assignedIds =
         (attractionToEdit as Attraction & { assignedSeatIds?: string[] }).assignedSeatIds || [];
       setSelectedSeatIds(assignedIds);
       setImagePreview(attractionToEdit.image || null);
       setCategories(pricingToCategories(attractionToEdit));
+      // Parse timing string "HH:MM AM/PM - HH:MM AM/PM" back into 24-hour values
+      if (attractionToEdit.timing) {
+        const parts = attractionToEdit.timing.split(" - ");
+        if (parts.length === 2) {
+          const to24 = (t: string) => {
+            const [time, meridiem] = t.trim().split(" ");
+            let [h, m] = time.split(":").map(Number);
+            if (meridiem === "PM" && h !== 12) h += 12;
+            if (meridiem === "AM" && h === 12) h = 0;
+            return `${String(h).padStart(2, "0")}:${String(m ?? 0).padStart(2, "0")}`;
+          };
+          setOpenTime(to24(parts[0]));
+          setCloseTime(to24(parts[1]));
+        }
+      } else {
+        setOpenTime("09:00");
+        setCloseTime("18:00");
+      }
     } else {
       // Reset for new attraction
       setName("");
       setDescription("");
+      setCategory("Ride");
       setStatus("Active");
       setSelectedSeatIds([]);
       setImagePreview(null);
       setCategories(DEFAULT_CATEGORIES);
+      setOpenTime("09:00");
+      setCloseTime("18:00");
     }
   }, [attractionToEdit]);
 
@@ -475,13 +507,25 @@ export default function AddEditAttractionForm({
     const assignedSeatsList = availableSeats.filter((s) => selectedSeatIds.includes(s.id!));
     const assignedSeatNames = assignedSeatsList.map((s) => s.name);
 
+    // Build display-only timing string from the two time inputs
+    const to12 = (t: string) => {
+      const [hStr, mStr] = t.split(":");
+      let h = parseInt(hStr, 10);
+      const m = mStr ?? "00";
+      const meridiem = h >= 12 ? "PM" : "AM";
+      if (h > 12) h -= 12;
+      if (h === 0) h = 12;
+      return `${String(h).padStart(2, "0")}:${m} ${meridiem}`;
+    };
+    const timingString = `${to12(openTime)} - ${to12(closeTime)}`;
+
     onSave({
       name: name.trim(),
       description: description.trim(),
       status,
       hasSeating: selectedSeatIds.length > 0,
-      category: "Ride",
-      timing: "09:00 AM - 06:00 PM",
+      category: category.trim() || "Ride",
+      timing: timingString,
       image: imagePreview || "",
       pricing: {
         adult: getPriceByName("adult"),
@@ -534,33 +578,169 @@ export default function AddEditAttractionForm({
             Basic Information
           </h3>
 
-          {/* Attraction Name */}
-          <div style={{ marginBottom: "20px" }} id="field-name">
+          {/* Attraction Name + Category — side by side row */}
+          <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", marginBottom: "20px", alignItems: "flex-start" }}>
+            {/* Attraction Name */}
+            <div style={{ flex: "1 1 200px" }} id="field-name">
+              <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
+                Attraction Name<Req />
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. toy train"
+                value={name}
+                onChange={(e) => { setName(e.target.value); setFormErrors((p) => ({ ...p, name: "" })); }}
+                style={{
+                  boxSizing: "border-box",
+                  width: "100%",
+                  height: "38px",
+                  background: "#FFFFFF",
+                  border: formErrors.name ? "1.5px solid #DC2626" : "1.5px solid rgba(179, 175, 175, 0.51)",
+                  borderRadius: "8px",
+                  padding: "0 15px",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 500,
+                  fontSize: "12px",
+                  color: "rgba(55, 65, 81, 0.89)",
+                  outline: "none",
+                }}
+              />
+              {formErrors.name && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{formErrors.name}</span>}
+            </div>
+
+            {/* Attraction Category */}
+            <div style={{ flex: "1 1 160px" }} id="field-category">
+              <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
+                Category<Req />
+              </label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                style={{
+                  boxSizing: "border-box",
+                  width: "100%",
+                  height: "38px",
+                  background: "#FFFFFF",
+                  border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                  borderRadius: "8px",
+                  padding: "0 12px",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 500,
+                  fontSize: "12px",
+                  color: "rgba(55, 65, 81, 0.89)",
+                  outline: "none",
+                  cursor: "pointer",
+                  appearance: "auto",
+                }}
+              >
+                <option value="Ride">Ride</option>
+                <option value="Museum">Museum</option>
+                <option value="Park">Park</option>
+                <option value="Monument">Monument</option>
+                <option value="Fort">Fort</option>
+                <option value="Show">Show</option>
+                <option value="ATTRACTION">Attraction</option>
+                {category && !["Ride", "Museum", "Park", "Monument", "Fort", "Show", "ATTRACTION"].includes(category) && (
+                  <option value={category}>{category}</option>
+                )}
+              </select>
+            </div>
+          </div>
+
+          {/* Operating Hours — display-only, no booking enforcement */}
+          <div style={{ marginBottom: "20px" }}>
             <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
-              Attraction Name<Req />
+              Operating Hours
+              <span style={{ marginLeft: "6px", fontFamily: "'Inter', sans-serif", fontWeight: 400, fontSize: "11px", color: "#9CA3AF" }}>
+                (display only — does not restrict bookings)
+              </span>
             </label>
-            <input
-              type="text"
-              placeholder="e.g. toy train"
-              value={name}
-              onChange={(e) => { setName(e.target.value); setFormErrors((p) => ({ ...p, name: "" })); }}
-              style={{
-                boxSizing: "border-box",
-                width: "100%",
-                maxWidth: "313px",
-                height: "38px",
-                background: "#FFFFFF",
-                border: formErrors.name ? "1.5px solid #DC2626" : "1.5px solid rgba(179, 175, 175, 0.51)",
-                borderRadius: "8px",
-                padding: "0 15px",
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: 500,
-                fontSize: "12px",
-                color: "rgba(55, 65, 81, 0.89)",
-                outline: "none",
-              }}
-            />
-            {formErrors.name && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{formErrors.name}</span>}
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+              {/* Open Time */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 400, fontSize: "11px", color: "#6B7280" }}>Opens at</span>
+                <input
+                  type="time"
+                  id="attraction-open-time"
+                  value={openTime}
+                  onChange={(e) => setOpenTime(e.target.value)}
+                  style={{
+                    boxSizing: "border-box",
+                    width: "130px",
+                    height: "38px",
+                    background: "#FFFFFF",
+                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                    borderRadius: "8px",
+                    padding: "0 10px",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 500,
+                    fontSize: "12px",
+                    color: "#374151",
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                />
+              </div>
+              <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "14px", color: "#9CA3AF", marginTop: "18px" }}>—</span>
+              {/* Close Time */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 400, fontSize: "11px", color: "#6B7280" }}>Closes at</span>
+                <input
+                  type="time"
+                  id="attraction-close-time"
+                  value={closeTime}
+                  onChange={(e) => setCloseTime(e.target.value)}
+                  style={{
+                    boxSizing: "border-box",
+                    width: "130px",
+                    height: "38px",
+                    background: "#FFFFFF",
+                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                    borderRadius: "8px",
+                    padding: "0 10px",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 500,
+                    fontSize: "12px",
+                    color: "#374151",
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                />
+              </div>
+              {/* Live preview */}
+              {openTime && closeTime && (
+                <div
+                  style={{
+                    marginTop: "18px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "#F0F9FF",
+                    border: "1px solid #BAE6FD",
+                    borderRadius: "6px",
+                    padding: "4px 10px",
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2372A5" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                  </svg>
+                  <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: "11px", fontWeight: 600, color: "#0369A1" }}>
+                    {(() => {
+                      const to12 = (t: string) => {
+                        const [hStr, mStr] = t.split(":");
+                        let h = parseInt(hStr, 10);
+                        const m = mStr ?? "00";
+                        const mer = h >= 12 ? "PM" : "AM";
+                        if (h > 12) h -= 12;
+                        if (h === 0) h = 12;
+                        return `${String(h).padStart(2, "0")}:${m} ${mer}`;
+                      };
+                      return `${to12(openTime)} – ${to12(closeTime)}`;
+                    })()}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Description + Attraction Image Row */}

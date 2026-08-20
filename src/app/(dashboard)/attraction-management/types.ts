@@ -54,14 +54,25 @@ export interface BulkAttractionItem {
   image?: string | null;
   description?: string | null;
   timing?: string | null;
+
   adultPrice?: number;
   childPrice?: number;
   studentPrice?: number;
   seniorPrice?: number;
   foreignerPrice?: number;
+
   hasSeating?: boolean;
 }
+
 export type BulkAttractionPayload = BulkAttractionItem[];
+
+export interface BulkUploadResponse {
+  message: string;
+  data: Array<{
+    id: string;
+    attractionId: string;
+  }>;
+}
 
 // ── Legacy UI type alias (for backward compat in other files) ────────────────
 // This is intentionally minimal — the source of truth is AttractionManagement

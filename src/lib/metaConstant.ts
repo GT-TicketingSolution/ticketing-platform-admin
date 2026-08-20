@@ -1,12 +1,12 @@
 export const META_CONSTANTS = {
   login: {
-    fullTitle: "Sign In | Admin Portal",
+    fullTitle: "Login | Ticketing Platform",
   },
   forgotPassword: {
-    fullTitle: "Forgot Password | Admin Portal",
+    fullTitle: "Forgot Password | Ticketing Platform",
   },
   resetPassword: {
-    fullTitle: "Reset Password | Admin Portal",
+    fullTitle: "Reset Password | Ticketing Platform",
   },
   dashboard: {
     fullTitle: "Admin Dashboard | Ticketing Platform",

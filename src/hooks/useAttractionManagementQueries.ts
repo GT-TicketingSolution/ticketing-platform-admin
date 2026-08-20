@@ -9,6 +9,7 @@ import type {
   CreateAttractionPayload,
   UpdateAttractionPayload,
   BulkAttractionPayload,
+  BulkUploadResponse,
 } from "@/app/(dashboard)/attraction-management/types";
 
 // ── Query keys ───────────────────────────────────────────────────────────────
@@ -101,17 +102,20 @@ export function useBulkUploadAttractions() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
-  return useMutation({
+  return useMutation<BulkUploadResponse, any, BulkAttractionPayload>({
     mutationFn: (payload: BulkAttractionPayload) =>
-      postData(AppUrl.attractionManagement.bulk, payload),
-    onSuccess: (data: any) => {
+      postData<BulkUploadResponse, BulkAttractionPayload>(
+        AppUrl.attractionManagement.bulk,
+        payload,
+      ),
+    onSuccess: (data: BulkUploadResponse) => {
       queryClient.invalidateQueries({ queryKey: attractionManagementKeys.lists() });
-      const count = Array.isArray(data?.data) ? data.data.length : data?.count ?? "multiple";
-      showToast(`${count} attractions uploaded successfully!`, "success");
+      const count = Array.isArray(data?.data) ? data.data.length : 0;
+      showToast(`${count} attraction${count !== 1 ? "s" : ""} uploaded successfully!`, "success");
     },
     onError: (error: any) => {
       const message =
-        error?.response?.data?.message || error?.message || "Bulk upload failed.";
+        error?.error?.message || error?.message || "Bulk upload failed.";
       showErrorOnce(message, "Bulk Upload Failed");
       showToast(message, "error");
     },
