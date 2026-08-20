@@ -407,6 +407,41 @@ export const bookings = pgTable(
       withTimezone: true,
     }).notNull(),
 
+    subtotal: numeric("subtotal", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+
+    gstAmount: numeric("gst_amount", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+
+    gstAdjustment: numeric("gst_adjustment", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+
+    roundOff: numeric("round_off", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+
+    discountAmount: numeric("discount_amount", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+
     paymentMode: paymentModeEnum("payment_mode").notNull(),
 
     status: bookingStatusEnum("status").notNull().default("PENDING"),
@@ -480,6 +515,12 @@ export const bookingItems = pgTable(
         onDelete: "cascade",
       }),
 
+    attractionId: uuid("attraction_id")
+      .notNull()
+      .references(() => attractions.id, {
+        onDelete: "restrict",
+      }),
+
     category: varchar("category", {
       length: 100,
     }).notNull(),
@@ -517,6 +558,16 @@ export const bookingSeats = pgTable(
         onDelete: "cascade",
       }),
 
+    // NEW
+    slotId: uuid("slot_id")
+      .notNull()
+      .references(() => attractionTimeSlots.id, {
+        onDelete: "restrict",
+      }),
+
+    // NEW
+    visitDate: date("visit_date").notNull(),
+
     bogie: varchar("bogie", {
       length: 50,
     }),
@@ -524,10 +575,30 @@ export const bookingSeats = pgTable(
     seatNumber: varchar("seat_number", {
       length: 50,
     }).notNull(),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
   },
 
   (table) => ({
     bookingIdx: index("booking_seats_booking_idx").on(table.bookingId),
+
+    slotDateIdx: index("booking_seats_slot_date_idx").on(
+      table.slotId,
+      table.visitDate,
+    ),
+
+    // Prevent same seat being booked twice
+    // for the same slot/date.
+    uniqueSeatPerSlot: uniqueIndex("booking_seats_slot_date_seat_unique").on(
+      table.slotId,
+      table.visitDate,
+      table.bogie,
+      table.seatNumber,
+    ),
   }),
 );
 
@@ -783,6 +854,18 @@ export const transactions = pgTable(
       precision: 12,
       scale: 2,
     }).notNull(),
+
+    amountReceived: numeric("amount_received", {
+      precision: 12,
+      scale: 2,
+    }),
+
+    changeReturned: numeric("change_returned", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
 
     paymentMode: paymentModeEnum("payment_mode").notNull(),
 
@@ -1085,6 +1168,54 @@ export const seatLayouts = pgTable(
     nameIdx: index("seat_layouts_name_idx").on(table.name),
 
     statusIdx: index("seat_layouts_status_idx").on(table.status),
+  }),
+);
+
+export const seatLayoutSeats = pgTable(
+  "seat_layout_seats",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    seatLayoutId: uuid("seat_layout_id")
+      .notNull()
+      .references(() => seatLayouts.id, {
+        onDelete: "cascade",
+      }),
+
+    rowNumber: integer("row_number").notNull(),
+
+    colNumber: integer("col_number").notNull(),
+
+    bogie: varchar("bogie", {
+      length: 50,
+    }),
+
+    seatNumber: varchar("seat_number", {
+      length: 50,
+    }).notNull(),
+
+    isActive: boolean("is_active").notNull().default(true),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+
+  (table) => ({
+    layoutIdx: index("seat_layout_seats_layout_idx").on(table.seatLayoutId),
+
+    uniqueSeat: uniqueIndex("seat_layout_seats_unique").on(
+      table.seatLayoutId,
+      table.seatNumber,
+    ),
   }),
 );
 
