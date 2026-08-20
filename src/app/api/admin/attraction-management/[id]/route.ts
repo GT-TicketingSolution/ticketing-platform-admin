@@ -109,69 +109,6 @@ export async function PATCH(
 // DELETE ATTRACTION
 // =====================================================
 
-// export async function DELETE(
-//   request: Request,
-//   context: {
-//     params: Promise<{ id: string }>;
-//   },
-// ) {
-//   try {
-//     const auth = await requireAuth(request);
-
-//     const { id } = await context.params;
-
-//     let allowed = false;
-
-//     // =============================
-//     // ADMIN CHECK
-//     // =============================
-
-//     if (auth.user.role === "ADMIN") {
-//       const existing = await db.query.attractionManagement.findFirst({
-//         where: and(
-//           eq(attractionManagement.id, id),
-
-//           eq(attractionManagement.adminId, auth.user.id),
-//         ),
-//       });
-
-//       allowed = !!existing;
-//     }
-
-//     // =============================
-//     // MANAGER CHECK
-//     // =============================
-//     else {
-//       const ids = await getAccessibleAttractionIds(auth);
-
-//       const existing = await db.query.attractionManagement.findFirst({
-//         where: and(
-//           eq(attractionManagement.id, id),
-
-//           inArray(attractionManagement.attractionId, ids),
-//         ),
-//       });
-
-//       allowed = !!existing;
-//     }
-
-//     if (!allowed) {
-//       return failure("Access denied", 403, "FORBIDDEN");
-//     }
-
-//     await db
-//       .delete(attractionManagement)
-//       .where(eq(attractionManagement.id, id));
-
-//     return success({
-//       message: "Attraction deleted successfully",
-//     });
-//   } catch (error) {
-//     console.error("Delete attraction error:", error);
-
-//     return failure("Unable to delete attraction", 500, "INTERNAL_SERVER_ERROR");
-//   }
-// }
 export async function DELETE(
   request: Request,
   context: {
