@@ -1580,6 +1580,18 @@ export const complimentaryPasses = pgTable(
       .notNull()
       .unique(),
 
+    // --------------------------------------------------
+    // PASS DETAILS
+    // --------------------------------------------------
+
+    visitDate: date("visit_date").notNull(),
+
+    discount: integer("discount").notNull().default(0),
+
+    // --------------------------------------------------
+    // GUEST DETAILS
+    // --------------------------------------------------
+
     visitorName: varchar("visitor_name", {
       length: 150,
     }).notNull(),
@@ -1588,23 +1600,52 @@ export const complimentaryPasses = pgTable(
       length: 20,
     }).notNull(),
 
+    department: varchar("department", {
+      length: 100,
+    }),
+
+    designation: varchar("designation", {
+      length: 100,
+    }),
+
+    // --------------------------------------------------
+    // VISITOR COUNT
+    // --------------------------------------------------
+
+    adults: integer("adults").notNull().default(0),
+
+    children: integer("children").notNull().default(0),
+
+    // Total = adults + children
+    visitors: integer("visitors").notNull().default(1),
+
+    // --------------------------------------------------
+    // ATTRACTION
+    // --------------------------------------------------
+
     attractionId: uuid("attraction_id")
       .notNull()
       .references(() => attractions.id, {
         onDelete: "restrict",
       }),
 
-    visitors: integer("visitors").notNull().default(1),
+    // --------------------------------------------------
+    // REFERENCE
+    // --------------------------------------------------
 
     referenceId: uuid("reference_id").references(() => references.id, {
       onDelete: "set null",
     }),
 
+    // --------------------------------------------------
+    // STATUS
+    // --------------------------------------------------
+
     status: complimentaryPassStatusEnum("status").notNull().default("ACTIVE"),
 
-    visitDate: date("visit_date").notNull(),
-
-    // Soft delete
+    // --------------------------------------------------
+    // SOFT DELETE
+    // --------------------------------------------------
 
     deletedAt: timestamp("deleted_at", {
       withTimezone: true,
@@ -1615,6 +1656,10 @@ export const complimentaryPasses = pgTable(
     }),
 
     isDeleted: boolean("is_deleted").notNull().default(false),
+
+    // --------------------------------------------------
+    // TIMESTAMPS
+    // --------------------------------------------------
 
     createdAt: timestamp("created_at", {
       withTimezone: true,
@@ -1739,4 +1784,35 @@ export const ticketScanLogs = pgTable(
 
     verdictIdx: index("ticket_scan_logs_verdict_idx").on(table.verdict),
   }),
+);
+
+export const adminSystemModulePermissions = pgTable(
+  "admin_system_module_permissions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    adminId: uuid("admin_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "cascade",
+      }),
+
+    moduleId: uuid("module_id")
+      .notNull()
+      .references(() => systemModules.id, {
+        onDelete: "cascade",
+      }),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    unique("admin_system_module_permissions_unique").on(
+      table.adminId,
+      table.moduleId,
+    ),
+  ],
 );
