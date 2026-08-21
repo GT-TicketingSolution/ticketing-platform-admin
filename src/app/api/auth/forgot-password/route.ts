@@ -21,13 +21,13 @@ export async function POST(request: Request) {
     await requestPasswordReset(parsed.data.email);
 
     return success({
-      message: "Password reset link has been sent.",
+      message: "Password reset link has been sent to your mail.",
     });
   } catch (error) {
     if (error instanceof Error) {
       if (error.message === "USER_NOT_FOUND") {
         return failure(
-          "No account found with this email address.",
+          "No account is associated with this email address. Please check your email or create an account.",
           404,
           "USER_NOT_FOUND",
         );

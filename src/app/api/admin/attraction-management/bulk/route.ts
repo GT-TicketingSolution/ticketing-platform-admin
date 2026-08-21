@@ -35,7 +35,11 @@ export async function POST(request: Request) {
       // FIND ATTRACTION BY NAME
       // ==========================================
 
-      const attraction = await db
+      // ==========================================
+      // FIND OR CREATE ATTRACTION
+      // ==========================================
+
+      let attraction = await db
         .select({
           id: attractions.id,
           name: attractions.name,
@@ -49,15 +53,29 @@ export async function POST(request: Request) {
         )
         .limit(1);
 
-      if (!attraction.length) {
-        return failure(
-          `Attraction "${item.name}" not found`,
-          404,
-          "ATTRACTION_NOT_FOUND",
-        );
+      let attractionRecord;
+
+      if (attraction.length > 0) {
+        // Attraction already exists
+        attractionRecord = attraction[0];
+      } else {
+        // Attraction doesn't exist → create it
+        const created = await db
+          .insert(attractions)
+          .values({
+            adminId: auth.user.id,
+            name: item.name,
+            type: item.type,
+          })
+          .returning({
+            id: attractions.id,
+            name: attractions.name,
+          });
+
+        attractionRecord = created[0];
       }
 
-      const attractionId = attraction[0].id;
+      const attractionId = attractionRecord.id;
 
       // ==========================================
       // INSERT MANAGEMENT DETAILS

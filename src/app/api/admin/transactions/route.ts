@@ -133,33 +133,6 @@ export async function GET(request: NextRequest) {
     }
 
     // =================================================
-    // ATTRACTION FILTER VALIDATION
-    // =================================================
-
-    if (attractionId) {
-      const [attraction] = await db
-        .select({
-          id: attractions.id,
-        })
-        .from(attractions)
-        .where(
-          and(
-            eq(attractions.id, attractionId),
-            eq(attractions.adminId, adminId),
-
-            ...(user.role === "MANAGER"
-              ? [inArray(attractions.id, allowedAttractionIds)]
-              : []),
-          ),
-        )
-        .limit(1);
-
-      if (!attraction) {
-        return failure("Attraction not found.", 404, "ATTRACTION_NOT_FOUND");
-      }
-    }
-
-    // =================================================
     // BASE CONDITIONS
     // =================================================
 
