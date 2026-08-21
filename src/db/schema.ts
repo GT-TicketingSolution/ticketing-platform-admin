@@ -22,6 +22,11 @@ import { AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const userRoleEnum = pgEnum("user_role", ["ADMIN", "MANAGER", "STAFF"]);
 
+export const ticketScanVerdictEnum = pgEnum("ticket_scan_verdict", [
+  "ALLOWED",
+  "DENIED",
+]);
+
 export const userStatusEnum = pgEnum("user_status", [
   "ACTIVE",
   "SUSPENDED",
@@ -501,6 +506,46 @@ export const bookings = pgTable(
 );
 
 /* =========================================================
+   BOOKING CHECK-INS
+========================================================= */
+
+export const bookingCheckins = pgTable(
+  "booking_checkins",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, {
+        onDelete: "cascade",
+      }),
+
+    checkedInBy: uuid("checked_in_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+
+    checkedInAt: timestamp("checked_in_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+
+  (table) => ({
+    bookingIdx: index("booking_checkins_booking_idx").on(table.bookingId),
+
+    checkedInByIdx: index("booking_checkins_checked_in_by_idx").on(
+      table.checkedInBy,
+    ),
+
+    // One successful admission per booking
+    uniqueBookingCheckin: uniqueIndex("booking_checkins_booking_unique").on(
+      table.bookingId,
+    ),
+  }),
+);
+
+/* =========================================================
    BOOKING ITEMS
 ========================================================= */
 
@@ -520,6 +565,8 @@ export const bookingItems = pgTable(
       .references(() => attractions.id, {
         onDelete: "restrict",
       }),
+
+    timeSlotId: uuid("time_slot_id").references(() => attractionTimeSlots.id),
 
     category: varchar("category", {
       length: 100,
@@ -854,18 +901,6 @@ export const transactions = pgTable(
       precision: 12,
       scale: 2,
     }).notNull(),
-
-    amountReceived: numeric("amount_received", {
-      precision: 12,
-      scale: 2,
-    }),
-
-    changeReturned: numeric("change_returned", {
-      precision: 12,
-      scale: 2,
-    })
-      .notNull()
-      .default("0"),
 
     paymentMode: paymentModeEnum("payment_mode").notNull(),
 
@@ -1646,5 +1681,62 @@ export const attractionManagementSeatLayouts = pgTable(
     seatLayoutIdx: index("attraction_management_seat_layout_layout_idx").on(
       table.seatLayoutId,
     ),
+  }),
+);
+
+export const ticketScanLogs = pgTable(
+  "ticket_scan_logs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, {
+        onDelete: "cascade",
+      }),
+
+    attractionId: uuid("attraction_id")
+      .notNull()
+      .references(() => attractions.id, {
+        onDelete: "cascade",
+      }),
+
+    scannedBy: uuid("scanned_by")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+      }),
+
+    visitorsCount: integer("visitors_count").notNull().default(1),
+
+    verdict: ticketScanVerdictEnum("verdict").notNull(),
+
+    reason: text("reason"),
+
+    scannedAt: timestamp("scanned_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+
+  (table) => ({
+    bookingIdx: index("ticket_scan_logs_booking_idx").on(table.bookingId),
+
+    attractionIdx: index("ticket_scan_logs_attraction_idx").on(
+      table.attractionId,
+    ),
+
+    scannedByIdx: index("ticket_scan_logs_scanned_by_idx").on(table.scannedBy),
+
+    scannedAtIdx: index("ticket_scan_logs_scanned_at_idx").on(table.scannedAt),
+
+    verdictIdx: index("ticket_scan_logs_verdict_idx").on(table.verdict),
   }),
 );

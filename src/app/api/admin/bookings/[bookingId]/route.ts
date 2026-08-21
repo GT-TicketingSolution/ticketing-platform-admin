@@ -154,23 +154,22 @@ export async function GET(
 
         bookingId: booking.bookingId,
 
+        bookedAt: booking.createdAt,
+
+        status: booking.status,
+
         customer: {
           name: booking.customerName,
-
           mobile: booking.mobileNumber,
-
           gstNumber: booking.gstNumber,
         },
 
         attraction: {
           id: booking.attractionId,
-
           name: booking.attractionName,
         },
 
         visitAt: booking.visitAt,
-
-        status: booking.status,
 
         payment: {
           mode: booking.paymentMode,
@@ -187,20 +186,31 @@ export async function GET(
 
           category: item.category,
 
-          quantity: item.quantity,
+          quantity: Number(item.quantity),
 
           unitPrice: Number(item.unitPrice),
 
           totalPrice: Number(item.totalPrice),
         })),
 
-        seats: seats.map((seat) => ({
-          id: seat.id,
+        visitors: {
+          total: items.reduce(
+            (total, item) => total + Number(item.quantity),
+            0,
+          ),
+        },
 
-          bogie: seat.bogie,
+        seats: {
+          total: seats.length,
 
-          seatNumber: seat.seatNumber,
-        })),
+          items: seats.map((seat) => ({
+            id: seat.id,
+
+            bogie: seat.bogie,
+
+            seatNumber: seat.seatNumber,
+          })),
+        },
 
         createdAt: booking.createdAt,
 

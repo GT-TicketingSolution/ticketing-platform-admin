@@ -1,93 +1,146 @@
 import { z } from "zod";
+import { and, desc, eq, ilike, or } from "drizzle-orm";
 
-import { getReferences, createReference } from "@/services/reference.service";
+import { db } from "@/db";
+import { references } from "@/db/schema";
 
 import { success, failure } from "@/lib/api/response";
-
 import { requireAuth } from "@/lib/auth/require-auth";
-
 import { getAdminId } from "@/lib/auth/get-admin-id";
 
-const referenceSchema = z.object({
-  referenceName: z.string().min(2).max(150),
+const allowedRoles = ["ADMIN", "MANAGER", "STAFF"];
 
-  department: z.string().max(100).optional(),
+const createSchema = z.object({
+  referenceName: z.string().trim().min(1, "Reference name is required"),
 
-  contactPerson: z.string().min(2).max(150),
+  department: z.string().trim().min(1, "Department/Organization is required"),
 
-  post: z.string().max(100).optional(),
+  contactPerson: z.string().trim().min(1, "Contact person is required"),
 
-  mobile: z.string().max(20),
+  post: z.string().trim().optional(),
+
+  mobile: z
+    .string()
+    .trim()
+    .regex(/^[0-9]{10}$/, "Mobile number must be 10 digits"),
+
+  status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
 });
 
-// ===============================
+// ======================================================
 // GET REFERENCES
-// ===============================
+// ======================================================
 
-export async function GET(request: Request) {
+export async function GET(req: Request) {
   try {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(req);
 
-    if (!["ADMIN", "MANAGER", "STAFF"].includes(auth.user.role)) {
+    if (!allowedRoles.includes(auth.user.role)) {
       return failure("Forbidden", 403, "FORBIDDEN");
     }
 
-    const { searchParams } = new URL(request.url);
+    const params = new URL(req.url).searchParams;
 
-    const result = await getReferences({
-      adminId: getAdminId(auth),
+    const search = params.get("search")?.trim() || undefined;
 
-      search: searchParams.get("search") ?? undefined,
+    const page = Math.max(Number(params.get("page") || 1), 1);
 
-      page: Number(searchParams.get("page") || 1),
+    const limit = Math.min(Math.max(Number(params.get("limit") || 10), 1), 100);
 
-      limit: Number(searchParams.get("limit") || 10),
+    const offset = (page - 1) * limit;
+
+    const adminId = getAdminId(auth);
+
+    const items = await db.query.references.findMany({
+      where: and(
+        eq(references.adminId, adminId),
+
+        eq(references.isDeleted, false),
+
+        search
+          ? or(
+              ilike(references.referenceName, `%${search}%`),
+
+              ilike(references.contactPerson, `%${search}%`),
+
+              ilike(references.department, `%${search}%`),
+
+              ilike(references.mobile, `%${search}%`),
+            )
+          : undefined,
+      ),
+
+      orderBy: [desc(references.createdAt)],
+
+      limit,
+
+      offset,
     });
 
-    return success(result);
+    return success({
+      items,
+
+      pagination: {
+        page,
+        limit,
+        hasNextPage: items.length === limit,
+      },
+    });
   } catch (error) {
-    console.error("Get references error", error);
+    console.error("Get references error:", error);
 
     return failure("Unable to fetch references", 500, "INTERNAL_SERVER_ERROR");
   }
 }
 
-// ===============================
+// ======================================================
 // CREATE REFERENCE
-// ===============================
+// ======================================================
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(req);
 
-    if (!["ADMIN", "MANAGER", "STAFF"].includes(auth.user.role)) {
+    if (!allowedRoles.includes(auth.user.role)) {
       return failure("Forbidden", 403, "FORBIDDEN");
     }
 
-    const body = await request.json();
+    const body = await req.json();
 
-    const parsed = referenceSchema.safeParse(body);
+    const parsed = createSchema.safeParse(body);
 
     if (!parsed.success) {
-      return failure("Invalid reference data", 400, "VALIDATION_ERROR");
-    }
-
-    const reference = await createReference(getAdminId(auth), parsed.data);
-
-    return success(reference, 201);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message === "REFERENCE_ALREADY_EXISTS"
-    ) {
       return failure(
-        "Reference already exists",
-        409,
-        "REFERENCE_ALREADY_EXISTS",
+        parsed.error.issues[0]?.message || "Invalid data",
+        400,
+        "VALIDATION_ERROR",
       );
     }
 
-    console.error("Create reference error", error);
+    const adminId = getAdminId(auth);
+
+    const created = await db
+      .insert(references)
+      .values({
+        adminId,
+
+        referenceName: parsed.data.referenceName,
+
+        department: parsed.data.department,
+
+        contactPerson: parsed.data.contactPerson,
+
+        post: parsed.data.post || null,
+
+        mobile: parsed.data.mobile,
+
+        status: parsed.data.status,
+      })
+      .returning();
+
+    return success(created[0], 201);
+  } catch (error) {
+    console.error("Create reference error:", error);
 
     return failure("Unable to create reference", 500, "INTERNAL_SERVER_ERROR");
   }

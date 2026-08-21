@@ -11,6 +11,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import { z } from "zod";
 
 import { db } from "@/db";
 
@@ -128,33 +129,6 @@ export async function GET(request: NextRequest) {
             totalPages: 0,
           },
         });
-      }
-    }
-
-    // =================================================
-    // ATTRACTION FILTER VALIDATION
-    // =================================================
-
-    if (attractionId) {
-      const [attraction] = await db
-        .select({
-          id: attractions.id,
-        })
-        .from(attractions)
-        .where(
-          and(
-            eq(attractions.id, attractionId),
-            eq(attractions.adminId, adminId),
-
-            ...(user.role === "MANAGER"
-              ? [inArray(attractions.id, allowedAttractionIds)]
-              : []),
-          ),
-        )
-        .limit(1);
-
-      if (!attraction) {
-        return failure("Attraction not found.", 404, "ATTRACTION_NOT_FOUND");
       }
     }
 
@@ -351,6 +325,198 @@ export async function GET(request: NextRequest) {
 
     return failure(
       "Unable to fetch transactions.",
+      500,
+      "INTERNAL_SERVER_ERROR",
+    );
+  }
+}
+
+/* =====================================================
+   POST TRANSACTION
+   ADMIN + MANAGER
+===================================================== */
+
+const createTransactionSchema = z.object({
+  bookingId: z.string().uuid("Invalid booking ID."),
+
+  amount: z.number().positive("Amount must be greater than 0."),
+
+  paymentMode: z.enum(["CASH", "UPI", "CARD", "ONLINE"]),
+
+  status: z
+    .enum(["SUCCESSFUL", "PENDING", "CANCELLED", "FAILED"])
+    .optional()
+    .default("SUCCESSFUL"),
+});
+
+export async function POST(request: NextRequest) {
+  try {
+    // ---------------------------------------------
+    // Authentication
+    // ---------------------------------------------
+
+    const auth = await requireAuth(request);
+
+    const user = auth.user;
+
+    if (user.role !== "ADMIN" && user.role !== "MANAGER") {
+      return failure("Admin or Manager access required.", 403, "FORBIDDEN");
+    }
+
+    // ---------------------------------------------
+    // Resolve tenant/admin
+    // ---------------------------------------------
+
+    const adminId = user.role === "ADMIN" ? user.id : user.adminId;
+
+    if (!adminId) {
+      return failure(
+        "Unable to determine account owner.",
+        403,
+        "TENANT_NOT_FOUND",
+      );
+    }
+
+    // ---------------------------------------------
+    // Parse request body
+    // ---------------------------------------------
+
+    const body = await request.json();
+
+    const parsed = createTransactionSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return failure(
+        parsed.error.issues[0]?.message || "Invalid request data.",
+        400,
+        "VALIDATION_ERROR",
+      );
+    }
+
+    const data = parsed.data;
+
+    // ---------------------------------------------
+    // Find booking
+    // ---------------------------------------------
+
+    const [booking] = await db
+      .select({
+        id: bookings.id,
+        bookingNumber: bookings.bookingNumber,
+        customerName: bookings.customerName,
+        attractionId: bookings.attractionId,
+        attractionName: attractions.name,
+      })
+      .from(bookings)
+      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+      .where(
+        and(
+          eq(bookings.id, data.bookingId),
+          isNull(bookings.deletedAt),
+          eq(attractions.adminId, adminId),
+        ),
+      )
+      .limit(1);
+
+    if (!booking) {
+      return failure("Booking not found.", 404, "BOOKING_NOT_FOUND");
+    }
+
+    // ---------------------------------------------
+    // Manager attraction permission
+    // ---------------------------------------------
+
+    if (user.role === "MANAGER") {
+      const [permission] = await db
+        .select({
+          id: managerAttractionPermissions.id,
+        })
+        .from(managerAttractionPermissions)
+        .where(
+          and(
+            eq(managerAttractionPermissions.managerId, user.id),
+            eq(managerAttractionPermissions.attractionId, booking.attractionId),
+          ),
+        )
+        .limit(1);
+
+      if (!permission) {
+        return failure(
+          "You do not have access to this attraction.",
+          403,
+          "ATTRACTION_ACCESS_DENIED",
+        );
+      }
+    }
+
+    // ---------------------------------------------
+    // Generate transaction number
+    // ---------------------------------------------
+
+    const transactionNumber = `TXN-${new Date().getFullYear()}-${crypto
+      .randomUUID()
+      .replace(/-/g, "")
+      .slice(0, 8)
+      .toUpperCase()}`;
+
+    // ---------------------------------------------
+    // Create transaction
+    // ---------------------------------------------
+
+    const [transaction] = await db
+      .insert(transactions)
+      .values({
+        transactionNumber,
+
+        bookingId: data.bookingId,
+
+        amount: data.amount.toFixed(2),
+
+        paymentMode: data.paymentMode,
+
+        status: data.status,
+      })
+      .returning({
+        transactionNumber: transactions.transactionNumber,
+
+        bookingId: transactions.bookingId,
+
+        amount: transactions.amount,
+
+        paymentMode: transactions.paymentMode,
+
+        status: transactions.status,
+
+        createdAt: transactions.createdAt,
+      });
+
+    // ---------------------------------------------
+    // Response
+    // ---------------------------------------------
+
+    return success(
+      {
+        transactionId: transaction.transactionNumber,
+
+        customerName: booking.customerName,
+
+        transactionDate: transaction.createdAt,
+
+        bookingId: booking.bookingNumber,
+
+        amount: Number(transaction.amount),
+
+        paymentMode: transaction.paymentMode,
+
+        status: transaction.status,
+      },
+      201,
+    );
+  } catch (error) {
+    console.error("Create transaction error:", error);
+
+    return failure(
+      "Unable to create transaction.",
       500,
       "INTERNAL_SERVER_ERROR",
     );

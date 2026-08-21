@@ -26,7 +26,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const auth = await requireAuth(request);
 
-    await requireModuleAccess(auth, "BOOKINGS");
+    await requireModuleAccess(auth, "TICKET_BOOKING");
 
     const adminId = getAdminId(auth);
 

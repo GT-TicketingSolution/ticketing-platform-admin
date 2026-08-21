@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireAuth(request);
 
-    await requireModuleAccess(auth, "BOOKINGS");
+    await requireModuleAccess(auth, "TICKET_BOOKING");
 
     const adminId = getAdminId(auth);
 
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
         id: attractions.id,
         name: attractions.name,
         category: attractions.type,
-
+        status: attractions.status,
         image: attractionManagement.image,
 
         adultPrice: attractionManagement.adultPrice,
@@ -84,6 +84,7 @@ export async function GET(request: NextRequest) {
       name: row.name,
 
       category: row.category,
+      status: row.status,
 
       image: row.image,
 

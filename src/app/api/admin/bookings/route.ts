@@ -15,7 +15,13 @@ import {
 
 import { db } from "@/db";
 
-import { bookings, bookingItems, bookingSeats, attractions } from "@/db/schema";
+import {
+  bookings,
+  bookingItems,
+  bookingSeats,
+  attractions,
+  transactions,
+} from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
 
@@ -34,27 +40,27 @@ import { success, failure } from "@/lib/api/response";
 
 export async function GET(request: NextRequest) {
   try {
-    // ---------------------------------------------
-    // Authentication
-    // ---------------------------------------------
+    // =====================================================
+    // 1. AUTHENTICATION
+    // =====================================================
 
     const auth = await requireAuth(request);
 
-    // ---------------------------------------------
-    // Module authorization
-    // ---------------------------------------------
+    // =====================================================
+    // 2. MODULE AUTHORIZATION
+    // =====================================================
 
     await requireModuleAccess(auth, "BOOKINGS");
 
-    // ---------------------------------------------
-    // Tenant / Admin
-    // ---------------------------------------------
+    // =====================================================
+    // 3. TENANT / ADMIN
+    // =====================================================
 
     const adminId = getAdminId(auth);
 
-    // ---------------------------------------------
-    // Query params
-    // ---------------------------------------------
+    // =====================================================
+    // 4. QUERY PARAMS
+    // =====================================================
 
     const { searchParams } = new URL(request.url);
 
@@ -69,7 +75,7 @@ export async function GET(request: NextRequest) {
 
     const attractionId = searchParams.get("attractionId")?.trim() || "";
 
-    const status = searchParams.get("status")?.trim() || "";
+    const status = searchParams.get("status")?.trim().toUpperCase() || "";
 
     const fromDate = searchParams.get("fromDate")?.trim() || "";
 
@@ -77,48 +83,24 @@ export async function GET(request: NextRequest) {
 
     const offset = (page - 1) * limit;
 
-    // ---------------------------------------------
-    // BASE SECURITY CONDITIONS
-    // ---------------------------------------------
-
-    /*
-     * Every user must stay inside their admin/tenant.
-     *
-     * ADMIN:
-     *   attractions.adminId = adminId
-     *
-     * MANAGER:
-     *   attractions.adminId = adminId
-     *   +
-     *   attraction assigned to manager
-     *
-     * STAFF:
-     *   attractions.adminId = adminId
-     *   +
-     *   attraction assigned to staff
-     */
+    // =====================================================
+    // 5. BASE SECURITY CONDITIONS
+    // =====================================================
 
     const conditions = [
       isNull(bookings.deletedAt),
 
-      // Tenant isolation
+      eq(bookings.isDeleted, false),
+
       eq(attractions.adminId, adminId),
     ];
 
-    // ---------------------------------------------
-    // MANAGER / STAFF ATTRACTION ISOLATION
-    // ---------------------------------------------
+    // =====================================================
+    // 6. MANAGER / STAFF ATTRACTION ACCESS
+    // =====================================================
 
     if (auth.user.role !== "ADMIN") {
       const accessibleAttractionIds = await getAccessibleAttractionIds(auth);
-
-      /*
-       * No assigned attractions means no bookings.
-       *
-       * IMPORTANT:
-       * Do not remove this condition.
-       * Returning [] is safer than allowing access.
-       */
 
       if (accessibleAttractionIds.length === 0) {
         return success({
@@ -135,35 +117,37 @@ export async function GET(request: NextRequest) {
       conditions.push(inArray(attractions.id, accessibleAttractionIds));
     }
 
-    // ---------------------------------------------
-    // Search
-    // ---------------------------------------------
+    // =====================================================
+    // 7. SEARCH
+    // =====================================================
 
     if (search) {
       conditions.push(
         or(
           ilike(bookings.bookingNumber, `%${search}%`),
+
           ilike(bookings.customerName, `%${search}%`),
+
           ilike(bookings.mobileNumber, `%${search}%`),
+
+          ilike(attractions.name, `%${search}%`),
+
+          sql`${bookings.totalAmount}::text ILIKE ${`%${search}%`}`,
         )!,
       );
     }
 
-    // ---------------------------------------------
-    // Attraction filter
-    // ---------------------------------------------
+    // =====================================================
+    // 8. ATTRACTION FILTER
+    // =====================================================
 
     if (attractionId) {
-      /*
-       * This is safe because the base conditions already
-       * enforce tenant + attraction authorization.
-       */
       conditions.push(eq(bookings.attractionId, attractionId));
     }
 
-    // ---------------------------------------------
-    // Status filter
-    // ---------------------------------------------
+    // =====================================================
+    // 9. STATUS FILTER
+    // =====================================================
 
     if (
       status === "PENDING" ||
@@ -173,9 +157,9 @@ export async function GET(request: NextRequest) {
       conditions.push(eq(bookings.status, status));
     }
 
-    // ---------------------------------------------
-    // From date
-    // ---------------------------------------------
+    // =====================================================
+    // 10. FROM DATE
+    // =====================================================
 
     if (fromDate) {
       const startDate = new Date(`${fromDate}T00:00:00.000Z`);
@@ -187,9 +171,9 @@ export async function GET(request: NextRequest) {
       conditions.push(gte(bookings.visitAt, startDate));
     }
 
-    // ---------------------------------------------
-    // To date
-    // ---------------------------------------------
+    // =====================================================
+    // 11. TO DATE
+    // =====================================================
 
     if (toDate) {
       const endDate = new Date(`${toDate}T23:59:59.999Z`);
@@ -201,15 +185,15 @@ export async function GET(request: NextRequest) {
       conditions.push(lte(bookings.visitAt, endDate));
     }
 
-    // ---------------------------------------------
-    // WHERE
-    // ---------------------------------------------
+    // =====================================================
+    // 12. WHERE
+    // =====================================================
 
     const whereClause = and(...conditions);
 
-    // ---------------------------------------------
-    // TOTAL COUNT
-    // ---------------------------------------------
+    // =====================================================
+    // 13. TOTAL COUNT
+    // =====================================================
 
     const [{ count }] = await db
       .select({
@@ -223,9 +207,17 @@ export async function GET(request: NextRequest) {
 
     const total = Number(count);
 
-    // ---------------------------------------------
-    // BOOKING LIST
-    // ---------------------------------------------
+    // =====================================================
+    // 14. BOOKING LIST
+    // =====================================================
+
+    /*
+     * Do NOT join bookingItems here.
+     *
+     * We fetch bookingItems separately below so that
+     * visitor category information can be returned
+     * without grouping the booking query.
+     */
 
     const bookingRows = await db
       .select({
@@ -237,101 +229,228 @@ export async function GET(request: NextRequest) {
 
         mobileNumber: bookings.mobileNumber,
 
+        gstNumber: bookings.gstNumber,
+
         bookingDate: bookings.visitAt,
 
         attractionId: attractions.id,
 
         attractionName: attractions.name,
 
-        totalVisitors: sql<number>`
-          COALESCE(
-            SUM(${bookingItems.quantity}),
-            0
-          )
-        `,
+        subtotal: bookings.subtotal,
 
-        amount: bookings.totalAmount,
+        gstAmount: bookings.gstAmount,
+
+        gstAdjustment: bookings.gstAdjustment,
+
+        roundOff: bookings.roundOff,
+
+        discountAmount: bookings.discountAmount,
+
+        totalAmount: bookings.totalAmount,
 
         amountPaid: bookings.amountPaid,
 
         paymentMode: bookings.paymentMode,
 
         status: bookings.status,
+
+        createdAt: bookings.createdAt,
+
+        updatedAt: bookings.updatedAt,
       })
       .from(bookings)
       .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
-      .leftJoin(bookingItems, eq(bookingItems.bookingId, bookings.id))
       .where(whereClause)
-      .groupBy(
-        bookings.id,
-        bookings.bookingNumber,
-        bookings.customerName,
-        bookings.mobileNumber,
-        bookings.visitAt,
-        attractions.id,
-        attractions.name,
-        bookings.totalAmount,
-        bookings.amountPaid,
-        bookings.paymentMode,
-        bookings.status,
-      )
       .orderBy(desc(bookings.visitAt))
       .limit(limit)
       .offset(offset);
 
-    // ---------------------------------------------
-    // FORMAT RESPONSE
-    // ---------------------------------------------
+    // =====================================================
+    // 15. GET BOOKING ITEMS
+    // =====================================================
 
-    const items = bookingRows.map((booking) => ({
-      id: booking.id,
+    const bookingIds = bookingRows.map((booking) => booking.id);
 
-      bookingId: booking.bookingId,
+    const ticketRows =
+      bookingIds.length > 0
+        ? await db
+            .select({
+              id: bookingItems.id,
 
-      customerName: booking.customerName,
+              bookingId: bookingItems.bookingId,
 
-      mobileNumber: booking.mobileNumber,
+              attractionId: bookingItems.attractionId,
 
-      bookingDate: booking.bookingDate,
+              category: bookingItems.category,
 
-      attraction: {
-        id: booking.attractionId,
-        name: booking.attractionName,
-      },
+              quantity: bookingItems.quantity,
 
-      visitors: {
-        total: Number(booking.totalVisitors) || 0,
-      },
+              unitPrice: bookingItems.unitPrice,
 
-      amount: Number(booking.amount),
+              totalPrice: bookingItems.totalPrice,
+            })
+            .from(bookingItems)
+            .where(inArray(bookingItems.bookingId, bookingIds))
+        : [];
 
-      amountPaid: Number(booking.amountPaid),
+    // =====================================================
+    // 16. GROUP TICKETS BY BOOKING
+    // =====================================================
 
-      paymentMode: booking.paymentMode,
+    const ticketsByBooking = new Map<
+      string,
+      Array<{
+        id: string;
+        attractionId: string;
+        category: string;
+        quantity: number;
+        unitPrice: number;
+        totalPrice: number;
+      }>
+    >();
 
-      status: booking.status,
-    }));
+    for (const ticket of ticketRows) {
+      const existing = ticketsByBooking.get(ticket.bookingId) || [];
 
-    // ---------------------------------------------
-    // RESPONSE
-    // ---------------------------------------------
+      existing.push({
+        id: ticket.id,
+
+        attractionId: ticket.attractionId,
+
+        category: ticket.category,
+
+        quantity: Number(ticket.quantity),
+
+        unitPrice: Number(ticket.unitPrice),
+
+        totalPrice: Number(ticket.totalPrice),
+      });
+
+      ticketsByBooking.set(ticket.bookingId, existing);
+    }
+
+    // =====================================================
+    // 17. FORMAT RESPONSE
+    // =====================================================
+
+    const items = bookingRows.map((booking) => {
+      const ticketItems = ticketsByBooking.get(booking.id) || [];
+
+      // -------------------------------------------------
+      // Aggregate same category
+      // -------------------------------------------------
+
+      const breakdownMap = new Map<string, number>();
+
+      for (const ticket of ticketItems) {
+        const current = breakdownMap.get(ticket.category) || 0;
+
+        breakdownMap.set(ticket.category, current + ticket.quantity);
+      }
+
+      const visitorBreakdown = Array.from(breakdownMap.entries()).map(
+        ([category, quantity]) => ({
+          category,
+          quantity,
+        }),
+      );
+
+      // -------------------------------------------------
+      // Total visitors
+      // -------------------------------------------------
+
+      const totalVisitors = visitorBreakdown.reduce(
+        (sum, visitor) => sum + visitor.quantity,
+        0,
+      );
+
+      // -------------------------------------------------
+      // Financial values
+      // -------------------------------------------------
+
+      const totalAmount = Number(booking.totalAmount) || 0;
+
+      const amountPaid = Number(booking.amountPaid) || 0;
+
+      const amountDue = totalAmount - amountPaid;
+
+      return {
+        id: booking.id,
+
+        bookingId: booking.bookingId,
+
+        customer: {
+          name: booking.customerName,
+
+          mobileNumber: booking.mobileNumber,
+
+          gstNumber: booking.gstNumber,
+        },
+
+        dateTime: booking.bookingDate,
+
+        attraction: {
+          id: booking.attractionId,
+
+          name: booking.attractionName,
+        },
+
+        visitors: {
+          total: totalVisitors,
+
+          breakdown: visitorBreakdown,
+        },
+
+        tickets: ticketItems,
+
+        amount: {
+          subtotal: Number(booking.subtotal) || 0,
+
+          gstAmount: Number(booking.gstAmount) || 0,
+
+          gstAdjustment: Number(booking.gstAdjustment) || 0,
+
+          roundOff: Number(booking.roundOff) || 0,
+
+          discountAmount: Number(booking.discountAmount) || 0,
+
+          total: totalAmount,
+
+          paid: amountPaid,
+
+          due: amountDue,
+        },
+
+        paymentMode: booking.paymentMode,
+
+        status: booking.status,
+
+        createdAt: booking.createdAt,
+
+        updatedAt: booking.updatedAt,
+      };
+    });
+
+    // =====================================================
+    // 18. RESPONSE
+    // =====================================================
 
     return success({
       items,
 
       pagination: {
         page,
+
         limit,
+
         total,
+
         totalPages: total === 0 ? 0 : Math.ceil(total / limit),
       },
     });
   } catch (error) {
     console.error("Get bookings error:", error);
-
-    // ---------------------------------------------
-    // AUTHORIZATION ERRORS
-    // ---------------------------------------------
 
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
       return failure("Authentication required.", 401, "UNAUTHORIZED");
@@ -367,27 +486,27 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // ---------------------------------------------
-    // Authentication
-    // ---------------------------------------------
+    // =====================================================
+    // 1. AUTHENTICATION
+    // =====================================================
 
     const auth = await requireAuth(request);
 
-    // ---------------------------------------------
-    // Module authorization
-    // ---------------------------------------------
+    // =====================================================
+    // 2. MODULE AUTHORIZATION
+    // =====================================================
 
     await requireModuleAccess(auth, "BOOKINGS");
 
-    // ---------------------------------------------
-    // Tenant / Admin
-    // ---------------------------------------------
+    // =====================================================
+    // 3. TENANT / ADMIN
+    // =====================================================
 
     const adminId = getAdminId(auth);
 
-    // ---------------------------------------------
-    // Request body
-    // ---------------------------------------------
+    // =====================================================
+    // 4. REQUEST BODY
+    // =====================================================
 
     const body = await request.json();
 
@@ -395,18 +514,31 @@ export async function POST(request: NextRequest) {
       customerName,
       mobileNumber,
       gstNumber,
+
       attractionId,
+
       visitDate,
       visitTime,
+
       paymentMode,
       status,
+
+      /*
+       * Financial fields
+       */
+      subtotal,
+      gstAmount,
+      gstAdjustment,
+      roundOff,
+      discountAmount,
+
       tickets,
       seats,
     } = body;
 
-    // ---------------------------------------------
-    // Basic validation
-    // ---------------------------------------------
+    // =====================================================
+    // 5. BASIC VALIDATION
+    // =====================================================
 
     if (!customerName || typeof customerName !== "string") {
       return failure(
@@ -421,6 +553,14 @@ export async function POST(request: NextRequest) {
         "Mobile number is required.",
         400,
         "MOBILE_NUMBER_REQUIRED",
+      );
+    }
+
+    if (!/^\d{10}$/.test(mobileNumber.trim())) {
+      return failure(
+        "Mobile number must be exactly 10 digits.",
+        400,
+        "INVALID_MOBILE_NUMBER",
       );
     }
 
@@ -448,31 +588,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ---------------------------------------------
-    // ATTRACTION AUTHORIZATION
-    // ---------------------------------------------
-
-    /*
-     * This is critical.
-     *
-     * ADMIN:
-     *   attraction must belong to admin
-     *
-     * MANAGER:
-     *   attraction must be assigned to manager
-     *
-     * STAFF:
-     *   attraction must be assigned to staff
-     */
+    // =====================================================
+    // 6. ATTRACTION AUTHORIZATION
+    // =====================================================
 
     try {
       await requireAttractionAccess(auth, attractionId);
     } catch (error) {
       if (error instanceof Error && error.message === "FORBIDDEN") {
-        /*
-         * Return 404 instead of revealing whether
-         * another user's attraction exists.
-         */
         return failure(
           "Attraction not found or access denied.",
           404,
@@ -483,13 +606,14 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
-    // ---------------------------------------------
-    // Validate attraction belongs to admin
-    // ---------------------------------------------
+    // =====================================================
+    // 7. VALIDATE ATTRACTION TENANT
+    // =====================================================
 
     const [attraction] = await db
       .select({
         id: attractions.id,
+
         name: attractions.name,
       })
       .from(attractions)
@@ -497,13 +621,6 @@ export async function POST(request: NextRequest) {
         and(
           eq(attractions.id, attractionId),
 
-          /*
-           * Additional tenant isolation.
-           *
-           * Even if an authorization mapping is
-           * accidentally incorrect, this prevents
-           * crossing admin boundaries.
-           */
           eq(attractions.adminId, adminId),
         ),
       )
@@ -517,13 +634,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ---------------------------------------------
-    // Calculate ticket totals
-    // ---------------------------------------------
-
-    let totalAmount = 0;
+    // =====================================================
+    // 8. NORMALIZE TICKETS
+    // =====================================================
 
     let normalizedTickets;
+
+    let calculatedSubtotal = 0;
 
     try {
       normalizedTickets = tickets.map(
@@ -534,12 +651,18 @@ export async function POST(request: NextRequest) {
           unitPrice: number;
         }) => {
           const ticketAttractionId = ticket.attractionId || attractionId;
+
           const quantity = Number(ticket.quantity);
 
           const unitPrice = Number(ticket.unitPrice);
 
+          // ---------------------------------------------
+          // Validate
+          // ---------------------------------------------
+
           if (
             !ticket.category ||
+            typeof ticket.category !== "string" ||
             !Number.isInteger(quantity) ||
             quantity <= 0 ||
             !Number.isFinite(unitPrice) ||
@@ -548,12 +671,22 @@ export async function POST(request: NextRequest) {
             throw new Error("INVALID_TICKET");
           }
 
+          // ---------------------------------------------
+          // Ensure ticket attraction belongs to
+          // the same admin
+          // ---------------------------------------------
+
+          if (ticketAttractionId !== attractionId) {
+            throw new Error("INVALID_TICKET_ATTRACTION");
+          }
+
           const totalPrice = quantity * unitPrice;
 
-          totalAmount += totalPrice;
+          calculatedSubtotal += totalPrice;
 
           return {
             attractionId: ticketAttractionId,
+
             category: ticket.category.trim(),
 
             quantity,
@@ -569,12 +702,106 @@ export async function POST(request: NextRequest) {
         return failure("Invalid ticket details.", 400, "INVALID_TICKET");
       }
 
+      if (
+        error instanceof Error &&
+        error.message === "INVALID_TICKET_ATTRACTION"
+      ) {
+        return failure(
+          "Ticket attraction must match the booking attraction.",
+          400,
+          "INVALID_TICKET_ATTRACTION",
+        );
+      }
+
       throw error;
     }
 
-    // ---------------------------------------------
-    // Visit datetime
-    // ---------------------------------------------
+    // =====================================================
+    // 9. FINANCIAL VALUES
+    // =====================================================
+
+    /*
+     * If subtotal is provided, validate it against
+     * the calculated ticket subtotal.
+     *
+     * Otherwise use the calculated ticket subtotal.
+     */
+
+    const finalSubtotal =
+      subtotal === undefined || subtotal === null || subtotal === ""
+        ? calculatedSubtotal
+        : Number(subtotal);
+
+    if (!Number.isFinite(finalSubtotal) || finalSubtotal < 0) {
+      return failure("Invalid subtotal.", 400, "INVALID_SUBTOTAL");
+    }
+
+    const finalGstAmount =
+      gstAmount === undefined || gstAmount === null || gstAmount === ""
+        ? 0
+        : Number(gstAmount);
+
+    const finalGstAdjustment =
+      gstAdjustment === undefined ||
+      gstAdjustment === null ||
+      gstAdjustment === ""
+        ? 0
+        : Number(gstAdjustment);
+
+    const finalRoundOff =
+      roundOff === undefined || roundOff === null || roundOff === ""
+        ? 0
+        : Number(roundOff);
+
+    const finalDiscountAmount =
+      discountAmount === undefined ||
+      discountAmount === null ||
+      discountAmount === ""
+        ? 0
+        : Number(discountAmount);
+
+    if (!Number.isFinite(finalGstAmount) || finalGstAmount < 0) {
+      return failure("Invalid GST amount.", 400, "INVALID_GST_AMOUNT");
+    }
+
+    if (!Number.isFinite(finalGstAdjustment)) {
+      return failure("Invalid GST adjustment.", 400, "INVALID_GST_ADJUSTMENT");
+    }
+
+    if (!Number.isFinite(finalRoundOff)) {
+      return failure("Invalid round off.", 400, "INVALID_ROUND_OFF");
+    }
+
+    if (!Number.isFinite(finalDiscountAmount) || finalDiscountAmount < 0) {
+      return failure(
+        "Invalid discount amount.",
+        400,
+        "INVALID_DISCOUNT_AMOUNT",
+      );
+    }
+
+    // =====================================================
+    // 10. CALCULATE FINAL TOTAL
+    // =====================================================
+
+    const totalAmount =
+      finalSubtotal +
+      finalGstAmount +
+      finalGstAdjustment +
+      finalRoundOff -
+      finalDiscountAmount;
+
+    if (totalAmount < 0) {
+      return failure(
+        "Booking total cannot be negative.",
+        400,
+        "INVALID_TOTAL_AMOUNT",
+      );
+    }
+
+    // =====================================================
+    // 11. VISIT DATETIME
+    // =====================================================
 
     const visitAt = new Date(`${visitDate}T${visitTime}:00`);
 
@@ -586,20 +813,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ---------------------------------------------
-    // Booking number
-    // ---------------------------------------------
+    // =====================================================
+    // 12. SEATS VALIDATION
+    // =====================================================
+
+    if (seats !== undefined && !Array.isArray(seats)) {
+      return failure("Seats must be an array.", 400, "INVALID_SEATS");
+    }
+
+    // =====================================================
+    // 13. BOOKING NUMBER
+    // =====================================================
 
     const bookingNumber = `BK-${Date.now()}`;
 
-    // ---------------------------------------------
-    // Create booking transactionally
-    // ---------------------------------------------
+    // =====================================================
+    // 14. CREATE TRANSACTION
+    // =====================================================
 
     const result = await db.transaction(async (tx) => {
-      // -----------------------------------------
-      // Create booking
-      // -----------------------------------------
+      // =============================================
+      // CREATE BOOKING
+      // =============================================
 
       const [booking] = await tx
         .insert(bookings)
@@ -616,6 +851,16 @@ export async function POST(request: NextRequest) {
 
           visitAt,
 
+          subtotal: finalSubtotal.toFixed(2),
+
+          gstAmount: finalGstAmount.toFixed(2),
+
+          gstAdjustment: finalGstAdjustment.toFixed(2),
+
+          roundOff: finalRoundOff.toFixed(2),
+
+          discountAmount: finalDiscountAmount.toFixed(2),
+
           paymentMode,
 
           status:
@@ -629,6 +874,8 @@ export async function POST(request: NextRequest) {
 
           amountPaid: totalAmount.toFixed(2),
 
+          createdBy: auth.user.id,
+
           updatedAt: new Date(),
         })
         .returning();
@@ -637,16 +884,17 @@ export async function POST(request: NextRequest) {
         throw new Error("BOOKING_CREATE_FAILED");
       }
 
-      // -----------------------------------------
-      // Booking items
-      // -----------------------------------------
+      // =============================================
+      // BOOKING ITEMS
+      // =============================================
 
       await tx.insert(bookingItems).values(
         normalizedTickets.map((ticket) => ({
           bookingId: booking.id,
 
-          category: ticket.category,
           attractionId: ticket.attractionId,
+
+          category: ticket.category,
 
           quantity: ticket.quantity,
 
@@ -656,9 +904,9 @@ export async function POST(request: NextRequest) {
         })),
       );
 
-      // -----------------------------------------
-      // Booking seats
-      // -----------------------------------------
+      // =============================================
+      // BOOKING SEATS
+      // =============================================
 
       if (Array.isArray(seats) && seats.length > 0) {
         await tx.insert(bookingSeats).values(
@@ -670,21 +918,47 @@ export async function POST(request: NextRequest) {
               seatNumber: string;
             }) => ({
               bookingId: booking.id,
+
               slotId: seat.slotId,
+
               visitDate: seat.visitDate,
+
               bogie: seat.bogie?.trim() || null,
+
               seatNumber: seat.seatNumber.trim(),
             }),
           ),
         );
       }
 
+      const transactionNumber = await generateTransactionNumber(tx);
+
+      const invoiceNumber = await generateInvoiceNumber(tx);
+
+      await tx.insert(transactions).values({
+        transactionNumber,
+
+        invoiceNumber,
+
+        bookingId: booking.id,
+
+        amount: totalAmount.toFixed(2),
+
+        paymentMode,
+
+        status: "SUCCESSFUL",
+      });
+
       return booking;
     });
 
-    // ---------------------------------------------
-    // Response
-    // ---------------------------------------------
+    // =============================================
+    // CREATE TRANSACTION / INVOICE
+    // =============================================
+
+    // =====================================================
+    // 15. RESPONSE
+    // =====================================================
 
     return success(
       {
@@ -693,30 +967,51 @@ export async function POST(request: NextRequest) {
 
           bookingId: result.bookingNumber,
 
-          customerName: result.customerName,
+          customer: {
+            name: result.customerName,
 
-          mobileNumber: result.mobileNumber,
+            mobileNumber: result.mobileNumber,
 
-          gstNumber: result.gstNumber,
+            gstNumber: result.gstNumber,
+          },
 
           attraction: {
             id: attraction.id,
+
             name: attraction.name,
           },
 
           visitAt: result.visitAt,
 
-          paymentMode: result.paymentMode,
+          payment: {
+            mode: result.paymentMode,
+
+            subtotal: Number(result.subtotal),
+
+            gstAmount: Number(result.gstAmount),
+
+            gstAdjustment: Number(result.gstAdjustment),
+
+            roundOff: Number(result.roundOff),
+
+            discountAmount: Number(result.discountAmount),
+
+            totalAmount: Number(result.totalAmount),
+
+            amountPaid: Number(result.amountPaid),
+
+            amountDue: Number(result.totalAmount) - Number(result.amountPaid),
+          },
 
           status: result.status,
-
-          totalAmount: Number(result.totalAmount),
-
-          amountPaid: Number(result.amountPaid),
 
           tickets: normalizedTickets,
 
           seats: Array.isArray(seats) ? seats : [],
+
+          createdAt: result.createdAt,
+
+          updatedAt: result.updatedAt,
         },
       },
       201,
@@ -724,9 +1019,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Create booking error:", error);
 
-    // ---------------------------------------------
+    // =====================================================
     // AUTHORIZATION ERRORS
-    // ---------------------------------------------
+    // =====================================================
 
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
       return failure("Authentication required.", 401, "UNAUTHORIZED");
@@ -752,14 +1047,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ---------------------------------------------
-    // Booking creation error
-    // ---------------------------------------------
-
     if (error instanceof Error && error.message === "BOOKING_CREATE_FAILED") {
       return failure("Unable to create booking.", 500, "BOOKING_CREATE_FAILED");
     }
 
     return failure("Unable to create booking.", 500, "INTERNAL_SERVER_ERROR");
   }
+}
+
+// =====================================================
+// TRANSACTION NUMBER
+// =====================================================
+
+async function generateTransactionNumber(tx: any): Promise<string> {
+  const year = new Date().getFullYear();
+
+  const random = crypto
+    .randomUUID()
+    .replace(/-/g, "")
+    .slice(0, 8)
+    .toUpperCase();
+
+  return `TXN-${year}-${random}`;
+}
+
+// =====================================================
+// INVOICE NUMBER
+// =====================================================
+
+async function generateInvoiceNumber(tx: any): Promise<string> {
+  const year = new Date().getFullYear();
+
+  const random = Math.floor(1000 + Math.random() * 9000);
+
+  return `INV-${year}-${random}`;
 }

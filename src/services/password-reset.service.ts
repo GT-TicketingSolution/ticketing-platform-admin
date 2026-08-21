@@ -27,14 +27,17 @@ export async function requestPasswordReset(email: string) {
     .limit(1);
 
   /*
-   * Never reveal whether the account exists.
+   * Return an explicit error when the account does not exist.
    */
   if (!user) {
-    return;
+    throw new Error("USER_NOT_FOUND");
   }
 
+  /*
+   * Do not send reset emails for inactive accounts.
+   */
   if (user.status !== "ACTIVE") {
-    return;
+    throw new Error("ACCOUNT_NOT_ACTIVE");
   }
 
   /*
@@ -74,7 +77,6 @@ export async function requestPasswordReset(email: string) {
     resetUrl,
   });
 }
-
 export async function resetPassword(token: string, newPassword: string) {
   const tokenHash = hashResetToken(token);
 
