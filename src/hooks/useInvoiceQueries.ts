@@ -129,9 +129,10 @@ export function useInvoiceList(params?: InvoiceListParams) {
           summary: payload.summary,
           items: payload.items.map((item: any, idx: number) => ({
             ...item,
+            id: item.id || item.invoiceId || item.invoiceNumber || item._id || `inv-${idx + 1 + (page - 1) * limit}`,
             sNo: item.sNo ?? idx + 1 + (page - 1) * limit,
-            invoiceId: item.invoiceId || item.invoiceNumber || "",
-            invoiceNumber: item.invoiceId || item.invoiceNumber || "",
+            invoiceId: item.invoiceId || item.invoiceNumber || item.id || "",
+            invoiceNumber: item.invoiceNumber || item.invoiceId || item.id || "",
             bookingId: item.bookingId || item.bookingNumber || item.booking?.bookingId || "",
             dateTime: item.dateTime || item.invoiceDate || "",
             invoiceDate: item.dateTime || item.invoiceDate || "",
@@ -150,9 +151,10 @@ export function useInvoiceList(params?: InvoiceListParams) {
         return {
           items: payload.map((item: any, idx: number) => ({
             ...item,
+            id: item.id || item.invoiceId || item.invoiceNumber || item._id || `inv-${idx + 1 + (page - 1) * limit}`,
             sNo: item.sNo ?? idx + 1 + (page - 1) * limit,
-            invoiceId: item.invoiceId || item.invoiceNumber || "",
-            invoiceNumber: item.invoiceId || item.invoiceNumber || "",
+            invoiceId: item.invoiceId || item.invoiceNumber || item.id || "",
+            invoiceNumber: item.invoiceNumber || item.invoiceId || item.id || "",
             bookingId: item.bookingId || item.bookingNumber || item.booking?.bookingId || "",
             dateTime: item.dateTime || item.invoiceDate || "",
             invoiceDate: item.dateTime || item.invoiceDate || "",

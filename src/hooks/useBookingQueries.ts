@@ -8,11 +8,45 @@ import { showErrorOnce } from "@/lib/api/axiosConfig";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+export interface BookingCustomer {
+  name: string;
+  mobileNumber?: string | null;
+  mobile?: string | null;
+  gstNumber?: string | null;
+}
+
+export interface BookingVisitorBreakdown {
+  category: string;
+  quantity: number;
+}
+
+export interface BookingTicketItem {
+  id: string;
+  attractionId?: string;
+  category: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+}
+
+export interface BookingAmountDetails {
+  subtotal?: number;
+  gstAmount?: number;
+  gstAdjustment?: number;
+  roundOff?: number;
+  discountAmount?: number;
+  total?: number;
+  paid?: number;
+  due?: number;
+}
+
 export interface BookingListItem {
   id: string;
   bookingId: string;
+  customer?: BookingCustomer;
   customerName: string;
   mobileNumber: string;
+  dateTime?: string;
   bookingDate: string;
   attraction: {
     id: string;
@@ -20,11 +54,17 @@ export interface BookingListItem {
   };
   visitors: {
     total: number;
+    breakdown?: BookingVisitorBreakdown[];
   };
+  tickets?: BookingTicketItem[];
   amount: number;
+  amountDetails?: BookingAmountDetails;
   amountPaid: number;
+  amountDue?: number;
   paymentMode: string;
-  status: "PENDING" | "CONFIRMED" | "CANCELLED";
+  status: "PENDING" | "CONFIRMED" | "CANCELLED" | string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface BookingDetailItem {
@@ -32,29 +72,38 @@ export interface BookingDetailItem {
   bookingId: string;
   customer: {
     name: string;
-    mobile: string;
+    mobile?: string | null;
+    mobileNumber?: string | null;
     gstNumber?: string | null;
   };
   attraction: {
     id: string;
     name: string;
   };
-  visitAt: string;
-  status: "PENDING" | "CONFIRMED" | "CANCELLED";
-  payment: {
+  dateTime?: string;
+  visitAt?: string;
+  paymentMode?: string;
+  status: "PENDING" | "CONFIRMED" | "CANCELLED" | string;
+  visitors?: {
+    total: number;
+    breakdown?: BookingVisitorBreakdown[];
+  };
+  tickets?: BookingTicketItem[];
+  amount?: BookingAmountDetails | number;
+  payment?: {
     mode: string;
     totalAmount: number;
     amountPaid: number;
     amountDue: number;
   };
-  items: Array<{
+  items?: Array<{
     id: string;
     category: string;
     quantity: number;
     unitPrice: number;
     totalPrice: number;
   }>;
-  seats: Array<{
+  seats?: Array<{
     id: string;
     bogie?: string;
     seatNumber?: string;
@@ -98,6 +147,60 @@ export const bookingKeys = {
   detail: (id: string) => [...bookingKeys.details(), id] as const,
 };
 
+// ── Normalise Booking Item Helper ─────────────────────────────────────────────
+function mapBookingItem(item: any): BookingListItem {
+  const custName = item.customer?.name ?? item.customerName ?? "-";
+  const custMobile = item.customer?.mobileNumber ?? item.customer?.mobile ?? item.mobileNumber ?? "-";
+  const dateStr = item.dateTime ?? item.bookingDate ?? item.createdAt ?? "";
+
+  let totalAmount = 0;
+  let paidAmount = 0;
+  let dueAmount = 0;
+  let amountDetails: BookingAmountDetails | undefined = undefined;
+
+  if (typeof item.amount === "object" && item.amount !== null) {
+    amountDetails = item.amount;
+    totalAmount = Number(item.amount.total ?? item.amount.subtotal ?? 0);
+    paidAmount = Number(item.amount.paid ?? 0);
+    dueAmount = Number(item.amount.due ?? 0);
+  } else {
+    totalAmount = Number(item.amount ?? 0);
+    paidAmount = Number(item.amountPaid ?? item.amount ?? 0);
+    dueAmount = Number(item.amountDue ?? 0);
+  }
+
+  const visitorsObj =
+    typeof item.visitors === "object" && item.visitors !== null
+      ? {
+          total: Number(item.visitors.total ?? 0),
+          breakdown: item.visitors.breakdown ?? [],
+        }
+      : {
+          total: Number(item.visitors ?? 0),
+          breakdown: [],
+        };
+
+  return {
+    ...item,
+    customer: item.customer ?? { name: custName, mobileNumber: custMobile, gstNumber: item.gstNumber ?? null },
+    customerName: custName,
+    mobileNumber: custMobile,
+    dateTime: dateStr,
+    bookingDate: dateStr,
+    attraction: item.attraction ?? { id: "", name: "-" },
+    visitors: visitorsObj,
+    tickets: item.tickets ?? item.items ?? [],
+    amount: totalAmount,
+    amountDetails,
+    amountPaid: paidAmount,
+    amountDue: dueAmount,
+    paymentMode: item.paymentMode ?? item.payment?.mode ?? "-",
+    status: item.status ?? "PENDING",
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
 // ── Queries ──────────────────────────────────────────────────────────────────
 
 /**
@@ -123,32 +226,23 @@ export function useBookingList(params?: BookingListParams) {
       const res = await getData<any>(`${AppUrl.booking.list}?${sp.toString()}`);
 
       // Normalise different response shapes
-      if (res && res.data && Array.isArray(res.data.items)) {
+      const payload = res?.data ?? res;
+
+      if (payload && Array.isArray(payload.items)) {
         return {
-          items: res.data.items,
-          pagination: res.data.pagination || {
+          items: payload.items.map(mapBookingItem),
+          pagination: payload.pagination || {
             page,
             limit,
-            total: res.data.items.length,
-            totalPages: Math.ceil(res.data.items.length / limit) || 1,
+            total: payload.items.length,
+            totalPages: Math.ceil(payload.items.length / limit) || 1,
           },
         };
       }
-      if (res && Array.isArray(res.items)) {
+      if (Array.isArray(payload)) {
         return {
-          items: res.items,
-          pagination: res.pagination || {
-            page,
-            limit,
-            total: res.items.length,
-            totalPages: Math.ceil(res.items.length / limit) || 1,
-          },
-        };
-      }
-      if (Array.isArray(res)) {
-        return {
-          items: res,
-          pagination: { page, limit, total: res.length, totalPages: Math.ceil(res.length / limit) || 1 },
+          items: payload.map(mapBookingItem),
+          pagination: { page, limit, total: payload.length, totalPages: Math.ceil(payload.length / limit) || 1 },
         };
       }
       return {
@@ -170,7 +264,19 @@ export function useBookingDetail(bookingId: string, enabled = true) {
     queryKey: bookingKeys.detail(bookingId),
     queryFn: async () => {
       const res = await getData<any>(AppUrl.booking.get(bookingId));
-      return res?.data?.booking ?? res?.booking ?? res;
+      const raw = res?.data ?? res?.booking ?? res;
+      if (!raw) return raw;
+      // Normalise customer mobile field
+      if (raw.customer && !raw.customer.mobile && raw.customer.mobileNumber) {
+        raw.customer.mobile = raw.customer.mobileNumber;
+      }
+      // Normalise tickets → items if no items field
+      if ((!raw.items || raw.items.length === 0) && raw.tickets && raw.tickets.length > 0) {
+        raw.items = raw.tickets;
+      }
+      // Normalise visitAt
+      if (!raw.visitAt && raw.dateTime) raw.visitAt = raw.dateTime;
+      return raw;
     },
     enabled: enabled && !!bookingId,
     staleTime: 30 * 1000,

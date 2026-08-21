@@ -31,13 +31,13 @@ const ITEMS_PER_PAGE = 10;
 // ── Status badge renderer ─────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
   const upper = status?.toUpperCase();
-  const isSuccess = upper === "SUCCESS" || upper === "CONFIRMED";
-  const isFailed = upper === "FAILED" || upper === "CANCELLED";
+  const isSuccess = upper === "SUCCESSFUL" || upper === "SUCCESS" || upper === "CONFIRMED";
+  const isCancelled = upper === "CANCELLED" || upper === "FAILED";
 
-  const bg = isSuccess ? "#B5FFE7" : isFailed ? "#FEE2E2" : "rgba(255,248,217,0.93)";
-  const dot = isSuccess ? "#119167" : isFailed ? "rgba(220,38,38,0.88)" : "#D97706";
-  const text = isSuccess ? "#119167" : isFailed ? "rgba(220,38,38,0.86)" : "#D97706";
-  const label = isSuccess ? "Success" : isFailed ? "Failed" : status || "Pending";
+  const bg = isSuccess ? "#B5FFE7" : isCancelled ? "#FEE2E2" : "rgba(255,248,217,0.93)";
+  const dot = isSuccess ? "#119167" : isCancelled ? "rgba(220,38,38,0.88)" : "#D97706";
+  const text = isSuccess ? "#119167" : isCancelled ? "rgba(220,38,38,0.86)" : "#D97706";
+  const label = isSuccess ? "Successful" : isCancelled ? "Cancelled" : status || "Pending";
 
   return (
     <span style={{
@@ -227,7 +227,7 @@ export default function TransactionsPage() {
 
   const attractionOptions = useMemo(() => {
     const unique = Array.from(
-      new Map((attractionsData as any[]).map((a: any) => [a.id, a.name])).entries()
+      new Map((attractionsData as any[]).map((a: any) => [a.attractionId || a.id, a.name])).entries()
     ).map(([id, name]) => ({ id, name }));
     return [{ id: "All", name: "All Attractions" }, ...unique];
   }, [attractionsData]);
@@ -420,9 +420,9 @@ export default function TransactionsPage() {
               }}
             >
               <option value="All">All Status</option>
-              <option value="SUCCESS">Success</option>
+              <option value="SUCCESSFUL">Successful</option>
               <option value="PENDING">Pending</option>
-              <option value="FAILED">Failed</option>
+              <option value="CANCELLED">Cancelled</option>
             </select>
           </div>
 

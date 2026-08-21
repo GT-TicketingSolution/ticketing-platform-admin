@@ -15,69 +15,97 @@ function formatDate(iso: string | undefined | null) {
   if (!iso) return "-";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
-  return d.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+  const day = String(d.getDate()).padStart(2, "0");
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const month = months[d.getMonth()];
+  const year = d.getFullYear();
+  let hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const strHours = String(hours).padStart(2, "0");
+  return `${day} ${month} ${year}, ${strHours}:${minutes} ${ampm}`;
 }
 
 // ── Build branded invoice HTML ────────────────────────────────────────────────
 function buildInvoiceHTML(detail: TransactionDetail, listItem: TransactionListItem): string {
   const status = detail.payment?.status ?? listItem.status;
   const upper = status?.toUpperCase();
-  const isSuccess = upper === "SUCCESS" || upper === "CONFIRMED";
-  const isFailed = upper === "FAILED" || upper === "CANCELLED";
-  const statusBg = isSuccess ? "#B5FFE7" : isFailed ? "#FEE2E2" : "#FFF8D9";
-  const statusColor = isSuccess ? "#119167" : isFailed ? "#DC2626" : "#D97706";
+  const isSuccess = upper === "SUCCESSFUL" || upper === "SUCCESS" || upper === "CONFIRMED";
+  const isCancelled = upper === "CANCELLED" || upper === "FAILED";
+  const statusBg = isSuccess ? "#D1FAE5" : isCancelled ? "#FEE2E2" : "#FFF8D9";
+  const statusColor = isSuccess ? "#15803D" : isCancelled ? "#DC2626" : "#D97706";
+  const statusText = isSuccess ? "Successful" : isCancelled ? "Cancelled" : status || "Pending";
+
+  const invoiceId = detail.invoiceNumber ?? (listItem.transactionId ? listItem.transactionId.replace("TXN", "INV") : "INV-" + listItem.id.slice(0, 8));
+  const bookingId = detail.booking?.bookingId ?? listItem.bookingId ?? "-";
+  const dateTime = formatDate(detail.transactionDate ?? listItem.transactionDate);
+  const paymentMode = detail.payment?.mode ?? listItem.paymentMode ?? "-";
+  const amount = Number(detail.payment?.amount ?? listItem.amount).toFixed(2);
 
   return `
-    <div style="font-family:Arial,sans-serif;padding:30px;color:#011B2F;background:#FFFFFF;max-width:680px;margin:auto;">
-      <table style="width:100%;border-collapse:collapse;border-bottom:2px solid #F4BC43;padding-bottom:12px;margin-bottom:20px;">
+    <div style="font-family:'Plus Jakarta Sans',Arial,sans-serif;padding:32px;color:#011B2F;background:#FFFFFF;max-width:640px;margin:auto;border-radius:16px;">
+      <table style="width:100%;border-collapse:collapse;border-bottom:2px solid #F4BC43;padding-bottom:14px;margin-bottom:24px;">
         <tr>
           <td style="vertical-align:middle;padding-bottom:12px;">
-            <div style="font-size:22px;font-weight:bold;color:#0C2A42;">TICKETING PLATFORM</div>
-            <div style="font-size:12px;color:#6B7280;">Official Transaction Receipt</div>
+            <div style="font-size:22px;font-weight:800;color:#0C2A42;letter-spacing:-0.02em;">TICKETING PLATFORM</div>
+            <div style="font-size:12px;color:#6B7280;margin-top:2px;">Official Transaction Receipt</div>
           </td>
           <td style="text-align:right;vertical-align:middle;padding-bottom:12px;">
-            <div style="display:inline-block;padding:4px 12px;border-radius:12px;font-weight:bold;font-size:12px;background:${statusBg};color:${statusColor};">${status}</div>
-            <div style="font-size:13px;margin-top:4px;font-weight:bold;color:#0C2A42;">${detail.transactionId}</div>
-            ${detail.invoiceNumber ? `<div style="font-size:11px;color:#6B7280;">Invoice: ${detail.invoiceNumber}</div>` : ""}
+            <div style="display:inline-block;padding:5px 14px;border-radius:20px;font-weight:700;font-size:12px;background:${statusBg};color:${statusColor};">${statusText}</div>
+            <div style="font-size:14px;margin-top:6px;font-weight:800;color:#0C2A42;">${listItem.transactionId}</div>
           </td>
         </tr>
       </table>
 
-      <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
-        <tr>
-          <td style="width:50%;vertical-align:top;padding-right:8px;">
-            <div style="background:#F8FAFC;padding:14px;border-radius:8px;border:1px solid #E2E8F0;">
-              <div style="font-size:14px;font-weight:bold;color:#0C2A42;margin-bottom:10px;">Customer Information</div>
-              <div style="font-size:13px;margin-bottom:4px;"><strong>Name:</strong> ${detail.customer?.name ?? listItem.customerName}</div>
-              <div style="font-size:13px;margin-bottom:4px;"><strong>Mobile:</strong> ${detail.customer?.mobile ?? "-"}</div>
-              <div style="font-size:13px;"><strong>GSTN:</strong> ${detail.customer?.gstNumber ?? "N/A"}</div>
-            </div>
-          </td>
-          <td style="width:50%;vertical-align:top;padding-left:8px;">
-            <div style="background:#F8FAFC;padding:14px;border-radius:8px;border:1px solid #E2E8F0;">
-              <div style="font-size:14px;font-weight:bold;color:#0C2A42;margin-bottom:10px;">Transaction Details</div>
-              <div style="font-size:13px;margin-bottom:4px;"><strong>Attraction:</strong> ${detail.attraction?.name ?? listItem.attraction?.name ?? "-"}</div>
-              <div style="font-size:13px;margin-bottom:4px;"><strong>Booking ID:</strong> ${detail.booking?.bookingId ?? listItem.bookingId ?? "-"}</div>
-              <div style="font-size:13px;"><strong>Date:</strong> ${formatDate(detail.transactionDate ?? listItem.transactionDate)}</div>
-            </div>
-          </td>
-        </tr>
-      </table>
-
-      <div style="border:1.5px solid #0084FF;border-radius:8px;padding:16px 14px;background:#F0F9FF;margin-bottom:20px;">
-        <div style="font-size:14px;font-weight:bold;color:#0C2A42;margin-bottom:12px;">Payment Summary</div>
+      <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:18px;margin-bottom:18px;">
+        <div style="font-size:12px;font-weight:800;color:#0C2A42;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #E2E8F0;padding-bottom:8px;margin-bottom:14px;">Customer Information</div>
         <table style="width:100%;border-collapse:collapse;font-size:13px;">
           <tr>
-            <td style="padding:4px 0;width:50%;"><strong style="color:#0C2A42;">Payment Mode:</strong> ${detail.payment?.mode ?? listItem.paymentMode ?? "-"}</td>
-            <td style="padding:4px 0;text-align:right;"><strong style="color:#0C2A42;">Status:</strong> ${status}</td>
+            <td style="padding:6px 0;width:50%;">
+              <span style="color:#64748B;font-size:11px;font-weight:600;display:block;">Transaction ID</span>
+              <strong style="color:#0C2A42;font-size:13px;">${listItem.transactionId}</strong>
+            </td>
+            <td style="padding:6px 0;width:50%;">
+              <span style="color:#64748B;font-size:11px;font-weight:600;display:block;">Date & Time</span>
+              <strong style="color:#0C2A42;font-size:13px;">${dateTime}</strong>
+            </td>
           </tr>
           <tr>
-            <td style="padding:4px 0;"><strong style="color:#0C2A42;">Amount:</strong> &#8377;${Number(detail.payment?.amount ?? listItem.amount).toFixed(2)}</td>
+            <td style="padding:6px 0;">
+              <span style="color:#64748B;font-size:11px;font-weight:600;display:block;">Invoice ID</span>
+              <strong style="color:#0C2A42;font-size:13px;">${invoiceId}</strong>
+            </td>
+            <td style="padding:6px 0;">
+              <span style="color:#64748B;font-size:11px;font-weight:600;display:block;">Booking ID</span>
+              <strong style="color:#0C2A42;font-size:13px;">${bookingId}</strong>
+            </td>
           </tr>
         </table>
       </div>
 
-      <div style="text-align:center;margin-top:30px;font-size:12px;color:#9CA3AF;">
+      <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:18px;margin-bottom:24px;">
+        <div style="font-size:12px;font-weight:800;color:#0C2A42;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #E2E8F0;padding-bottom:8px;margin-bottom:14px;">Payment Information</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr>
+            <td style="padding:6px 0;width:33.3%;">
+              <span style="color:#64748B;font-size:11px;font-weight:600;display:block;">Payment Mode</span>
+              <strong style="color:#0C2A42;font-size:13px;">${paymentMode}</strong>
+            </td>
+            <td style="padding:6px 0;width:33.3%;">
+              <span style="color:#64748B;font-size:11px;font-weight:600;display:block;">Amount Paid</span>
+              <strong style="color:#0C2A42;font-size:15px;">&#8377;${amount}</strong>
+            </td>
+            <td style="padding:6px 0;width:33.3%;">
+              <span style="color:#64748B;font-size:11px;font-weight:600;display:block;">Status</span>
+              <strong style="color:${statusColor};font-size:13px;">${statusText}</strong>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="text-align:center;margin-top:24px;font-size:11px;color:#9CA3AF;">
         Thank you for your transaction. Please retain this receipt for your records.
       </div>
     </div>`;
@@ -96,13 +124,13 @@ async function handleDownloadPDF(detail: TransactionDetail, listItem: Transactio
   }
 
   const element = document.createElement("div");
-  element.style.width = "700px";
+  element.style.width = "680px";
   element.innerHTML = buildInvoiceHTML(detail, listItem);
   document.body.appendChild(element);
 
   await (window as any).html2pdf().set({
     margin: [10, 10, 10, 10],
-    filename: `${detail.transactionId}_Receipt.pdf`,
+    filename: `${listItem.transactionId}_Receipt.pdf`,
     image: { type: "jpeg", quality: 0.98 },
     html2canvas: { scale: 2, useCORS: true },
     jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
@@ -116,7 +144,7 @@ function handlePrintInvoice(detail: TransactionDetail, listItem: TransactionList
   const win = window.open("", "_blank");
   if (!win) { alert("Please allow pop-ups to print receipts."); return; }
   win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/>
-    <title>Transaction - ${detail.transactionId}</title>
+    <title>Transaction - ${listItem.transactionId}</title>
     <style>@media print { body { margin: 0; padding: 0; } }</style>
     </head><body>${buildInvoiceHTML(detail, listItem)}
     <script>window.onload = function() { window.print(); };<\/script>
@@ -144,8 +172,15 @@ export default function TransactionDetailsModal({ transaction, isOpen, onClose }
 
   const status = detail?.payment?.status ?? transaction.status;
   const upper = status?.toUpperCase();
-  const isSuccess = upper === "SUCCESS" || upper === "CONFIRMED";
-  const isFailed = upper === "FAILED" || upper === "CANCELLED";
+  const isSuccess = upper === "SUCCESSFUL" || upper === "SUCCESS" || upper === "CONFIRMED";
+  const isCancelled = upper === "CANCELLED" || upper === "FAILED";
+  const statusText = isSuccess ? "Successful" : isCancelled ? "Cancelled" : status || "Pending";
+
+  const invoiceId = detail?.invoiceNumber ?? (transaction.transactionId ? transaction.transactionId.replace("TXN", "INV") : "INV-" + transaction.id.slice(0, 8));
+  const bookingId = detail?.booking?.bookingId ?? transaction.bookingId ?? "-";
+  const dateTime = formatDate(detail?.transactionDate ?? transaction.transactionDate);
+  const paymentMode = detail?.payment?.mode ?? transaction.paymentMode ?? "-";
+  const amount = Number(detail?.payment?.amount ?? transaction.amount).toFixed(2);
 
   return (
     <div
@@ -160,11 +195,12 @@ export default function TransactionDetailsModal({ transaction, isOpen, onClose }
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "100%", maxWidth: "560px", background: "#FFFFFF",
-          borderRadius: "20px", boxShadow: "0 20px 50px rgba(0,0,0,0.2)",
+          width: "100%", maxWidth: "500px", background: "#FFFFFF",
+          borderRadius: "16px", boxShadow: "0 20px 50px rgba(0,0,0,0.2)",
           display: "flex", flexDirection: "column", overflow: "hidden",
           animation: "modalFadeIn 0.22s cubic-bezier(0.16,1,0.3,1)",
           maxHeight: "90vh",
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
         }}
       >
         {/* ── Header ── */}
@@ -181,7 +217,8 @@ export default function TransactionDetailsModal({ transaction, isOpen, onClose }
           <button onClick={onClose} aria-label="Close modal" style={{
             background: "#F3F4F6", border: "none", borderRadius: "50%",
             width: "32px", height: "32px", display: "flex", alignItems: "center",
-            justifyContent: "center", cursor: "pointer", color: colors.text.muted,
+            justifyContent: "center", cursor: "pointer", color: "#6B7280",
+            transition: "background 0.15s ease",
           }}>
             <X size={18} />
           </button>
@@ -190,169 +227,148 @@ export default function TransactionDetailsModal({ transaction, isOpen, onClose }
         {/* ── Body ── */}
         <div style={{
           padding: "20px 24px", display: "flex", flexDirection: "column",
-          gap: "18px", overflowY: "auto",
+          gap: "16px", overflowY: "auto",
         }}>
-          {/* Top Reference Banner */}
+          {/* ── Top Reference Banner ── */}
           <div style={{
-            display: "flex", alignItems: "center", gap: "14px",
-            background: "#FFFBEB", border: "1px solid #FDE68A",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            background: "#FFFDF0", border: "1.5px solid #FDE68A",
             borderRadius: "12px", padding: "14px 18px",
           }}>
-            <div style={{
-              width: "44px", height: "44px", borderRadius: "50%",
-              background: "#F4BC43", display: "flex", alignItems: "center",
-              justifyContent: "center", flexShrink: 0,
-            }}>
-              <CreditCard size={22} color="#0C2A42" />
-            </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <div style={{
-                fontSize: "11px", fontWeight: 600, color: "#92400E",
-                textTransform: "uppercase", letterSpacing: "0.5px",
-                fontFamily: typography.fontFamily.sans,
+                width: "42px", height: "42px", borderRadius: "50%",
+                background: "#F4BC43", display: "flex", alignItems: "center",
+                justifyContent: "center", flexShrink: 0,
               }}>
-                Transaction Ref
+                <CreditCard size={20} color="#0C2A42" strokeWidth={2.2} />
               </div>
-              <h3 style={{
-                fontFamily: typography.fontFamily.sans, fontWeight: 700,
-                fontSize: "17px", color: "#0C2A42", margin: 0,
-              }}>
-                {transaction.transactionId}
-              </h3>
+              <div>
+                <div style={{
+                  fontSize: "11px", fontWeight: 700, color: "#92400E",
+                  textTransform: "uppercase", letterSpacing: "0.5px",
+                  fontFamily: typography.fontFamily.sans,
+                }}>
+                  TRANSACTION REF
+                </div>
+                <h3 style={{
+                  fontFamily: typography.fontFamily.sans, fontWeight: 700,
+                  fontSize: "18px", color: "#0C2A42", margin: "2px 0 0 0",
+                  letterSpacing: "-0.01em",
+                }}>
+                  {transaction.transactionId}
+                </h3>
+              </div>
             </div>
+
             <span style={{
-              display: "inline-flex", alignItems: "center", gap: "5px",
-              padding: "5px 12px", borderRadius: "20px",
+              display: "inline-flex", alignItems: "center", gap: "6px",
+              padding: "5px 14px", borderRadius: "20px",
               fontSize: "12px", fontWeight: 700, fontFamily: typography.fontFamily.sans,
-              background: isSuccess ? "#D1FAE5" : isFailed ? "#FEE2E2" : "#FEF3C7",
-              color: isSuccess ? "#065F46" : isFailed ? "#991B1B" : "#92400E",
+              background: isSuccess ? "#D1FAE5" : isCancelled ? "#FEE2E2" : "#FEF3C7",
+              color: isSuccess ? "#15803D" : isCancelled ? "#991B1B" : "#92400E",
             }}>
-              {isSuccess ? <CheckCircle2 size={13} /> : isFailed ? <XCircle size={13} /> : <Clock size={13} />}
-              {status}
+              {isSuccess ? <CheckCircle2 size={14} /> : isCancelled ? <XCircle size={14} /> : <Clock size={14} />}
+              {statusText}
             </span>
           </div>
 
           {isLoading ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 0" }}>
-              <Loader2 size={30} color={colors.brand.accent} style={{ animation: "spin 1s linear infinite" }} />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "30px 0" }}>
+              <Loader2 size={28} color={colors.brand.accent} style={{ animation: "spin 1s linear infinite" }} />
             </div>
           ) : (
             <>
-              {/* Customer Information Card */}
+              {/* ── Customer Information Card ── */}
               <div style={{
                 background: "#F8FAFC", border: "1px solid #E2E8F0",
                 borderRadius: "12px", padding: "16px 18px",
-                display: "flex", flexDirection: "column", gap: "12px",
+                display: "flex", flexDirection: "column",
               }}>
                 <div style={{
                   fontFamily: typography.fontFamily.sans, fontWeight: 700,
                   fontSize: "12px", color: "#0C2A42", textTransform: "uppercase",
-                  letterSpacing: "0.5px", borderBottom: "1px solid #E2E8F0", paddingBottom: "8px",
+                  letterSpacing: "0.5px", borderBottom: "1px solid #E2E8F0", paddingBottom: "10px",
+                  marginBottom: "14px",
                 }}>
-                  Customer Information
+                  CUSTOMER INFORMATION
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", fontSize: "13px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", rowGap: "14px" }}>
                   <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Name</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.customer?.name ?? transaction.customerName}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Mobile</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.customer?.mobile ?? "-"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>GSTN</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.customer?.gstNumber ?? "N/A"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Attraction</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.attraction?.name ?? transaction.attraction?.name ?? "-"}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-
-              {/* Transaction Info Card */}
-              <div style={{
-                background: "#F8FAFC", border: "1px solid #E2E8F0",
-                borderRadius: "12px", padding: "16px 18px",
-                display: "flex", flexDirection: "column", gap: "12px",
-              }}>
-                <div style={{
-                  fontFamily: typography.fontFamily.sans, fontWeight: 700,
-                  fontSize: "12px", color: "#0C2A42", textTransform: "uppercase",
-                  letterSpacing: "0.5px", borderBottom: "1px solid #E2E8F0", paddingBottom: "8px",
-                }}>
-                  Transaction Information
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", fontSize: "13px" }}>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Transaction ID</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
+                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", marginBottom: "3px", fontFamily: typography.fontFamily.sans }}>
+                      Transaction ID
+                    </span>
+                    <strong style={{ color: "#0C2A42", fontWeight: 700, fontSize: "13px", fontFamily: typography.fontFamily.sans }}>
                       {transaction.transactionId}
                     </strong>
                   </div>
                   <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Date &amp; Time</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {formatDate(detail?.transactionDate ?? transaction.transactionDate)}
+                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", marginBottom: "3px", fontFamily: typography.fontFamily.sans }}>
+                      Date &amp; Time
+                    </span>
+                    <strong style={{ color: "#0C2A42", fontWeight: 700, fontSize: "13px", fontFamily: typography.fontFamily.sans }}>
+                      {dateTime}
                     </strong>
                   </div>
                   <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Invoice No.</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.invoiceNumber ?? "-"}
+                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", marginBottom: "3px", fontFamily: typography.fontFamily.sans }}>
+                      Invoice ID
+                    </span>
+                    <strong style={{ color: "#0C2A42", fontWeight: 700, fontSize: "13px", fontFamily: typography.fontFamily.sans }}>
+                      {invoiceId}
                     </strong>
                   </div>
                   <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Booking ID</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.booking?.bookingId ?? transaction.bookingId ?? "-"}
+                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", marginBottom: "3px", fontFamily: typography.fontFamily.sans }}>
+                      Booking ID
+                    </span>
+                    <strong style={{ color: "#0C2A42", fontWeight: 700, fontSize: "13px", fontFamily: typography.fontFamily.sans }}>
+                      {bookingId}
                     </strong>
                   </div>
                 </div>
               </div>
 
-              {/* Payment Info Card */}
+              {/* ── Payment Information Card ── */}
               <div style={{
                 background: "#F8FAFC", border: "1px solid #E2E8F0",
                 borderRadius: "12px", padding: "16px 18px",
-                display: "flex", flexDirection: "column", gap: "12px",
+                display: "flex", flexDirection: "column",
               }}>
                 <div style={{
                   fontFamily: typography.fontFamily.sans, fontWeight: 700,
                   fontSize: "12px", color: "#0C2A42", textTransform: "uppercase",
-                  letterSpacing: "0.5px", borderBottom: "1px solid #E2E8F0", paddingBottom: "8px",
+                  letterSpacing: "0.5px", borderBottom: "1px solid #E2E8F0", paddingBottom: "10px",
+                  marginBottom: "14px",
                 }}>
-                  Payment Information
+                  PAYMENT INFORMATION
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", fontSize: "13px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
                   <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Payment Mode</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.payment?.mode ?? transaction.paymentMode ?? "-"}
+                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", marginBottom: "3px", fontFamily: typography.fontFamily.sans }}>
+                      Payment Mode
+                    </span>
+                    <strong style={{ color: "#0C2A42", fontWeight: 700, fontSize: "13px", fontFamily: typography.fontFamily.sans }}>
+                      {paymentMode}
                     </strong>
                   </div>
                   <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Amount Paid</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontSize: "15px", fontFamily: typography.fontFamily.sans }}>
-                      ₹{Number(detail?.payment?.amount ?? transaction.amount).toFixed(2)}
+                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", marginBottom: "3px", fontFamily: typography.fontFamily.sans }}>
+                      Amount Paid
+                    </span>
+                    <strong style={{ color: "#0C2A42", fontWeight: 700, fontSize: "15px", fontFamily: typography.fontFamily.sans }}>
+                      ₹{amount}
                     </strong>
                   </div>
                   <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Status</span>
+                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", marginBottom: "3px", fontFamily: typography.fontFamily.sans }}>
+                      Status
+                    </span>
                     <strong style={{
-                      color: isSuccess ? "#119167" : isFailed ? "#DC2626" : "#D97706",
-                      fontWeight: 700, fontFamily: typography.fontFamily.sans,
+                      color: isSuccess ? "#16A34A" : isCancelled ? "#DC2626" : "#D97706",
+                      fontWeight: 700, fontSize: "13px", fontFamily: typography.fontFamily.sans,
                     }}>
-                      {status}
+                      {statusText}
                     </strong>
                   </div>
                 </div>
@@ -367,41 +383,44 @@ export default function TransactionDetailsModal({ transaction, isOpen, onClose }
           display: "flex", alignItems: "center", justifyContent: "flex-end",
           gap: "10px", background: "#FFFFFF", flexWrap: "wrap", flexShrink: 0,
         }}>
-          <button onClick={onClose} style={{
-            height: "40px", padding: "0 18px", borderRadius: "8px",
-            border: "1px solid #D1D5DB", background: "#FFFFFF", color: "#0C2A42",
-            fontFamily: typography.fontFamily.sans, fontWeight: 600,
-            fontSize: "13px", cursor: "pointer",
-          }}>
+          <button
+            onClick={onClose}
+            style={{
+              height: "40px", padding: "0 22px", borderRadius: "8px",
+              border: "1.5px solid #D1D5DB", background: "#FFFFFF", color: "#0C2A42",
+              fontFamily: typography.fontFamily.sans, fontWeight: 600,
+              fontSize: "13px", cursor: "pointer", transition: "all 0.15s ease",
+            }}
+          >
             Close
           </button>
           <button
-            disabled={isLoading || !detail}
-            onClick={() => detail && handleDownloadPDF(detail, transaction)}
+            disabled={isLoading}
+            onClick={() => handleDownloadPDF(detail || ({} as any), transaction)}
             style={{
               height: "40px", padding: "0 18px", borderRadius: "8px", border: "none",
-              background: isLoading || !detail ? "#9CA3AF" : "#0C2A42",
+              background: isLoading ? "#9CA3AF" : "#0C2A42",
               color: "#FFFFFF", fontFamily: typography.fontFamily.sans,
               fontWeight: 600, fontSize: "13px",
-              cursor: isLoading || !detail ? "not-allowed" : "pointer",
+              cursor: isLoading ? "not-allowed" : "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
-              opacity: isLoading || !detail ? 0.65 : 1,
+              opacity: isLoading ? 0.65 : 1, transition: "all 0.15s ease",
             }}
           >
             <Download size={16} />
             <span>Download PDF</span>
           </button>
           <button
-            disabled={isLoading || !detail}
-            onClick={() => detail && handlePrintInvoice(detail, transaction)}
+            disabled={isLoading}
+            onClick={() => handlePrintInvoice(detail || ({} as any), transaction)}
             style={{
               height: "40px", padding: "0 18px", borderRadius: "8px", border: "none",
-              background: isLoading || !detail ? "#e0c97a" : "#F4BC43",
+              background: isLoading ? "#e0c97a" : "#F4BC43",
               color: "#0C2A42", fontFamily: typography.fontFamily.sans,
               fontWeight: 700, fontSize: "13px",
-              cursor: isLoading || !detail ? "not-allowed" : "pointer",
+              cursor: isLoading ? "not-allowed" : "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
-              opacity: isLoading || !detail ? 0.65 : 1,
+              opacity: isLoading ? 0.65 : 1, transition: "all 0.15s ease",
             }}
           >
             <Printer size={16} />

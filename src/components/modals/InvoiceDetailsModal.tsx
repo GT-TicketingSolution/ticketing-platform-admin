@@ -56,20 +56,23 @@ function buildInvoiceHTML(detail: InvoiceDetail, listItem: InvoiceListItem): str
 
       <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
         <tr>
-          <td style="width:50%;vertical-align:top;padding-right:8px;">
-            <div style="background:#F8FAFC;padding:14px;border-radius:8px;border:1px solid #E2E8F0;">
-              <div style="font-size:14px;font-weight:bold;color:#0C2A42;margin-bottom:10px;">Customer Information</div>
-              <div style="font-size:13px;margin-bottom:4px;"><strong>Name:</strong> ${customerName}</div>
-              <div style="font-size:13px;margin-bottom:4px;"><strong>Mobile:</strong> ${mobile}</div>
-              <div style="font-size:13px;"><strong>GSTN:</strong> ${gstn}</div>
-            </div>
-          </td>
-          <td style="width:50%;vertical-align:top;padding-left:8px;">
+          <td style="width:100%;vertical-align:top;">
             <div style="background:#F8FAFC;padding:14px;border-radius:8px;border:1px solid #E2E8F0;">
               <div style="font-size:14px;font-weight:bold;color:#0C2A42;margin-bottom:10px;">Invoice & Booking Info</div>
-              <div style="font-size:13px;margin-bottom:4px;"><strong>Attraction:</strong> ${attractionName}</div>
-              <div style="font-size:13px;margin-bottom:4px;"><strong>Booking ID:</strong> ${bookingId}</div>
-              <div style="font-size:13px;"><strong>Date:</strong> ${invoiceDate}</div>
+              <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <tr>
+                  <td style="padding:4px 0;width:50%;"><strong>Invoice ID:</strong> ${invoiceNumber}</td>
+                  <td style="padding:4px 0;"><strong>Invoice Date:</strong> ${invoiceDate}</td>
+                </tr>
+                <tr>
+                  <td style="padding:4px 0;"><strong>Attraction:</strong> ${attractionName}</td>
+                  <td style="padding:4px 0;"><strong>Booking ID:</strong> ${bookingId}</td>
+                </tr>
+                <tr>
+                  <td style="padding:4px 0;"><strong>Transaction ID:</strong> ${transactionId}</td>
+                  <td style="padding:4px 0;"></td>
+                </tr>
+              </table>
             </div>
           </td>
         </tr>
@@ -333,60 +336,6 @@ export default function InvoiceDetailsModal({
             </div>
           ) : (
             <>
-              {/* Customer Information Card */}
-              <div
-                style={{
-                  background: "#F8FAFC",
-                  border: "1px solid #E2E8F0",
-                  borderRadius: "12px",
-                  padding: "16px 18px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px",
-                }}
-              >
-                <div
-                  style={{
-                    fontFamily: typography.fontFamily.sans,
-                    fontWeight: 700,
-                    fontSize: "12px",
-                    color: "#0C2A42",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    borderBottom: "1px solid #E2E8F0",
-                    paddingBottom: "8px",
-                  }}
-                >
-                  Customer Information
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", fontSize: "13px" }}>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Name</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.customer?.name ?? invoice.customerName ?? "-"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Mobile</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.customer?.mobile ?? "-"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>GSTN</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.customer?.gstNumber ?? "N/A"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Attraction</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.attraction?.name ?? invoice.attraction?.name ?? "-"}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-
               {/* Invoice & Booking Information Card */}
               <div
                 style={{
@@ -411,7 +360,7 @@ export default function InvoiceDetailsModal({
                     paddingBottom: "8px",
                   }}
                 >
-                  Invoice & Booking Information
+                  Invoice &amp; Booking Information
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", fontSize: "13px" }}>
                   <div>
@@ -427,15 +376,15 @@ export default function InvoiceDetailsModal({
                     </strong>
                   </div>
                   <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Visit Date</span>
+                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Attraction</span>
                     <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {formatDate(detail?.visitAt ?? invoice.visitAt)}
+                      {detail?.attraction?.name ?? invoice.attraction?.name ?? "-"}
                     </strong>
                   </div>
                   <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Visitors</span>
+                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Booking ID</span>
                     <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.visitors ?? invoice.visitors ?? "-"}
+                      {detail?.booking?.bookingId ?? invoice.bookingId ?? "-"}
                     </strong>
                   </div>
                   <div>
@@ -445,9 +394,9 @@ export default function InvoiceDetailsModal({
                     </strong>
                   </div>
                   <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Booking ID</span>
+                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Visitors</span>
                     <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.booking?.bookingId ?? invoice.bookingId ?? "-"}
+                      {detail?.visitors ?? invoice.visitors ?? "-"}
                     </strong>
                   </div>
                 </div>

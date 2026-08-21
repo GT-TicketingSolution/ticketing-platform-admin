@@ -180,7 +180,7 @@ export default function BookingsPage() {
   // Build attraction dropdown options from live data
   const attractionOptions = useMemo(() => {
     const unique = Array.from(
-      new Map(attractionsData.map((a: any) => [a.id, a.name])).entries()
+      new Map(attractionsData.map((a: any) => [a.attractionId || a.id, a.name])).entries()
     ).map(([id, name]) => ({ id, name }));
     return [{ id: "All", name: "All Attractions" }, ...unique];
   }, [attractionsData]);

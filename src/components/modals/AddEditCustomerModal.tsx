@@ -214,11 +214,13 @@ export default function AddEditCustomerModal({
               </label>
               <input
                 id="customer-mobile-input"
-                type="text"
+                type="tel"
                 placeholder="Enter Mobile Number"
                 value={mobile}
+                maxLength={10}
                 onChange={(e) => {
-                  setMobile(e.target.value);
+                  const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                  setMobile(digits);
                   if (errors.mobile) setErrors((prev) => ({ ...prev, mobile: "" }));
                 }}
                 style={{

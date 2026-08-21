@@ -18,36 +18,25 @@ import {
   TrendingUp,
   FileSpreadsheet,
   AlertCircle,
+  SearchX,
 } from "lucide-react";
 import DateRangePicker from "@/components/ui/DateRangePicker";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import { colors } from "@/lib/theme";
-import { Attraction, INITIAL_ATTRACTIONS } from "@/types/admin";
-import { getOverallReportSummary } from "@/lib/reportsData";
 import AttractionReportCard from "@/components/reports/AttractionReportCard";
 import SingleAttractionReportView from "@/components/reports/SingleAttractionReportView";
 import { exportMultiSectionXLS, XLSSection } from "@/lib/exportUtils";
-
-const SESSION_KEY = "attractions_data";
-
-function loadAttractionsFromSession(): Attraction[] {
-  if (typeof window === "undefined") return INITIAL_ATTRACTIONS;
-  try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    if (raw !== null) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed as Attraction[];
-    }
-  } catch { }
-  return INITIAL_ATTRACTIONS;
-}
+import { useAttractionManagementList } from "@/hooks/useAttractionManagementQueries";
+import {
+  useReportSummary,
+  useReportAttraction,
+  useReportPayment,
+  useReportTickets,
+  buildOverallSummary,
+} from "@/hooks/useReportQueries";
 
 export default function ReportsPage() {
   const router = useRouter();
-
-  // Attractions State
-  const [attractions, setAttractions] = useState<Attraction[]>([]);
-  const [isHydrated, setIsHydrated] = useState(false);
 
   // Filters State
   const [fromDate, setFromDate] = useState<string>("");
@@ -61,13 +50,49 @@ export default function ReportsPage() {
 
   useEffect(() => {
     document.title = META_CONSTANTS.reports.fullTitle;
-    const loaded = loadAttractionsFromSession();
-    setAttractions(loaded);
-    setIsHydrated(true);
   }, []);
 
+  // ── Real API Queries ────────────────────────────────────────────────────────
+  const { data: attractionsData = [], isLoading: isAttractionsLoading } =
+    useAttractionManagementList();
+
+  const selectedAttractionObj = useMemo(() => {
+    if (
+      !selectedAttraction ||
+      selectedAttraction === "All" ||
+      selectedAttraction === "All Attractions" ||
+      selectedAttraction === "No Attractions Available"
+    ) {
+      return null;
+    }
+    return attractionsData.find(
+      (a: any) => a.name?.toLowerCase() === selectedAttraction.toLowerCase()
+    );
+  }, [selectedAttraction, attractionsData]);
+
+  const selectedAttractionId = selectedAttractionObj?.attractionId || selectedAttractionObj?.id;
+
+  // 1. GET /api/admin/reports/summary
+  const { data: summaryData, isLoading: isSummaryLoading } = useReportSummary(
+    fromDate || undefined,
+    toDate || undefined,
+    selectedAttractionId || undefined
+  );
+
+  // 2. GET /api/admin/reports/attraction
+  const { data: attractionReportsData = [], isLoading: isAttractionReportsLoading } =
+    useReportAttraction(fromDate || undefined, toDate || undefined);
+
+  // 3. GET /api/admin/reports/payment
+  const { data: paymentData = [], isLoading: isPaymentLoading } = useReportPayment();
+
+  // 4. GET /api/admin/reports/tickets
+  const { data: ticketData = [], isLoading: isTicketsLoading } = useReportTickets();
+
   // Quick Date Preset Handler
-  const handleDatePreset = (preset: "today" | "yesterday" | "last7" | "last30" | "thisMonth" | "all") => {
+  const handleDatePreset = (
+    preset: "today" | "yesterday" | "last7" | "last30" | "thisMonth" | "all"
+  ) => {
     const today = new Date();
     const formatDate = (d: Date) => d.toISOString().split("T")[0];
 
@@ -117,18 +142,24 @@ export default function ReportsPage() {
     }
   };
 
-  // Compute Overall Report Summary with dynamic attractions list
+  // Compose Overall Report Summary from live APIs
   const overallSummary = useMemo(() => {
-    return getOverallReportSummary(fromDate, toDate, attractions);
-  }, [fromDate, toDate, attractions]);
+    return buildOverallSummary(
+      summaryData,
+      attractionReportsData,
+      ticketData,
+      paymentData,
+      attractionsData
+    );
+  }, [summaryData, attractionReportsData, ticketData, paymentData, attractionsData]);
 
   // Attraction options dropdown
   const attractionDropdownOptions = useMemo(() => {
-    if (!attractions || attractions.length === 0) {
+    if (!attractionsData || attractionsData.length === 0) {
       return ["No Attractions Available"];
     }
-    return ["All Attractions", ...attractions.map((a) => a.name)];
-  }, [attractions]);
+    return ["All Attractions", ...attractionsData.map((a: any) => a.name)];
+  }, [attractionsData]);
 
   // Accordion Toggle Handlers
   const handleToggleCardExpand = (id: string) => {
@@ -144,7 +175,9 @@ export default function ReportsPage() {
   };
 
   const handleExpandAll = () => {
-    setExpandedAttractionIds(new Set(attractions.map((a) => a.id)));
+    setExpandedAttractionIds(
+      new Set(overallSummary.attractionReports.map((a) => a.attraction.id))
+    );
   };
 
   const handleCollapseAll = () => {
@@ -153,7 +186,7 @@ export default function ReportsPage() {
 
   // Export Overall Excel Report
   const handleExportOverallReport = () => {
-    if (attractions.length === 0) return;
+    if (overallSummary.attractionReports.length === 0) return;
 
     const sections: XLSSection[] = [
       {
@@ -163,7 +196,10 @@ export default function ReportsPage() {
           ["Date Range From", fromDate || "All Time"],
           ["Date Range To", toDate || "All Time"],
           ["Selected Attraction", selectedAttraction],
-          ["Total Revenue", `₹${overallSummary.totalRevenue.toLocaleString("en-IN")}`],
+          [
+            "Total Revenue",
+            `₹${overallSummary.totalRevenue.toLocaleString("en-IN")}`,
+          ],
           ["Total Tickets Sold", overallSummary.totalTicketsSold],
           ["Total Bookings", overallSummary.totalBookings],
           ["Top Performing Attraction", overallSummary.topAttractionName],
@@ -210,12 +246,47 @@ export default function ReportsPage() {
     ) {
       return null;
     }
-    return overallSummary.attractionReports.find(
+    const found = overallSummary.attractionReports.find(
       (r) => r.attraction.name.toLowerCase() === selectedAttraction.toLowerCase()
     );
-  }, [selectedAttraction, overallSummary]);
+    if (found) return found;
+    if (selectedAttractionObj) {
+      return {
+        attraction: {
+          id: selectedAttractionObj.attractionId || selectedAttractionObj.id || "",
+          attractionId: selectedAttractionObj.attractionId || selectedAttractionObj.id || "",
+          name: selectedAttractionObj.name || selectedAttraction,
+          category: (selectedAttractionObj.category || "RIDE") as any,
+          status: (selectedAttractionObj.status || "Active") as any,
+          pricing: selectedAttractionObj.pricing || { adult: 0, child: 0, student: 0, senior: 0, foreigner: 0 },
+          image: selectedAttractionObj.image || "",
+          timing: selectedAttractionObj.timing || "",
+          description: selectedAttractionObj.description || "",
+          hasSeating: selectedAttractionObj.hasSeating || false,
+          seatLayoutId: selectedAttractionObj.seatLayoutId || null,
+          seatLayouts: selectedAttractionObj.seatLayouts || [],
+        },
+        totalRevenue: summaryData?.totalRevenue ?? 0,
+        totalTicketsSold: summaryData?.totalTickets ?? 0,
+        totalBookings: summaryData?.totalBookings ?? 0,
+        avgOrderValue:
+          (summaryData?.totalBookings ?? 0) > 0
+            ? Math.round(
+                (summaryData?.totalRevenue ?? 0) /
+                  (summaryData?.totalBookings ?? 1)
+              )
+            : 0,
+        categoryBreakdown: [],
+        paymentBreakdown: [],
+        transactions: [],
+        bookings: [],
+      };
+    }
+    return null;
+  }, [selectedAttraction, overallSummary, selectedAttractionObj, summaryData]);
 
-  const hasNoAttractions = isHydrated && attractions.length === 0;
+  const hasNoAttractions =
+    !isAttractionsLoading && attractionsData.length === 0;
 
   return (
     <div
@@ -274,21 +345,21 @@ export default function ReportsPage() {
           <button
             type="button"
             onClick={handleExportOverallReport}
-            disabled={hasNoAttractions}
+            disabled={hasNoAttractions || overallSummary.attractionReports.length === 0}
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
               padding: "10px 18px",
               borderRadius: "10px",
-              backgroundColor: hasNoAttractions ? "#94A3B8" : "#2372A5",
+              backgroundColor: hasNoAttractions || overallSummary.attractionReports.length === 0 ? "#94A3B8" : "#2372A5",
               color: "#FFFFFF",
               border: "none",
               fontSize: "13px",
               fontWeight: 700,
-              cursor: hasNoAttractions ? "not-allowed" : "pointer",
-              opacity: hasNoAttractions ? 0.7 : 1,
-              boxShadow: hasNoAttractions ? "none" : "0 2px 8px rgba(35, 114, 165, 0.25)",
+              cursor: hasNoAttractions || overallSummary.attractionReports.length === 0 ? "not-allowed" : "pointer",
+              opacity: hasNoAttractions || overallSummary.attractionReports.length === 0 ? 0.7 : 1,
+              boxShadow: hasNoAttractions || overallSummary.attractionReports.length === 0 ? "none" : "0 2px 8px rgba(35, 114, 165, 0.25)",
               transition: "all 0.2s",
             }}
           >
@@ -344,7 +415,7 @@ export default function ReportsPage() {
                   cursor: hasNoAttractions ? "not-allowed" : "pointer",
                 }}
               >
-                {attractionDropdownOptions.map((opt) => (
+                {attractionDropdownOptions.map((opt: string) => (
                   <option key={opt} value={opt}>
                     {opt}
                   </option>
@@ -780,6 +851,7 @@ export default function ReportsPage() {
               <button
                 type="button"
                 onClick={handleExpandAll}
+                disabled={overallSummary.attractionReports.length === 0}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -791,7 +863,8 @@ export default function ReportsPage() {
                   fontSize: "12px",
                   fontWeight: 600,
                   color: "#334155",
-                  cursor: "pointer",
+                  cursor: overallSummary.attractionReports.length === 0 ? "not-allowed" : "pointer",
+                  opacity: overallSummary.attractionReports.length === 0 ? 0.6 : 1,
                 }}
               >
                 <ChevronDown size={16} />
@@ -800,6 +873,7 @@ export default function ReportsPage() {
               <button
                 type="button"
                 onClick={handleCollapseAll}
+                disabled={overallSummary.attractionReports.length === 0}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -811,7 +885,8 @@ export default function ReportsPage() {
                   fontSize: "12px",
                   fontWeight: 600,
                   color: "#334155",
-                  cursor: "pointer",
+                  cursor: overallSummary.attractionReports.length === 0 ? "not-allowed" : "pointer",
+                  opacity: overallSummary.attractionReports.length === 0 ? 0.6 : 1,
                 }}
               >
                 <ChevronUp size={16} />
@@ -822,17 +897,42 @@ export default function ReportsPage() {
 
           {/* List of Collapsible Attraction Cards */}
           <div>
-            {overallSummary.attractionReports.map((report) => (
-              <AttractionReportCard
-                key={report.attraction.id}
-                report={report}
-                isExpanded={expandedAttractionIds.has(report.attraction.id)}
-                onToggleExpand={() => handleToggleCardExpand(report.attraction.id)}
-                onSelectSingle={(name) => setSelectedAttraction(name)}
-                fromDate={fromDate}
-                toDate={toDate}
-              />
-            ))}
+            {overallSummary.attractionReports.length === 0 ? (
+              <div
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: "14px",
+                  border: "1px solid #E2E8F0",
+                  padding: "48px 24px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  gap: "12px",
+                }}
+              >
+                <SearchX size={32} color="#94A3B8" />
+                <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#1E293B" }}>
+                  No Report Data Available
+                </h3>
+                <p style={{ margin: 0, fontSize: "13px", color: "#64748B" }}>
+                  No sales or revenue records found for the selected date range.
+                </p>
+              </div>
+            ) : (
+              overallSummary.attractionReports.map((report) => (
+                <AttractionReportCard
+                  key={report.attraction.id}
+                  report={report}
+                  isExpanded={expandedAttractionIds.has(report.attraction.id)}
+                  onToggleExpand={() => handleToggleCardExpand(report.attraction.id)}
+                  onSelectSingle={(name) => setSelectedAttraction(name)}
+                  fromDate={fromDate}
+                  toDate={toDate}
+                />
+              ))
+            )}
           </div>
         </div>
       )}

@@ -56,7 +56,12 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
   const categoryColor = CATEGORY_COLOR[attraction.category] ?? "#F4BC43";
   const [imgError, setImgError] = useState(false);
 
+  useEffect(() => {
+    setImgError(false);
+  }, [attraction.image]);
+
   const p = attraction.pricing ?? { adult: 0, child: 0, student: 0, senior: 0, foreigner: 0 };
+  const hasValidImage = Boolean(attraction.image && attraction.image.trim() !== "" && !imgError);
 
   return (
     <div
@@ -90,10 +95,10 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
             background: "#F1F5F9",
           }}
         >
-          {attraction.image && !imgError ? (
+          {hasValidImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={attraction.image}
+              src={attraction.image!}
               alt={attraction.name}
               style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "8px" }}
               onError={() => setImgError(true)}

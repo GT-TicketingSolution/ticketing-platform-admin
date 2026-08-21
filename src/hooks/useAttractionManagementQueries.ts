@@ -22,13 +22,28 @@ function showErrorOnce(message: string, title = "Error") {
   console.error(`[${title}] ${message}`);
 }
 
-// ── List attractions ─────────────────────────────────────────────────────────
+// ── List attractions 
 export function useAttractionManagementList() {
   return useQuery({
     queryKey: attractionManagementKeys.lists(),
     queryFn: async () => {
-      const res = await getData<AttractionManagement[]>(AppUrl.attractionManagement.list);
-      return Array.isArray(res) ? res : [];
+      const res = await getData<any>(AppUrl.attractionManagement.list);
+      const items: any[] = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.data)
+          ? res.data
+          : [];
+      return items.map((item: any) => ({
+        ...item,
+        pricing: {
+          adult: Number(item?.pricing?.adult ?? 0),
+          child: Number(item?.pricing?.child ?? 0),
+          student: Number(item?.pricing?.student ?? 0),
+          senior: Number(item?.pricing?.senior ?? 0),
+          foreigner: Number(item?.pricing?.foreigner ?? 0),
+        },
+        seatLayoutId: item.seatLayoutId ?? (item.seatLayouts?.[0]?.id ?? null),
+      })) as AttractionManagement[];
     },
     staleTime: 2 * 60 * 1000,
     refetchOnWindowFocus: false,

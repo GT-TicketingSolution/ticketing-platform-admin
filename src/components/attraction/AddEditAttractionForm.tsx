@@ -294,6 +294,7 @@ const DEFAULT_CATEGORIES: CategoryItem[] = [
   { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", basePrice: "100.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
   { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", basePrice: "50.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
   { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", basePrice: "60.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
+  { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.jpg", basePrice: "75.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
   { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", basePrice: "500.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
 ];
 
@@ -304,6 +305,7 @@ function pricingToCategories(attraction: Attraction): CategoryItem[] {
     { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", price: pricing.adult },
     { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", price: pricing.child },
     { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", price: pricing.student },
+    { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.jpg", price: pricing.senior },
     { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", price: pricing.foreigner },
   ];
   return base.map((c) => ({

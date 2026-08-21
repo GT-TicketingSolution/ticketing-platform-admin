@@ -71,7 +71,7 @@ export default function InventoryPage() {
   // Attractions for filter dropdown & modal
   const attractionOptions = useMemo(() => {
     const list = Array.isArray(attractionsData)
-      ? (attractionsData as any[]).map((a: any) => ({ id: a.id, name: a.name || "-" }))
+      ? (attractionsData as any[]).map((a: any) => ({ id: a.attractionId || a.id, name: a.name || "-" }))
       : [];
     return [{ id: "All", name: "All Attractions" }, ...list];
   }, [attractionsData]);

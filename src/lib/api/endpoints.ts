@@ -72,9 +72,9 @@ export const AppUrl = {
 
   // Attraction Management CRUD
   attractionManagement: {
-    list:   "/admin/attraction-management",
+    list: "/admin/attraction-management",
     create: "/admin/attraction-management",
-    bulk:   "/admin/attraction-management/bulk",
+    bulk: "/admin/attraction-management/bulk",
     update: (id: string) => `/admin/attraction-management/${id}`,
     delete: (id: string) => `/admin/attraction-management/${id}`,
     assignSeat: (id: string) => `/admin/attraction-management/${id}/seat`,
@@ -102,6 +102,31 @@ export const AppUrl = {
     create: "/admin/customers",
     update: (id: string) => `/admin/customers/${id}`,
     delete: (id: string) => `/admin/customers/${id}`,
+  },
+
+  // Complimentary Passes
+  complimentaryPass: {
+    list: "/admin/complimentary-passes",
+    create: "/admin/complimentary-passes",
+    update: (id: string) => `/admin/complimentary-passes/${id}`,
+    delete: (id: string) => `/admin/complimentary-passes/${id}`,
+  },
+
+  // References Master Data
+  reference: {
+    list: "/admin/references",
+    create: "/admin/references",
+    update: (id: string) => `/admin/references/${id}`,
+    delete: (id: string) => `/admin/references/${id}`,
+  },
+
+  // Reports
+  reports: {
+    summary: "/admin/reports/summary",
+    attraction: "/admin/reports/attractions",
+    attractions: "/admin/reports/attractions",
+    payment: "/admin/reports/payment",
+    tickets: "/admin/reports/tickets",
   },
 } as const;
 

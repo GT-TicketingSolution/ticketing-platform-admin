@@ -78,8 +78,6 @@ function exportToCSV(items: InvoiceListItem[], filename: string) {
     "Invoice ID",
     "Customer Name",
     "Date & Time",
-    "Booking ID",
-    "Visit Date",
     "Attraction",
     "Visitors",
     "Amount",
@@ -90,8 +88,6 @@ function exportToCSV(items: InvoiceListItem[], filename: string) {
     `"${inv.invoiceId || inv.invoiceNumber || "-"}"`,
     `"${inv.customerName || "-"}"`,
     `"${formatDateVal(inv.dateTime || inv.invoiceDate)}"`,
-    `"${inv.bookingId || "-"}"`,
-    `"${formatDateOnly(inv.visitAt)}"`,
     `"${inv.attraction?.name || "-"}"`,
     inv.visitors ?? 0,
     inv.amount ?? 0,
@@ -107,7 +103,7 @@ function exportToCSV(items: InvoiceListItem[], filename: string) {
   document.body.removeChild(link);
 }
 
-// ── Build PDF export using html2pdf.js ───────────────────────────────────────
+// ── Build PDF export using html2pdf.js 
 async function exportToPDF(
   items: InvoiceListItem[],
   filterInfo: string,
@@ -129,8 +125,6 @@ async function exportToPDF(
       <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;font-weight:600;">${inv.invoiceId || inv.invoiceNumber || "-"}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${inv.customerName || "-"}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${formatDateOnly(inv.dateTime || inv.invoiceDate)}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${inv.bookingId || "-"}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${formatDateOnly(inv.visitAt)}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${inv.attraction?.name || "-"}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;text-align:center;">${inv.visitors ?? 0}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;text-align:right;">&#8377;${Number(inv.amount ?? 0).toFixed(2)}</td>
@@ -290,24 +284,6 @@ export default function InvoicesPage() {
 
     deleteInvoiceMutation.mutate(inv.id);
   };
-
-  const toggleDropdown = useCallback((e: React.MouseEvent<HTMLButtonElement>, id: string) => {
-    e.stopPropagation();
-    if (activeDropdownId === id) {
-      setActiveDropdownId(null);
-      setDropdownPos(null);
-      return;
-    }
-    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const openUp = spaceBelow < 110;
-    setDropdownPos({
-      top: openUp ? rect.top - 4 : rect.bottom + 4,
-      right: window.innerWidth - rect.right,
-      openUp,
-    });
-    setActiveDropdownId(id);
-  }, [activeDropdownId]);
 
   // ── Export Handlers ────────────────────────────────────────────────────────
   const handleExportPDF = async () => {
@@ -559,14 +535,6 @@ export default function InvoicesPage() {
             cell: (item) => formatDateVal(item.dateTime || item.invoiceDate),
           },
           {
-            header: "Booking ID",
-            cell: (item) => item.bookingId || "-",
-          },
-          {
-            header: "Visit Date",
-            cell: (item) => formatDateOnly(item.visitAt),
-          },
-          {
             header: "Attraction",
             cell: (item) => item.attraction?.name || "-",
           },
@@ -612,31 +580,119 @@ export default function InvoicesPage() {
           {
             header: "Actions",
             align: "center",
-            cell: (item) => (
-              <div style={{ position: "relative", display: "inline-block" }}>
-                <button
-                  onClick={(e) => toggleDropdown(e, item.id)}
-                  aria-label="Actions menu"
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "6px",
-                    borderRadius: "4px",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#374151",
-                  }}
-                >
-                  <MoreVertical size={18} />
-                </button>
-              </div>
-            ),
+            cell: (item, idx) => {
+              const itemId = item.id || item.invoiceId || item.invoiceNumber || `inv-${idx}`;
+              const isDropdownOpen = activeDropdownId === itemId;
+
+              return (
+                <div style={{ position: "relative", display: "inline-block" }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (isDropdownOpen) {
+                        setActiveDropdownId(null);
+                        setDropdownPos(null);
+                      } else {
+                        const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                        const MENU_HEIGHT = 80;
+                        const spaceBelow = window.innerHeight - rect.bottom;
+                        const openUp = spaceBelow < MENU_HEIGHT + 16;
+                        setDropdownPos({
+                          top: openUp ? rect.top - MENU_HEIGHT - 4 : rect.bottom + 4,
+                          right: window.innerWidth - rect.right,
+                          openUp,
+                        });
+                        setActiveDropdownId(itemId);
+                      }
+                    }}
+                    aria-label="Actions menu"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: "6px",
+                      borderRadius: "4px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#374151",
+                    }}
+                  >
+                    <MoreVertical size={18} />
+                  </button>
+
+                  {isDropdownOpen && dropdownPos && (
+                    <div
+                      ref={dropdownRef}
+                      style={{
+                        position: "fixed",
+                        top: dropdownPos.top,
+                        right: dropdownPos.right,
+                        zIndex: 9999,
+                        background: "#FFFFFF",
+                        border: "1px solid #E5E7EB",
+                        borderRadius: "8px",
+                        boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
+                        width: "150px",
+                        padding: "4px 0",
+                        display: "flex",
+                        flexDirection: "column",
+                        animation: "fadeIn 0.12s ease-out",
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        onClick={() => handleOpenDetails(item)}
+                        className="dropdown-item"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          width: "100%",
+                          padding: "8px 14px",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: "13px",
+                          fontFamily: typography.fontFamily.sans,
+                          color: "#374151",
+                          textAlign: "left",
+                        }}
+                      >
+                        <Eye size={14} color="#6B7280" />
+                        <span>View Details</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteInvoice(item)}
+                        className="dropdown-item"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          width: "100%",
+                          padding: "8px 14px",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: "13px",
+                          fontFamily: typography.fontFamily.sans,
+                          color: "#DC2626",
+                          textAlign: "left",
+                        }}
+                      >
+                        <Trash2 size={14} color="#DC2626" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            },
           },
         ]}
         data={invoices}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => item.id || item.invoiceId || item.invoiceNumber || `invoice-${index}`}
         pageSize={PAGE_SIZE}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
@@ -683,75 +739,6 @@ export default function InvoicesPage() {
           ) : undefined
         }
       />
-
-      {/* ── Fixed Dropdown Menu ── */}
-      {activeDropdownId && dropdownPos && (
-        <div
-          ref={dropdownRef}
-          style={{
-            position: "fixed",
-            top: dropdownPos.openUp ? undefined : dropdownPos.top,
-            bottom: dropdownPos.openUp ? window.innerHeight - dropdownPos.top : undefined,
-            right: dropdownPos.right,
-            zIndex: 9999,
-            background: "#FFFFFF",
-            border: "1px solid #E5E7EB",
-            borderRadius: "8px",
-            boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
-            width: "160px",
-            padding: "4px 0",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <button
-            onClick={() => {
-              const inv = invoices.find((t) => t.id === activeDropdownId);
-              if (inv) handleOpenDetails(inv);
-            }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              width: "100%",
-              padding: "9px 14px",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontSize: "13px",
-              fontFamily: typography.fontFamily.sans,
-              color: "#374151",
-              textAlign: "left",
-            }}
-          >
-            <Eye size={14} color="#6B7280" />
-            <span>View Details</span>
-          </button>
-          <button
-            onClick={() => {
-              const inv = invoices.find((t) => t.id === activeDropdownId);
-              if (inv) handleDeleteInvoice(inv);
-            }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              width: "100%",
-              padding: "9px 14px",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontSize: "13px",
-              fontFamily: typography.fontFamily.sans,
-              color: "#DC2626",
-              textAlign: "left",
-            }}
-          >
-            <Trash2 size={14} color="#DC2626" />
-            <span>Delete</span>
-          </button>
-        </div>
-      )}
 
       {/* ── Invoice Details Modal ── */}
       <InvoiceDetailsModal

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { X, ChevronDown, Loader2 } from "lucide-react";
-import { ComplimentaryPass, Reference, ATTRACTIONS } from "@/types/complimentaryPass";
+import type { ComplimentaryPass, Reference, ComplimentaryPassPayload } from "@/app/(dashboard)/complimentary-passes/types";
 import { validatePass } from "@/app/(dashboard)/complimentary-passes/schema";
 
 interface IssueComplimentaryPassModalProps {
@@ -10,7 +10,8 @@ interface IssueComplimentaryPassModalProps {
   onClose: () => void;
   passToEdit: ComplimentaryPass | null;
   references: Reference[];
-  onSave: (data: Omit<ComplimentaryPass, "id" | "passId">) => void;
+  attractions: Array<{ id: string; name: string }>;
+  onSave: (data: ComplimentaryPassPayload) => Promise<void> | void;
   isSaving?: boolean;
 }
 
@@ -51,16 +52,18 @@ export default function IssueComplimentaryPassModal({
   onClose,
   passToEdit,
   references,
+  attractions,
   onSave,
   isSaving = false,
 }: IssueComplimentaryPassModalProps) {
   const [visitorName, setVisitorName] = useState("");
   const [mobile, setMobile] = useState("");
-  const [attraction, setAttraction] = useState("");
-  const [visitors, setVisitors] = useState<number | "">("");
-  const [reference, setReference] = useState("");
-  const [date, setDate] = useState("");
-  const [status, setStatus] = useState<"Active" | "Used" | "Expired">("Active");
+  const [attractionId, setAttractionId] = useState("");
+  const [visitors, setVisitors] = useState<number | "">(1);
+  const [referenceId, setReferenceId] = useState("");
+  const [referenceSearch, setReferenceSearch] = useState("");
+  const [visitDate, setVisitDate] = useState("");
+  const [status, setStatus] = useState<"ACTIVE" | "USED" | "EXPIRED">("ACTIVE");
   const [isRefOpen, setIsRefOpen] = useState(false);
   const [errors, setErrors] = useState<{ [k: string]: string }>({});
   const refDropdownRef = useRef<HTMLDivElement>(null);
@@ -77,37 +80,45 @@ export default function IssueComplimentaryPassModal({
 
   useEffect(() => {
     if (passToEdit) {
-      setVisitorName(passToEdit.visitorName);
-      setMobile(passToEdit.mobile);
-      setAttraction(passToEdit.attraction);
-      setVisitors(passToEdit.visitors);
-      setReference(passToEdit.reference);
-      setDate(passToEdit.date);
-      setStatus(passToEdit.status);
+      setVisitorName(passToEdit.visitorName || "");
+      setMobile(passToEdit.mobile ? passToEdit.mobile.replace(/\D/g, "") : "");
+      setAttractionId(passToEdit.attractionId || "");
+      setVisitors(passToEdit.visitors ?? 1);
+      setReferenceId(passToEdit.referenceId || "");
+      const foundRef = references.find((r) => r.id === passToEdit.referenceId);
+      setReferenceSearch(foundRef ? foundRef.referenceName : (passToEdit.referenceName || ""));
+      // Normalise date
+      const d = passToEdit.visitDate || passToEdit.date || "";
+      setVisitDate(d ? d.split("T")[0] : "");
+      const st = (passToEdit.status || "ACTIVE").toUpperCase();
+      setStatus(st === "USED" ? "USED" : st === "EXPIRED" ? "EXPIRED" : "ACTIVE");
     } else {
       setVisitorName("");
       setMobile("");
-      setAttraction("");
-      setVisitors("");
-      setReference("");
-      setDate("");
-      setStatus("Active");
+      setAttractionId(attractions.length > 0 ? attractions[0].id : "");
+      setVisitors(1);
+      setReferenceId("");
+      setReferenceSearch("");
+      setVisitDate(new Date().toISOString().split("T")[0]);
+      setStatus("ACTIVE");
     }
     setErrors({});
-  }, [passToEdit, isOpen]);
+  }, [passToEdit, isOpen, attractions, references]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const cleanMobile = mobile.replace(/\D/g, "");
 
     const validation = validatePass({
       visitorName: visitorName.trim(),
-      mobile: mobile.trim(),
-      attraction,
-      visitors: visitors === "" ? (undefined as unknown as number) : Number(visitors),
-      reference: reference.trim(),
-      fromDate: date,
+      mobile: cleanMobile,
+      attractionId,
+      visitors: Number(visitors),
+      referenceId,
+      visitDate,
       status,
     });
 
@@ -118,25 +129,25 @@ export default function IssueComplimentaryPassModal({
 
     setErrors({});
 
-    let fmt = mobile.trim();
-    if (!fmt.startsWith("+91")) {
-      const digits = fmt.replace(/\D/g, "");
-      if (digits.length === 10) fmt = `+91 ${digits}`;
-    }
-
-    onSave({
+    await onSave({
       visitorName: visitorName.trim(),
-      mobile: fmt,
-      attraction,
+      mobile: cleanMobile,
+      attractionId,
       visitors: Number(visitors),
-      reference: reference.trim(),
-      date,
+      referenceId,
+      visitDate,
       status,
     });
-    onClose();
   };
 
-  const uniqueRefs = [...new Set(references.map((r) => r.referenceName))];
+  const filteredReferences = references.filter((r) => {
+    const q = referenceSearch.toLowerCase();
+    return (
+      r.referenceName.toLowerCase().includes(q) ||
+      r.contactPerson.toLowerCase().includes(q) ||
+      r.department.toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div
@@ -154,7 +165,7 @@ export default function IssueComplimentaryPassModal({
       <div
         style={{
           background: "#FFFFFF",
-          borderRadius: "6px",
+          borderRadius: "12px",
           width: "100%",
           maxWidth: "620px",
           boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
@@ -178,8 +189,7 @@ export default function IssueComplimentaryPassModal({
               margin: 0,
               fontFamily: "'Plus Jakarta Sans', sans-serif",
               fontWeight: 700,
-              fontSize: "20px",
-              lineHeight: "25px",
+              fontSize: "18px",
               color: "#FFFFFF",
             }}
           >
@@ -197,20 +207,20 @@ export default function IssueComplimentaryPassModal({
               padding: "4px",
             }}
           >
-            <X size={22} />
+            <X size={20} />
           </button>
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: "28px 30px 24px 30px" }}>
           {/* Visitor Name */}
-          <div style={{ marginBottom: "20px" }}>
+          <div style={{ marginBottom: "18px" }}>
             <label style={labelStyle}>
               Visitor Name <span style={{ color: "#DC2626" }}>*</span>
             </label>
             <input
               type="text"
-              placeholder="Enter visitor name"
+              placeholder="Enter visitor full name"
               value={visitorName}
               onChange={(e) => setVisitorName(e.target.value)}
               style={inputStyle}
@@ -223,50 +233,52 @@ export default function IssueComplimentaryPassModal({
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
-              gap: "20px",
-              marginBottom: "20px",
+              gap: "18px",
+              marginBottom: "18px",
             }}
           >
             <div>
               <label style={labelStyle}>
-                Mobile Number <span style={{ color: "#DC2626" }}>*</span>
+                Mobile Number (10 Digits) <span style={{ color: "#DC2626" }}>*</span>
               </label>
               <input
-                type="text"
-                placeholder="Enter mobile number"
+                type="tel"
+                maxLength={10}
+                placeholder="e.g. 9876543210"
                 value={mobile}
-                onChange={(e) => setMobile(e.target.value)}
+                onChange={(e) => setMobile(e.target.value.replace(/\D/g, ""))}
                 style={inputStyle}
               />
               {errors.mobile && <p style={errorStyle}>{errors.mobile}</p>}
             </div>
+
             <div>
               <label style={labelStyle}>
                 Attraction <span style={{ color: "#DC2626" }}>*</span>
               </label>
               <select
-                value={attraction}
-                onChange={(e) => setAttraction(e.target.value)}
+                value={attractionId}
+                onChange={(e) => setAttractionId(e.target.value)}
                 style={{ ...inputStyle, cursor: "pointer" }}
               >
-                <option value="">Select attraction</option>
-                {ATTRACTIONS.filter((a) => a !== "All Attractions").map((a) => (
-                  <option key={a} value={a}>
-                    {a}
+                <option value="">Select Attraction</option>
+                {attractions.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
                   </option>
                 ))}
               </select>
-              {errors.attraction && <p style={errorStyle}>{errors.attraction}</p>}
+              {errors.attractionId && <p style={errorStyle}>{errors.attractionId}</p>}
             </div>
           </div>
 
-          {/* Visitors + Reference */}
+          {/* Visitors + Reference Dropdown */}
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
-              gap: "20px",
-              marginBottom: "20px",
+              gap: "18px",
+              marginBottom: "18px",
             }}
           >
             <div>
@@ -276,7 +288,8 @@ export default function IssueComplimentaryPassModal({
               <input
                 type="number"
                 min={1}
-                placeholder="Enter count"
+                max={500}
+                placeholder="e.g. 2"
                 value={visitors}
                 onChange={(e) =>
                   setVisitors(e.target.value === "" ? "" : Number(e.target.value))
@@ -285,6 +298,7 @@ export default function IssueComplimentaryPassModal({
               />
               {errors.visitors && <p style={errorStyle}>{errors.visitors}</p>}
             </div>
+
             <div ref={refDropdownRef} style={{ position: "relative" }}>
               <label style={labelStyle}>
                 Reference <span style={{ color: "#DC2626" }}>*</span>
@@ -292,10 +306,11 @@ export default function IssueComplimentaryPassModal({
               <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
                 <input
                   type="text"
-                  placeholder="Select or enter reference"
-                  value={reference}
+                  placeholder="Select reference..."
+                  value={referenceSearch}
                   onChange={(e) => {
-                    setReference(e.target.value);
+                    setReferenceSearch(e.target.value);
+                    setReferenceId("");
                     setIsRefOpen(true);
                   }}
                   onFocus={() => setIsRefOpen(true)}
@@ -329,7 +344,7 @@ export default function IssueComplimentaryPassModal({
                 </button>
               </div>
 
-              {/* Dropdown list of already created references */}
+              {/* Reference Dropdown */}
               {isRefOpen && (
                 <div
                   style={{
@@ -343,124 +358,122 @@ export default function IssueComplimentaryPassModal({
                     border: "1px solid #E5E7EB",
                     borderRadius: "8px",
                     boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
-                    maxHeight: "180px",
+                    maxHeight: "200px",
                     overflowY: "auto",
                   }}
                 >
                   {references.length === 0 ? (
-                    <div style={{ padding: "10px 12px", fontSize: "12px", color: "#6B7280" }}>
-                      No references found. Type to enter a custom reference.
+                    <div style={{ padding: "12px", fontSize: "12px", color: "#6B7280" }}>
+                      No references found. Please add a reference in Reference Management first.
+                    </div>
+                  ) : filteredReferences.length === 0 ? (
+                    <div style={{ padding: "12px", fontSize: "12px", color: "#6B7280" }}>
+                      No matching reference found.
                     </div>
                   ) : (
-                    references
-                      .filter((r) =>
-                        r.referenceName.toLowerCase().includes(reference.toLowerCase()) ||
-                        r.contactPerson.toLowerCase().includes(reference.toLowerCase()) ||
-                        r.department.toLowerCase().includes(reference.toLowerCase())
-                      )
-                      .map((r) => (
-                        <div
-                          key={r.id}
-                          onClick={() => {
-                            setReference(r.referenceName);
-                            if (!visitorName.trim()) {
-                              setVisitorName(r.contactPerson);
-                            }
-                            if (!mobile.trim()) {
-                              setMobile(r.mobile);
-                            }
-                            // Clear error states for auto-filled fields if any
-                            setErrors((prev) => ({
-                              ...prev,
-                              reference: "",
-                              visitorName: "",
-                              mobile: "",
-                            }));
-                            setIsRefOpen(false);
-                          }}
-                          style={{
-                            padding: "8px 12px",
-                            cursor: "pointer",
-                            borderBottom: "1px solid #F3F4F6",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: "2px",
-                            transition: "background 0.15s",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = "#F0F7FF";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = "transparent";
-                          }}
-                        >
-                          <div style={{ fontWeight: 600, fontSize: "12px", color: "#011B2F" }}>
-                            {r.referenceName}
-                          </div>
-                          <div style={{ fontSize: "11px", color: "#6B7280" }}>
-                            {r.contactPerson} {r.post && r.post !== "—" ? `(${r.post})` : ""} &bull; {r.department}
-                          </div>
+                    filteredReferences.map((r) => (
+                      <div
+                        key={r.id}
+                        onClick={() => {
+                          setReferenceId(r.id);
+                          setReferenceSearch(r.referenceName);
+                          if (!visitorName.trim()) {
+                            setVisitorName(r.contactPerson);
+                          }
+                          if (!mobile.trim()) {
+                            setMobile(r.mobile.replace(/\D/g, ""));
+                          }
+                          setErrors((prev) => ({
+                            ...prev,
+                            referenceId: "",
+                            visitorName: "",
+                            mobile: "",
+                          }));
+                          setIsRefOpen(false);
+                        }}
+                        style={{
+                          padding: "8px 12px",
+                          cursor: "pointer",
+                          borderBottom: "1px solid #F3F4F6",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "2px",
+                          transition: "background 0.15s",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "#F0F7FF";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "transparent";
+                        }}
+                      >
+                        <div style={{ fontWeight: 600, fontSize: "12px", color: "#011B2F" }}>
+                          {r.referenceName}
                         </div>
-                      ))
+                        <div style={{ fontSize: "11px", color: "#6B7280" }}>
+                          {r.contactPerson} {r.post ? `(${r.post})` : ""} &bull; {r.department} &bull; {r.mobile}
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               )}
-
-              {errors.reference && <p style={errorStyle}>{errors.reference}</p>}
+              {errors.referenceId && <p style={errorStyle}>{errors.referenceId}</p>}
             </div>
           </div>
 
-          {/* Date + Status */}
+          {/* Visit Date + Status */}
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
-              gap: "20px",
-              marginBottom: "28px",
+              gap: "18px",
+              marginBottom: "24px",
             }}
           >
             <div>
               <label style={labelStyle}>
-                Date <span style={{ color: "#DC2626" }}>*</span>
+                Visit Date <span style={{ color: "#DC2626" }}>*</span>
               </label>
               <input
                 type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
+                value={visitDate}
+                onChange={(e) => setVisitDate(e.target.value)}
                 style={inputStyle}
               />
-              {errors.fromDate && <p style={errorStyle}>{errors.fromDate}</p>}
+              {errors.visitDate && <p style={errorStyle}>{errors.visitDate}</p>}
             </div>
+
             <div>
               <label style={labelStyle}>Status</label>
               <select
                 value={status}
                 onChange={(e) =>
-                  setStatus(e.target.value as "Active" | "Used" | "Expired")
+                  setStatus(e.target.value as "ACTIVE" | "USED" | "EXPIRED")
                 }
                 style={{ ...inputStyle, cursor: "pointer" }}
               >
-                <option value="Active">Active</option>
-                <option value="Used">Used</option>
-                <option value="Expired">Expired</option>
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="USED">USED</option>
+                <option value="EXPIRED">EXPIRED</option>
               </select>
             </div>
           </div>
 
-          {/* Buttons */}
+          {/* Action Buttons */}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
             <button
               type="button"
               onClick={onClose}
               style={{
-                height: "36px",
+                height: "38px",
                 padding: "0 20px",
                 background: "#FFFFFF",
                 border: "1.5px solid rgba(179, 175, 175, 0.51)",
                 borderRadius: "8px",
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
                 fontWeight: 600,
-                fontSize: "14px",
+                fontSize: "13px",
                 color: "#374151",
                 cursor: "pointer",
               }}
@@ -471,14 +484,14 @@ export default function IssueComplimentaryPassModal({
               type="submit"
               disabled={isSaving}
               style={{
-                height: "36px",
-                padding: "0 30px",
+                height: "38px",
+                padding: "0 28px",
                 background: isSaving ? "#E5E7EB" : "#F4BC43",
                 border: "none",
                 borderRadius: "8px",
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
                 fontWeight: 700,
-                fontSize: "14px",
+                fontSize: "13px",
                 color: isSaving ? "#6B7280" : "#011B2F",
                 cursor: isSaving ? "not-allowed" : "pointer",
                 boxShadow: isSaving ? "none" : "0 4px 12px rgba(244,188,67,0.3)",
@@ -493,7 +506,7 @@ export default function IssueComplimentaryPassModal({
                   <span>Saving...</span>
                 </>
               ) : (
-                <span>Add</span>
+                <span>{passToEdit ? "Update Pass" : "Issue Pass"}</span>
               )}
             </button>
           </div>

@@ -253,9 +253,14 @@ export function GlobalDataTable<T>({
             ) : (
               currentData.map((item, idx) => {
                 const sNo = startIndex + idx + 1;
+                const rawKey = keyExtractor ? keyExtractor(item, startIndex + idx) : undefined;
+                const safeKey =
+                  rawKey !== undefined && rawKey !== null && String(rawKey).trim() !== ""
+                    ? String(rawKey)
+                    : (item as any)?.id || (item as any)?._id || `row-${startIndex + idx}`;
                 return (
                   <tr
-                    key={keyExtractor(item, startIndex + idx)}
+                    key={safeKey}
                     onClick={() => onRowClick?.(item)}
                     style={{
                       borderBottom: "1px solid rgba(179, 175, 175, 0.5)",

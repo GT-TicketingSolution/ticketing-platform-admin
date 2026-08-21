@@ -75,6 +75,12 @@ axiosInstance.interceptors.response.use(
     return response;
   },
   (error: AxiosError<{ success?: boolean; error?: { message?: string; code?: string }; message?: string }>) => {
+    // Skip global error modal for endpoints that handle inline errors (e.g. forgot-password)
+    const isForgotPassword = error.config?.url?.includes("/auth/forgot-password");
+    if ((error.config as any)?.skipErrorToast || isForgotPassword) {
+      return Promise.reject(error);
+    }
+
     if (!error.response) {
       showErrorOnce(ERROR_MESSAGES.NETWORK_ERROR, "Connection Error");
       return Promise.reject(error);

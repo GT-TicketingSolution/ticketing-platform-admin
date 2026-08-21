@@ -25,7 +25,15 @@ function buildInvoiceHTML(detail: BookingDetailItem, booking: BookingListItem): 
   const statusBg = upper === "CONFIRMED" ? "#B5FFE7" : upper === "CANCELLED" ? "#FEE2E2" : "#FFF8D9";
   const statusColor = upper === "CONFIRMED" ? "#119167" : upper === "CANCELLED" ? "#DC2626" : "#D97706";
 
-  const itemsHtml = (detail.items || []).map((item) => `
+  const ticketsList = (detail.tickets && detail.tickets.length > 0)
+    ? detail.tickets
+    : (detail.items && detail.items.length > 0)
+    ? detail.items
+    : (booking.tickets && booking.tickets.length > 0)
+    ? booking.tickets
+    : [];
+
+  const itemsHtml = ticketsList.map((item) => `
     <tr>
       <td style="padding:10px 14px;border-bottom:1px solid #E5E7EB;">${item.category}</td>
       <td style="padding:10px 14px;border-bottom:1px solid #E5E7EB;text-align:center;">${item.quantity}</td>
@@ -36,13 +44,19 @@ function buildInvoiceHTML(detail: BookingDetailItem, booking: BookingListItem): 
   const seatsHtml = (detail.seats || []).length > 0
     ? `<div style="background:#F8FAFC;padding:14px;border-radius:8px;border:1px solid #E2E8F0;margin-bottom:20px;font-size:13px;">
         <h4 style="margin:0 0 8px 0;font-size:14px;color:#0C2A42;">Seating Details</h4>
-        <div>${detail.seats.map((s) => `${s.bogie ? `Bogie ${s.bogie} – ` : ""}${s.seatNumber ?? "Seat"}`).join(", ")}</div>
+        <div>${(detail.seats || []).map((s) => `${s.bogie ? `Bogie ${s.bogie} – ` : ""}${s.seatNumber ?? "Seat"}`).join(", ")}</div>
       </div>`
     : "";
 
-  const totalAmount = Number(detail.payment?.totalAmount ?? booking.amount);
-  const amountPaid = Number(detail.payment?.amountPaid ?? booking.amountPaid);
-  const totalVisitors = (detail.items || []).reduce((s, i) => s + i.quantity, 0);
+  const totalAmount = Number(typeof detail.amount === "object" ? (detail.amount.total ?? detail.amount.subtotal) : (detail.payment?.totalAmount ?? detail.amount ?? booking.amount ?? 0));
+  const amountPaid = Number(typeof detail.amount === "object" ? (detail.amount.paid) : (detail.payment?.amountPaid ?? booking.amountPaid ?? totalAmount));
+  const totalVisitors = detail.visitors?.total ?? booking.visitors?.total ?? ticketsList.reduce((s, i) => s + (i.quantity || 0), 0);
+
+  const customerName = detail.customer?.name ?? booking.customer?.name ?? booking.customerName;
+  const customerMobile = detail.customer?.mobileNumber ?? detail.customer?.mobile ?? booking.customer?.mobileNumber ?? booking.customer?.mobile ?? booking.mobileNumber ?? "-";
+  const customerGst = detail.customer?.gstNumber ?? booking.customer?.gstNumber ?? "N/A";
+  const visitDate = formatDate(detail.dateTime ?? detail.visitAt ?? booking.dateTime ?? booking.bookingDate);
+  const paymentMode = detail.paymentMode ?? detail.payment?.mode ?? booking.paymentMode ?? "-";
 
   return `
     <div style="font-family:Arial,sans-serif;padding:30px;color:#011B2F;background:#FFFFFF;max-width:700px;margin:auto;">
@@ -64,23 +78,23 @@ function buildInvoiceHTML(detail: BookingDetailItem, booking: BookingListItem): 
           <td style="width:50%;vertical-align:top;padding-right:8px;">
             <div style="background:#F8FAFC;padding:14px;border-radius:8px;border:1px solid #E2E8F0;">
               <div style="font-size:14px;font-weight:bold;color:#0C2A42;margin-bottom:10px;">Customer Information</div>
-              <div style="font-size:13px;margin-bottom:4px;"><strong>Name:</strong> ${detail.customer?.name ?? booking.customerName}</div>
-              <div style="font-size:13px;margin-bottom:4px;"><strong>Mobile:</strong> ${detail.customer?.mobile ?? booking.mobileNumber ?? "-"}</div>
-              <div style="font-size:13px;"><strong>GSTN:</strong> ${detail.customer?.gstNumber ?? "N/A"}</div>
+              <div style="font-size:13px;margin-bottom:4px;"><strong>Name:</strong> ${customerName}</div>
+              <div style="font-size:13px;margin-bottom:4px;"><strong>Mobile:</strong> ${customerMobile}</div>
+              <div style="font-size:13px;"><strong>GSTN:</strong> ${customerGst}</div>
             </div>
           </td>
           <td style="width:50%;vertical-align:top;padding-left:8px;">
             <div style="background:#F8FAFC;padding:14px;border-radius:8px;border:1px solid #E2E8F0;">
               <div style="font-size:14px;font-weight:bold;color:#0C2A42;margin-bottom:10px;">Booking Information</div>
               <div style="font-size:13px;margin-bottom:4px;"><strong>Attraction:</strong> ${detail.attraction?.name ?? booking.attraction?.name ?? "-"}</div>
-              <div style="font-size:13px;margin-bottom:4px;"><strong>Visit Date:</strong> ${formatDate(detail.visitAt ?? booking.bookingDate)}</div>
-              <div style="font-size:13px;"><strong>Payment Mode:</strong> ${detail.payment?.mode ?? booking.paymentMode ?? "-"}</div>
+              <div style="font-size:13px;margin-bottom:4px;"><strong>Date & Time:</strong> ${visitDate}</div>
+              <div style="font-size:13px;"><strong>Payment Mode:</strong> ${paymentMode}</div>
             </div>
           </td>
         </tr>
       </table>
 
-      ${(detail.items || []).length > 0 ? `
+      ${ticketsList.length > 0 ? `
       <div style="border:2px solid #0084FF;border-radius:8px;overflow:hidden;margin-bottom:20px;">
         <div style="padding:10px 14px;background:#FFFFFF;border-bottom:1px solid #E5E7EB;font-weight:bold;font-size:14px;color:#0C2A42;">Ticket Summary</div>
         <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -110,7 +124,7 @@ function buildInvoiceHTML(detail: BookingDetailItem, booking: BookingListItem): 
         <div style="font-size:14px;font-weight:bold;color:#0C2A42;margin-bottom:12px;">Payment Summary</div>
         <table style="width:100%;border-collapse:collapse;font-size:13px;">
           <tr>
-            <td style="padding:4px 0;color:#6B7280;width:50%;"><strong style="color:#0C2A42;">Payment Mode:</strong> ${detail.payment?.mode ?? booking.paymentMode ?? "-"}</td>
+            <td style="padding:4px 0;color:#6B7280;width:50%;"><strong style="color:#0C2A42;">Payment Mode:</strong> ${paymentMode}</td>
             <td style="padding:4px 0;text-align:right;"><strong style="color:#0C2A42;">Status:</strong> Paid in Full</td>
           </tr>
           <tr>
@@ -251,7 +265,7 @@ export default function BookingDetailsModal({ booking, isOpen, onClose }: Bookin
                   {booking.bookingId}
                 </div>
                 <div style={{ fontFamily: typography.fontFamily.sans, fontSize: "13px", color: colors.text.muted, marginTop: "2px" }}>
-                  Booked on {formatDate(booking.bookingDate)}
+                  Date: {formatDate(booking.dateTime || booking.bookingDate)}
                 </div>
               </div>
             </div>
@@ -283,9 +297,9 @@ export default function BookingDetailsModal({ booking, isOpen, onClose }: Bookin
                     </span>
                   </div>
                   {[
-                    ["Customer Name:", detail?.customer?.name ?? booking.customerName],
-                    ["Mobile Number:", detail?.customer?.mobile ?? booking.mobileNumber],
-                    ["GSTN:", detail?.customer?.gstNumber ?? "N/A"],
+                    ["Customer Name:", detail?.customer?.name ?? booking.customer?.name ?? booking.customerName],
+                    ["Mobile Number:", detail?.customer?.mobileNumber ?? detail?.customer?.mobile ?? booking.customer?.mobileNumber ?? booking.customer?.mobile ?? booking.mobileNumber],
+                    ["GSTN:", detail?.customer?.gstNumber ?? booking.customer?.gstNumber ?? "N/A"],
                   ].map(([label, value]) => (
                     <div key={label} style={{ display: "flex", gap: "8px", marginBottom: "8px", fontSize: "13px" }}>
                       <span style={{ color: colors.text.muted, minWidth: "110px" }}>{label}</span>
@@ -304,8 +318,9 @@ export default function BookingDetailsModal({ booking, isOpen, onClose }: Bookin
                   </div>
                   {[
                     ["Attraction:", detail?.attraction?.name ?? booking.attraction?.name ?? "-"],
-                    ["Visit Date:", formatDate(detail?.visitAt ?? booking.bookingDate)],
-                    ["Payment Mode:", detail?.payment?.mode ?? booking.paymentMode ?? "-"],
+                    ["Date & Time:", formatDate(detail?.dateTime ?? detail?.visitAt ?? booking.dateTime ?? booking.bookingDate)],
+                    ["Visitors:", String(detail?.visitors?.total ?? booking.visitors?.total ?? "-")],
+                    ["Payment Mode:", detail?.paymentMode ?? detail?.payment?.mode ?? booking.paymentMode ?? "-"],
                   ].map(([label, value]) => (
                     <div key={label} style={{ display: "flex", gap: "8px", marginBottom: "8px", fontSize: "13px" }}>
                       <span style={{ color: colors.text.muted, minWidth: "110px" }}>{label}</span>
@@ -316,41 +331,54 @@ export default function BookingDetailsModal({ booking, isOpen, onClose }: Bookin
               </div>
 
               {/* Ticket Summary */}
-              {detail?.items && detail.items.length > 0 && (
-                <div style={{ border: "2px solid #e6eaef", borderRadius: "8px" }}>
-                  <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(0,0,0,0.08)" }}>
-                    <span style={{ fontFamily: typography.fontFamily.sans, fontWeight: 700, fontSize: "14px", color: "#011B2F" }}>
-                      Ticket Summary
-                    </span>
-                  </div>
-                  {/* Header */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 120px 120px", padding: "10px 20px", background: "#F1F5F9", borderBottom: "1px solid #E5E7EB" }}>
-                    <span style={{ fontSize: "12px", fontWeight: 600, color: "#6B7280" }}>Category</span>
-                    <span style={{ fontSize: "12px", fontWeight: 600, color: "#6B7280", textAlign: "center" }}>Quantity</span>
-                    <span style={{ fontSize: "12px", fontWeight: 600, color: "#6B7280", textAlign: "right" }}>Unit Price</span>
-                    <span style={{ fontSize: "12px", fontWeight: 600, color: "#6B7280", textAlign: "right" }}>Total</span>
-                  </div>
-                  {detail.items.map((item, idx) => (
-                    <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 120px 120px 120px", padding: "12px 20px", borderBottom: "1px solid #F3F4F6" }}>
-                      <span style={{ fontSize: "13px", fontWeight: 500, color: "#374151" }}>{item.category}</span>
-                      <span style={{ fontSize: "13px", color: "#374151", textAlign: "center" }}>{item.quantity}</span>
-                      <span style={{ fontSize: "13px", color: "#374151", textAlign: "right" }}>₹{Number(item.unitPrice).toFixed(2)}</span>
-                      <span style={{ fontSize: "13px", fontWeight: 600, color: "#374151", textAlign: "right" }}>₹{Number(item.totalPrice).toFixed(2)}</span>
+              {(() => {
+                const ticketsList = (detail?.tickets && detail.tickets.length > 0)
+                  ? detail.tickets
+                  : (detail?.items && detail.items.length > 0)
+                  ? detail.items
+                  : (booking.tickets && booking.tickets.length > 0)
+                  ? booking.tickets
+                  : [];
+                if (ticketsList.length === 0) return null;
+                const totalAmt = typeof detail?.amount === "object" && detail.amount !== null
+                  ? Number(detail.amount.total ?? detail.amount.subtotal ?? 0)
+                  : Number(detail?.payment?.totalAmount ?? booking.amount ?? 0);
+                return (
+                  <div style={{ border: "2px solid #e6eaef", borderRadius: "8px" }}>
+                    <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(0,0,0,0.08)" }}>
+                      <span style={{ fontFamily: typography.fontFamily.sans, fontWeight: 700, fontSize: "14px", color: "#011B2F" }}>
+                        Ticket Summary
+                      </span>
                     </div>
-                  ))}
-                  {/* Totals row */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 120px 120px", padding: "14px 20px", background: "#FFFBEB" }}>
-                    <span style={{ fontSize: "14px", fontWeight: 700, color: "#011B2F" }}>Total Visitors</span>
-                    <span style={{ fontSize: "14px", fontWeight: 700, color: "#011B2F", textAlign: "center" }}>
-                      {detail.items.reduce((s, i) => s + i.quantity, 0)}
-                    </span>
-                    <span />
-                    <span style={{ fontSize: "18px", fontWeight: 800, color: "#011B2F", textAlign: "right" }}>
-                      ₹{Number(detail.payment?.totalAmount ?? booking.amount).toFixed(2)}
-                    </span>
+                    {/* Header */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 120px 120px", padding: "10px 20px", background: "#F1F5F9", borderBottom: "1px solid #E5E7EB" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 600, color: "#6B7280" }}>Category</span>
+                      <span style={{ fontSize: "12px", fontWeight: 600, color: "#6B7280", textAlign: "center" }}>Qty</span>
+                      <span style={{ fontSize: "12px", fontWeight: 600, color: "#6B7280", textAlign: "right" }}>Unit Price</span>
+                      <span style={{ fontSize: "12px", fontWeight: 600, color: "#6B7280", textAlign: "right" }}>Total</span>
+                    </div>
+                    {ticketsList.map((item, idx) => (
+                      <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 120px 120px 120px", padding: "12px 20px", borderBottom: "1px solid #F3F4F6" }}>
+                        <span style={{ fontSize: "13px", fontWeight: 500, color: "#374151" }}>{item.category}</span>
+                        <span style={{ fontSize: "13px", color: "#374151", textAlign: "center" }}>{item.quantity}</span>
+                        <span style={{ fontSize: "13px", color: "#374151", textAlign: "right" }}>₹{Number(item.unitPrice).toFixed(2)}</span>
+                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#374151", textAlign: "right" }}>₹{Number(item.totalPrice).toFixed(2)}</span>
+                      </div>
+                    ))}
+                    {/* Totals row */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 120px 120px", padding: "14px 20px", background: "#FFFBEB" }}>
+                      <span style={{ fontSize: "14px", fontWeight: 700, color: "#011B2F" }}>Total Visitors</span>
+                      <span style={{ fontSize: "14px", fontWeight: 700, color: "#011B2F", textAlign: "center" }}>
+                        {detail?.visitors?.total ?? booking.visitors?.total ?? ticketsList.reduce((s, i) => s + (i.quantity || 0), 0)}
+                      </span>
+                      <span />
+                      <span style={{ fontSize: "18px", fontWeight: 800, color: "#011B2F", textAlign: "right" }}>
+                        ₹{totalAmt.toFixed(2)}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Seats */}
               {detail?.seats && detail.seats.length > 0 && (
@@ -379,16 +407,37 @@ export default function BookingDetailsModal({ booking, isOpen, onClose }: Bookin
                 <span style={{ fontFamily: typography.fontFamily.sans, fontWeight: 700, fontSize: "14px", color: colors.sidebar.bg, display: "block", marginBottom: "10px" }}>
                   Payment Summary
                 </span>
-                <div style={{ display: "flex", fontSize: "13px" }}>
-                  <div style={{ flex: 1, borderRight: "1px solid #E5E7EB", paddingRight: "20px" }}>
-                    <span style={{ color: colors.text.muted }}>Total Amount: </span>
-                    <strong style={{ color: colors.text.primary }}>₹{Number(detail?.payment?.totalAmount ?? booking.amount).toFixed(2)}</strong>
-                  </div>
-                  <div style={{ paddingLeft: "20px" }}>
-                    <span style={{ color: colors.text.muted }}>Amount Paid: </span>
-                    <strong style={{ color: colors.text.primary }}>₹{Number(detail?.payment?.amountPaid ?? booking.amountPaid).toFixed(2)}</strong>
-                  </div>
-                </div>
+                {(() => {
+                  const amtObj = typeof detail?.amount === "object" && detail.amount !== null ? detail.amount : null;
+                  const total = amtObj ? Number(amtObj.total ?? amtObj.subtotal ?? 0) : Number(detail?.payment?.totalAmount ?? booking.amount ?? 0);
+                  const paid = amtObj ? Number(amtObj.paid ?? 0) : Number(detail?.payment?.amountPaid ?? booking.amountPaid ?? total);
+                  const due = amtObj ? Number(amtObj.due ?? 0) : Number(detail?.payment?.amountDue ?? booking.amountDue ?? 0);
+                  const gst = amtObj ? Number(amtObj.gstAmount ?? 0) : 0;
+                  return (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "13px" }}>
+                      <div>
+                        <span style={{ color: colors.text.muted }}>Total Amount: </span>
+                        <strong style={{ color: colors.text.primary }}>₹{total.toFixed(2)}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: colors.text.muted }}>Amount Paid: </span>
+                        <strong style={{ color: "#119167" }}>₹{paid.toFixed(2)}</strong>
+                      </div>
+                      {gst > 0 && (
+                        <div>
+                          <span style={{ color: colors.text.muted }}>GST: </span>
+                          <strong style={{ color: colors.text.primary }}>₹{gst.toFixed(2)}</strong>
+                        </div>
+                      )}
+                      {due > 0 && (
+                        <div>
+                          <span style={{ color: colors.text.muted }}>Amount Due: </span>
+                          <strong style={{ color: "#DC2626" }}>₹{due.toFixed(2)}</strong>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </>
           )}
