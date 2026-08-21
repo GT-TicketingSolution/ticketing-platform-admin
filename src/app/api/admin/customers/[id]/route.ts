@@ -51,13 +51,7 @@ export async function PATCH(
     }
 
     const existing = await db.query.customers.findFirst({
-      where: and(
-        eq(customers.id, id),
-
-        eq(customers.adminId, adminId),
-
-        eq(customers.isDeleted, false),
-      ),
+      where: and(eq(customers.id, id), eq(customers.isDeleted, false)),
     });
 
     if (!existing) {
@@ -110,8 +104,6 @@ export async function DELETE(
     const existing = await db.query.customers.findFirst({
       where: and(
         eq(customers.id, id),
-
-        eq(customers.adminId, adminId),
 
         eq(customers.isDeleted, false),
       ),

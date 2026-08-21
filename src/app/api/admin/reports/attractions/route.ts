@@ -18,10 +18,14 @@ export async function GET(req: Request) {
       fromDate: params.get("fromDate") ?? undefined,
 
       toDate: params.get("toDate") ?? undefined,
+
+      attractionId: params.get("attractionId") ?? undefined,
     });
 
     return success(data);
   } catch (error) {
+    console.error(error);
+
     return failure("Unable to fetch attraction reports", 500, "REPORT_ERROR");
   }
 }

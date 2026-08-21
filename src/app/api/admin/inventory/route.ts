@@ -3,46 +3,58 @@ import { NextRequest } from "next/server";
 import {
   getInventory,
   upsertDailyCapacity,
-} from "@/services/inventory.repository";
+} from "@/services/inventory.service";
 
 import { failure, success } from "@/lib/api/response";
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAuth } from "@/lib/auth/require-auth";
 
 export async function GET(request: NextRequest) {
   try {
-    // --------------------------------------------------
-    // AUTH
-    // --------------------------------------------------
+    // =====================================================
+    // AUTHENTICATION
+    // =====================================================
 
-    const auth = await requireAdmin(request);
+    const auth = await requireAuth(request);
 
-    const adminId = auth.adminId;
+    if (auth.user.role !== "ADMIN" && auth.user.role !== "MANAGER") {
+      return failure("Admin or manager access required.", 403, "FORBIDDEN");
+    }
 
-    // --------------------------------------------------
+    // =====================================================
+    // TENANT
+    // =====================================================
+
+    const adminId =
+      auth.user.role === "ADMIN" ? auth.user.id : auth.user.adminId;
+
+    if (!adminId) {
+      return failure("Admin context not found.", 403, "ADMIN_CONTEXT_REQUIRED");
+    }
+
+    // =====================================================
     // QUERY PARAMS
-    // --------------------------------------------------
+    // =====================================================
 
     const { searchParams } = new URL(request.url);
 
-    const page = Number(searchParams.get("page")) || 1;
+    const page = Math.max(Number(searchParams.get("page")) || 1, 1);
 
-    const limit = Number(searchParams.get("limit")) || 10;
+    const limit = Math.min(
+      Math.max(Number(searchParams.get("limit")) || 10, 1),
+      100,
+    );
 
-    const search = searchParams.get("search") || undefined;
+    const search = searchParams.get("search")?.trim() || undefined;
 
-    const attractionId = searchParams.get("attractionId") || undefined;
+    const attractionId = searchParams.get("attractionId")?.trim() || undefined;
 
-    const dateFrom = searchParams.get("dateFrom") || undefined;
+    const dateFrom = searchParams.get("dateFrom")?.trim() || undefined;
 
-    const dateTo = searchParams.get("dateTo") || undefined;
+    const dateTo = searchParams.get("dateTo")?.trim() || undefined;
 
-    // --------------------------------------------------
+    // =====================================================
     // GET INVENTORY
-    //
-    // IMPORTANT:
-    // Pass adminId so repository only returns
-    // inventory belonging to this admin's attractions.
-    // --------------------------------------------------
+    // =====================================================
 
     const data = await getInventory({
       adminId,
@@ -64,25 +76,38 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // --------------------------------------------------
-    // AUTH
-    // --------------------------------------------------
+    // =====================================================
+    // AUTHENTICATION
+    // =====================================================
 
-    const auth = await requireAdmin(request);
+    const auth = await requireAuth(request);
 
-    const adminId = auth.adminId;
+    if (auth.user.role !== "ADMIN" && auth.user.role !== "MANAGER") {
+      return failure("Admin or manager access required.", 403, "FORBIDDEN");
+    }
 
-    // --------------------------------------------------
+    // =====================================================
+    // TENANT
+    // =====================================================
+
+    const adminId =
+      auth.user.role === "ADMIN" ? auth.user.id : auth.user.adminId;
+
+    if (!adminId) {
+      return failure("Admin context not found.", 403, "ADMIN_CONTEXT_REQUIRED");
+    }
+
+    // =====================================================
     // BODY
-    // --------------------------------------------------
+    // =====================================================
 
     const body = await request.json();
 
     const { attractionId, capacityDate, totalCapacity } = body;
 
-    // --------------------------------------------------
-    // BASIC VALIDATION
-    // --------------------------------------------------
+    // =====================================================
+    // VALIDATION
+    // =====================================================
 
     if (!attractionId) {
       return failure(
@@ -100,7 +125,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!Number.isInteger(Number(totalCapacity)) || Number(totalCapacity) < 0) {
+    const parsedCapacity = Number(totalCapacity);
+
+    if (!Number.isInteger(parsedCapacity) || parsedCapacity < 0) {
       return failure(
         "Total capacity must be a non-negative integer.",
         400,
@@ -108,19 +135,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // --------------------------------------------------
-    // CREATE / UPDATE DAILY CAPACITY
-    //
-    // IMPORTANT:
-    // adminId is passed so the repository can verify
-    // that the attraction belongs to this admin.
-    // --------------------------------------------------
+    // =====================================================
+    // CREATE / UPDATE CAPACITY
+    // =====================================================
 
     const data = await upsertDailyCapacity({
       adminId,
       attractionId,
       capacityDate,
-      totalCapacity: Number(totalCapacity),
+      totalCapacity: parsedCapacity,
     });
 
     return success(data);

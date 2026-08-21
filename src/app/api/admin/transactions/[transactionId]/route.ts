@@ -17,6 +17,11 @@ import { success, failure } from "@/lib/api/response";
 // ADMIN + MANAGER
 // =====================================================
 
+// =====================================================
+// GET TRANSACTION DETAILS
+// ADMIN + MANAGER
+// =====================================================
+
 export async function GET(
   request: Request,
   {
@@ -69,7 +74,7 @@ export async function GET(
     }
 
     // =================================================
-    // MANAGER ATTRACTIONS
+    // MANAGER ATTRACTION ACCESS
     // =================================================
 
     let allowedAttractionIds: string[] = [];
@@ -107,8 +112,6 @@ export async function GET(
 
     const [transaction] = await db
       .select({
-        id: transactions.id,
-
         transactionId: transactions.transactionNumber,
 
         invoiceNumber: transactions.invoiceNumber,
@@ -121,21 +124,7 @@ export async function GET(
 
         transactionDate: transactions.createdAt,
 
-        updatedAt: transactions.updatedAt,
-
-        bookingId: bookings.id,
-
         bookingNumber: bookings.bookingNumber,
-
-        customerName: bookings.customerName,
-
-        mobileNumber: bookings.mobileNumber,
-
-        gstNumber: bookings.gstNumber,
-
-        attractionId: attractions.id,
-
-        attractionName: attractions.name,
       })
       .from(transactions)
       .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
@@ -173,45 +162,21 @@ export async function GET(
 
     return success({
       transaction: {
-        id: transaction.id,
+        transactionRef: transaction.transactionId,
 
         transactionId: transaction.transactionId,
 
-        invoiceNumber: transaction.invoiceNumber,
+        dateTime: transaction.transactionDate,
 
-        booking: {
-          id: transaction.bookingId,
+        invoiceId: transaction.invoiceNumber,
 
-          bookingId: transaction.bookingNumber,
-        },
+        bookingId: transaction.bookingNumber,
 
-        customer: {
-          name: transaction.customerName,
+        paymentMode: transaction.paymentMode,
 
-          mobile: transaction.mobileNumber,
+        amountPaid: Number(transaction.amount),
 
-          gstNumber: transaction.gstNumber,
-        },
-
-        attraction: {
-          id: transaction.attractionId,
-
-          name: transaction.attractionName,
-        },
-
-        transactionDate: transaction.transactionDate,
-
-        payment: {
-          mode: transaction.paymentMode,
-
-          amount: Number(transaction.amount),
-
-          status: transaction.status,
-        },
-
-        createdAt: transaction.transactionDate,
-
-        updatedAt: transaction.updatedAt,
+        status: transaction.status,
       },
     });
   } catch (error) {

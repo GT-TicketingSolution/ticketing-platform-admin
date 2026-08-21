@@ -1,52 +1,31 @@
-import {
-getPaymentDistribution
-} from "@/services/report.service";
+import { getPaymentDistribution } from "@/services/report.service";
 
+import { requireAuth } from "@/lib/auth/require-auth";
 
-import {
-requireAuth
-} from "@/lib/auth/require-auth";
+import { getAdminId } from "@/lib/auth/get-admin-id";
 
+import { success, failure } from "@/lib/api/response";
 
-import {
-getAdminId
-} from "@/lib/auth/get-admin-id";
+export async function GET(req: Request) {
+  try {
+    const auth = await requireAuth(req);
 
+    const params = new URL(req.url).searchParams;
 
-import {
-success,
-failure
-} from "@/lib/api/response";
+    const data = await getPaymentDistribution({
+      adminId: getAdminId(auth),
 
+      fromDate: params.get("fromDate") ?? undefined,
 
-export async function GET(req:Request){
+      toDate: params.get("toDate") ?? undefined,
 
-try{
+      attractionId: params.get("attractionId") ?? undefined,
+    });
 
-const auth=
-await requireAuth(req);
+    return success(data);
+  } catch (error) {
+    console.error(error);
 
-
-const data=
-await getPaymentDistribution({
-
-adminId:getAdminId(auth)
-
-});
-
-
-return success(data);
-
-
-}catch(error){
-
-return failure(
-"Unable to fetch payment report",
-500,
-"REPORT_ERROR"
-);
-
-
-}
-
+    return failure("Unable to fetch payment report", 500, "REPORT_ERROR");
+  }
 }

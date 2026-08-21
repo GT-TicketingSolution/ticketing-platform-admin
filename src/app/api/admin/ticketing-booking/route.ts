@@ -78,8 +78,6 @@ const createBookingSchema = z.object({
 
   payment: z.object({
     mode: z.enum(["CASH", "UPI", "CARD", "ONLINE"]),
-
-    amountReceived: z.number().nonnegative().optional(),
   }),
 });
 
@@ -288,17 +286,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (
-      data.payment.amountReceived !== undefined &&
-      data.payment.amountReceived < data.amountPaid
-    ) {
-      return failure(
-        "Amount received cannot be less than amount paid.",
-        400,
-        "INVALID_AMOUNT_RECEIVED",
-      );
-    }
-
     // ---------------------------------------------
     // CREATE EVERYTHING IN TRANSACTION
     // ---------------------------------------------
@@ -404,11 +391,11 @@ export async function POST(request: NextRequest) {
       // CREATE TRANSACTION
       // -------------------------------------------
 
+      // -------------------------------------------
+      // CREATE TRANSACTION
+      // -------------------------------------------
+
       const transactionNumber = await generateTransactionNumber(tx);
-
-      const amountReceived = data.payment.amountReceived ?? data.amountPaid;
-
-      const changeReturned = Math.max(0, amountReceived - data.amountPaid);
 
       const [transaction] = await tx
         .insert(transactions)
@@ -418,10 +405,6 @@ export async function POST(request: NextRequest) {
           bookingId: booking.id,
 
           amount: data.amountPaid.toFixed(2),
-
-          amountReceived: amountReceived.toFixed(2),
-
-          changeReturned: changeReturned.toFixed(2),
 
           paymentMode: data.payment.mode,
 
@@ -434,13 +417,11 @@ export async function POST(request: NextRequest) {
 
           amount: transactions.amount,
 
-          amountReceived: transactions.amountReceived,
-
-          changeReturned: transactions.changeReturned,
-
           paymentMode: transactions.paymentMode,
 
           status: transactions.status,
+
+          createdAt: transactions.createdAt,
         });
 
       return {

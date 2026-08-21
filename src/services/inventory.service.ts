@@ -16,11 +16,10 @@ import { db } from "@/db";
 import {
   attractions,
   attractionDailyCapacities,
-  attractionSlotCapacities,
-  attractionTimeSlots,
+  attractionInventory,
+  attractionInventorySlots,
   bookings,
   bookingItems,
-  bookingSeats,
 } from "@/db/schema";
 
 /* =========================================================
@@ -29,18 +28,26 @@ import {
 
 export type InventoryFilters = {
   adminId: string;
+
   page?: number;
   limit?: number;
+
   search?: string;
+
   attractionId?: string;
+
   dateFrom?: string;
+
   dateTo?: string;
 };
 
 type UpsertDailyCapacityInput = {
   adminId: string;
+
   attractionId: string;
+
   capacityDate: string;
+
   totalCapacity: number;
 };
 
@@ -83,13 +90,17 @@ function getUtilizationRate(capacity: number, booked: number): number {
 ========================================================= */
 
 export async function getInventory(filters: InventoryFilters) {
+  /* =======================================================
+     VALIDATION
+  ======================================================= */
+
   if (!filters.adminId) {
     throw new Error("Admin ID is required.");
   }
 
-  /* -------------------------------------------------------
+  /* =======================================================
      PAGINATION
-  ------------------------------------------------------- */
+  ======================================================= */
 
   const page = Math.max(Number(filters.page) || 1, 1);
 
@@ -97,38 +108,25 @@ export async function getInventory(filters: InventoryFilters) {
 
   const offset = (page - 1) * limit;
 
-  /* -------------------------------------------------------
+  /* =======================================================
      DATE
-  ------------------------------------------------------- */
+  ======================================================= */
 
   const today = new Date().toISOString().slice(0, 10);
 
-  /*
-   * No date:
-   *     today's inventory
-   *
-   * dateFrom only:
-   *     exact date
-   *
-   * dateFrom + dateTo:
-   *     date range
-   *
-   * dateTo only:
-   *     everything <= dateTo
-   */
-
-  /* -------------------------------------------------------
+  /* =======================================================
      BASE CONDITIONS
-  ------------------------------------------------------- */
+  ======================================================= */
 
   const conditions = [
     eq(attractions.adminId, filters.adminId),
+
     eq(attractions.status, "ACTIVE"),
   ];
 
-  /* -------------------------------------------------------
+  /* =======================================================
      ATTRACTION FILTER
-  ------------------------------------------------------- */
+  ======================================================= */
 
   if (filters.attractionId) {
     conditions.push(
@@ -136,17 +134,17 @@ export async function getInventory(filters: InventoryFilters) {
     );
   }
 
-  /* -------------------------------------------------------
+  /* =======================================================
      SEARCH
-  ------------------------------------------------------- */
+  ======================================================= */
 
   if (filters.search?.trim()) {
     conditions.push(ilike(attractions.name, `%${filters.search.trim()}%`));
   }
 
-  /* -------------------------------------------------------
+  /* =======================================================
      DATE FILTER
-  ------------------------------------------------------- */
+  ======================================================= */
 
   if (filters.dateFrom && filters.dateTo) {
     conditions.push(
@@ -241,145 +239,214 @@ export async function getInventory(filters: InventoryFilters) {
   }
 
   /* =======================================================
-     ATTRACTION IDS
+     DISPLAYED ATTRACTIONS
   ======================================================= */
 
   const attractionIds = [...new Set(dailyRows.map((row) => row.attractionId))];
 
   /* =======================================================
-     BOOKED SEATS
+     DISPLAYED DATES
   ======================================================= */
 
-  const bookedRows = await db
-    .select({
-      attractionId: bookings.attractionId,
+  const inventoryDates = [...new Set(dailyRows.map((row) => row.capacityDate))];
 
-      booked: sql<number>`
-        COALESCE(
-          SUM(${bookingItems.quantity}),
-          0
-        )
-      `,
-    })
-    .from(bookingItems)
-    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
-    .where(
-      and(
-        inArray(bookings.attractionId, attractionIds),
+  /* =======================================================
+     BOOKED TICKETS PER ATTRACTION + DATE
+  ======================================================= */
 
-        /*
-         * Booking visit date must match
-         * the inventory date.
-         *
-         * For a range query we still calculate
-         * against each displayed inventory date
-         * below. Therefore this aggregate is only
-         * appropriate for a single date.
-         */
-        sql`DATE(${bookings.visitAt}) = ${filters.dateFrom || today}`,
+  const bookedRows =
+    attractionIds.length > 0 && inventoryDates.length > 0
+      ? await db
+          .select({
+            attractionId: bookings.attractionId,
 
-        ne(bookings.status, "CANCELLED"),
-      ),
-    )
-    .groupBy(bookings.attractionId);
+            visitDate: sql<string>`
+              DATE(${bookings.visitAt})
+            `,
+
+            booked: sql<number>`
+              COALESCE(
+                SUM(${bookingItems.quantity}),
+                0
+              )
+            `,
+          })
+          .from(bookingItems)
+          .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
+          .where(
+            and(
+              inArray(bookings.attractionId, attractionIds),
+
+              sql`
+                DATE(${bookings.visitAt})
+                IN (
+                  ${sql.join(
+                    inventoryDates.map((date) => sql`${date}`),
+                    sql`, `,
+                  )}
+                )
+              `,
+
+              ne(bookings.status, "CANCELLED"),
+
+              eq(bookings.isDeleted, false),
+            ),
+          )
+          .groupBy(bookings.attractionId, sql`DATE(${bookings.visitAt})`)
+      : [];
+
+  /* =======================================================
+     BOOKED MAP
+  ======================================================= */
 
   const bookedMap = new Map<string, number>();
 
   for (const row of bookedRows) {
-    bookedMap.set(row.attractionId, Number(row.booked || 0));
+    bookedMap.set(
+      `${row.attractionId}_${row.visitDate}`,
+      Number(row.booked || 0),
+    );
   }
 
   /* =======================================================
-     SLOT CAPACITY
+     INVENTORY SLOT CAPACITIES
   ======================================================= */
 
-  const inventoryIds = dailyRows.map((row) => row.id);
+  /*
+   * IMPORTANT:
+   *
+   * attractionDailyCapacities
+   * and
+   * attractionInventory
+   *
+   * are different tables.
+   *
+   * Therefore we match inventory using:
+   *
+   * attractionId + inventoryDate
+   */
 
   const slotRows =
-    inventoryIds.length > 0
+    attractionIds.length > 0 && inventoryDates.length > 0
       ? await db
           .select({
-            attractionId: attractionDailyCapacities.attractionId,
+            inventoryId: attractionInventory.id,
 
-            capacityDate: attractionSlotCapacities.capacityDate,
+            attractionId: attractionInventory.attractionId,
 
-            slotId: attractionTimeSlots.id,
+            inventoryDate: attractionInventory.inventoryDate,
 
-            slotTime: attractionTimeSlots.slotTime,
+            slotId: attractionInventorySlots.id,
 
-            isActive: attractionTimeSlots.isActive,
+            slotTime: attractionInventorySlots.slotTime,
 
-            capacity: attractionSlotCapacities.capacity,
+            capacity: attractionInventorySlots.capacity,
           })
-          .from(attractionSlotCapacities)
+          .from(attractionInventory)
           .innerJoin(
-            attractionTimeSlots,
-            eq(attractionSlotCapacities.timeSlotId, attractionTimeSlots.id),
-          )
-          .innerJoin(
-            attractionDailyCapacities,
-            and(
-              eq(
-                attractionSlotCapacities.capacityDate,
-                attractionDailyCapacities.capacityDate,
-              ),
-
-              eq(
-                attractionTimeSlots.attractionId,
-                attractionDailyCapacities.attractionId,
-              ),
-            ),
+            attractionInventorySlots,
+            eq(attractionInventorySlots.inventoryId, attractionInventory.id),
           )
           .innerJoin(
             attractions,
-            eq(attractionDailyCapacities.attractionId, attractions.id),
+            eq(attractionInventory.attractionId, attractions.id),
           )
           .where(
             and(
               eq(attractions.adminId, filters.adminId),
 
-              inArray(attractionDailyCapacities.id, inventoryIds),
+              eq(attractions.status, "ACTIVE"),
 
-              eq(attractionTimeSlots.isActive, true),
+              inArray(attractionInventory.attractionId, attractionIds),
+
+              sql`
+                ${attractionInventory.inventoryDate}
+                IN (
+                  ${sql.join(
+                    inventoryDates.map((date) => sql`${date}`),
+                    sql`, `,
+                  )}
+                )
+              `,
             ),
           )
           .orderBy(
-            asc(attractionSlotCapacities.capacityDate),
-            asc(attractionTimeSlots.slotTime),
+            asc(attractionInventory.inventoryDate),
+            asc(attractionInventorySlots.slotTime),
           )
       : [];
+
+  /* =======================================================
+     SLOT IDS
+  ======================================================= */
+
+  const slotIds = [...new Set(slotRows.map((slot) => slot.slotId))];
 
   /* =======================================================
      SLOT BOOKINGS
   ======================================================= */
 
-  const slotIds = [...new Set(slotRows.map((slot) => slot.slotId))];
+  /*
+   * bookingItems.timeSlotId
+   * must correspond to
+   * attractionInventorySlots.id
+   *
+   * bookingItems.quantity
+   * is the booked quantity.
+   */
 
   const slotBookedRows =
     slotIds.length > 0
       ? await db
           .select({
-            slotId: bookingSeats.slotId,
+            slotId: bookingItems.timeSlotId,
 
-            visitDate: bookingSeats.visitDate,
+            visitDate: sql<string>`
+              DATE(${bookings.visitAt})
+            `,
 
-            booked: count(bookingSeats.id),
+            booked: sql<number>`
+              COALESCE(
+                SUM(${bookingItems.quantity}),
+                0
+              )
+            `,
           })
-          .from(bookingSeats)
-          .innerJoin(bookings, eq(bookingSeats.bookingId, bookings.id))
+          .from(bookingItems)
+          .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
           .where(
             and(
-              inArray(bookingSeats.slotId, slotIds),
+              inArray(bookingItems.timeSlotId, slotIds),
+
+              sql`
+                DATE(${bookings.visitAt})
+                IN (
+                  ${sql.join(
+                    inventoryDates.map((date) => sql`${date}`),
+                    sql`, `,
+                  )}
+                )
+              `,
 
               ne(bookings.status, "CANCELLED"),
+
+              eq(bookings.isDeleted, false),
             ),
           )
-          .groupBy(bookingSeats.slotId, bookingSeats.visitDate)
+          .groupBy(bookingItems.timeSlotId, sql`DATE(${bookings.visitAt})`)
       : [];
+
+  /* =======================================================
+     SLOT BOOKED MAP
+  ======================================================= */
 
   const slotBookedMap = new Map<string, number>();
 
   for (const row of slotBookedRows) {
+    if (!row.slotId) {
+      continue;
+    }
+
     slotBookedMap.set(
       `${row.slotId}_${row.visitDate}`,
       Number(row.booked || 0),
@@ -393,7 +460,7 @@ export async function getInventory(filters: InventoryFilters) {
   const slotMap = new Map<string, typeof slotRows>();
 
   for (const slot of slotRows) {
-    const key = `${slot.attractionId}_${slot.capacityDate}`;
+    const key = `${slot.attractionId}_${slot.inventoryDate}`;
 
     const existing = slotMap.get(key) || [];
 
@@ -409,7 +476,8 @@ export async function getInventory(filters: InventoryFilters) {
   const items = dailyRows.map((row, index) => {
     const capacity = Number(row.totalCapacity) || 0;
 
-    const booked = bookedMap.get(row.attractionId) || 0;
+    const booked =
+      bookedMap.get(`${row.attractionId}_${row.capacityDate}`) || 0;
 
     const available = Math.max(capacity - booked, 0);
 
@@ -425,7 +493,7 @@ export async function getInventory(filters: InventoryFilters) {
       const slotCapacity = Number(slot.capacity) || 0;
 
       const slotBooked =
-        slotBookedMap.get(`${slot.slotId}_${slot.capacityDate}`) || 0;
+        slotBookedMap.get(`${slot.slotId}_${row.capacityDate}`) || 0;
 
       const slotAvailable = Math.max(slotCapacity - slotBooked, 0);
 
@@ -444,7 +512,7 @@ export async function getInventory(filters: InventoryFilters) {
 
         status: getInventoryStatus(slotCapacity, slotBooked),
 
-        isActive: slot.isActive,
+        isActive: true,
       };
     });
 
@@ -455,6 +523,7 @@ export async function getInventory(filters: InventoryFilters) {
 
       attraction: {
         id: row.attractionId,
+
         name: row.attractionName,
       },
 
@@ -514,6 +583,10 @@ export async function getInventory(filters: InventoryFilters) {
       (slot) => slot.status === "NEAR_FULL",
     );
 
+    /* =====================================================
+       ALL SLOTS FULL
+    ===================================================== */
+
     if (item.slots.length > 0 && fullSlots.length === item.slots.length) {
       alerts.push({
         attractionId: item.attraction.id,
@@ -527,6 +600,10 @@ export async function getInventory(filters: InventoryFilters) {
 
       continue;
     }
+
+    /* =====================================================
+       FULL SLOTS
+    ===================================================== */
 
     if (fullSlots.length > 0) {
       alerts.push({
@@ -542,6 +619,10 @@ export async function getInventory(filters: InventoryFilters) {
       });
     }
 
+    /* =====================================================
+       NEAR FULL SLOTS
+    ===================================================== */
+
     for (const slot of nearFullSlots) {
       alerts.push({
         attractionId: item.attraction.id,
@@ -551,6 +632,38 @@ export async function getInventory(filters: InventoryFilters) {
         type: "NEAR_FULL",
 
         message: `${slot.time} has only ${slot.available} seats left.`,
+      });
+    }
+
+    /* =====================================================
+       DAILY CAPACITY NEAR FULL
+    ===================================================== */
+
+    if (item.status === "NEAR_FULL") {
+      alerts.push({
+        attractionId: item.attraction.id,
+
+        attractionName: item.attraction.name,
+
+        type: "NEAR_FULL",
+
+        message: `${item.attraction.name} has only ${item.available} seats available for ${item.date}.`,
+      });
+    }
+
+    /* =====================================================
+       DAILY CAPACITY FULL
+    ===================================================== */
+
+    if (item.status === "FULL" && item.slots.length === 0) {
+      alerts.push({
+        attractionId: item.attraction.id,
+
+        attractionName: item.attraction.name,
+
+        type: "FULL",
+
+        message: `${item.attraction.name} is fully booked for ${item.date}.`,
       });
     }
   }
@@ -593,6 +706,10 @@ export async function getInventory(filters: InventoryFilters) {
 ========================================================= */
 
 export async function upsertDailyCapacity(input: UpsertDailyCapacityInput) {
+  /* =======================================================
+     VALIDATION
+  ======================================================= */
+
   if (!input.adminId) {
     throw new Error("Admin ID is required.");
   }
@@ -609,13 +726,14 @@ export async function upsertDailyCapacity(input: UpsertDailyCapacityInput) {
     throw new Error("Total capacity must be a non-negative integer.");
   }
 
-  /* -------------------------------------------------------
-     VERIFY ATTRACTION OWNERSHIP
-  ------------------------------------------------------- */
+  /* =======================================================
+     VERIFY ATTRACTION
+  ======================================================= */
 
   const [attraction] = await db
     .select({
       id: attractions.id,
+
       name: attractions.name,
     })
     .from(attractions)
@@ -624,6 +742,8 @@ export async function upsertDailyCapacity(input: UpsertDailyCapacityInput) {
         eq(attractions.id, input.attractionId),
 
         eq(attractions.adminId, input.adminId),
+
+        eq(attractions.status, "ACTIVE"),
       ),
     )
     .limit(1);
@@ -632,9 +752,9 @@ export async function upsertDailyCapacity(input: UpsertDailyCapacityInput) {
     throw new Error("Attraction not found.");
   }
 
-  /* -------------------------------------------------------
-     FIND EXISTING
-  ------------------------------------------------------- */
+  /* =======================================================
+     FIND EXISTING CAPACITY
+  ======================================================= */
 
   const [existing] = await db
     .select({
@@ -651,18 +771,14 @@ export async function upsertDailyCapacity(input: UpsertDailyCapacityInput) {
 
         eq(attractionDailyCapacities.capacityDate, input.capacityDate),
 
-        /*
-         * IMPORTANT:
-         * Ownership is checked here too.
-         */
         eq(attractions.adminId, input.adminId),
       ),
     )
     .limit(1);
 
-  /* -------------------------------------------------------
+  /* =======================================================
      UPDATE
-  ------------------------------------------------------- */
+  ======================================================= */
 
   if (existing) {
     const [updated] = await db
@@ -680,18 +796,19 @@ export async function upsertDailyCapacity(input: UpsertDailyCapacityInput) {
 
       attraction: {
         id: attraction.id,
+
         name: attraction.name,
       },
 
       capacityDate: input.capacityDate,
 
-      totalCapacity: updated.totalCapacity,
+      totalCapacity: Number(updated.totalCapacity),
     };
   }
 
-  /* -------------------------------------------------------
+  /* =======================================================
      CREATE
-  ------------------------------------------------------- */
+  ======================================================= */
 
   const [created] = await db
     .insert(attractionDailyCapacities)
@@ -709,11 +826,12 @@ export async function upsertDailyCapacity(input: UpsertDailyCapacityInput) {
 
     attraction: {
       id: attraction.id,
+
       name: attraction.name,
     },
 
     capacityDate: input.capacityDate,
 
-    totalCapacity: created.totalCapacity,
+    totalCapacity: Number(created.totalCapacity),
   };
 }

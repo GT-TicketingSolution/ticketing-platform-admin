@@ -1,16 +1,17 @@
 import { NextRequest } from "next/server";
 
+import { and, eq } from "drizzle-orm";
+
 import { db } from "@/db";
 
 import {
-  attractionInventory,
-  attractionInventorySlots,
   attractions,
+  attractionDailyCapacities,
+  attractionSlotCapacities,
+  attractionTimeSlots,
 } from "@/db/schema";
 
-import { eq, and } from "drizzle-orm";
-
-import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { success, failure } from "@/lib/api/response";
 
 type AddCapacityBody = {
@@ -22,25 +23,37 @@ type AddCapacityBody = {
 
 export async function POST(request: NextRequest) {
   try {
-    // --------------------------------------------------
+    // =====================================================
     // AUTH
-    // --------------------------------------------------
+    // =====================================================
 
-    const auth = await requireAdmin(request);
+    const auth = await requireAuth(request);
 
-    const adminId = auth.adminId;
+    if (auth.user.role !== "ADMIN") {
+      return failure("Admin access required.", 403, "FORBIDDEN");
+    }
 
-    // --------------------------------------------------
+    // =====================================================
+    // TENANT
+    // =====================================================
+
+    const adminId = auth.user.id;
+
+    if (!adminId) {
+      return failure("Admin context not found.", 403, "ADMIN_CONTEXT_REQUIRED");
+    }
+
+    // =====================================================
     // BODY
-    // --------------------------------------------------
+    // =====================================================
 
     const body = (await request.json()) as AddCapacityBody;
 
     const { attractionId, date, slot, additionalSeats } = body;
 
-    // --------------------------------------------------
+    // =====================================================
     // VALIDATION
-    // --------------------------------------------------
+    // =====================================================
 
     if (!attractionId) {
       return failure(
@@ -62,22 +75,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // --------------------------------------------------
+    // =====================================================
     // VERIFY ATTRACTION OWNERSHIP
-    //
-    // IMPORTANT:
-    // Admin can only modify attractions belonging
-    // to their own admin account.
-    // --------------------------------------------------
+    // =====================================================
 
     const [attraction] = await db
       .select({
         id: attractions.id,
         name: attractions.name,
+        status: attractions.status,
       })
       .from(attractions)
       .where(
-        and(eq(attractions.id, attractionId), eq(attractions.adminId, adminId)),
+        and(
+          eq(attractions.id, attractionId),
+          eq(attractions.adminId, adminId),
+          eq(attractions.status, "ACTIVE"),
+        ),
       )
       .limit(1);
 
@@ -85,146 +99,234 @@ export async function POST(request: NextRequest) {
       return failure("Attraction not found.", 404, "ATTRACTION_NOT_FOUND");
     }
 
-    // --------------------------------------------------
-    // INVENTORY TRANSACTION
-    // --------------------------------------------------
+    // =====================================================
+    // TRANSACTION
+    // =====================================================
 
     const result = await db.transaction(async (tx) => {
-      let [inventory] = await tx
-        .select()
-        .from(attractionInventory)
+      // ---------------------------------------------------
+      // FIND DAILY CAPACITY
+      // ---------------------------------------------------
+
+      const [dailyCapacity] = await tx
+        .select({
+          id: attractionDailyCapacities.id,
+          attractionId: attractionDailyCapacities.attractionId,
+          capacityDate: attractionDailyCapacities.capacityDate,
+          totalCapacity: attractionDailyCapacities.totalCapacity,
+        })
+        .from(attractionDailyCapacities)
         .where(
           and(
-            eq(attractionInventory.attractionId, attractionId),
-            eq(attractionInventory.inventoryDate, date),
+            eq(attractionDailyCapacities.attractionId, attractionId),
+
+            eq(attractionDailyCapacities.capacityDate, date),
           ),
         )
         .limit(1);
 
-      // --------------------------------------------------
-      // CREATE DAILY INVENTORY
-      // --------------------------------------------------
+      // ===================================================
+      // CREATE DAILY CAPACITY
+      // ===================================================
 
-      if (!inventory) {
-        const inserted = await tx
-          .insert(attractionInventory)
+      if (!dailyCapacity) {
+        const [created] = await tx
+          .insert(attractionDailyCapacities)
           .values({
             attractionId,
-            inventoryDate: date,
-            dailyCapacity: additionalSeats,
-          })
-          .returning();
 
-        inventory = inserted[0];
+            capacityDate: date,
+
+            totalCapacity: additionalSeats,
+          })
+          .returning({
+            id: attractionDailyCapacities.id,
+
+            attractionId: attractionDailyCapacities.attractionId,
+
+            capacityDate: attractionDailyCapacities.capacityDate,
+
+            totalCapacity: attractionDailyCapacities.totalCapacity,
+          });
 
         return {
-          inventory,
-          addedTo: "daily",
+          dailyCapacity: created,
+
+          allocation: "DAILY",
+
+          slotsUpdated: 0,
         };
       }
 
-      // --------------------------------------------------
+      // ===================================================
       // UPDATE DAILY CAPACITY
-      // --------------------------------------------------
+      // ===================================================
 
-      await tx
-        .update(attractionInventory)
+      const newDailyCapacity =
+        Number(dailyCapacity.totalCapacity) + additionalSeats;
+
+      const [updatedDailyCapacity] = await tx
+        .update(attractionDailyCapacities)
         .set({
-          dailyCapacity: inventory.dailyCapacity + additionalSeats,
+          totalCapacity: newDailyCapacity,
 
           updatedAt: new Date(),
         })
-        .where(eq(attractionInventory.id, inventory.id));
+        .where(eq(attractionDailyCapacities.id, dailyCapacity.id))
+        .returning({
+          id: attractionDailyCapacities.id,
 
-      // --------------------------------------------------
-      // GET SLOTS
-      // --------------------------------------------------
+          attractionId: attractionDailyCapacities.attractionId,
 
-      const slots = await tx
-        .select()
-        .from(attractionInventorySlots)
-        .where(eq(attractionInventorySlots.inventoryId, inventory.id));
+          capacityDate: attractionDailyCapacities.capacityDate,
 
-      // --------------------------------------------------
-      // NO SLOTS
-      // --------------------------------------------------
+          totalCapacity: attractionDailyCapacities.totalCapacity,
+        });
 
-      if (slots.length === 0) {
+      // ===================================================
+      // IF NO SLOT WAS PROVIDED
+      // ===================================================
+
+      if (!slot || slot === "ALL") {
         return {
-          inventory,
-          addedTo: "daily",
+          dailyCapacity: updatedDailyCapacity,
+
+          allocation: "DAILY",
+
+          slotsUpdated: 0,
         };
       }
 
-      // --------------------------------------------------
-      // ALL SLOTS
-      // --------------------------------------------------
+      // ===================================================
+      // FIND TIME SLOT
+      // ===================================================
 
-      if (!slot || slot === "ALL") {
-        const base = Math.floor(additionalSeats / slots.length);
+      const [timeSlot] = await tx
+        .select({
+          id: attractionTimeSlots.id,
 
-        const remainder = additionalSeats % slots.length;
+          slotTime: attractionTimeSlots.slotTime,
 
-        for (let i = 0; i < slots.length; i++) {
-          const extra = base + (i < remainder ? 1 : 0);
+          attractionId: attractionTimeSlots.attractionId,
 
-          if (extra === 0) continue;
+          isActive: attractionTimeSlots.isActive,
+        })
+        .from(attractionTimeSlots)
+        .where(
+          and(
+            eq(attractionTimeSlots.id, slot),
 
-          await tx
-            .update(attractionInventorySlots)
-            .set({
-              capacity: slots[i].capacity + extra,
+            eq(attractionTimeSlots.attractionId, attractionId),
 
-              updatedAt: new Date(),
-            })
-            .where(eq(attractionInventorySlots.id, slots[i].id));
-        }
+            eq(attractionTimeSlots.isActive, true),
+          ),
+        )
+        .limit(1);
+
+      if (!timeSlot) {
+        throw new Error("Selected slot not found.");
       }
 
-      // --------------------------------------------------
-      // SPECIFIC SLOT
-      // --------------------------------------------------
-      else {
-        const [targetSlot] = await tx
-          .select()
-          .from(attractionInventorySlots)
-          .where(
-            and(
-              eq(attractionInventorySlots.inventoryId, inventory.id),
-              eq(attractionInventorySlots.slotTime, slot),
-            ),
-          )
-          .limit(1);
+      // ===================================================
+      // FIND SLOT CAPACITY
+      // ===================================================
 
-        if (!targetSlot) {
-          throw new Error("Selected slot not found.");
-        }
+      const [slotCapacity] = await tx
+        .select({
+          id: attractionSlotCapacities.id,
 
-        await tx
-          .update(attractionInventorySlots)
-          .set({
-            capacity: targetSlot.capacity + additionalSeats,
+          capacity: attractionSlotCapacities.capacity,
+        })
+        .from(attractionSlotCapacities)
+        .where(
+          and(
+            eq(attractionSlotCapacities.timeSlotId, timeSlot.id),
 
-            updatedAt: new Date(),
+            eq(attractionSlotCapacities.capacityDate, date),
+          ),
+        )
+        .limit(1);
+
+      // ===================================================
+      // CREATE SLOT CAPACITY
+      // ===================================================
+
+      if (!slotCapacity) {
+        const [createdSlot] = await tx
+          .insert(attractionSlotCapacities)
+          .values({
+            timeSlotId: timeSlot.id,
+
+            capacityDate: date,
+
+            capacity: additionalSeats,
           })
-          .where(eq(attractionInventorySlots.id, targetSlot.id));
+          .returning({
+            id: attractionSlotCapacities.id,
+
+            timeSlotId: attractionSlotCapacities.timeSlotId,
+
+            capacityDate: attractionSlotCapacities.capacityDate,
+
+            capacity: attractionSlotCapacities.capacity,
+          });
+
+        return {
+          dailyCapacity: updatedDailyCapacity,
+
+          slot: createdSlot,
+
+          allocation: timeSlot.slotTime,
+
+          slotsUpdated: 1,
+        };
       }
+
+      // ===================================================
+      // UPDATE SLOT CAPACITY
+      // ===================================================
+
+      const newSlotCapacity = Number(slotCapacity.capacity) + additionalSeats;
+
+      const [updatedSlot] = await tx
+        .update(attractionSlotCapacities)
+        .set({
+          capacity: newSlotCapacity,
+
+          updatedAt: new Date(),
+        })
+        .where(eq(attractionSlotCapacities.id, slotCapacity.id))
+        .returning({
+          id: attractionSlotCapacities.id,
+
+          timeSlotId: attractionSlotCapacities.timeSlotId,
+
+          capacityDate: attractionSlotCapacities.capacityDate,
+
+          capacity: attractionSlotCapacities.capacity,
+        });
 
       return {
-        inventory,
-        addedTo: slot || "ALL",
+        dailyCapacity: updatedDailyCapacity,
+
+        slot: updatedSlot,
+
+        allocation: timeSlot.slotTime,
+
+        slotsUpdated: 1,
       };
     });
 
-    // --------------------------------------------------
+    // =====================================================
     // RESPONSE
-    // --------------------------------------------------
+    // =====================================================
 
     return success({
       message: "Inventory capacity added successfully.",
 
       attraction: {
         id: attraction.id,
+
         name: attraction.name,
       },
 
@@ -232,17 +334,18 @@ export async function POST(request: NextRequest) {
 
       additionalSeats,
 
-      allocation: slot || "ALL",
+      allocation: slot || "DAILY",
 
       result,
     });
   } catch (error) {
     console.error("POST /api/admin/inventory/capacity error:", error);
 
-    return failure(
-      "Failed to add inventory capacity.",
-      500,
-      "CAPACITY_UPDATE_FAILED",
-    );
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to add inventory capacity.";
+
+    return failure(message, 500, "CAPACITY_UPDATE_FAILED");
   }
 }

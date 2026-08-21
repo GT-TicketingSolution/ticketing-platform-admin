@@ -1,47 +1,46 @@
 import { z } from "zod";
-
-import { db } from "@/db";
-
-import { references } from "@/db/schema";
-
 import { and, eq } from "drizzle-orm";
 
+import { db } from "@/db";
+import { references } from "@/db/schema";
+
 import { success, failure } from "@/lib/api/response";
-
 import { requireAuth } from "@/lib/auth/require-auth";
-
 import { getAdminId } from "@/lib/auth/get-admin-id";
 
-const updateReferenceSchema = z.object({
-  referenceName: z.string().min(2).max(150),
+const allowedRoles = ["ADMIN", "MANAGER", "STAFF"];
 
-  department: z.string().max(100).optional(),
+const updateSchema = z.object({
+  referenceName: z.string().trim().min(1, "Reference name is required"),
 
-  contactPerson: z.string().min(2).max(150),
+  department: z.string().trim().min(1, "Department/Organization is required"),
 
-  post: z.string().max(100).optional(),
+  contactPerson: z.string().trim().min(1, "Contact person is required"),
 
-  mobile: z.string().max(20),
+  post: z.string().trim().optional(),
 
-  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+  mobile: z
+    .string()
+    .trim()
+    .regex(/^[0-9]{10}$/, "Mobile number must be 10 digits"),
+
+  status: z.enum(["ACTIVE", "INACTIVE"]),
 });
 
-// =====================================
+// ======================================================
 // UPDATE REFERENCE
-// =====================================
+// ======================================================
 
 export async function PATCH(
-  request: Request,
+  req: Request,
   context: {
-    params: Promise<{
-      id: string;
-    }>;
+    params: Promise<{ id: string }>;
   },
 ) {
   try {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(req);
 
-    if (!["ADMIN", "MANAGER", "STAFF"].includes(auth.user.role)) {
+    if (!allowedRoles.includes(auth.user.role)) {
       return failure("Forbidden", 403, "FORBIDDEN");
     }
 
@@ -49,12 +48,16 @@ export async function PATCH(
 
     const adminId = getAdminId(auth);
 
-    const body = await request.json();
+    const body = await req.json();
 
-    const parsed = updateReferenceSchema.safeParse(body);
+    const parsed = updateSchema.safeParse(body);
 
     if (!parsed.success) {
-      return failure("Invalid reference data", 400, "VALIDATION_ERROR");
+      return failure(
+        parsed.error.issues[0]?.message || "Invalid data",
+        400,
+        "VALIDATION_ERROR",
+      );
     }
 
     const existing = await db.query.references.findFirst({
@@ -80,7 +83,7 @@ export async function PATCH(
 
         contactPerson: parsed.data.contactPerson,
 
-        post: parsed.data.post,
+        post: parsed.data.post || null,
 
         mobile: parsed.data.mobile,
 
@@ -88,33 +91,37 @@ export async function PATCH(
 
         updatedAt: new Date(),
       })
-      .where(eq(references.id, id))
+      .where(
+        and(
+          eq(references.id, id),
+
+          eq(references.adminId, adminId),
+        ),
+      )
       .returning();
 
     return success(updated[0]);
   } catch (error) {
-    console.error("Update reference error", error);
+    console.error("Update reference error:", error);
 
     return failure("Unable to update reference", 500, "INTERNAL_SERVER_ERROR");
   }
 }
 
-// =====================================
-// SOFT DELETE REFERENCE
-// =====================================
+// ======================================================
+// DELETE REFERENCE
+// ======================================================
 
 export async function DELETE(
-  request: Request,
+  req: Request,
   context: {
-    params: Promise<{
-      id: string;
-    }>;
+    params: Promise<{ id: string }>;
   },
 ) {
   try {
-    const auth = await requireAuth(request);
+    const auth = await requireAuth(req);
 
-    if (!["ADMIN", "MANAGER", "STAFF"].includes(auth.user.role)) {
+    if (!allowedRoles.includes(auth.user.role)) {
       return failure("Forbidden", 403, "FORBIDDEN");
     }
 
@@ -139,21 +146,27 @@ export async function DELETE(
     await db
       .update(references)
       .set({
+        isDeleted: true,
+
         deletedAt: new Date(),
 
         deletedBy: auth.user.id,
 
-        isDeleted: true,
-
         updatedAt: new Date(),
       })
-      .where(eq(references.id, id));
+      .where(
+        and(
+          eq(references.id, id),
+
+          eq(references.adminId, adminId),
+        ),
+      );
 
     return success({
       message: "Reference deleted successfully",
     });
   } catch (error) {
-    console.error("Delete reference error", error);
+    console.error("Delete reference error:", error);
 
     return failure("Unable to delete reference", 500, "INTERNAL_SERVER_ERROR");
   }

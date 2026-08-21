@@ -2,169 +2,679 @@ import { and, eq, gte, lte, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 
-import { attractions, bookings, bookingItems, transactions } from "@/db/schema";
+import {
+  attractions,
+  attractionManagement,
+  bookings,
+  bookingItems,
+  transactions,
+} from "@/db/schema";
 
-interface ReportFilter {
+export interface ReportFilter {
   adminId: string;
   fromDate?: string;
   toDate?: string;
   attractionId?: string;
 }
 
-function applyDateFilter(
-  conditions: any[],
-  fromDate?: string,
-  toDate?: string,
-) {
-  if (fromDate) {
-    conditions.push(gte(bookings.visitAt, new Date(fromDate)));
-  }
+/* =========================================================
+   DATE HELPERS
+========================================================= */
 
-  if (toDate) {
-    conditions.push(lte(bookings.visitAt, new Date(`${toDate}T23:59:59`)));
-  }
+function getStartDate(fromDate?: string) {
+  if (!fromDate) return undefined;
+
+  return new Date(`${fromDate}T00:00:00`);
 }
 
-// =====================================================
-// OVERALL SUMMARY
-// =====================================================
+function getEndDate(toDate?: string) {
+  if (!toDate) return undefined;
 
-export async function getReportSummary(filter: ReportFilter) {
+  return new Date(`${toDate}T23:59:59.999`);
+}
+
+/* =========================================================
+   COMMON BOOKING CONDITIONS
+========================================================= */
+
+function getBookingConditions(filter: ReportFilter) {
   const conditions = [
     eq(attractions.adminId, filter.adminId),
 
     eq(bookings.status, "CONFIRMED"),
+
+    eq(bookings.isDeleted, false),
   ];
 
-  applyDateFilter(conditions, filter.fromDate, filter.toDate);
+  const startDate = getStartDate(filter.fromDate);
+  const endDate = getEndDate(filter.toDate);
+
+  if (startDate) {
+    conditions.push(gte(bookings.visitAt, startDate));
+  }
+
+  if (endDate) {
+    conditions.push(lte(bookings.visitAt, endDate));
+  }
 
   if (filter.attractionId) {
     conditions.push(eq(bookings.attractionId, filter.attractionId));
   }
 
-  const result = await db
+  return conditions;
+}
+
+/* =========================================================
+   OVERALL SUMMARY
+========================================================= */
+
+export async function getReportSummary(filter: ReportFilter) {
+  /*
+   * IMPORTANT:
+   *
+   * Do NOT join bookingItems while calculating booking revenue.
+   *
+   * Otherwise:
+   *
+   * Booking ₹500
+   *   ├── Adult
+   *   ├── Child
+   *   └── Student
+   *
+   * would make SUM(amountPaid) = ₹1,500.
+   */
+
+  const bookingConditions = getBookingConditions(filter);
+
+  /* -------------------------------------------------------
+     Revenue + Bookings
+  ------------------------------------------------------- */
+
+  const bookingSummary = await db
     .select({
       revenue: sql<number>`
-   COALESCE(SUM(${bookings.amountPaid}),0)
-   `,
+        COALESCE(
+          SUM(${bookings.amountPaid}),
+          0
+        )
+      `,
 
       bookings: sql<number>`
-   COUNT(${bookings.id})
-   `,
-
-      tickets: sql<number>`
-   COALESCE(SUM(${bookingItems.quantity}),0)
-   `,
+        COUNT(DISTINCT ${bookings.id})
+      `,
     })
     .from(bookings)
+    .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+    .where(and(...bookingConditions));
 
-    .leftJoin(bookingItems, eq(bookingItems.bookingId, bookings.id))
+  /* -------------------------------------------------------
+     Tickets
+  ------------------------------------------------------- */
 
-    .where(and(...conditions));
+  const ticketSummary = await db
+    .select({
+      tickets: sql<number>`
+        COALESCE(
+          SUM(${bookingItems.quantity}),
+          0
+        )
+      `,
+    })
+    .from(bookingItems)
+    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
+    .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+    .where(and(...bookingConditions));
 
-  return result[0];
+  /* -------------------------------------------------------
+     Top Attraction
+  ------------------------------------------------------- */
+
+  const topAttraction = await getTopAttraction(filter);
+
+  return {
+    totalRevenue: Number(bookingSummary[0]?.revenue ?? 0),
+
+    totalBookings: Number(bookingSummary[0]?.bookings ?? 0),
+
+    totalTicketsSold: Number(ticketSummary[0]?.tickets ?? 0),
+
+    topAttraction: topAttraction
+      ? {
+          id: topAttraction.id,
+
+          name: topAttraction.name,
+
+          revenue: Number(topAttraction.revenue ?? 0),
+        }
+      : null,
+  };
 }
 
-// =====================================================
-// ATTRACTION REPORT
-// =====================================================
+/* =========================================================
+   TOP ATTRACTION
+========================================================= */
 
-export async function getAttractionReports(filter: ReportFilter) {
-  const conditions = [
-    eq(attractions.adminId, filter.adminId),
+async function getTopAttraction(filter: ReportFilter) {
+  const conditions = getBookingConditions(filter);
 
-    eq(bookings.status, "CONFIRMED"),
-  ];
-
-  applyDateFilter(conditions, filter.fromDate, filter.toDate);
-
-  const data = await db
+  const result = await db
     .select({
-      attraction: {
-        id: attractions.id,
-        name: attractions.name,
-        type: attractions.type,
-        status: attractions.status,
-      },
+      id: attractions.id,
+
+      name: attractions.name,
 
       revenue: sql<number>`
-   COALESCE(
-    SUM(${bookings.amountPaid}),
-    0
-   )
-   `,
-
-      bookings: sql<number>`
-   COUNT(DISTINCT ${bookings.id})
-   `,
-
-      tickets: sql<number>`
-   COALESCE(
-    SUM(${bookingItems.quantity}),
-    0
-   )
-   `,
+        COALESCE(
+          SUM(${bookings.amountPaid}),
+          0
+        )
+      `,
     })
-    .from(attractions)
-
-    .leftJoin(bookings, eq(bookings.attractionId, attractions.id))
-
-    .leftJoin(bookingItems, eq(bookingItems.bookingId, bookings.id))
-
+    .from(bookings)
+    .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
     .where(and(...conditions))
+    .groupBy(attractions.id, attractions.name)
+    .orderBy(
+      sql`
+        COALESCE(
+          SUM(${bookings.amountPaid}),
+          0
+        ) DESC
+      `,
+    )
+    .limit(1);
 
-    .groupBy(attractions.id);
-
-  return data;
+  return result[0] ?? null;
 }
 
-// =====================================================
-// PAYMENT DISTRIBUTION
-// =====================================================
+/* =========================================================
+   ATTRACTION REPORT
+========================================================= */
+
+export async function getAttractionReports(filter: ReportFilter) {
+  /* -------------------------------------------------------
+     Attraction Conditions
+  ------------------------------------------------------- */
+
+  const attractionConditions = [eq(attractions.adminId, filter.adminId)];
+
+  if (filter.attractionId) {
+    attractionConditions.push(eq(attractions.id, filter.attractionId));
+  }
+
+  /* -------------------------------------------------------
+     Attraction Master Data
+     
+     timing + prices come from attractionManagement,
+     NOT attractions.
+  ------------------------------------------------------- */
+
+  const attractionRows = await db
+    .select({
+      id: attractions.id,
+
+      name: attractions.name,
+
+      type: attractions.type,
+
+      status: attractions.status,
+
+      timing: attractionManagement.timing,
+
+      adultPrice: attractionManagement.adultPrice,
+
+      childPrice: attractionManagement.childPrice,
+
+      studentPrice: attractionManagement.studentPrice,
+
+      seniorPrice: attractionManagement.seniorPrice,
+
+      foreignerPrice: attractionManagement.foreignerPrice,
+
+      image: attractionManagement.image,
+    })
+    .from(attractions)
+    .leftJoin(
+      attractionManagement,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
+    .where(and(...attractionConditions));
+
+  if (attractionRows.length === 0) {
+    return [];
+  }
+
+  /* -------------------------------------------------------
+     Revenue + Booking Count
+     
+     NO bookingItems join here.
+     This prevents revenue duplication.
+  ------------------------------------------------------- */
+
+  const bookingConditions = getBookingConditions(filter);
+
+  const revenueRows = await db
+    .select({
+      attractionId: bookings.attractionId,
+
+      revenue: sql<number>`
+        COALESCE(
+          SUM(${bookings.amountPaid}),
+          0
+        )
+      `,
+
+      bookings: sql<number>`
+        COUNT(DISTINCT ${bookings.id})
+      `,
+    })
+    .from(bookings)
+    .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+    .where(and(...bookingConditions))
+    .groupBy(bookings.attractionId);
+
+  /* -------------------------------------------------------
+     Ticket Count
+  ------------------------------------------------------- */
+
+  const ticketRows = await db
+    .select({
+      attractionId: bookings.attractionId,
+
+      tickets: sql<number>`
+        COALESCE(
+          SUM(${bookingItems.quantity}),
+          0
+        )
+      `,
+    })
+    .from(bookingItems)
+    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
+    .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+    .where(and(...bookingConditions))
+    .groupBy(bookings.attractionId);
+
+  /* -------------------------------------------------------
+     Ticket Category Breakdown
+  ------------------------------------------------------- */
+
+  const ticketCategoryRows = await db
+    .select({
+      attractionId: bookings.attractionId,
+
+      category: bookingItems.category,
+
+      /*
+       * Used by frontend for:
+       *
+       * Adult (₹100/tkt)
+       */
+      rate: sql<number>`
+          MIN(${bookingItems.unitPrice})
+        `,
+
+      quantity: sql<number>`
+          COALESCE(
+            SUM(${bookingItems.quantity}),
+            0
+          )
+        `,
+
+      revenue: sql<number>`
+          COALESCE(
+            SUM(${bookingItems.totalPrice}),
+            0
+          )
+        `,
+    })
+    .from(bookingItems)
+    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
+    .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+    .where(and(...bookingConditions))
+    .groupBy(bookings.attractionId, bookingItems.category);
+
+  /* -------------------------------------------------------
+     Payment Distribution
+     
+     Only successful transactions are counted here.
+     
+     Example:
+     
+     Cash         4 txns   ₹1,100
+     Net Banking  1 txn    ₹250
+     UPI          1 txn    ₹280
+  ------------------------------------------------------- */
+
+  const paymentConditions = [
+    ...bookingConditions,
+
+    eq(transactions.status, "SUCCESSFUL"),
+
+    eq(transactions.isDeleted, false),
+  ];
+
+  const paymentRows = await db
+    .select({
+      attractionId: bookings.attractionId,
+
+      mode: transactions.paymentMode,
+
+      transactions: sql<number>`
+        COUNT(${transactions.id})
+      `,
+
+      amount: sql<number>`
+        COALESCE(
+          SUM(${transactions.amount}),
+          0
+        )
+      `,
+    })
+    .from(transactions)
+    .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+    .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+    .where(and(...paymentConditions))
+    .groupBy(bookings.attractionId, transactions.paymentMode);
+
+  /* -------------------------------------------------------
+     Recent Transactions
+     
+     Includes all transaction statuses:
+     
+     SUCCESSFUL
+     PENDING
+     CANCELLED
+     FAILED
+     
+     This is required by the screenshot.
+  ------------------------------------------------------- */
+
+  const transactionConditions = [
+    ...bookingConditions,
+
+    eq(transactions.isDeleted, false),
+  ];
+
+  const transactionRows = await db
+    .select({
+      attractionId: bookings.attractionId,
+
+      transactionId: transactions.transactionNumber,
+
+      customerName: bookings.customerName,
+
+      dateTime: transactions.createdAt,
+
+      paymentMode: transactions.paymentMode,
+
+      amount: transactions.amount,
+
+      status: transactions.status,
+    })
+    .from(transactions)
+    .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+    .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+    .where(and(...transactionConditions))
+    .orderBy(sql`${transactions.createdAt} DESC`);
+
+  /* =======================================================
+     BUILD MAPS
+  ======================================================= */
+
+  const revenueMap = new Map<
+    string,
+    {
+      revenue: number;
+      bookings: number;
+    }
+  >();
+
+  for (const row of revenueRows) {
+    revenueMap.set(row.attractionId, {
+      revenue: Number(row.revenue ?? 0),
+
+      bookings: Number(row.bookings ?? 0),
+    });
+  }
+
+  const ticketMap = new Map<string, number>();
+
+  for (const row of ticketRows) {
+    ticketMap.set(row.attractionId, Number(row.tickets ?? 0));
+  }
+
+  const categoryMap = new Map<
+    string,
+    Array<{
+      category: string;
+      rate: number;
+      quantity: number;
+      revenue: number;
+    }>
+  >();
+
+  for (const row of ticketCategoryRows) {
+    const existing = categoryMap.get(row.attractionId) ?? [];
+
+    existing.push({
+      category: row.category,
+
+      rate: Number(row.rate ?? 0),
+
+      quantity: Number(row.quantity ?? 0),
+
+      revenue: Number(row.revenue ?? 0),
+    });
+
+    categoryMap.set(row.attractionId, existing);
+  }
+
+  const paymentMap = new Map<
+    string,
+    Array<{
+      mode: string;
+      transactions: number;
+      amount: number;
+    }>
+  >();
+
+  for (const row of paymentRows) {
+    const existing = paymentMap.get(row.attractionId) ?? [];
+
+    existing.push({
+      mode: row.mode,
+
+      transactions: Number(row.transactions ?? 0),
+
+      amount: Number(row.amount ?? 0),
+    });
+
+    paymentMap.set(row.attractionId, existing);
+  }
+
+  const transactionMap = new Map<
+    string,
+    Array<{
+      transactionId: string;
+      customerName: string;
+      dateTime: Date;
+      paymentMode: string;
+      amount: number;
+      status: string;
+    }>
+  >();
+
+  for (const row of transactionRows) {
+    const existing = transactionMap.get(row.attractionId) ?? [];
+
+    /*
+     * Keep latest 6 transactions
+     * for each attraction.
+     *
+     * transactionRows is already ordered
+     * newest -> oldest.
+     */
+    if (existing.length < 6) {
+      existing.push({
+        transactionId: row.transactionId,
+
+        customerName: row.customerName,
+
+        dateTime: row.dateTime,
+
+        paymentMode: row.paymentMode,
+
+        amount: Number(row.amount ?? 0),
+
+        status: row.status,
+      });
+    }
+
+    transactionMap.set(row.attractionId, existing);
+  }
+
+  /* =======================================================
+     FINAL RESPONSE
+  ======================================================= */
+
+  return attractionRows.map((attraction) => {
+    const revenueData = revenueMap.get(attraction.id);
+
+    return {
+      attraction: {
+        id: attraction.id,
+
+        name: attraction.name,
+
+        type: attraction.type,
+
+        status: attraction.status,
+
+        /*
+         * Example:
+         * "09:00 AM - 06:00 PM"
+         */
+        timing: attraction.timing,
+
+        /*
+         * Example:
+         * ₹100
+         */
+        adultRate: Number(attraction.adultPrice ?? 0),
+
+        childRate: Number(attraction.childPrice ?? 0),
+
+        studentRate: Number(attraction.studentPrice ?? 0),
+
+        seniorRate: Number(attraction.seniorPrice ?? 0),
+
+        foreignerRate: Number(attraction.foreignerPrice ?? 0),
+
+        image: attraction.image,
+      },
+
+      revenue: revenueData?.revenue ?? 0,
+
+      bookings: revenueData?.bookings ?? 0,
+
+      tickets: ticketMap.get(attraction.id) ?? 0,
+
+      ticketCategorySales: categoryMap.get(attraction.id) ?? [],
+
+      paymentDistribution: paymentMap.get(attraction.id) ?? [],
+
+      recentTransactions: transactionMap.get(attraction.id) ?? [],
+    };
+  });
+}
+
+/* =========================================================
+   PAYMENT DISTRIBUTION
+========================================================= */
 
 export async function getPaymentDistribution(filter: ReportFilter) {
+  const bookingConditions = getBookingConditions(filter);
+
+  const conditions = [
+    ...bookingConditions,
+
+    eq(transactions.status, "SUCCESSFUL"),
+
+    eq(transactions.isDeleted, false),
+  ];
+
   const result = await db
     .select({
       mode: transactions.paymentMode,
 
+      transactions: sql<number>`
+        COUNT(${transactions.id})
+      `,
+
       amount: sql<number>`
-   SUM(${transactions.amount})
-   `,
+        COALESCE(
+          SUM(${transactions.amount}),
+          0
+        )
+      `,
     })
     .from(transactions)
-
-    .innerJoin(bookings, eq(bookings.id, transactions.bookingId))
-
-    .where(and(eq(bookings.status, "CONFIRMED")))
-
+    .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+    .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+    .where(and(...conditions))
     .groupBy(transactions.paymentMode);
 
-  return result;
+  return result.map((row) => ({
+    mode: row.mode,
+
+    transactions: Number(row.transactions ?? 0),
+
+    amount: Number(row.amount ?? 0),
+  }));
 }
 
-// =====================================================
-// TICKET CATEGORY REPORT
-// =====================================================
+/* =========================================================
+   TICKET CATEGORY REPORT
+========================================================= */
 
 export async function getTicketBreakdown(filter: ReportFilter) {
-  return await db
+  const conditions = getBookingConditions(filter);
+
+  const result = await db
     .select({
       category: bookingItems.category,
 
+      rate: sql<number>`
+        MIN(${bookingItems.unitPrice})
+      `,
+
       quantity: sql<number>`
- SUM(${bookingItems.quantity})
- `,
+        COALESCE(
+          SUM(${bookingItems.quantity}),
+          0
+        )
+      `,
 
       revenue: sql<number>`
- SUM(${bookingItems.totalPrice})
- `,
+        COALESCE(
+          SUM(${bookingItems.totalPrice}),
+          0
+        )
+      `,
     })
-
     .from(bookingItems)
-
-    .innerJoin(bookings, eq(bookings.id, bookingItems.bookingId))
-
-    .where(eq(bookings.status, "CONFIRMED"))
-
+    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
+    .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+    .where(and(...conditions))
     .groupBy(bookingItems.category);
+
+  return result.map((row) => ({
+    category: row.category,
+
+    rate: Number(row.rate ?? 0),
+
+    quantity: Number(row.quantity ?? 0),
+
+    revenue: Number(row.revenue ?? 0),
+  }));
 }

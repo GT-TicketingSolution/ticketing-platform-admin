@@ -11,18 +11,25 @@ import { requireAuth } from "@/lib/auth/require-auth";
 
 import { getAdminId } from "@/lib/auth/get-admin-id";
 
+const allowedRoles = ["ADMIN", "MANAGER", "STAFF"];
+
 const updateSchema = z.object({
-  visitorName: z.string(),
+  visitorName: z.string().trim().min(1, "Visitor name is required"),
 
-  mobile: z.string(),
+  mobile: z
+    .string()
+    .trim()
+    .regex(/^[0-9]{10}$/, "Mobile number must be 10 digits"),
 
-  attractionId: z.string(),
+  attractionId: z.string().min(1, "Attraction is required"),
 
-  visitors: z.number(),
+  visitors: z.number().int().positive("Visitors must be greater than 0"),
 
-  referenceId: z.string().optional(),
+  referenceId: z.string().min(1, "Reference is required"),
 
-  visitDate: z.string(),
+  visitDate: z.string().min(1, "Visit date is required"),
+
+  status: z.enum(["ACTIVE", "USED", "EXPIRED"]),
 });
 
 // =============================
@@ -38,7 +45,7 @@ export async function PATCH(
   try {
     const auth = await requireAuth(req);
 
-    if (!["ADMIN", "MANAGER", "STAFF"].includes(auth.user.role)) {
+    if (!allowedRoles.includes(auth.user.role)) {
       return failure("Forbidden", 403, "FORBIDDEN");
     }
 
@@ -51,7 +58,11 @@ export async function PATCH(
     const parsed = updateSchema.safeParse(body);
 
     if (!parsed.success) {
-      return failure("Invalid data", 400, "VALIDATION_ERROR");
+      return failure(
+        parsed.error.issues[0]?.message || "Invalid data",
+        400,
+        "VALIDATION_ERROR",
+      );
     }
 
     const existing = await db.query.complimentaryPasses.findFirst({
@@ -83,14 +94,22 @@ export async function PATCH(
 
         visitDate: parsed.data.visitDate,
 
+        status: parsed.data.status,
+
         updatedAt: new Date(),
       })
-      .where(eq(complimentaryPasses.id, id))
+      .where(
+        and(
+          eq(complimentaryPasses.id, id),
+
+          eq(complimentaryPasses.adminId, adminId),
+        ),
+      )
       .returning();
 
     return success(updated[0]);
   } catch (error) {
-    console.error(error);
+    console.error("Update complimentary pass error:", error);
 
     return failure("Unable to update pass", 500, "INTERNAL_SERVER_ERROR");
   }
@@ -109,7 +128,7 @@ export async function DELETE(
   try {
     const auth = await requireAuth(req);
 
-    if (!["ADMIN", "MANAGER", "STAFF"].includes(auth.user.role)) {
+    if (!allowedRoles.includes(auth.user.role)) {
       return failure("Forbidden", 403, "FORBIDDEN");
     }
 
@@ -142,13 +161,19 @@ export async function DELETE(
 
         updatedAt: new Date(),
       })
-      .where(eq(complimentaryPasses.id, id));
+      .where(
+        and(
+          eq(complimentaryPasses.id, id),
+
+          eq(complimentaryPasses.adminId, adminId),
+        ),
+      );
 
     return success({
       message: "Complimentary pass deleted successfully",
     });
   } catch (error) {
-    console.error(error);
+    console.error("Delete complimentary pass error:", error);
 
     return failure("Unable to delete pass", 500, "INTERNAL_SERVER_ERROR");
   }
