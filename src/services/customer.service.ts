@@ -22,31 +22,12 @@ export async function getCustomers({
 
   const conditions = [
     eq(customers.adminId, adminId),
-
     eq(customers.isDeleted, false),
   ];
 
   if (search) {
     conditions.push(ilike(customers.name, `%${search}%`));
   }
-
-  //   const data = await db
-  //     .select({
-  //       id: customers.id,
-
-  //       name: customers.name,
-
-  //       mobile: customers.mobile,
-
-  //       gstn: customers.gstn,
-
-  //       createdAt: customers.createdAt,
-  //     })
-  //     .from(customers)
-  //     .where(and(...conditions))
-  //     .orderBy(desc(customers.createdAt))
-  //     .limit(limit)
-  //     .offset(offset);
 
   const data = await db
     .select({
@@ -57,36 +38,27 @@ export async function getCustomers({
       createdAt: customers.createdAt,
     })
     .from(customers)
-    .where(
-      and(
-        eq(customers.adminId, "abd15af8-aa8a-4240-a506-9d76c5ed0a93"),
-        eq(customers.isDeleted, false),
-      ),
-    )
+    .where(and(...conditions))
     .orderBy(desc(customers.createdAt))
-    .limit(10)
-    .offset(0);
-
-  //   console.log("FILTERED CUSTOMERS:", data);
+    .limit(limit)
+    .offset(offset);
 
   const totalResult = await db
     .select({
       count: count(customers.id),
     })
     .from(customers)
-    .where(and(eq(customers.adminId, adminId), eq(customers.isDeleted, false)));
+    .where(and(...conditions));
+
+  const total = Number(totalResult[0]?.count ?? 0);
 
   return {
     data,
-
     pagination: {
       page,
-
       limit,
-
-      total: Number(totalResult[0].count),
-
-      totalPages: Math.ceil(Number(totalResult[0].count) / limit),
+      total,
+      totalPages: Math.ceil(total / limit),
     },
   };
 }
