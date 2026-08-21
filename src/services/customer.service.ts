@@ -1,4 +1,4 @@
-import { and, eq, ilike, isNull, count, desc } from "drizzle-orm";
+import { and, eq, ilike, count, desc, or } from "drizzle-orm";
 
 import { db } from "@/db";
 import { customers } from "@/db/schema";
@@ -26,9 +26,16 @@ export async function getCustomers({
   ];
 
   if (search) {
-    conditions.push(ilike(customers.name, `%${search}%`));
-  }
+    const searchPattern = `%${search}%`;
 
+    conditions.push(
+      or(
+        ilike(customers.name, searchPattern),
+        ilike(customers.mobile, searchPattern),
+        ilike(customers.gstn, searchPattern),
+      )!,
+    );
+  }
   const data = await db
     .select({
       id: customers.id,
