@@ -1740,3 +1740,34 @@ export const ticketScanLogs = pgTable(
     verdictIdx: index("ticket_scan_logs_verdict_idx").on(table.verdict),
   }),
 );
+
+export const adminSystemModulePermissions = pgTable(
+  "admin_system_module_permissions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    adminId: uuid("admin_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "cascade",
+      }),
+
+    moduleId: uuid("module_id")
+      .notNull()
+      .references(() => systemModules.id, {
+        onDelete: "cascade",
+      }),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    unique("admin_system_module_permissions_unique").on(
+      table.adminId,
+      table.moduleId,
+    ),
+  ],
+);
