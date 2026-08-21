@@ -5,6 +5,7 @@ import { db } from "@/db";
 import {
   systemModules,
   managerSystemModulePermissions,
+  adminSystemModulePermissions,
   staffSystemModulePermissions,
 } from "@/db/schema";
 
@@ -30,12 +31,6 @@ export async function GET(request: Request) {
     // =====================================================
 
     if (user.role === "ADMIN") {
-      /*
-       * Admins can see every active system module.
-       *
-       * systemModules are global system configuration,
-       * so there is no adminId filter here.
-       */
       const modules = await db
         .select({
           id: systemModules.id,
@@ -45,8 +40,17 @@ export async function GET(request: Request) {
           isActive: systemModules.isActive,
           sortOrder: systemModules.sortOrder,
         })
-        .from(systemModules)
-        .where(eq(systemModules.isActive, "ACTIVE"))
+        .from(adminSystemModulePermissions)
+        .innerJoin(
+          systemModules,
+          eq(adminSystemModulePermissions.moduleId, systemModules.id),
+        )
+        .where(
+          and(
+            eq(adminSystemModulePermissions.adminId, user.id),
+            eq(systemModules.isActive, "ACTIVE"),
+          ),
+        )
         .orderBy(systemModules.sortOrder);
 
       return success(modules);
