@@ -1,16 +1,43 @@
-export type TransactionStatus = "Confirmed" | "Pending" | "Cancelled";
+export type TransactionStatus = "SUCCESS" | "FAILED" | "PENDING" | "CONFIRMED" | "CANCELLED";
 
-export interface Transaction {
+export interface TransactionListItem {
   id: string;
+  transactionId: string;
   customerName: string;
-  dateTime: string;
-  date?: string; // Format: "YYYY-MM-DD" for date range filtering
+  transactionDate: string;
   bookingId: string;
-  invoiceId: string;
+  attraction: {
+    id: string;
+    name: string;
+  };
   amount: number;
-  paymentMode: "Cash" | "UPI" | "Card" | "Net Banking";
-  status: TransactionStatus;
-  attraction?: string;
-  mobileNumber?: string;
-  gstn?: string;
+  paymentMode: string;
+  status: string;
+}
+
+export interface TransactionDetail {
+  id: string;
+  transactionId: string;
+  invoiceNumber: string;
+  booking: {
+    id: string;
+    bookingId: string;
+  };
+  customer: {
+    name: string;
+    mobile: string;
+    gstNumber?: string | null;
+  };
+  attraction: {
+    id: string;
+    name: string;
+  };
+  transactionDate: string;
+  payment: {
+    mode: string;
+    amount: number;
+    status: string;
+  };
+  createdAt: string;
+  updatedAt: string;
 }

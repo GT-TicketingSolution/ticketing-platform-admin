@@ -5,12 +5,12 @@ import {
   Search,
   Plus,
   MoreVertical,
-  ChevronDown,
-  FileText,
-  FileSpreadsheet,
   RotateCcw,
   Edit2,
   Trash2,
+  Ticket,
+  Users,
+  SearchX,
 } from "lucide-react";
 import { GlobalDataTable, GlobalColumn } from "@/components/ui/GlobalDataTable";
 import { confirmDelete } from "@/lib/notify";
@@ -21,566 +21,680 @@ import {
   handleDownloadReferencesPDF,
 } from "@/lib/printUtils";
 import DateRangePicker from "@/components/ui/DateRangePicker";
+import ExportButtons from "@/components/ui/ExportButtons";
+import { colors, typography } from "@/lib/theme";
+import { META_CONSTANTS } from "@/lib/metaConstant";
+import { useAttractions } from "@/hooks/useManagerQueries";
 import {
+  useComplimentaryPassList,
+  useCreateComplimentaryPass,
+  useUpdateComplimentaryPass,
+  useDeleteComplimentaryPass,
+} from "@/hooks/useComplimentaryPassQueries";
+import {
+  useReferenceList,
+  useCreateReference,
+  useUpdateReference,
+  useDeleteReference,
+} from "@/hooks/useReferenceQueries";
+import type {
   ComplimentaryPass,
   Reference,
-  ATTRACTIONS,
+  ComplimentaryPassPayload,
+  ReferencePayload,
 } from "./types";
 import IssueComplimentaryPassModal from "@/components/modals/IssueComplimentaryPassModal";
 import AddReferenceModal from "@/components/modals/AddReferenceModal";
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const INITIAL_PASSES: ComplimentaryPass[] = [
-  { id: "1", passId: "CP-2026-01", visitorName: "Amit Sharma", mobile: "+91 8768756478", attraction: "Toy Train", visitors: 2, reference: "MLA Office", status: "Active", date: "2026-01-15" },
-  { id: "2", passId: "CP-2026-02", visitorName: "Rahul Verma", mobile: "+91 8768756478", attraction: "Toy Train", visitors: 5, reference: "Tourism dept.", status: "Active", date: "2026-01-16" },
-  { id: "3", passId: "CP-2026-03", visitorName: "Priya Singh", mobile: "+91 8768756478", attraction: "Ropeway", visitors: 8, reference: "Collector Office", status: "Used", date: "2026-01-17" },
-  { id: "4", passId: "CP-2026-04", visitorName: "Neha Jain", mobile: "+91 8768756478", attraction: "Toy Train", visitors: 4, reference: "Friend", status: "Active", date: "2026-01-18" },
-  { id: "5", passId: "CP-2026-05", visitorName: "Karan Mehta", mobile: "+91 8768756478", attraction: "Toy Train", visitors: 2, reference: "Friend", status: "Active", date: "2026-01-19" },
-  { id: "6", passId: "CP-2026-06", visitorName: "Anjali Gupta", mobile: "+91 8768756478", attraction: "Wax Mueseum", visitors: 3, reference: "Friend", status: "Active", date: "2026-01-20" },
-  { id: "7", passId: "CP-2026-07", visitorName: "Mohit Arora", mobile: "+91 8768756478", attraction: "Toy Train", visitors: 3, reference: "MLA Office", status: "Expired", date: "2026-01-21" },
-  { id: "8", passId: "CP-2026-08", visitorName: "Sneha Kapoor", mobile: "+91 8768756478", attraction: "Ropeway", visitors: 2, reference: "Tourism dept.", status: "Active", date: "2026-01-22" },
-  { id: "9", passId: "CP-2026-09", visitorName: "Vivek Joshi", mobile: "+91 8768756478", attraction: "Toy Train", visitors: 2, reference: "Collector Office", status: "Used", date: "2026-01-23" },
-  { id: "10", passId: "CP-2026-10", visitorName: "Pooja Sharma", mobile: "+91 8768756478", attraction: "Wax Mueseum", visitors: 2, reference: "Friend", status: "Active", date: "2026-01-24" },
-  { id: "11", passId: "CP-2026-11", visitorName: "Ravi Kumar", mobile: "+91 8768756478", attraction: "Toy Train", visitors: 3, reference: "MLA Office", status: "Active", date: "2026-01-25" },
-  { id: "12", passId: "CP-2026-12", visitorName: "Sunita Rao", mobile: "+91 8768756478", attraction: "Ropeway", visitors: 4, reference: "Tourism dept.", status: "Active", date: "2026-01-26" },
-  { id: "13", passId: "CP-2026-13", visitorName: "Deepak Singh", mobile: "+91 8768756478", attraction: "Wax Mueseum", visitors: 2, reference: "Friend", status: "Active", date: "2026-01-27" },
-];
-
-const INITIAL_REFERENCES: Reference[] = [
-  { id: "1", referenceName: "MLA Office", department: "Government", contactPerson: "Amit Sharma", post: "MLA", mobile: "+91 8768756478", status: "Active" },
-  { id: "2", referenceName: "Tourism dept.", department: "Government", contactPerson: "Rahul Verma", post: "Director", mobile: "+91 8768756478", status: "Active" },
-  { id: "3", referenceName: "Collector Office", department: "Government", contactPerson: "Priya Singh", post: "Collector", mobile: "+91 8768756478", status: "Active" },
-  { id: "4", referenceName: "Friend", department: "Personal", contactPerson: "Neha Jain", post: "—", mobile: "+91 8768756478", status: "Active" },
-  { id: "5", referenceName: "Friend", department: "Personal", contactPerson: "Karan Mehta", post: "—", mobile: "+91 8768756478", status: "Inactive" },
-  { id: "6", referenceName: "Friend", department: "Personal", contactPerson: "Anjali Gupta", post: "—", mobile: "+91 8768756478", status: "Active" },
-  { id: "7", referenceName: "MLA Office", department: "Government", contactPerson: "Mohit Arora", post: "MLA", mobile: "+91 8768756478", status: "Active" },
-  { id: "8", referenceName: "Tourism dept.", department: "Government", contactPerson: "Sneha Kapoor", post: "Manager", mobile: "+91 8768756478", status: "Active" },
-  { id: "9", referenceName: "Collector Office", department: "Government", contactPerson: "Vivek Joshi", post: "Deputy Collector", mobile: "+91 8768756478", status: "Active" },
-  { id: "10", referenceName: "Friend", department: "Personal", contactPerson: "Pooja Sharma", post: "—", mobile: "+91 8768756478", status: "Inactive" },
-  { id: "11", referenceName: "MLA Office", department: "Government", contactPerson: "Ravi Kumar", post: "Assistant", mobile: "+91 8768756478", status: "Active" },
-  { id: "12", referenceName: "Tourism dept.", department: "Government", contactPerson: "Sunita Rao", post: "Officer", mobile: "+91 8768756478", status: "Active" },
-  { id: "13", referenceName: "Friend", department: "Personal", contactPerson: "Deepak Singh", post: "—", mobile: "+91 8768756478", status: "Active" },
-];
-
-// ─── Action Dropdown matching Bookings ────────────────────────────────────────
-
-interface ActionMenuProps {
-  onEdit: () => void;
-  onDelete: () => void;
-  editLabel?: string;
-  deleteLabel?: string;
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function formatDate(dateStr?: string | null) {
+  if (!dateStr) return "-";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
-function ActionMenu({ onEdit, onDelete, editLabel = "Edit", deleteLabel = "Delete" }: ActionMenuProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+function StatusBadge({ status }: { status?: string }) {
+  const upper = (status || "ACTIVE").toUpperCase();
+  let bg = "#DCFCE7";
+  let text = "#15803D";
+  let dot = "#16A34A";
+  let label = "Active";
 
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
+  if (upper === "USED") {
+    bg = "#EFF6FF";
+    text = "#1D4ED8";
+    dot = "#2563EB";
+    label = "Used";
+  } else if (upper === "EXPIRED" || upper === "INACTIVE") {
+    bg = "#F3F4F6";
+    text = "#4B5563";
+    dot = "#9CA3AF";
+    label = upper === "INACTIVE" ? "Inactive" : "Expired";
+  }
 
   return (
-    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((p) => !p);
-        }}
-        aria-label="Actions menu"
-        style={{
-          background: "transparent",
-          border: "none",
-          cursor: "pointer",
-          padding: "6px",
-          borderRadius: "4px",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#374151",
-        }}
-      >
-        <MoreVertical size={18} />
-      </button>
-
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            right: 0,
-            top: "32px",
-            zIndex: 100,
-            background: "#FFFFFF",
-            border: "1px solid #E5E7EB",
-            borderRadius: "8px",
-            boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
-            width: "140px",
-            padding: "4px 0",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              onEdit();
-            }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              width: "100%",
-              padding: "8px 14px",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontSize: "12px",
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              color: "#374151",
-              textAlign: "left",
-            }}
-          >
-            <Edit2 size={14} color="#F4BC43" />
-            <span>{editLabel}</span>
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              onDelete();
-            }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              width: "100%",
-              padding: "8px 14px",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontSize: "12px",
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              color: "#DC2626",
-              textAlign: "left",
-            }}
-          >
-            <Trash2 size={14} color="#DC2626" />
-            <span>{deleteLabel}</span>
-          </button>
-        </div>
-      )}
-    </div>
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
+        padding: "4px 10px",
+        borderRadius: "9999px",
+        background: bg,
+        fontWeight: 600,
+        fontSize: "12px",
+        color: text,
+      }}
+    >
+      <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: dot }} />
+      {label}
+    </span>
   );
 }
 
-// ─── Attraction Dropdown ──────────────────────────────────────────────────────
-
-interface AttractionDropdownProps {
-  value: string;
-  onChange: (v: string) => void;
-}
-
-function AttractionDropdown({ value, onChange }: AttractionDropdownProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  return (
-    <div ref={ref} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-      <label
-        style={{
-          fontFamily: "'Plus Jakarta Sans', sans-serif",
-          fontWeight: 600,
-          fontSize: "11px",
-          color: "rgba(81, 82, 82, 0.75)",
-          lineHeight: "14px",
-          display: "block",
-        }}
-      >
-        Attraction
-      </label>
-      <div
-        style={{
-          position: "relative",
-          width: "184px",
-          height: "40px",
-          background: "#FFFFFF",
-          border: "0.5px solid #B3AFAF",
-          borderRadius: "4px",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 12px",
-          cursor: "pointer",
-          boxSizing: "border-box",
-          justifyContent: "space-between",
-        }}
-        onClick={() => setOpen((p) => !p)}
-      >
-        <span
-          style={{
-            fontFamily: "'Plus Jakarta Sans', sans-serif",
-            fontWeight: 500,
-            fontSize: "12px",
-            color: "#173F63",
-          }}
-        >
-          {value || "All Attractions"}
-        </span>
-        <ChevronDown
-          size={16}
-          color="#173F63"
-          style={{
-            transform: open ? "rotate(180deg)" : "none",
-            transition: "transform 0.2s",
-            flexShrink: 0,
-          }}
-        />
-
-        {open && (
-          <div
-            style={{
-              position: "absolute",
-              top: "100%",
-              left: 0,
-              right: 0,
-              background: "#FFFFFF",
-              border: "0.5px solid #B3AFAF",
-              borderRadius: "4px",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-              zIndex: 999,
-              marginTop: "2px",
-            }}
-          >
-            {ATTRACTIONS.map((a) => (
-              <div
-                key={a}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onChange(a);
-                  setOpen(false);
-                }}
-                style={{
-                  padding: "10px 12px",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 500,
-                  fontSize: "12px",
-                  color: "#173F63",
-                  cursor: "pointer",
-                  background: a === value ? "#F0F7FF" : "transparent",
-                }}
-                onMouseEnter={(e) => {
-                  if (a !== value) e.currentTarget.style.background = "#F9FAFB";
-                }}
-                onMouseLeave={(e) => {
-                  if (a !== value) e.currentTarget.style.background = "transparent";
-                }}
-              >
-                {a}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
-
-type ActiveTab = "issued" | "reference";
+const PAGE_SIZE = 10;
 
 export default function ComplimentaryPassesPage() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>("issued");
-  const [passes, setPasses] = useState<ComplimentaryPass[]>(INITIAL_PASSES);
-  const [refs, setRefs] = useState<Reference[]>(INITIAL_REFERENCES);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [attractionFilter, setAttractionFilter] = useState("All Attractions");
+  const { showToast } = useToast();
+  const [activeTab, setActiveTab] = useState<"passes" | "references">("passes");
 
-  // Date Range Picker state (from / to dates)
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-
-  const [currentPage, setCurrentPage] = useState(1);
-
-  // Modals
-  const [issueModalOpen, setIssueModalOpen] = useState(false);
+  // ── Modals State ───────────────────────────────────────────────────────────
+  const [isPassModalOpen, setIsPassModalOpen] = useState(false);
   const [passToEdit, setPassToEdit] = useState<ComplimentaryPass | null>(null);
-  const [addRefModalOpen, setAddRefModalOpen] = useState(false);
+  const [isRefModalOpen, setIsRefModalOpen] = useState(false);
   const [refToEdit, setRefToEdit] = useState<Reference | null>(null);
 
-  const { showToast } = useToast();
-  const resetPage = () => setCurrentPage(1);
+  // ── Actions dropdown state ─────────────────────────────────────────────────
+  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number } | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // ── Filtered Passes ──
-  const filteredPasses = useMemo(() => {
-    let data = passes;
-    if (searchTerm.trim()) {
-      const t = searchTerm.toLowerCase();
-      data = data.filter(
-        (p) =>
-          p.visitorName.toLowerCase().includes(t) ||
-          p.mobile.toLowerCase().includes(t) ||
-          p.passId.toLowerCase().includes(t) ||
-          p.reference.toLowerCase().includes(t)
-      );
-    }
-    if (attractionFilter && attractionFilter !== "All Attractions") {
-      data = data.filter((p) => p.attraction === attractionFilter);
-    }
+  useEffect(() => {
+    document.title = META_CONSTANTS.complimentaryPasses.fullTitle;
+  }, []);
 
-    // Date range filter on pass date
-    if (fromDate) {
-      data = data.filter((p) => p.date >= fromDate);
+  // Close dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setActiveDropdownId(null);
+        setDropdownPos(null);
+      }
     }
-    if (toDate) {
-      data = data.filter((p) => p.date <= toDate);
-    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-    return data;
-  }, [passes, searchTerm, attractionFilter, fromDate, toDate]);
+  // ── Complimentary Passes Filters ───────────────────────────────────────────
+  const [passSearch, setPassSearch] = useState("");
+  const [debouncedPassSearch, setDebouncedPassSearch] = useState("");
+  const [selectedAttraction, setSelectedAttraction] = useState("ALL");
+  const [selectedPassStatus, setSelectedPassStatus] = useState("ALL");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [passPage, setPassPage] = useState(1);
 
-  // ── Filtered References ──
-  const filteredRefs = useMemo(() => {
-    let data = refs;
-    if (searchTerm.trim()) {
-      const t = searchTerm.toLowerCase();
-      data = data.filter(
-        (r) =>
-          r.referenceName.toLowerCase().includes(t) ||
-          r.contactPerson.toLowerCase().includes(t) ||
-          r.mobile.toLowerCase().includes(t)
-      );
-    }
-    return data;
-  }, [refs, searchTerm]);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedPassSearch(passSearch), 400);
+    return () => clearTimeout(timer);
+  }, [passSearch]);
 
-  // ── Pass handlers ──
-  const handleSavePass = (data: Omit<ComplimentaryPass, "id" | "passId">) => {
+  useEffect(() => {
+    setPassPage(1);
+  }, [debouncedPassSearch, selectedAttraction, selectedPassStatus, fromDate, toDate]);
+
+  // ── References Filters ─────────────────────────────────────────────────────
+  const [refSearch, setRefSearch] = useState("");
+  const [debouncedRefSearch, setDebouncedRefSearch] = useState("");
+  const [refPage, setRefPage] = useState(1);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedRefSearch(refSearch), 400);
+    return () => clearTimeout(timer);
+  }, [refSearch]);
+
+  useEffect(() => {
+    setRefPage(1);
+  }, [debouncedRefSearch]);
+
+  // ── API Queries ────────────────────────────────────────────────────────────
+  const { data: attractionsData } = useAttractions();
+  const attractionOptions = useMemo(() => {
+    return Array.isArray(attractionsData) ? attractionsData : [];
+  }, [attractionsData]);
+
+  // Passes query
+  const passQueryParams = {
+    page: passPage,
+    limit: PAGE_SIZE,
+    search: debouncedPassSearch || undefined,
+    attractionId: selectedAttraction !== "ALL" ? selectedAttraction : undefined,
+    fromDate: fromDate || undefined,
+    toDate: toDate || undefined,
+    status: selectedPassStatus !== "ALL" ? selectedPassStatus : undefined,
+  };
+  const {
+    data: passesResponse,
+    isLoading: isPassesLoading,
+  } = useComplimentaryPassList(passQueryParams);
+
+  const passes = passesResponse?.items ?? [];
+  const passPagination = passesResponse?.pagination ?? { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 };
+
+  // References query
+  const refQueryParams = {
+    page: refPage,
+    limit: PAGE_SIZE,
+    search: debouncedRefSearch || undefined,
+  };
+  const {
+    data: referencesResponse,
+    isLoading: isReferencesLoading,
+  } = useReferenceList(refQueryParams);
+
+  const references = referencesResponse?.items ?? [];
+  const refPagination = referencesResponse?.pagination ?? { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 };
+
+  // All references for dropdown selection in Complimentary Pass form
+  const { data: allRefsResponse } = useReferenceList({ page: 1, limit: 100 });
+  const allReferences = allRefsResponse?.items ?? references;
+
+  // ── Mutations ──────────────────────────────────────────────────────────────
+  const createPassMutation = useCreateComplimentaryPass();
+  const updatePassMutation = useUpdateComplimentaryPass();
+  const deletePassMutation = useDeleteComplimentaryPass();
+
+  const createRefMutation = useCreateReference();
+  const updateRefMutation = useUpdateReference();
+  const deleteRefMutation = useDeleteReference();
+
+  // ── Pass Handlers ──────────────────────────────────────────────────────────
+  const handleSavePass = async (payload: ComplimentaryPassPayload) => {
     if (passToEdit) {
-      setPasses((prev) =>
-        prev.map((p) => (p.id === passToEdit.id ? { ...p, ...data } : p))
-      );
-      showToast("Complimentary pass updated successfully!", "success");
+      await updatePassMutation.mutateAsync({ id: passToEdit.id, payload });
     } else {
-      const newPass: ComplimentaryPass = {
-        id: Date.now().toString(),
-        passId: `CP-2026-${String(passes.length + 1).padStart(2, "0")}`,
-        ...data,
-      };
-      setPasses((prev) => [...prev, newPass]);
-      showToast("Complimentary pass issued successfully!", "success");
+      await createPassMutation.mutateAsync(payload);
     }
+    setIsPassModalOpen(false);
     setPassToEdit(null);
   };
 
-  const handleEditPass = (pass: ComplimentaryPass) => {
-    setPassToEdit(pass);
-    setIssueModalOpen(true);
-  };
-
   const handleDeletePass = async (pass: ComplimentaryPass) => {
-    const confirmed = await confirmDelete(`pass "${pass.passId}"`);
+    setActiveDropdownId(null);
+    setDropdownPos(null);
+    const confirmed = await confirmDelete(`complimentary pass for "${pass.visitorName}"`);
     if (!confirmed) return;
-    setPasses((prev) => prev.filter((p) => p.id !== pass.id));
-    showToast(`Pass "${pass.passId}" has been deleted.`, "info");
+    deletePassMutation.mutate(pass.id);
   };
 
-  // ── Reference handlers ──
-  const handleSaveRef = (data: Omit<Reference, "id">) => {
+  const handleResetPassFilters = () => {
+    setPassSearch("");
+    setSelectedAttraction("ALL");
+    setSelectedPassStatus("ALL");
+    setFromDate("");
+    setToDate("");
+    setPassPage(1);
+  };
+
+  const isPassFiltered =
+    !!debouncedPassSearch ||
+    selectedAttraction !== "ALL" ||
+    selectedPassStatus !== "ALL" ||
+    !!fromDate ||
+    !!toDate;
+
+  // ── Reference Handlers ─────────────────────────────────────────────────────
+  const handleSaveRef = async (payload: ReferencePayload) => {
     if (refToEdit) {
-      setRefs((prev) =>
-        prev.map((r) => (r.id === refToEdit.id ? { ...r, ...data } : r))
-      );
-      showToast("Reference updated successfully!", "success");
+      await updateRefMutation.mutateAsync({ id: refToEdit.id, payload });
     } else {
-      const newRef: Reference = { id: Date.now().toString(), ...data };
-      setRefs((prev) => [...prev, newRef]);
-      showToast("Reference added successfully!", "success");
+      await createRefMutation.mutateAsync(payload);
     }
+    setIsRefModalOpen(false);
     setRefToEdit(null);
   };
 
-  const handleEditRef = (ref: Reference) => {
-    setRefToEdit(ref);
-    setAddRefModalOpen(true);
-  };
-
-  const handleDeleteRef = async (ref: Reference) => {
-    const confirmed = await confirmDelete(`reference "${ref.referenceName}"`);
+  const handleDeleteRef = async (refItem: Reference) => {
+    setActiveDropdownId(null);
+    setDropdownPos(null);
+    const confirmed = await confirmDelete(`reference "${refItem.referenceName}"`);
     if (!confirmed) return;
-    setRefs((prev) => prev.filter((r) => r.id !== ref.id));
-    showToast(`Reference "${ref.referenceName}" has been deleted.`, "info");
+    deleteRefMutation.mutate(refItem.id);
   };
 
-  // ── Export helpers ──
-  const handleExportPassesCSV = () => {
-    const headers = [
-      "Pass ID",
-      "Visitor Name",
-      "Mobile No.",
-      "Attraction",
-      "Visitors",
-      "Reference",
-      "Status",
-      "Date",
-    ];
-    const rows = filteredPasses.map((p) => [
-      p.passId,
-      p.visitorName,
-      p.mobile,
-      p.attraction,
-      p.visitors,
-      p.reference,
-      p.status,
-      p.date,
-    ]);
-    exportToCSV("Complimentary_Passes", headers, rows);
-    showToast("Passes exported to Excel (CSV)!", "success");
+  const handleResetRefFilters = () => {
+    setRefSearch("");
+    setRefPage(1);
   };
 
+  const isRefFiltered = !!debouncedRefSearch;
+
+  // ── Export Handlers ────────────────────────────────────────────────────────
   const handleExportPassesPDF = () => {
-    const filterInfo = `Attraction: ${attractionFilter}${
-      fromDate ? `, From: ${fromDate}` : ""
-    }${toDate ? `, To: ${toDate}` : ""}`;
+    if (passes.length === 0) {
+      showToast("No complimentary passes to export", "info");
+      return;
+    }
+    const filterInfo = isPassFiltered
+      ? [
+          debouncedPassSearch ? `Search: "${debouncedPassSearch}"` : null,
+          selectedAttraction !== "ALL" ? `Attraction: ${selectedAttraction}` : null,
+          selectedPassStatus !== "ALL" ? `Status: ${selectedPassStatus}` : null,
+          fromDate ? `Date: ${fromDate} → ${toDate || "Now"}` : null,
+        ]
+          .filter(Boolean)
+          .join(" | ")
+      : "All Complimentary Passes";
 
-    handleDownloadComplimentaryPassesPDF(filteredPasses, filterInfo);
-    showToast("Downloading Complimentary Passes PDF...", "success");
+    handleDownloadComplimentaryPassesPDF(passes, filterInfo);
   };
 
-  const handleExportRefsCSV = () => {
-    const headers = [
-      "Reference Name",
-      "Department",
-      "Contact Person",
-      "Post/Designation",
-      "Mobile No.",
-      "Status",
-    ];
-    const rows = filteredRefs.map((r) => [
-      r.referenceName,
-      r.department,
-      r.contactPerson,
-      r.post,
-      r.mobile,
-      r.status,
+  const handleExportPassesExcel = () => {
+    if (passes.length === 0) {
+      showToast("No complimentary passes to export", "info");
+      return;
+    }
+    const filename = `Complimentary_Passes_${new Date().toISOString().slice(0, 10)}.csv`;
+    const headers = ["S.No", "Pass ID", "Visitor Name", "Mobile", "Attraction", "Visitors", "Reference", "Visit Date", "Status"];
+    const rows = passes.map((p, idx) => [
+      idx + 1 + (passPage - 1) * PAGE_SIZE,
+      p.passId || p.id,
+      p.visitorName || "-",
+      p.mobile || "-",
+      p.attractionName || "-",
+      p.visitors || 1,
+      p.referenceName || "-",
+      formatDate(p.visitDate),
+      p.status || "ACTIVE",
     ]);
-    exportToCSV("Reference_Management", headers, rows);
-    showToast("References exported to Excel (CSV)!", "success");
+    exportToCSV(filename, headers, rows);
+    showToast(`Exported ${passes.length} passes to CSV`, "success");
   };
 
   const handleExportRefsPDF = () => {
-    handleDownloadReferencesPDF(filteredRefs, "All References");
-    showToast("Downloading Reference Management PDF...", "success");
+    if (references.length === 0) {
+      showToast("No references to export", "info");
+      return;
+    }
+    const filterInfo = isRefFiltered
+      ? `Search: "${debouncedRefSearch}"`
+      : "All References";
+    handleDownloadReferencesPDF(references, filterInfo);
   };
 
-  // ── Table Columns ──
+  const handleExportRefsExcel = () => {
+    if (references.length === 0) {
+      showToast("No references to export", "info");
+      return;
+    }
+    const filename = `References_Master_${new Date().toISOString().slice(0, 10)}.csv`;
+    const headers = ["S.No", "Reference Name", "Department / Organization", "Contact Person", "Post / Designation", "Mobile", "Status"];
+    const rows = references.map((r, idx) => [
+      idx + 1 + (refPage - 1) * PAGE_SIZE,
+      r.referenceName || "-",
+      r.department || "-",
+      r.contactPerson || "-",
+      r.post || "-",
+      r.mobile || "-",
+      r.status || "ACTIVE",
+    ]);
+    exportToCSV(filename, headers, rows);
+    showToast(`Exported ${references.length} references to CSV`, "success");
+  };
+
+  // ── Columns for Passes Table ───────────────────────────────────────────────
   const passColumns: GlobalColumn<ComplimentaryPass>[] = [
-    { header: "Pass ID", accessorKey: "passId", width: "110px" },
-    { header: "Visitor Name", accessorKey: "visitorName" },
-    { header: "Mobile No.", accessorKey: "mobile" },
-    { header: "Attraction", accessorKey: "attraction" },
-    { header: "Visitors", accessorKey: "visitors", align: "center", width: "80px" },
-    { header: "Reference", accessorKey: "reference" },
+    {
+      header: "Pass ID",
+      cell: (item) => (
+        <span
+          style={{
+            fontFamily: typography.fontFamily.sans,
+            fontWeight: 600,
+            fontSize: "13px",
+            color: colors.brand.accent,
+          }}
+        >
+          {item.passId || item.id}
+        </span>
+      ),
+    },
+    {
+      header: "Visitor Name",
+      cell: (item) => (
+        <span style={{ fontWeight: 600, color: "#0C2A42" }}>
+          {item.visitorName || "-"}
+        </span>
+      ),
+    },
+    {
+      header: "Mobile",
+      cell: (item) => item.mobile || "-",
+    },
+    {
+      header: "Attraction",
+      cell: (item) => item.attractionName || item.attraction || "-",
+    },
+    {
+      header: "No. of Visitors",
+      align: "center",
+      cell: (item) => (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            minWidth: "28px",
+            height: "24px",
+            padding: "0 8px",
+            background: "#F1F5F9",
+            borderRadius: "12px",
+            fontWeight: 700,
+            fontSize: "12px",
+            color: "#0C2A42",
+          }}
+        >
+          {item.visitors ?? 1}
+        </span>
+      ),
+    },
+    {
+      header: "Reference",
+      cell: (item) => item.referenceName || item.reference || "-",
+    },
+    {
+      header: "Visit Date",
+      cell: (item) => formatDate(item.visitDate || item.date),
+    },
+    {
+      header: "Status",
+      cell: (item) => <StatusBadge status={item.status} />,
+    },
     {
       header: "Actions",
       align: "center",
-      width: "80px",
-      cell: (item) => (
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <ActionMenu
-            onEdit={() => handleEditPass(item)}
-            onDelete={() => handleDeletePass(item)}
-          />
-        </div>
-      ),
+      cell: (item, idx) => {
+        const itemId = item.id || `pass-${idx}`;
+        const isDropdownOpen = activeDropdownId === itemId;
+
+        return (
+          <div style={{ position: "relative", display: "inline-block" }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isDropdownOpen) {
+                  setActiveDropdownId(null);
+                  setDropdownPos(null);
+                } else {
+                  const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                  const MENU_HEIGHT = 80;
+                  const spaceBelow = window.innerHeight - rect.bottom;
+                  const openUp = spaceBelow < MENU_HEIGHT + 16;
+                  setDropdownPos({
+                    top: openUp ? rect.top - MENU_HEIGHT - 4 : rect.bottom + 4,
+                    right: window.innerWidth - rect.right,
+                  });
+                  setActiveDropdownId(itemId);
+                }
+              }}
+              aria-label="Actions menu"
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: "6px",
+                borderRadius: "4px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#374151",
+              }}
+            >
+              <MoreVertical size={18} />
+            </button>
+
+            {isDropdownOpen && dropdownPos && (
+              <div
+                ref={dropdownRef}
+                style={{
+                  position: "fixed",
+                  top: dropdownPos.top,
+                  right: dropdownPos.right,
+                  zIndex: 9999,
+                  background: "#FFFFFF",
+                  border: "1px solid #E5E7EB",
+                  borderRadius: "8px",
+                  boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
+                  width: "140px",
+                  padding: "4px 0",
+                  display: "flex",
+                  flexDirection: "column",
+                  animation: "fadeIn 0.12s ease-out",
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => {
+                    setActiveDropdownId(null);
+                    setPassToEdit(item);
+                    setIsPassModalOpen(true);
+                  }}
+                  className="dropdown-item"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    width: "100%",
+                    padding: "8px 14px",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                    fontFamily: typography.fontFamily.sans,
+                    color: "#374151",
+                    textAlign: "left",
+                  }}
+                >
+                  <Edit2 size={14} color="#F4BC43" />
+                  <span>Edit</span>
+                </button>
+
+                <button
+                  onClick={() => handleDeletePass(item)}
+                  className="dropdown-item"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    width: "100%",
+                    padding: "8px 14px",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                    fontFamily: typography.fontFamily.sans,
+                    color: "#DC2626",
+                    textAlign: "left",
+                  }}
+                >
+                  <Trash2 size={14} color="#DC2626" />
+                  <span>Delete</span>
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
+  // ── Columns for References Table ───────────────────────────────────────────
   const refColumns: GlobalColumn<Reference>[] = [
-    { header: "Reference Name", accessorKey: "referenceName" },
-    { header: "Contact Person", accessorKey: "contactPerson" },
-    { header: "Mobile No.", accessorKey: "mobile" },
+    {
+      header: "Reference Name",
+      cell: (item) => (
+        <span
+          style={{
+            fontFamily: typography.fontFamily.sans,
+            fontWeight: 700,
+            fontSize: "13px",
+            color: "#0C2A42",
+          }}
+        >
+          {item.referenceName || "-"}
+        </span>
+      ),
+    },
+    {
+      header: "Department / Organization",
+      cell: (item) => item.department || "-",
+    },
+    {
+      header: "Contact Person",
+      cell: (item) => (
+        <span style={{ fontWeight: 600, color: "#011B2F" }}>
+          {item.contactPerson || "-"}
+        </span>
+      ),
+    },
+    {
+      header: "Post / Designation",
+      cell: (item) => item.post || "-",
+    },
+    {
+      header: "Mobile",
+      cell: (item) => item.mobile || "-",
+    },
+    {
+      header: "Status",
+      cell: (item) => <StatusBadge status={item.status} />,
+    },
     {
       header: "Actions",
       align: "center",
-      width: "80px",
-      cell: (item) => (
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <ActionMenu
-            onEdit={() => handleEditRef(item)}
-            onDelete={() => handleDeleteRef(item)}
-          />
-        </div>
-      ),
+      cell: (item, idx) => {
+        const itemId = item.id || `ref-${idx}`;
+        const isDropdownOpen = activeDropdownId === itemId;
+
+        return (
+          <div style={{ position: "relative", display: "inline-block" }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isDropdownOpen) {
+                  setActiveDropdownId(null);
+                  setDropdownPos(null);
+                } else {
+                  const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                  const MENU_HEIGHT = 80;
+                  const spaceBelow = window.innerHeight - rect.bottom;
+                  const openUp = spaceBelow < MENU_HEIGHT + 16;
+                  setDropdownPos({
+                    top: openUp ? rect.top - MENU_HEIGHT - 4 : rect.bottom + 4,
+                    right: window.innerWidth - rect.right,
+                  });
+                  setActiveDropdownId(itemId);
+                }
+              }}
+              aria-label="Actions menu"
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: "6px",
+                borderRadius: "4px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#374151",
+              }}
+            >
+              <MoreVertical size={18} />
+            </button>
+
+            {isDropdownOpen && dropdownPos && (
+              <div
+                ref={dropdownRef}
+                style={{
+                  position: "fixed",
+                  top: dropdownPos.top,
+                  right: dropdownPos.right,
+                  zIndex: 9999,
+                  background: "#FFFFFF",
+                  border: "1px solid #E5E7EB",
+                  borderRadius: "8px",
+                  boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
+                  width: "140px",
+                  padding: "4px 0",
+                  display: "flex",
+                  flexDirection: "column",
+                  animation: "fadeIn 0.12s ease-out",
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => {
+                    setActiveDropdownId(null);
+                    setRefToEdit(item);
+                    setIsRefModalOpen(true);
+                  }}
+                  className="dropdown-item"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    width: "100%",
+                    padding: "8px 14px",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                    fontFamily: typography.fontFamily.sans,
+                    color: "#374151",
+                    textAlign: "left",
+                  }}
+                >
+                  <Edit2 size={14} color="#F4BC43" />
+                  <span>Edit</span>
+                </button>
+
+                <button
+                  onClick={() => handleDeleteRef(item)}
+                  className="dropdown-item"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    width: "100%",
+                    padding: "8px 14px",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                    fontFamily: typography.fontFamily.sans,
+                    color: "#DC2626",
+                    textAlign: "left",
+                  }}
+                >
+                  <Trash2 size={14} color="#DC2626" />
+                  <span>Delete</span>
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      },
     },
   ];
-
-  const searchPlaceholder =
-    activeTab === "issued"
-      ? "Search by Visitor Name, Mobile No., Reference........"
-      : "Search by Reference Name or Contact Person........";
-
-  const handleReset = () => {
-    setSearchTerm("");
-    setAttractionFilter("All Attractions");
-    setFromDate("");
-    setToDate("");
-    resetPage();
-  };
-
-  const exportBtnStyle: React.CSSProperties = {
-    height: "39px",
-    padding: "0 18px",
-    background: "#FFFFFF",
-    border: "1px solid rgba(0,0,0,0.41)",
-    borderRadius: "5px",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    fontFamily: "'Plus Jakarta Sans', sans-serif",
-    fontWeight: 500,
-    fontSize: "12px",
-    color: "#173F63",
-    cursor: "pointer",
-    transition: "all 0.15s",
-  };
-
-  const primaryBtnStyle: React.CSSProperties = {
-    height: "39px",
-    padding: "0 20px",
-    background: "#0C2A42",
-    border: "none",
-    borderRadius: "5px",
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    fontFamily: "'Plus Jakarta Sans', sans-serif",
-    fontWeight: 600,
-    fontSize: "12px",
-    color: "#FFFFFF",
-    cursor: "pointer",
-    boxShadow: "0 4px 12px rgba(12,42,66,0.2)",
-    transition: "all 0.2s",
-  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px", width: "100%" }}>
-      {/* ── Row 1: Tabs left | Export + Primary action right (matches Bookings) ── */}
+      {/* ── Top Export & Action Row ── */}
       <div
         style={{
           display: "flex",
@@ -590,291 +704,510 @@ export default function ComplimentaryPassesPage() {
           gap: "12px",
         }}
       >
-        {/* Tabs */}
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-          {(["issued", "reference"] as ActiveTab[]).map((tab) => {
-            const isActive = activeTab === tab;
-            return (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => {
-                  setActiveTab(tab);
-                  resetPage();
-                  setSearchTerm("");
-                }}
-                style={{
-                  height: "41px",
-                  padding: "0 22px",
-                  background: isActive ? "#F4BC43" : "#FFFFFF",
-                  border: isActive ? "1.5px solid #0C2A42" : "1.5px solid #CBD5E1",
-                  borderRadius: "8px",
-                  cursor: "pointer",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 600,
-                  fontSize: "16px",
-                  color: isActive ? "#0C2A42" : "#64748B",
-                  boxShadow: isActive ? "0 2px 8px rgba(244, 188, 67, 0.25)" : "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  transition: "all 0.2s ease",
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.borderColor = "#94A3B8";
-                    e.currentTarget.style.background = "#F8FAFC";
-                    e.currentTarget.style.color = "#0C2A42";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.borderColor = "#CBD5E1";
-                    e.currentTarget.style.background = "#FFFFFF";
-                    e.currentTarget.style.color = "#64748B";
-                  }
-                }}
-              >
-                {tab === "issued" ? "Issued Passes" : "Reference Management"}
-              </button>
-            );
-          })}
+        {/* Tab Switcher */}
+        <div
+          style={{
+            display: "inline-flex",
+            background: "#F1F5F9",
+            borderRadius: "10px",
+            padding: "4px",
+            gap: "4px",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setActiveTab("passes")}
+            style={{
+              padding: "8px 18px",
+              borderRadius: "8px",
+              border: "none",
+              fontSize: "13px",
+              fontWeight: 700,
+              fontFamily: typography.fontFamily.sans,
+              cursor: "pointer",
+              background: activeTab === "passes" ? "#011B2F" : "transparent",
+              color: activeTab === "passes" ? "#FFFFFF" : "#64748B",
+              transition: "all 0.18s ease",
+            }}
+          >
+            Complimentary Passes
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("references")}
+            style={{
+              padding: "8px 18px",
+              borderRadius: "8px",
+              border: "none",
+              fontSize: "13px",
+              fontWeight: 700,
+              fontFamily: typography.fontFamily.sans,
+              cursor: "pointer",
+              background: activeTab === "references" ? "#011B2F" : "transparent",
+              color: activeTab === "references" ? "#FFFFFF" : "#64748B",
+              transition: "all 0.18s ease",
+            }}
+          >
+            Reference Management
+          </button>
         </div>
 
-        {/* Export + Primary action (right-aligned) */}
+        {/* Right Actions: Export + Add Button */}
         <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={activeTab === "issued" ? handleExportPassesPDF : handleExportRefsPDF}
-            style={exportBtnStyle}
-          >
-            <FileText size={16} color="#173F63" />
-            <span>Export PDF</span>
-          </button>
-          <button
-            type="button"
-            onClick={activeTab === "issued" ? handleExportPassesCSV : handleExportRefsCSV}
-            style={exportBtnStyle}
-          >
-            <FileSpreadsheet size={16} color="#107C41" />
-            <span>Export Excel</span>
-          </button>
-
-          {activeTab === "issued" ? (
-            <button
-              type="button"
-              onClick={() => {
-                setPassToEdit(null);
-                setIssueModalOpen(true);
-              }}
-              style={primaryBtnStyle}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#173F63";
-                e.currentTarget.style.transform = "translateY(-1px)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "#0C2A42";
-                e.currentTarget.style.transform = "translateY(0)";
-              }}
-            >
-              <Plus size={16} color="#FFFFFF" strokeWidth={2.5} />
-              <span>Issue Complimentary Pass</span>
-            </button>
+          {activeTab === "passes" ? (
+            <>
+              <ExportButtons
+                onExportPDF={handleExportPassesPDF}
+                onExportExcel={handleExportPassesExcel}
+                disabled={passes.length === 0 || isPassesLoading}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setPassToEdit(null);
+                  setIsPassModalOpen(true);
+                }}
+                style={{
+                  height: "38px",
+                  padding: "0 18px",
+                  background: "#F4BC43",
+                  border: "none",
+                  borderRadius: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontFamily: typography.fontFamily.sans,
+                  fontWeight: 700,
+                  fontSize: "13px",
+                  color: "#011B2F",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(244,188,67,0.3)",
+                }}
+              >
+                <Plus size={16} strokeWidth={2.5} />
+                <span>Issue Pass</span>
+              </button>
+            </>
           ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setRefToEdit(null);
-                setAddRefModalOpen(true);
-              }}
-              style={primaryBtnStyle}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#173F63";
-                e.currentTarget.style.transform = "translateY(-1px)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "#0C2A42";
-                e.currentTarget.style.transform = "translateY(0)";
-              }}
-            >
-              <Plus size={16} color="#FFFFFF" strokeWidth={2.5} />
-              <span>Add Reference</span>
-            </button>
+            <>
+              <ExportButtons
+                onExportPDF={handleExportRefsPDF}
+                onExportExcel={handleExportRefsExcel}
+                disabled={references.length === 0 || isReferencesLoading}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setRefToEdit(null);
+                  setIsRefModalOpen(true);
+                }}
+                style={{
+                  height: "38px",
+                  padding: "0 18px",
+                  background: "#F4BC43",
+                  border: "none",
+                  borderRadius: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontFamily: typography.fontFamily.sans,
+                  fontWeight: 700,
+                  fontSize: "13px",
+                  color: "#011B2F",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(244,188,67,0.3)",
+                }}
+              >
+                <Plus size={16} strokeWidth={2.5} />
+                <span>Add Reference</span>
+              </button>
+            </>
           )}
         </div>
       </div>
 
-      {/* ── Row 2: White filter card (identical structure to Bookings/Transactions) ── */}
+      {/* ── Filters Bar ── */}
       <div
         style={{
-          display: "flex",
-          alignItems: "flex-end",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: "16px",
           background: "#FFFFFF",
-          padding: "20px",
-          borderRadius: "8px",
-          border: "1px solid rgba(179, 175, 175, 0.4)",
+          border: `1px solid ${colors.header.border}`,
+          borderRadius: "12px",
+          padding: "16px 20px",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          flexWrap: "wrap",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
         }}
       >
-        {/* Search */}
-        <div style={{ flex: 1, minWidth: "260px", maxWidth: "420px" }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              background: "#FFFFFF",
-              border: "1.5px solid rgba(179, 175, 175, 0.51)",
-              borderRadius: "4px",
-              padding: "0 12px",
-              height: "40px",
-              boxSizing: "border-box",
-            }}
-          >
-            <Search size={18} color="#B3AFAF" />
-            <input
-              type="text"
-              placeholder={searchPlaceholder}
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                resetPage();
-              }}
+        {activeTab === "passes" ? (
+          <>
+            {/* Passes Search Input */}
+            <div
               style={{
-                width: "100%",
-                border: "none",
-                outline: "none",
-                background: "transparent",
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: 700,
-                fontSize: "12px",
-                color: "#011B2F",
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Filters group */}
-        <div style={{ display: "flex", alignItems: "flex-end", gap: "14px", flexWrap: "wrap" }}>
-          {/* Attraction */}
-          {activeTab === "issued" && (
-            <AttractionDropdown
-              value={attractionFilter}
-              onChange={(v) => {
-                setAttractionFilter(v);
-                resetPage();
-              }}
-            />
-          )}
-
-          {/* Date Range Picker (from date to to date) */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            <label
-              style={{
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: 600,
-                fontSize: "11px",
-                color: "rgba(81, 82, 82, 0.75)",
-                lineHeight: "14px",
-                display: "block",
+                position: "relative",
+                flex: "1 1 200px",
+                minWidth: "180px",
               }}
             >
-              Date Range
-            </label>
+              <Search
+                size={16}
+                color="#64748B"
+                style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)" }}
+              />
+              <input
+                type="text"
+                placeholder="Search visitor name, mobile, reference..."
+                value={passSearch}
+                onChange={(e) => setPassSearch(e.target.value)}
+                style={{
+                  width: "100%",
+                  height: "38px",
+                  paddingLeft: "36px",
+                  paddingRight: "12px",
+                  borderRadius: "8px",
+                  border: "1.5px solid rgba(179, 175, 175, 0.4)",
+                  fontSize: "13px",
+                  fontFamily: typography.fontFamily.sans,
+                  color: "#011B2F",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            {/* Attraction Dropdown */}
+            <select
+              value={selectedAttraction}
+              onChange={(e) => setSelectedAttraction(e.target.value)}
+              style={{
+                height: "38px",
+                padding: "0 14px",
+                borderRadius: "8px",
+                border: "1.5px solid rgba(179, 175, 175, 0.4)",
+                fontSize: "13px",
+                fontFamily: typography.fontFamily.sans,
+                color: "#011B2F",
+                background: "#FFFFFF",
+                cursor: "pointer",
+                outline: "none",
+                minWidth: "160px",
+              }}
+            >
+              <option value="ALL">All Attractions</option>
+              {attractionOptions.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+
+            {/* Date Range Picker */}
             <DateRangePicker
               fromDate={fromDate}
               toDate={toDate}
               onFromDateChange={setFromDate}
               onToDateChange={setToDate}
-              onClear={() => {
-                setFromDate("");
-                setToDate("");
-              }}
+              onClear={() => { setFromDate(""); setToDate(""); }}
             />
-          </div>
 
-          {/* Reset */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            <div style={{ height: "14px" }} />
-            <button
-              type="button"
-              onClick={handleReset}
+            {/* Pass Status Dropdown */}
+            <select
+              value={selectedPassStatus}
+              onChange={(e) => setSelectedPassStatus(e.target.value)}
               style={{
-                height: "40px",
-                width: "95px",
-                borderRadius: "4px",
-                border: "0.5px solid rgba(179, 175, 175, 0.66)",
+                height: "38px",
+                padding: "0 14px",
+                borderRadius: "8px",
+                border: "1.5px solid rgba(179, 175, 175, 0.4)",
+                fontSize: "13px",
+                fontFamily: typography.fontFamily.sans,
+                color: "#011B2F",
                 background: "#FFFFFF",
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: 500,
-                fontSize: "12px",
-                color: "#173F63",
                 cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "6px",
-                boxSizing: "border-box",
-                transition: "all 0.15s ease",
+                outline: "none",
+                minWidth: "130px",
               }}
             >
-              <RotateCcw size={14} />
-              <span>Reset</span>
-            </button>
-          </div>
-        </div>
+              <option value="ALL">All Statuses</option>
+              <option value="ACTIVE">Active</option>
+              <option value="USED">Used</option>
+              <option value="EXPIRED">Expired</option>
+            </select>
+
+            {/* Reset Button */}
+            {isPassFiltered && (
+              <button
+                type="button"
+                onClick={handleResetPassFilters}
+                style={{
+                  height: "38px",
+                  padding: "0 12px",
+                  borderRadius: "8px",
+                  border: "1px solid #E2E8F0",
+                  background: "#F8FAFC",
+                  color: "#64748B",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <RotateCcw size={14} />
+                <span>Reset</span>
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            {/* References Search Input */}
+            <div
+              style={{
+                position: "relative",
+                flex: "1 1 300px",
+                minWidth: "220px",
+              }}
+            >
+              <Search
+                size={16}
+                color="#64748B"
+                style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)" }}
+              />
+              <input
+                type="text"
+                placeholder="Search reference name, contact person, department, mobile..."
+                value={refSearch}
+                onChange={(e) => setRefSearch(e.target.value)}
+                style={{
+                  width: "100%",
+                  height: "38px",
+                  paddingLeft: "36px",
+                  paddingRight: "12px",
+                  borderRadius: "8px",
+                  border: "1.5px solid rgba(179, 175, 175, 0.4)",
+                  fontSize: "13px",
+                  fontFamily: typography.fontFamily.sans,
+                  color: "#011B2F",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            {/* Reset Button */}
+            {isRefFiltered && (
+              <button
+                type="button"
+                onClick={handleResetRefFilters}
+                style={{
+                  height: "38px",
+                  padding: "0 12px",
+                  borderRadius: "8px",
+                  border: "1px solid #E2E8F0",
+                  background: "#F8FAFC",
+                  color: "#64748B",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <RotateCcw size={14} />
+                <span>Reset</span>
+              </button>
+            )}
+          </>
+        )}
       </div>
 
-      {/* ── Row 3: Table ── */}
-      {activeTab === "issued" ? (
-        <GlobalDataTable
+      {/* ── Table Section ── */}
+      {activeTab === "passes" ? (
+        <GlobalDataTable<ComplimentaryPass>
           columns={passColumns}
-          data={filteredPasses}
-          keyExtractor={(item) => item.id}
-          pageSize={10}
-          currentPage={currentPage}
-          onPageChange={setCurrentPage}
-          showSNo={false}
-          itemLabel="passes"
-          emptyMessage="No complimentary passes found matching current filters."
+          data={passes}
+          keyExtractor={(item, index) => item.id || `pass-row-${index}`}
+          pageSize={PAGE_SIZE}
+          currentPage={passPage}
+          onPageChange={setPassPage}
+          totalItems={passPagination.total}
+          totalPages={passPagination.totalPages}
+          showSNo={true}
+          sNoHeader="S.No"
+          itemLabel="complimentary passes"
+          isLoading={isPassesLoading}
+          emptyIcon={
+            isPassFiltered ? (
+              <SearchX size={26} color={colors.brand.accent} />
+            ) : (
+              <Ticket size={26} color={colors.brand.accent} />
+            )
+          }
+          emptyTitle={
+            isPassFiltered
+              ? "No Matching Complimentary Passes Found"
+              : "No Complimentary Passes Found"
+          }
+          emptyDescription={
+            isPassFiltered
+              ? debouncedPassSearch.trim()
+                ? `No passes found matching "${debouncedPassSearch}". Try adjusting your search or filters.`
+                : "No complimentary passes match the selected filter criteria. Try adjusting or clearing your filters."
+              : "There are currently no complimentary passes recorded in the system."
+          }
+          emptyAction={
+            isPassFiltered ? (
+              <button
+                type="button"
+                onClick={handleResetPassFilters}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  border: `1px solid ${colors.header.border}`,
+                  background: "#FFFFFF",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: colors.brand.accent,
+                  cursor: "pointer",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                }}
+              >
+                Clear Filters &amp; Search
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setPassToEdit(null);
+                  setIsPassModalOpen(true);
+                }}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: "#F4BC43",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "#011B2F",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(244,188,67,0.3)",
+                }}
+              >
+                Issue First Complimentary Pass
+              </button>
+            )
+          }
         />
       ) : (
-        <GlobalDataTable
+        <GlobalDataTable<Reference>
           columns={refColumns}
-          data={filteredRefs}
-          keyExtractor={(item) => item.id}
-          pageSize={10}
-          currentPage={currentPage}
-          onPageChange={setCurrentPage}
-          showSNo={false}
+          data={references}
+          keyExtractor={(item, index) => item.id || `ref-row-${index}`}
+          pageSize={PAGE_SIZE}
+          currentPage={refPage}
+          onPageChange={setRefPage}
+          totalItems={refPagination.total}
+          totalPages={refPagination.totalPages}
+          showSNo={true}
+          sNoHeader="S.No"
           itemLabel="references"
-          emptyMessage="No references found matching current filters."
+          isLoading={isReferencesLoading}
+          emptyIcon={
+            isRefFiltered ? (
+              <SearchX size={26} color={colors.brand.accent} />
+            ) : (
+              <Users size={26} color={colors.brand.accent} />
+            )
+          }
+          emptyTitle={
+            isRefFiltered ? "No Matching References Found" : "No References Found"
+          }
+          emptyDescription={
+            isRefFiltered
+              ? `No references found matching "${debouncedRefSearch}". Try adjusting your search query.`
+              : "There are currently no references recorded in the master list."
+          }
+          emptyAction={
+            isRefFiltered ? (
+              <button
+                type="button"
+                onClick={handleResetRefFilters}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  border: `1px solid ${colors.header.border}`,
+                  background: "#FFFFFF",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: colors.brand.accent,
+                  cursor: "pointer",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                }}
+              >
+                Clear Search
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setRefToEdit(null);
+                  setIsRefModalOpen(true);
+                }}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: "#F4BC43",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "#011B2F",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(244,188,67,0.3)",
+                }}
+              >
+                Add First Reference
+              </button>
+            )
+          }
         />
       )}
 
-      {/* ── Modals ── */}
+      {/* ── Issue / Edit Pass Modal ── */}
       <IssueComplimentaryPassModal
-        isOpen={issueModalOpen}
+        isOpen={isPassModalOpen}
         onClose={() => {
-          setIssueModalOpen(false);
+          setIsPassModalOpen(false);
           setPassToEdit(null);
         }}
         passToEdit={passToEdit}
-        references={refs}
+        references={allReferences}
+        attractions={attractionOptions}
         onSave={handleSavePass}
+        isSaving={createPassMutation.isPending || updatePassMutation.isPending}
       />
 
+      {/* ── Add / Edit Reference Modal ── */}
       <AddReferenceModal
-        isOpen={addRefModalOpen}
+        isOpen={isRefModalOpen}
         onClose={() => {
-          setAddRefModalOpen(false);
+          setIsRefModalOpen(false);
           setRefToEdit(null);
         }}
         refToEdit={refToEdit}
         onSave={handleSaveRef}
+        isSaving={createRefMutation.isPending || updateRefMutation.isPending}
       />
+
+      <style>{`
+        .dropdown-item:hover { background: #F1F5F9 !important; }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }

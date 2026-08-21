@@ -42,13 +42,13 @@ export default function AttractionReportCard({
   const handleExportAttractionCSV = (e: React.MouseEvent) => {
     e.stopPropagation();
     const headers = ["Transaction ID", "Customer Name", "Date/Time", "Amount (₹)", "Payment Mode", "Status"];
-    const rows = transactions.map((t) => [
-      t.id,
-      t.customerName,
-      t.dateTime,
-      t.amount,
-      t.paymentMode,
-      t.status,
+    const rows: (string | number | boolean)[][] = transactions.map((t) => [
+      t.id || "",
+      t.customerName || "",
+      t.dateTime || t.transactionDate || "",
+      t.amount ?? 0,
+      t.paymentMode || "",
+      t.status || "",
     ]);
 
     exportToCSV(
@@ -326,36 +326,42 @@ export default function AttractionReportCard({
                 Ticket Category Sales
               </h4>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                {categoryBreakdown.map((cat) => (
-                  <div
-                    key={cat.category}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "8px 12px",
-                      borderRadius: "6px",
-                      backgroundColor: "#FFFFFF",
-                      border: "1px solid #E2E8F0",
-                      fontSize: "13px",
-                    }}
-                  >
-                    <div>
-                      <span style={{ fontWeight: 600, color: colors.text.primary }}>{cat.category}</span>
-                      <span style={{ fontSize: "11px", color: colors.text.muted, marginLeft: "8px" }}>
-                        (₹{cat.unitPrice}/tkt)
-                      </span>
+                {categoryBreakdown.length > 0 ? (
+                  categoryBreakdown.map((cat) => (
+                    <div
+                      key={cat.category}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "8px 12px",
+                        borderRadius: "6px",
+                        backgroundColor: "#FFFFFF",
+                        border: "1px solid #E2E8F0",
+                        fontSize: "13px",
+                      }}
+                    >
+                      <div>
+                        <span style={{ fontWeight: 600, color: colors.text.primary }}>{cat.category}</span>
+                        <span style={{ fontSize: "11px", color: colors.text.muted, marginLeft: "8px" }}>
+                          (₹{cat.unitPrice}/tkt)
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                        <span style={{ fontWeight: 600, color: "#0284C7" }}>
+                          {cat.count} tickets
+                        </span>
+                        <span style={{ fontWeight: 700, color: "#16A34A", width: "80px", textAlign: "right" }}>
+                          ₹{cat.revenue.toLocaleString("en-IN")}
+                        </span>
+                      </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                      <span style={{ fontWeight: 600, color: "#0284C7" }}>
-                        {cat.count} tickets
-                      </span>
-                      <span style={{ fontWeight: 700, color: "#16A34A", width: "80px", textAlign: "right" }}>
-                        ₹{cat.revenue.toLocaleString("en-IN")}
-                      </span>
-                    </div>
+                  ))
+                ) : (
+                  <div style={{ padding: "12px", color: colors.text.muted, fontSize: "13px" }}>
+                    No ticket sales recorded in selected date range.
                   </div>
-                ))}
+                )}
               </div>
             </div>
 

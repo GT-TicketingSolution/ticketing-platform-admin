@@ -1953,10 +1953,11 @@ export default function CustomerInfoView({
                     Mobile Number
                   </label>
                   <input
-                    type="text"
+                    type="tel"
                     placeholder="Enter Mobile Number"
                     value={guestDetails.mobile}
-                    onChange={(e) => setGuestDetails({ ...guestDetails, mobile: e.target.value })}
+                    maxLength={10}
+                    onChange={(e) => setGuestDetails({ ...guestDetails, mobile: e.target.value.replace(/\D/g, "").slice(0, 10) })}
                     style={ciInputStyle}
                   />
                 </div>
@@ -2059,10 +2060,11 @@ export default function CustomerInfoView({
                     Mobile Number
                   </label>
                   <input
-                    type="text"
+                    type="tel"
                     placeholder="Enter Mobile Number"
                     value={referenceDetails.refMobile}
-                    onChange={(e) => setReferenceDetails({ ...referenceDetails, refMobile: e.target.value })}
+                    maxLength={10}
+                    onChange={(e) => setReferenceDetails({ ...referenceDetails, refMobile: e.target.value.replace(/\D/g, "").slice(0, 10) })}
                     style={ciInputStyle}
                   />
                 </div>

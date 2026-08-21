@@ -58,22 +58,23 @@ export const AppUrl = {
     delete: (transactionId: string) => `/admin/transactions/${transactionId}`,
   },
 
+  // Invoice Management
+  invoice: {
+    list: "/admin/invoices",
+    get: (invoiceId: string) => `/admin/invoices/${invoiceId}`,
+    delete: (invoiceId: string) => `/admin/invoices/${invoiceId}`,
+  },
+
   // System Modules
   systemModule: {
     list: "/admin/system-modules",
   },
 
-  // Attractions Management (manager query hook — dropdown list)
-  attraction: {
-    list: "/admin/attractions",
-    getModules: (attractionId: string) => `/admin/attractions/${attractionId}/modules`,
-  },
-
   // Attraction Management CRUD
   attractionManagement: {
-    list:   "/admin/attraction-management",
+    list: "/admin/attraction-management",
     create: "/admin/attraction-management",
-    bulk:   "/admin/attraction-management/bulk",
+    bulk: "/admin/attraction-management/bulk",
     update: (id: string) => `/admin/attraction-management/${id}`,
     delete: (id: string) => `/admin/attraction-management/${id}`,
     assignSeat: (id: string) => `/admin/attraction-management/${id}/seat`,
@@ -86,6 +87,46 @@ export const AppUrl = {
     get: (seatId: string) => `/admin/seats/${seatId}`,
     update: (seatId: string) => `/admin/seats/${seatId}`,
     delete: (seatId: string) => `/admin/seats/${seatId}`,
+  },
+
+  // Inventory Management
+  inventory: {
+    list: "/admin/inventory",
+    upsert: "/admin/inventory",
+    capacity: "/admin/inventory/capacity",
+  },
+
+  // Customer Management
+  customer: {
+    list: "/admin/customers",
+    create: "/admin/customers",
+    update: (id: string) => `/admin/customers/${id}`,
+    delete: (id: string) => `/admin/customers/${id}`,
+  },
+
+  // Complimentary Passes
+  complimentaryPass: {
+    list: "/admin/complimentary-passes",
+    create: "/admin/complimentary-passes",
+    update: (id: string) => `/admin/complimentary-passes/${id}`,
+    delete: (id: string) => `/admin/complimentary-passes/${id}`,
+  },
+
+  // References Master Data
+  reference: {
+    list: "/admin/references",
+    create: "/admin/references",
+    update: (id: string) => `/admin/references/${id}`,
+    delete: (id: string) => `/admin/references/${id}`,
+  },
+
+  // Reports
+  reports: {
+    summary: "/admin/reports/summary",
+    attraction: "/admin/reports/attractions",
+    attractions: "/admin/reports/attractions",
+    payment: "/admin/reports/payment",
+    tickets: "/admin/reports/tickets",
   },
 } as const;
 

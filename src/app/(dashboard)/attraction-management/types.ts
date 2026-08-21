@@ -1,4 +1,3 @@
-// ── API response type ────────────────────────────────────────────────────────
 export interface AttractionManagement {
   id: string;           // management ID — used for PATCH/:id, DELETE/:id, PATCH/:id/seat
   attractionId: string; // underlying attraction ID
@@ -16,13 +15,18 @@ export interface AttractionManagement {
   hasSeating: boolean;
   description: string | null;
   status: string;
+  seatLayoutId?: string | null;
   seatLayouts?: Array<{
     id: string;
+    adminId?: string;
     name: string;
     rows?: number;
     cols?: number;
     hasAisle?: boolean;
     aisleAfterCol?: number;
+    status?: string;
+    createdAt?: string;
+    updatedAt?: string;
     totalSeats?: number;
   }>;
   seatLayoutIds?: string[];
@@ -60,20 +64,20 @@ export interface UpdateAttractionPayload {
   seatLayoutIds?: string[];
 }
 
-// ── Bulk upload ──────────────────────────────────────────────────────────────
+// ── Bulk upload 
 export interface BulkAttractionItem {
-  attractionId: string;
+  name: string;
+  type?: string;
   image?: string | null;
   description?: string | null;
   timing?: string | null;
-
   adultPrice?: number;
   childPrice?: number;
   studentPrice?: number;
   seniorPrice?: number;
   foreignerPrice?: number;
-
   hasSeating?: boolean;
+  attractionName?: string;
 }
 
 export type BulkAttractionPayload = BulkAttractionItem[];

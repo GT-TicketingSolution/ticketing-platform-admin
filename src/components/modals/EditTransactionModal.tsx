@@ -280,8 +280,8 @@ export default function EditTransactionModal({
                 </label>
                 <input
                   type="text"
-                  value={formData.dateTime || ""}
-                  onChange={(e) => setFormData({ ...formData, dateTime: e.target.value })}
+                  value={formData.transactionDate || formData.dateTime || ""}
+                  onChange={(e) => setFormData({ ...formData, transactionDate: e.target.value, dateTime: e.target.value })}
                   style={{
                     width: "100%",
                     height: "40px",

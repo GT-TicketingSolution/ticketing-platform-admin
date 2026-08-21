@@ -64,23 +64,19 @@ function parseCsvToBulkPayload(csvText: string): BulkAttractionPayload {
       rowObj[h] = values[idx] !== undefined ? values[idx].trim() : "";
     });
 
-    const attractionId =
-      rowObj["attractionname"] ||
+    const name =
       rowObj["name"] ||
+      rowObj["attractionname"] ||
       rowObj["attraction"] ||
       rowObj["attractionid"] ||
       rowObj["id"] ||
       "";
 
-    if (!attractionId) {
+    if (!name) {
       continue;
     }
 
-    const parseBool = (val?: string) => {
-      if (!val) return false;
-      const lower = val.toLowerCase().trim();
-      return lower === "true" || lower === "yes" || lower === "1";
-    };
+    const type = rowObj["type"] || rowObj["category"] || "RIDE";
 
     const parseNum = (val?: string) => {
       if (!val) return 0;
@@ -89,8 +85,15 @@ function parseCsvToBulkPayload(csvText: string): BulkAttractionPayload {
       return isNaN(num) ? 0 : num;
     };
 
+    const parseBool = (val?: string) => {
+      if (!val) return false;
+      const lower = val.trim().toLowerCase();
+      return lower === "true" || lower === "1" || lower === "yes" || lower === "y";
+    };
+
     items.push({
-      attractionId,
+      name,
+      type,
       image: rowObj["image"] || rowObj["imageurl"] || null,
       description: rowObj["description"] || rowObj["desc"] || null,
       timing: rowObj["timing"] || rowObj["timings"] || rowObj["time"] || null,
@@ -99,12 +102,13 @@ function parseCsvToBulkPayload(csvText: string): BulkAttractionPayload {
       studentPrice: parseNum(rowObj["studentprice"] || rowObj["student"]),
       seniorPrice: parseNum(rowObj["seniorprice"] || rowObj["senior"]),
       foreignerPrice: parseNum(rowObj["foreignerprice"] || rowObj["foreigner"]),
-      hasSeating: parseBool(rowObj["hasseating"] || rowObj["seating"]),
+      hasSeating: parseBool(rowObj["hasseating"] || rowObj["seating"] || rowObj["hasseatings"]),
+      attractionName: name,
     });
   }
 
   if (items.length === 0) {
-    throw new Error("No valid attraction records with an 'attractionName' were found in the CSV.");
+    throw new Error("No valid attraction records with a 'name' were found in the CSV.");
   }
 
   return items;
@@ -118,12 +122,13 @@ async function parseFileToPayload(file: File): Promise<BulkAttractionPayload> {
       throw new Error("JSON file must contain an array of attraction objects.");
     }
     return parsed.map((item: any, idx: number) => {
-      const attractionIdentifier = item.attractionName || item.name || item.attractionId || item.id;
-      if (!attractionIdentifier) {
-        throw new Error(`Item ${idx + 1} is missing required 'attractionName'.`);
+      const name = item.name || item.attractionName || item.attractionId || item.id;
+      if (!name) {
+        throw new Error(`Item ${idx + 1} is missing required 'name'.`);
       }
       return {
-        attractionId: String(attractionIdentifier).trim(),
+        name: String(name).trim(),
+        type: item.type || item.category || "RIDE",
         image: item.image ?? null,
         description: item.description ?? null,
         timing: item.timing ?? null,
@@ -132,7 +137,14 @@ async function parseFileToPayload(file: File): Promise<BulkAttractionPayload> {
         studentPrice: typeof item.studentPrice === "number" ? item.studentPrice : (Number(item.studentPrice) || 0),
         seniorPrice: typeof item.seniorPrice === "number" ? item.seniorPrice : (Number(item.seniorPrice) || 0),
         foreignerPrice: typeof item.foreignerPrice === "number" ? item.foreignerPrice : (Number(item.foreignerPrice) || 0),
-        hasSeating: typeof item.hasSeating === "boolean" ? item.hasSeating : Boolean(item.hasSeating),
+        hasSeating: Boolean(
+          item.hasSeating === true ||
+          item.hasSeating === "true" ||
+          item.hasSeating === 1 ||
+          item.hasSeating === "1" ||
+          item.hasSeating === "yes"
+        ),
+        attractionName: String(name).trim(),
       };
     });
   }
@@ -184,31 +196,38 @@ export default function BulkUploadModal({
       return;
     }
 
+    let payload: BulkAttractionPayload;
     try {
-      const payload = await parseFileToPayload(selectedFile);
-      if (!payload || payload.length === 0) {
-        showToast("No valid attraction records found in the file.", "error");
-        return;
-      }
+      payload = await parseFileToPayload(selectedFile);
+    } catch (err: any) {
+      showToast(err?.message || "Failed to process file for upload.", "error");
+      return;
+    }
 
+    if (!payload || payload.length === 0) {
+      showToast("No valid attraction records found in the file.", "error");
+      return;
+    }
+
+    try {
       const result = await bulkUploadMutation.mutateAsync(payload);
       const count = Array.isArray(result?.data) ? result.data.length : payload.length;
       onUploadSuccess(count);
       setSelectedFile(null);
       onClose();
-    } catch (err: any) {
-      const errorMsg = err?.message || "Failed to process file for upload.";
-      showToast(errorMsg, "error");
+    } catch {
+      // Backend error is handled and toasted centrally by the axios response interceptor.
+      // We avoid showing duplicate error toasts here.
     }
   };
 
   const handleDownloadTemplate = () => {
-    // Generate sample CSV for download with attractionName column
+    // Generate sample CSV for download with name, type, hasSeating and all price columns
     const csvContent =
       "data:text/csv;charset=utf-8," +
-      "attractionName,image,description,timing,adultPrice,childPrice,studentPrice,seniorPrice,foreignerPrice,hasSeating\n" +
-      "Toy Train,https://example.com/toy-train.jpg,Toy train ride,09:00 AM - 06:00 PM,100,50,70,60,200,true\n" +
-      "Rope Way,https://example.com/rope-way.jpg,Rope way ride,10:00 AM - 05:00 PM,200,100,150,120,400,true\n";
+      "name,type,image,description,timing,adultPrice,childPrice,studentPrice,seniorPrice,foreignerPrice,hasSeating\n" +
+      "Roller Coaster,RIDE,https://example.com/roller-coaster.jpg,High-speed roller coaster attraction,10:00 AM - 6:00 PM,500,300,350,250,800,true\n" +
+      "Water Ride,RIDE,https://example.com/water-ride.jpg,Exciting water ride,11:00 AM - 7:00 PM,400,250,300,200,700,false\n";
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);

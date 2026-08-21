@@ -25,6 +25,7 @@ import {
 import BookingDetailsModal from "@/components/modals/BookingDetailsModal";
 import EditBookingModal from "@/components/modals/EditBookingModal";
 import { useAttractions } from "@/hooks/useManagerQueries";
+import { exportToCSV } from "@/lib/exportUtils";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -126,6 +127,7 @@ export default function BookingsPage() {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number; openUp: boolean } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -148,13 +150,14 @@ export default function BookingsPage() {
     const handler = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setActiveDropdownId(null);
+        setDropdownPos(null);
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // ── Queries ──────────────────────────────────────────────────────────────
+  // ── Queries 
   const { data: bookingsData, isLoading } = useBookingList({
     page: currentPage,
     limit: ITEMS_PER_PAGE,
@@ -177,10 +180,24 @@ export default function BookingsPage() {
   // Build attraction dropdown options from live data
   const attractionOptions = useMemo(() => {
     const unique = Array.from(
-      new Map(attractionsData.map((a: any) => [a.id, a.name])).entries()
+      new Map(attractionsData.map((a: any) => [a.attractionId || a.id, a.name])).entries()
     ).map(([id, name]) => ({ id, name }));
     return [{ id: "All", name: "All Attractions" }, ...unique];
   }, [attractionsData]);
+
+  // Contextual empty message based on active filters
+  const emptyMessage = useMemo(() => {
+    const parts: string[] = [];
+    if (debouncedSearch) parts.push(`"${debouncedSearch}"`);
+    if (selectedAttractionId !== "All") {
+      const found = attractionOptions.find((o) => o.id === selectedAttractionId);
+      if (found) parts.push(found.name);
+    }
+    if (selectedStatus !== "All") parts.push(selectedStatus.charAt(0) + selectedStatus.slice(1).toLowerCase());
+    if (fromDate || toDate) parts.push("the selected date range");
+    if (parts.length === 0) return "No bookings found.";
+    return `No bookings found matching ${parts.join(" · ")}.`;
+  }, [debouncedSearch, selectedAttractionId, selectedStatus, fromDate, toDate, attractionOptions]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleResetFilters = () => {
@@ -198,21 +215,23 @@ export default function BookingsPage() {
     setSelectedBooking(booking);
     setIsDetailsOpen(true);
     setActiveDropdownId(null);
+    setDropdownPos(null);
   };
 
   const handleOpenEdit = (booking: BookingListItem) => {
     setSelectedBooking(booking);
     setIsEditOpen(true);
     setActiveDropdownId(null);
+    setDropdownPos(null);
   };
 
   const handleDeleteBooking = async (booking: BookingListItem) => {
     setActiveDropdownId(null);
+    setDropdownPos(null);
     const confirmed = await confirmDelete(`booking "${booking.customerName} (${booking.bookingId})"`);
     if (!confirmed) return;
     try {
       await deleteBookingMutation.mutateAsync(booking.id);
-      showToast(`Booking ${booking.bookingId} deleted.`, "success");
     } catch {
       // handled in mutation onError
     }
@@ -228,15 +247,131 @@ export default function BookingsPage() {
     }
   };
 
-  // ── Export stubs (export currently available bookings page) ──────────────
-  const handleExportPDF = () => {
+  // ── Export handlers
+  const handleExportPDF = async () => {
     if (bookings.length === 0) { showToast("No booking data to export.", "info"); return; }
-    showToast("PDF export will be available soon.", "info");
+
+    try {
+      if (!(window as any).html2pdf) {
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error("Failed to load PDF library"));
+          document.head.appendChild(script);
+        });
+      }
+
+      const totalAmount = bookings.reduce((sum, b) => sum + (b.amount || 0), 0);
+      const dateLabel = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+
+      const rowsHtml = bookings.map((b, idx) => `
+        <tr style="border-bottom: 1px solid #E5E7EB; font-size: 11px;">
+          <td style="padding: 8px 10px;">${idx + 1}</td>
+          <td style="padding: 8px 10px; font-weight: 600; color: #0C2A42;">${b.bookingId}</td>
+          <td style="padding: 8px 10px;">${b.customerName}</td>
+          <td style="padding: 8px 10px;">${b.mobileNumber ?? "-"}</td>
+          <td style="padding: 8px 10px;">${b.bookingDate ? new Date(b.bookingDate).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "-"}</td>
+          <td style="padding: 8px 10px;">${b.attraction?.name ?? "-"}</td>
+          <td style="padding: 8px 10px;">${b.visitors?.total ?? "-"}</td>
+          <td style="padding: 8px 10px; text-align: right; font-weight: 600;">&#8377;${(b.amount || 0).toFixed(2)}</td>
+          <td style="padding: 8px 10px; text-align: right;">&#8377;${(b.amountPaid || 0).toFixed(2)}</td>
+          <td style="padding: 8px 10px;">${b.paymentMode ?? "-"}</td>
+          <td style="padding: 8px 10px; text-align: center;">
+            <span style="display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold;
+              background: ${b.status === "CONFIRMED" ? "#B5FFE7" : b.status === "CANCELLED" ? "#FEE2E2" : "#FFF8D9"};
+              color: ${b.status === "CONFIRMED" ? "#119167" : b.status === "CANCELLED" ? "#DC2626" : "#D97706"};">
+              ${b.status}
+            </span>
+          </td>
+        </tr>`).join("");
+
+      const reportHtml = `
+        <div style="font-family: Arial, sans-serif; padding: 24px; color: #011B2F; background: #FFFFFF;">
+          <table style="width: 100%; border-collapse: collapse; border-bottom: 2px solid #F4BC43; padding-bottom: 10px; margin-bottom: 16px;">
+            <tr>
+              <td style="vertical-align: top;">
+                <div style="font-size: 20px; font-weight: bold; color: #0C2A42;">TICKETING PLATFORM</div>
+                <div style="font-size: 13px; color: #0C2A42; font-weight: 600; margin-top: 2px;">BOOKINGS LIST REPORT</div>
+                <div style="font-size: 11px; color: #6B7280; margin-top: 2px;">Generated: ${dateLabel}</div>
+              </td>
+              <td style="text-align: right; vertical-align: top;">
+                <div style="font-size: 11px; color: #6B7280;">Total Records: <strong>${bookings.length}</strong></div>
+              </td>
+            </tr>
+          </table>
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 20px;">
+            <thead>
+              <tr style="background: #F1F5F9; color: #374151; font-weight: bold;">
+                <th style="padding: 8px 10px; text-align: left; width: 30px;">#</th>
+                <th style="padding: 8px 10px; text-align: left;">Booking ID</th>
+                <th style="padding: 8px 10px; text-align: left;">Customer</th>
+                <th style="padding: 8px 10px; text-align: left;">Mobile</th>
+                <th style="padding: 8px 10px; text-align: left;">Date &amp; Time</th>
+                <th style="padding: 8px 10px; text-align: left;">Attraction</th>
+                <th style="padding: 8px 10px; text-align: left;">Visitors</th>
+                <th style="padding: 8px 10px; text-align: right;">Amount</th>
+                <th style="padding: 8px 10px; text-align: right;">Paid</th>
+                <th style="padding: 8px 10px; text-align: left;">Mode</th>
+                <th style="padding: 8px 10px; text-align: center;">Status</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          <table style="width: 100%; border-collapse: collapse; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px;">
+            <tr>
+              <td style="padding: 10px 14px; font-weight: bold; font-size: 12px; color: #0C2A42;">
+                Total Bookings: ${bookings.length}
+              </td>
+              <td style="padding: 10px 14px; text-align: right; font-weight: bold; font-size: 14px; color: #0C2A42;">
+                Total Revenue: &#8377;${totalAmount.toFixed(2)}
+              </td>
+            </tr>
+          </table>
+        </div>`;
+
+      const element = document.createElement("div");
+      element.style.width = "820px";
+      element.innerHTML = reportHtml;
+      document.body.appendChild(element);
+
+      const opt = {
+        margin: [10, 10, 10, 10],
+        filename: `Bookings_Report_${new Date().toISOString().slice(0, 10)}.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
+      };
+
+      await (window as any).html2pdf().set(opt).from(element).save();
+      document.body.removeChild(element);
+      showToast("PDF downloaded successfully.", "success");
+    } catch (err) {
+      console.error("Bookings PDF export error:", err);
+      showToast("PDF export failed. Please try again.", "error");
+    }
   };
 
   const handleExportExcel = () => {
     if (bookings.length === 0) { showToast("No booking data to export.", "info"); return; }
-    showToast("CSV export will be available soon.", "info");
+
+    const headers = ["#", "Booking ID", "Customer Name", "Mobile", "Date & Time", "Attraction", "Visitors", "Amount (₹)", "Paid (₹)", "Payment Mode", "Status"];
+    const rows = bookings.map((b, i) => [
+      i + 1,
+      b.bookingId,
+      b.customerName,
+      b.mobileNumber ?? "-",
+      b.bookingDate ? new Date(b.bookingDate).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "-",
+      b.attraction?.name ?? "-",
+      b.visitors?.total ?? "-",
+      b.amount ?? 0,
+      b.amountPaid ?? 0,
+      b.paymentMode ?? "-",
+      b.status,
+    ]);
+
+    exportToCSV(`Bookings_${new Date().toISOString().slice(0, 10)}`, headers, rows);
+    showToast("Excel (CSV) file downloaded successfully.", "success");
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -471,12 +606,26 @@ export default function BookingsPage() {
             align: "center",
             cell: (item: BookingListItem) => {
               const isDropdownOpen = activeDropdownId === item.id;
+              const MENU_HEIGHT = 116; // 3 items × ~38px
               return (
                 <div style={{ position: "relative", display: "inline-block" }}>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setActiveDropdownId(isDropdownOpen ? null : item.id);
+                      if (isDropdownOpen) {
+                        setActiveDropdownId(null);
+                        setDropdownPos(null);
+                      } else {
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        const spaceBelow = window.innerHeight - rect.bottom;
+                        const openUp = spaceBelow < MENU_HEIGHT + 16;
+                        setDropdownPos({
+                          top: openUp ? rect.top - MENU_HEIGHT - 4 : rect.bottom + 4,
+                          right: window.innerWidth - rect.right,
+                          openUp,
+                        });
+                        setActiveDropdownId(item.id);
+                      }
                     }}
                     aria-label="Actions menu"
                     style={{
@@ -494,14 +643,14 @@ export default function BookingsPage() {
                     <MoreVertical size={18} />
                   </button>
 
-                  {isDropdownOpen && (
+                  {isDropdownOpen && dropdownPos && (
                     <div
                       ref={dropdownRef}
                       style={{
-                        position: "absolute",
-                        right: 0,
-                        top: "32px",
-                        zIndex: 100,
+                        position: "fixed",
+                        top: dropdownPos.top,
+                        right: dropdownPos.right,
+                        zIndex: 9999,
                         background: "#FFFFFF",
                         border: "1px solid #E5E7EB",
                         borderRadius: "8px",
@@ -560,7 +709,7 @@ export default function BookingsPage() {
         showSNo={true}
         sNoHeader="S.No"
         itemLabel="bookings"
-        emptyMessage="No bookings found."
+        emptyMessage={emptyMessage}
         isLoading={isLoading}
       />
 

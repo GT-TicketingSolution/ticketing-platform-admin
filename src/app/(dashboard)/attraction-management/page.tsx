@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import {
   Search,
+  SearchX,
   Plus,
   Upload,
   Clock,
@@ -55,7 +56,12 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
   const categoryColor = CATEGORY_COLOR[attraction.category] ?? "#F4BC43";
   const [imgError, setImgError] = useState(false);
 
+  useEffect(() => {
+    setImgError(false);
+  }, [attraction.image]);
+
   const p = attraction.pricing ?? { adult: 0, child: 0, student: 0, senior: 0, foreigner: 0 };
+  const hasValidImage = Boolean(attraction.image && attraction.image.trim() !== "" && !imgError);
 
   return (
     <div
@@ -89,10 +95,10 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
             background: "#F1F5F9",
           }}
         >
-          {attraction.image && !imgError ? (
+          {hasValidImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={attraction.image}
+              src={attraction.image!}
               alt={attraction.name}
               style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "8px" }}
               onError={() => setImgError(true)}
@@ -215,7 +221,7 @@ export default function AttractionManagementPage() {
 
   const showEmptyState = !isLoading && !isError && attractions.length === 0 && viewMode === "list";
 
-  // ── Handlers ──────────────────────────────────────────────────────────
+  // ── Handlers 
   const handleOpenAdd = () => {
     setAttractionToEdit(null);
     setViewMode("add");
@@ -285,11 +291,11 @@ export default function AttractionManagementPage() {
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
-  // ── Render ───────────────────────────────────────────────────────────
+  // ── Render 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", boxSizing: "border-box" }}>
 
-      {/* ── ADD / EDIT FORM ──────────────────────────────────────────── */}
+      {/* ── ADD / EDIT FORM */}
       {(viewMode === "add" || viewMode === "edit") && (
         <div style={{ width: "100%", maxWidth: "1124px", display: "flex", flexDirection: "column", gap: "16px" }}>
           <button
@@ -321,7 +327,7 @@ export default function AttractionManagementPage() {
         </div>
       )}
 
-      {/* ── EMPTY STATE ──────────────────────────────────────────────── */}
+      {/* ── EMPTY STATE  */}
       {showEmptyState && viewMode === "list" && (
         <AttractionEmptyState
           onAddAttraction={handleOpenAdd}
@@ -329,7 +335,7 @@ export default function AttractionManagementPage() {
         />
       )}
 
-      {/* ── LOADING SKELETON STATE ────────────────────────────────────── */}
+      {/* ── LOADING SKELETON STATE */}
       {isLoading && viewMode === "list" && (
         <div
           style={{
@@ -385,7 +391,7 @@ export default function AttractionManagementPage() {
         </div>
       )}
 
-      {/* ── ERROR STATE ──────────────────────────────────────────────── */}
+      {/* ── ERROR STATE */}
       {isError && viewMode === "list" && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "400px", width: "100%" }}>
           <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: "15px", color: "#DC2626", fontWeight: 600 }}>
@@ -533,11 +539,51 @@ export default function AttractionManagementPage() {
                 textAlign: "center",
                 border: "1.5px dashed rgba(179,175,175,0.51)",
                 margin: "20px 0",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "12px",
               }}
             >
-              <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: "15px", fontWeight: 600, color: colors.text.muted, margin: 0 }}>
-                No attractions match your search.
+              <div
+                style={{
+                  width: "52px",
+                  height: "52px",
+                  borderRadius: "14px",
+                  background: "rgba(35,114,165,0.08)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: "4px",
+                }}
+              >
+                <SearchX size={26} color="#2372A5" />
+              </div>
+              <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: "15px", fontWeight: 700, color: "#0C2A42", margin: 0 }}>
+                No Matching Attractions Found
               </p>
+              <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: "13px", fontWeight: 400, color: colors.text.muted, margin: 0, maxWidth: "380px" }}>
+                No attractions match <strong>&ldquo;{searchQuery}&rdquo;</strong>. Try a different name or category keyword.
+              </p>
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                style={{
+                  marginTop: "4px",
+                  padding: "8px 18px",
+                  borderRadius: "8px",
+                  border: "1px solid rgba(35,114,165,0.3)",
+                  background: "#FFFFFF",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#2372A5",
+                  cursor: "pointer",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                }}
+              >
+                Clear Search
+              </button>
             </div>
           )}
         </div>

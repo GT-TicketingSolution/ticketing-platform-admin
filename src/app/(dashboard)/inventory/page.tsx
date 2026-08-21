@@ -3,247 +3,322 @@
 import React, { useState, useMemo, useEffect } from "react";
 import {
   AlertTriangle,
-  AlertCircle,
   Plus,
   Search,
-  Filter,
-  Calendar as CalendarIcon,
-  RefreshCw,
-  Clock,
-  ChevronRight,
-  TrendingUp,
-  CheckCircle2,
+  RotateCcw,
+  Calendar,
   Boxes,
+  SearchX,
+  Edit2,
 } from "lucide-react";
 import { META_CONSTANTS } from "@/lib/metaConstant";
-import AddCapacityModal, { AttractionInventoryItem } from "@/components/modals/AddCapacityModal";
-import { useToast } from "@/components/ui/Toast";
+import AddCapacityModal from "@/components/modals/AddCapacityModal";
+import { GlobalDataTable, GlobalColumn } from "@/components/ui/GlobalDataTable";
+import {
+  useInventoryList,
+  InventoryItem,
+  InventoryListParams,
+} from "@/hooks/useInventoryQueries";
+import { useAttractionManagementList } from "@/hooks/useAttractionManagementQueries";
 
-// Initial mock data matching Figma exact specifications
-const INITIAL_ATTRACTIONS: AttractionInventoryItem[] = [
-  {
-    id: "nahargarh-fort",
-    name: "Nahargarh fort",
-    dailyCap: 500,
-    booked: 320,
-    available: 180,
-    status: "Available",
-    alertText: "09:00 AM has only 2 seats left.",
-    alertType: "warning",
-    slots: [
-      { time: "09:00 AM", booked: 98, capacity: 100, status: "Near Full" },
-      { time: "10:30 AM", booked: 65, capacity: 100, status: "Available" },
-      { time: "11:00 AM", booked: 52, capacity: 100, status: "Available" },
-      { time: "02:00 PM", booked: 55, capacity: 100, status: "Available" },
-      { time: "04:30 PM", booked: 50, capacity: 100, status: "Available" },
-    ],
-  },
-  {
-    id: "amber-fort-ropeway",
-    name: "Amber Fort Ropeway",
-    dailyCap: 200,
-    booked: 195,
-    available: 5,
-    status: "Near Full",
-    alertText: "09:00 AM & 10:30 AM slots are sold out.",
-    alertType: "warning",
-    slots: [
-      { time: "09:00 AM", booked: 40, capacity: 40, status: "Full" },
-      { time: "10:30 AM", booked: 40, capacity: 40, status: "Full" },
-      { time: "11:00 AM", booked: 38, capacity: 40, status: "Near Full" },
-      { time: "02:00 PM", booked: 39, capacity: 40, status: "Near Full" },
-      { time: "04:30 PM", booked: 38, capacity: 40, status: "Near Full" },
-    ],
-  },
-  {
-    id: "city-palace",
-    name: "City Palace",
-    dailyCap: 400,
-    booked: 280,
-    available: 120,
-    status: "Available",
-    alertText: "11:00 AM has only 2 seats left.",
-    alertType: "warning",
-    slots: [
-      { time: "09:00 AM", booked: 50, capacity: 80, status: "Available" },
-      { time: "10:30 AM", booked: 60, capacity: 80, status: "Available" },
-      { time: "11:00 AM", booked: 78, capacity: 80, status: "Near Full" },
-      { time: "02:00 PM", booked: 46, capacity: 80, status: "Available" },
-      { time: "04:30 PM", booked: 46, capacity: 80, status: "Available" },
-    ],
-  },
-  {
-    id: "jaipur-zoo",
-    name: "Jaipur Zoo",
-    dailyCap: 800,
-    booked: 145,
-    available: 655,
-    status: "Available",
-    slots: [
-      { time: "09:00 AM", booked: 30, capacity: 160, status: "Available" },
-      { time: "10:30 AM", booked: 35, capacity: 160, status: "Available" },
-      { time: "11:00 AM", booked: 40, capacity: 160, status: "Available" },
-      { time: "02:00 PM", booked: 20, capacity: 160, status: "Available" },
-      { time: "04:30 PM", booked: 20, capacity: 160, status: "Available" },
-    ],
-  },
-  {
-    id: "albert-hall-museum",
-    name: "Albert Hall Museum",
-    dailyCap: 350,
-    booked: 350,
-    available: 0,
-    status: "Full",
-    alertText: "All 5 time slots are fully booked for today.",
-    alertType: "danger",
-    slots: [
-      { time: "09:00 AM", booked: 70, capacity: 70, status: "Full" },
-      { time: "10:30 AM", booked: 70, capacity: 70, status: "Full" },
-      { time: "11:00 AM", booked: 70, capacity: 70, status: "Full" },
-      { time: "02:00 PM", booked: 70, capacity: 70, status: "Full" },
-      { time: "04:30 PM", booked: 70, capacity: 70, status: "Full" },
-    ],
-  },
-  {
-    id: "jal-mahal",
-    name: "Jal Mahal View Point",
-    dailyCap: 1000,
-    booked: 210,
-    available: 790,
-    status: "Available",
-    slots: [
-      { time: "09:00 AM", booked: 50, capacity: 200, status: "Available" },
-      { time: "10:30 AM", booked: 45, capacity: 200, status: "Available" },
-      { time: "11:00 AM", booked: 40, capacity: 200, status: "Available" },
-      { time: "02:00 PM", booked: 40, capacity: 200, status: "Available" },
-      { time: "04:30 PM", booked: 35, capacity: 200, status: "Available" },
-    ],
-  },
-];
+const ITEMS_PER_PAGE = 10;
 
 export default function InventoryPage() {
-  const { showToast } = useToast();
-  const [attractions, setAttractions] = useState<AttractionInventoryItem[]>(INITIAL_ATTRACTIONS);
-  const [selectedAttraction, setSelectedAttraction] = useState<AttractionInventoryItem | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  // ── Search & Filter State ──────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
+  const [selectedAttractionId, setSelectedAttractionId] = useState<string>("All");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [activeTabAttractionId, setActiveTabAttractionId] = useState<string>("nahargarh-fort");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+
+  // ── Modal State ────────────────────────────────────────────────────────────
+  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     document.title = META_CONSTANTS.inventory.fullTitle;
   }, []);
 
-  // Compute overall summary statistics dynamically
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, selectedAttractionId, statusFilter, dateFrom, dateTo]);
+
+  // ── Live API Queries ───────────────────────────────────────────────────────
+  const queryParams: InventoryListParams = {
+    page: currentPage,
+    limit: ITEMS_PER_PAGE,
+    search: debouncedSearch || undefined,
+    attractionId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+  };
+
+  const { data: inventoryData, isLoading, refetch } = useInventoryList(queryParams);
+  const { data: attractionsData = [] } = useAttractionManagementList();
+
+  const inventoryItems = inventoryData?.items ?? [];
+  const pagination = inventoryData?.pagination ?? { page: 1, limit: ITEMS_PER_PAGE, total: 0, totalPages: 0 };
+
+  // Attractions for filter dropdown & modal
+  const attractionOptions = useMemo(() => {
+    const list = Array.isArray(attractionsData)
+      ? (attractionsData as any[]).map((a: any) => ({ id: a.attractionId || a.id, name: a.name || "-" }))
+      : [];
+    return [{ id: "All", name: "All Attractions" }, ...list];
+  }, [attractionsData]);
+
+  // Client-side status filter applied if statusFilter !== "ALL"
+  const filteredItems = useMemo(() => {
+    if (statusFilter === "ALL") return inventoryItems;
+    return inventoryItems.filter((item) => {
+      const avail = item.availableCapacity ?? 0;
+      const isFull = avail <= 0;
+      const isNearFull = !isFull && avail <= 20;
+      const isAvailable = avail > 20;
+
+      if (statusFilter === "FULL") return isFull;
+      if (statusFilter === "NEAR_FULL") return isNearFull;
+      if (statusFilter === "AVAILABLE") return isAvailable;
+      return true;
+    });
+  }, [inventoryItems, statusFilter]);
+
+  // ── Dynamic Summary Statistics ─────────────────────────────────────────────
   const totalCapacity = useMemo(
-    () => attractions.reduce((acc, curr) => acc + curr.dailyCap, 0),
-    [attractions]
+    () => inventoryItems.reduce((acc, curr) => acc + (curr.totalCapacity || 0), 0),
+    [inventoryItems]
   );
   const totalBooked = useMemo(
-    () => attractions.reduce((acc, curr) => acc + curr.booked, 0),
-    [attractions]
+    () => inventoryItems.reduce((acc, curr) => acc + (curr.bookedCapacity || 0), 0),
+    [inventoryItems]
   );
   const totalAvailable = useMemo(
-    () => attractions.reduce((acc, curr) => acc + curr.available, 0),
-    [attractions]
+    () => inventoryItems.reduce((acc, curr) => acc + (curr.availableCapacity || 0), 0),
+    [inventoryItems]
   );
   const atRiskCount = useMemo(
-    () => attractions.filter((a) => a.available === 0 || a.status === "Full").length,
-    [attractions]
+    () => inventoryItems.filter((a) => (a.availableCapacity ?? 0) <= 0).length,
+    [inventoryItems]
   );
   const utilizationRate = useMemo(
     () => (totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0),
     [totalCapacity, totalBooked]
   );
 
-  // Filtered list for the main capacity table
-  const filteredAttractions = useMemo(() => {
-    return attractions.filter((item) => {
-      const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus =
-        statusFilter === "ALL"
-          ? true
-          : statusFilter === "AVAILABLE"
-            ? item.status === "Available"
-            : statusFilter === "NEAR_FULL"
-              ? item.status === "Near Full"
-              : statusFilter === "FULL"
-                ? item.status === "Full"
-                : true;
-      return matchesSearch && matchesStatus;
-    });
-  }, [attractions, searchQuery, statusFilter]);
+  // ── Dynamic Live Alerts ────────────────────────────────────────────────────
+  const liveAlerts = useMemo(() => {
+    return inventoryItems
+      .filter((item) => (item.availableCapacity ?? 0) <= 20)
+      .map((item) => {
+        const avail = item.availableCapacity ?? 0;
+        const isDanger = avail <= 0;
+        return {
+          id: item.id,
+          name: item.attraction?.name || "-",
+          date: item.capacityDate,
+          alertType: isDanger ? ("danger" as const) : ("warning" as const),
+          alertText: isDanger
+            ? `Fully booked (0 seats remaining) for ${item.capacityDate !== "-" ? item.capacityDate : "selected date"}.`
+            : `Only ${avail} seats remaining for ${item.capacityDate !== "-" ? item.capacityDate : "selected date"}.`,
+        };
+      });
+  }, [inventoryItems]);
 
-  // Banners list (only items with alertText)
-  const alertBanners = useMemo(() => {
-    return attractions.filter((a) => a.alertText);
-  }, [attractions]);
+  const isFiltered =
+    !!debouncedSearch ||
+    selectedAttractionId !== "All" ||
+    statusFilter !== "ALL" ||
+    !!dateFrom ||
+    !!dateTo;
 
-  // Handler to open modal for specific attraction
-  const handleOpenAddCapacity = (attraction?: AttractionInventoryItem) => {
-    setSelectedAttraction(attraction || null);
+  const handleResetFilters = () => {
+    setSearchQuery("");
+    setDebouncedSearch("");
+    setSelectedAttractionId("All");
+    setStatusFilter("ALL");
+    setDateFrom("");
+    setDateTo("");
+    setCurrentPage(1);
+  };
+
+  const handleOpenAddCapacity = (item?: InventoryItem) => {
+    setSelectedItem(item || null);
     setIsModalOpen(true);
   };
 
-  // Handler when capacity is updated
-  const handleUpdateCapacity = (attractionId: string, addedSeats: number) => {
-    setAttractions((prev) =>
-      prev.map((item) => {
-        if (item.id === attractionId) {
-          const newDailyCap = item.dailyCap + addedSeats;
-          const newAvailable = item.available + addedSeats;
-          let newStatus: "Available" | "Near Full" | "Full" = "Available";
-
-          if (newAvailable <= 0) {
-            newStatus = "Full";
-          } else if (newAvailable <= 20) {
-            newStatus = "Near Full";
-          } else {
-            newStatus = "Available";
-          }
-
-          // If capacity is added, resolve critical alerts if capacity is high enough
-          let updatedAlert = item.alertText;
-          let updatedType = item.alertType;
-          if (newAvailable > 15 && item.status === "Full") {
-            updatedAlert = undefined;
-            updatedType = undefined;
-          }
-
-          // Also update individual slot capacities proportionally
-          const updatedSlots = item.slots?.map((slot) => ({
-            ...slot,
-            capacity: slot.capacity + Math.ceil(addedSeats / (item.slots?.length || 5)),
-            status: slot.booked >= slot.capacity ? "Full" : "Available",
-          }));
-
-          return {
-            ...item,
-            dailyCap: newDailyCap,
-            available: newAvailable,
-            status: newStatus,
-            alertText: updatedAlert,
-            alertType: updatedType,
-            slots: updatedSlots,
-          };
-        }
-        return item;
-      })
-    );
+  // Helper date formatter
+  const formatDateDisplay = (dateStr?: string) => {
+    if (!dateStr || dateStr === "-") return "-";
+    try {
+      const parsed = new Date(dateStr);
+      if (isNaN(parsed.getTime())) return dateStr;
+      return parsed.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return dateStr;
+    }
   };
 
-  // Selected attraction detail for slot view on desktop
-  const activeDetailAttraction =
-    attractions.find((a) => a.id === activeTabAttractionId) || attractions[0];
+  // ── Table Columns Definition ───────────────────────────────────────────────
+  const columns: GlobalColumn<InventoryItem>[] = [
+    {
+      header: "Attraction",
+      cell: (item) => (
+        <span style={{ fontWeight: 700, color: "#002A45", fontSize: "13px" }}>
+          {item.attraction?.name || "-"}
+        </span>
+      ),
+    },
+    {
+      header: "Date",
+      align: "center",
+      cell: (item) => (
+        <span style={{ color: "#475569", fontWeight: 500 }}>
+          {formatDateDisplay(item.capacityDate)}
+        </span>
+      ),
+    },
+    {
+      header: "Daily Cap.",
+      align: "center",
+      cell: (item) => (
+        <span
+          style={{
+            fontFamily: "'DM Mono', monospace",
+            fontWeight: 600,
+            fontSize: "13px",
+            color: "#374151",
+          }}
+        >
+          {item.totalCapacity !== undefined ? item.totalCapacity.toLocaleString() : "-"}
+        </span>
+      ),
+    },
+    {
+      header: "Booked",
+      align: "center",
+      cell: (item) => {
+        const avail = item.availableCapacity ?? 0;
+        const isFull = avail <= 0;
+        const color = isFull ? "#EF4444" : avail <= 20 ? "#F59E0B" : "#374151";
+        return (
+          <span
+            style={{
+              fontFamily: "'DM Mono', monospace",
+              fontWeight: 600,
+              fontSize: "13px",
+              color,
+            }}
+          >
+            {item.bookedCapacity !== undefined ? item.bookedCapacity.toLocaleString() : "-"}
+          </span>
+        );
+      },
+    },
+    {
+      header: "Available",
+      align: "center",
+      cell: (item) => {
+        const avail = item.availableCapacity ?? 0;
+        const isFull = avail <= 0;
+        const color = isFull ? "#EF4444" : "#10B981";
+        return (
+          <span
+            style={{
+              fontFamily: "'DM Mono', monospace",
+              fontWeight: 600,
+              fontSize: "13px",
+              color,
+            }}
+          >
+            {item.availableCapacity !== undefined ? item.availableCapacity.toLocaleString() : "-"}
+          </span>
+        );
+      },
+    },
+    {
+      header: "Status",
+      align: "center",
+      cell: (item) => {
+        const avail = item.availableCapacity ?? 0;
+        const isFull = avail <= 0;
+        const isNearFull = !isFull && avail <= 20;
+        const statusText = isFull ? "Full" : isNearFull ? "Near Full" : "Available";
+
+        const bg = isFull ? "#FEF2F2" : isNearFull ? "#FFFBEB" : "#F0FDF4";
+        const color = isFull ? "#EF4444" : isNearFull ? "#F59E0B" : "#10B981";
+
+        return (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "86px",
+              height: "26px",
+              borderRadius: "20px",
+              background: bg,
+              color,
+              fontFamily: "'DM Mono', monospace",
+              fontWeight: 600,
+              fontSize: "11px",
+            }}
+          >
+            {statusText}
+          </span>
+        );
+      },
+    },
+    {
+      header: "Actions",
+      align: "center",
+      cell: (item) => (
+        <button
+          type="button"
+          onClick={() => handleOpenAddCapacity(item)}
+          style={{
+            background: "#FFFFFF",
+            border: "1px solid #CBD5E1",
+            borderRadius: "6px",
+            padding: "5px 10px",
+            fontSize: "11px",
+            fontWeight: 600,
+            color: "#0C2A42",
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "5px",
+            transition: "all 0.15s ease",
+          }}
+          className="row-edit-btn"
+        >
+          <Edit2 size={12} />
+          <span>Update</span>
+        </button>
+      ),
+    },
+  ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px", width: "100%", maxWidth: "1440px", margin: "0 auto" }}>
 
-      {/* ── TOP STAT CARDS (4 Cards matching Figma specs) ── */}
+      {/* ── TOP STAT CARDS ── */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(247px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
           gap: "18px",
           width: "100%",
         }}
@@ -275,7 +350,7 @@ export default function InventoryPage() {
               marginBottom: "8px",
             }}
           >
-            {totalCapacity.toLocaleString()}
+            {isLoading ? "-" : totalCapacity.toLocaleString()}
           </div>
           <div
             style={{
@@ -298,11 +373,11 @@ export default function InventoryPage() {
               color: "#94A3B8",
             }}
           >
-            Across all attractions
+            Current page inventory
           </div>
         </div>
 
-        {/* Card 2: Seats Booked Today */}
+        {/* Card 2: Seats Booked */}
         <div
           style={{
             background: "#FFFFFF",
@@ -329,7 +404,7 @@ export default function InventoryPage() {
               marginBottom: "8px",
             }}
           >
-            {totalBooked.toLocaleString()}
+            {isLoading ? "-" : totalBooked.toLocaleString()}
           </div>
           <div
             style={{
@@ -341,7 +416,7 @@ export default function InventoryPage() {
               marginBottom: "2px",
             }}
           >
-            Seats Booked Today
+            Seats Booked
           </div>
           <div
             style={{
@@ -352,7 +427,7 @@ export default function InventoryPage() {
               color: "#94A3B8",
             }}
           >
-            {utilizationRate}% utilization rate
+            {isLoading ? "-" : `${utilizationRate}% utilization rate`}
           </div>
         </div>
 
@@ -383,7 +458,7 @@ export default function InventoryPage() {
               marginBottom: "8px",
             }}
           >
-            {totalAvailable.toLocaleString()}
+            {isLoading ? "-" : totalAvailable.toLocaleString()}
           </div>
           <div
             style={{
@@ -437,7 +512,7 @@ export default function InventoryPage() {
               marginBottom: "8px",
             }}
           >
-            {atRiskCount}
+            {isLoading ? "-" : atRiskCount}
           </div>
           <div
             style={{
@@ -465,113 +540,66 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* ── CAPACITY ALERT BANNERS SECTION (Matching Figma specs exactly) ── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%" }}>
-        {alertBanners.map((attraction) => {
-          const isDanger = attraction.alertType === "danger";
-          const bgColor = isDanger ? "#FEF2F2" : "#FFFBEB";
-          const borderColor = isDanger ? "#FEE2E2" : "#FEF3C7";
-          const iconColor = isDanger ? "#DC2626" : "#D97706";
-          const titleColor = isDanger ? "#DC2626" : "#D97706";
-          const textColor = isDanger ? "#EF4444" : "#F59E0B";
+      {/* ── CAPACITY ALERT BANNERS SECTION (Live Only) ── */}
+      {liveAlerts.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%" }}>
+          {liveAlerts.map((alert, idx) => {
+            const isDanger = alert.alertType === "danger";
+            const bgColor = isDanger ? "#FEF2F2" : "#FFFBEB";
+            const borderColor = isDanger ? "#FEE2E2" : "#FEF3C7";
+            const iconColor = isDanger ? "#DC2626" : "#D97706";
+            const titleColor = isDanger ? "#DC2626" : "#D97706";
+            const textColor = isDanger ? "#EF4444" : "#F59E0B";
 
-          return (
-            <div
-              key={`alert-${attraction.id}`}
-              style={{
-                boxSizing: "border-box",
-                width: "100%",
-                minHeight: "59px",
-                background: bgColor,
-                border: `1px solid ${borderColor}`,
-                borderRadius: "20px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "12px 24px",
-                gap: "16px",
-                flexWrap: "wrap",
-                transition: "all 0.15s ease",
-              }}
-            >
-              {/* Alert Left Icon + Message */}
-              <div style={{ display: "flex", alignItems: "center", gap: "14px", flex: 1, minWidth: "260px" }}>
-                <span
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: "20px",
-                    height: "20px",
-                    flexShrink: 0,
-                  }}
-                >
-                  <AlertTriangle size={18} color={iconColor} strokeWidth={2} />
-                </span>
-
-                <div style={{ fontSize: "14px", lineHeight: "18px", fontFamily: "'Inter', sans-serif" }}>
-                  <strong style={{ fontWeight: 700, color: titleColor, marginRight: "6px" }}>
-                    {attraction.name}:
-                  </strong>
-                  <span style={{ fontWeight: 400, color: textColor }}>
-                    {attraction.alertText}
-                  </span>
-                </div>
-              </div>
-
-              {/* Alert Right Action Button: Add Capacity */}
-              {/* <button
-                type="button"
-                onClick={() => handleOpenAddCapacity(attraction)}
+            return (
+              <div
+                key={`alert-${alert.id}-${idx}`}
                 style={{
                   boxSizing: "border-box",
-                  width: "98px",
-                  height: "33px",
-                  background: "#FFFFFF",
-                  border: "0.8px solid #A0A0A0",
-                  boxShadow: "0px 1px 5.6px rgba(0, 0, 0, 0.25)",
-                  borderRadius: "20px",
-                  fontFamily: "'Inter', sans-serif",
-                  fontWeight: 600,
-                  fontSize: "11px",
-                  lineHeight: "16px",
-                  textAlign: "center",
-                  color: "#374151",
-                  cursor: "pointer",
+                  width: "100%",
+                  minHeight: "52px",
+                  background: bgColor,
+                  border: `1px solid ${borderColor}`,
+                  borderRadius: "16px",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  gap: "4px",
-                  transition: "background 0.15s ease, transform 0.15s ease",
-                  flexShrink: 0,
+                  justifyContent: "space-between",
+                  padding: "10px 20px",
+                  gap: "14px",
+                  flexWrap: "wrap",
                 }}
-                className="add-cap-btn"
               >
-                Add Capacity
-              </button> */}
-            </div>
-          );
-        })}
-      </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <AlertTriangle size={18} color={iconColor} strokeWidth={2} />
+                  <div style={{ fontSize: "13px", lineHeight: "18px", fontFamily: "'Inter', sans-serif" }}>
+                    <strong style={{ fontWeight: 700, color: titleColor, marginRight: "6px" }}>
+                      {alert.name}:
+                    </strong>
+                    <span style={{ fontWeight: 400, color: textColor }}>
+                      {alert.alertText}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      {/* ── MAIN CONTENT CONTAINER (Capacity Table + Live Slot Monitor) ── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "20px", width: "100%" }}>
-
-        {/* Controls Bar: Filter Tabs & Add Capacity Global Trigger */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "16px",
-            flexWrap: "wrap",
-            background: "#FFFFFF",
-            padding: "16px 20px",
-            borderRadius: "20px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-            border: "1px solid #E5E7EB",
-          }}
-        >
+      {/* ── FILTER & SEARCH CONTROLS ── */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "16px",
+          background: "#FFFFFF",
+          padding: "18px 20px",
+          borderRadius: "16px",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+          border: "1px solid #E5E7EB",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", flexWrap: "wrap" }}>
           {/* Status Filter Badges */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
             {[
@@ -609,7 +637,7 @@ export default function InventoryPage() {
             onClick={() => handleOpenAddCapacity()}
             style={{
               padding: "9px 18px",
-              borderRadius: "12px",
+              borderRadius: "10px",
               background: "#F4BC43",
               color: "#011B2F",
               border: "none",
@@ -624,327 +652,235 @@ export default function InventoryPage() {
             }}
           >
             <Plus size={16} />
-            Add Capacity
+            Set Daily Capacity
           </button>
         </div>
 
-        {/* Split Grid Layout for Desktop & Collapsible for Mobile/Tablet */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "24px" }} className="inventory-grid-container">
-
-          {/* ── ATTRACTION CAPACITY TABLE CARD (Matching Figma specification) ── */}
-          <div
-            style={{
-              boxSizing: "border-box",
-              width: "100%",
-              background: "#FFFFFF",
-              boxShadow: "1px -1px 4px rgba(0, 0, 0, 0.25), 0px 4px 4px rgba(0, 0, 0, 0.25)",
-              borderRadius: "20px",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            {/* Table Header Section */}
-            <div style={{ padding: "20px 24px 16px 24px", borderBottom: "1px solid #F1F5F9" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div>
-                  <h3
-                    style={{
-                      fontFamily: "'Inter', sans-serif",
-                      fontWeight: 700,
-                      fontSize: "14px",
-                      lineHeight: "21px",
-                      color: "#002A45",
-                      margin: 0,
-                    }}
-                  >
-                    Attraction Capacity — Today
-                  </h3>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "2px" }}>
-                    <span
-                      style={{
-                        width: "8px",
-                        height: "8px",
-                        borderRadius: "50%",
-                        background: "#10B981",
-                        boxShadow: "0 0 8px rgba(16, 185, 129, 0.6)",
-                        display: "inline-block",
-                      }}
-                    />
-                    <p
-                      style={{
-                        fontFamily: "'Inter', sans-serif",
-                        fontWeight: 400,
-                        fontSize: "11px",
-                        lineHeight: "16px",
-                        color: "#94A3B8",
-                        margin: 0,
-                      }}
-                    >
-                      Sunday, 16 Jun 2024 · Live inventory
-                    </p>
-                  </div>
-                </div>
-
-                <span
-                  style={{
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    color: "#0C2A42",
-                    background: "#F0F4F8",
-                    padding: "4px 10px",
-                    borderRadius: "12px",
-                    fontFamily: "'Inter', sans-serif",
-                  }}
-                >
-                  {filteredAttractions.length} Attractions
-                </span>
-              </div>
-            </div>
-
-            {/* Responsive Table Scroll Wrapper */}
-            <div style={{ overflowX: "auto", width: "100%" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
-                <thead>
-                  <tr
-                    style={{
-                      background: "#F8FAFC",
-                      borderBottom: "0.8px solid #F1F5F9",
-                      height: "36px",
-                    }}
-                  >
-                    <th
-                      style={{
-                        padding: "10px 18px",
-                        fontFamily: "'Inter', sans-serif",
-                        fontWeight: 700,
-                        fontSize: "10px",
-                        lineHeight: "15px",
-                        letterSpacing: "0.5px",
-                        textTransform: "uppercase",
-                        color: "#94A3B8",
-                        width: "24%",
-                      }}
-                    >
-                      Attraction
-                    </th>
-                    <th
-                      style={{
-                        padding: "10px 18px",
-                        fontFamily: "'Inter', sans-serif",
-                        fontWeight: 700,
-                        fontSize: "10px",
-                        lineHeight: "15px",
-                        letterSpacing: "0.5px",
-                        textTransform: "uppercase",
-                        color: "#94A3B8",
-                        textAlign: "center",
-                      }}
-                    >
-                      Daily Cap.
-                    </th>
-                    <th
-                      style={{
-                        padding: "10px 18px",
-                        fontFamily: "'Inter', sans-serif",
-                        fontWeight: 700,
-                        fontSize: "10px",
-                        lineHeight: "15px",
-                        letterSpacing: "0.5px",
-                        textTransform: "uppercase",
-                        color: "#94A3B8",
-                        textAlign: "center",
-                      }}
-                    >
-                      Booked
-                    </th>
-                    <th
-                      style={{
-                        padding: "10px 18px",
-                        fontFamily: "'Inter', sans-serif",
-                        fontWeight: 700,
-                        fontSize: "10px",
-                        lineHeight: "15px",
-                        letterSpacing: "0.5px",
-                        textTransform: "uppercase",
-                        color: "#94A3B8",
-                        textAlign: "center",
-                      }}
-                    >
-                      Available
-                    </th>
-                    <th
-                      style={{
-                        padding: "10px 18px",
-                        fontFamily: "'Inter', sans-serif",
-                        fontWeight: 700,
-                        fontSize: "10px",
-                        lineHeight: "15px",
-                        letterSpacing: "0.5px",
-                        textTransform: "uppercase",
-                        color: "#94A3B8",
-                        textAlign: "center",
-                      }}
-                    >
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAttractions.map((attraction, idx) => {
-                    const isSelectedTab = activeTabAttractionId === attraction.id;
-                    const bookedColor =
-                      attraction.status === "Full"
-                        ? "#EF4444"
-                        : attraction.status === "Near Full"
-                          ? "#F59E0B"
-                          : "#10B981";
-                    const availableColor =
-                      attraction.status === "Full" ? "#EF4444" : "#10B981";
-
-                    return (
-                      <tr
-                        key={attraction.id}
-                        onClick={() => setActiveTabAttractionId(attraction.id)}
-                        style={{
-                          borderBottom:
-                            idx === filteredAttractions.length - 1
-                              ? "none"
-                              : "1px solid #F1F5F9",
-                          background: isSelectedTab ? "#F8FAFC" : "transparent",
-                          cursor: "pointer",
-                          transition: "background 0.15s ease",
-                        }}
-                        className="table-row-hover"
-                      >
-                        {/* Attraction Name */}
-                        <td
-                          style={{
-                            padding: "14px 18px",
-                            fontFamily: "'Inter', sans-serif",
-                            fontWeight: 700,
-                            fontSize: "12px",
-                            lineHeight: "20px",
-                            color: attraction.id === "albert-hall-museum" ? "#0F172A" : "#002A45",
-                          }}
-                        >
-                          {attraction.name}
-                        </td>
-
-                        {/* Daily Capacity */}
-                        <td
-                          style={{
-                            padding: "14px 18px",
-                            fontFamily: "'DM Mono', monospace",
-                            fontWeight: 500,
-                            fontSize: "14px",
-                            lineHeight: "21px",
-                            textAlign: "center",
-                            color: "#374151",
-                          }}
-                        >
-                          {attraction.dailyCap.toLocaleString()}
-                        </td>
-
-                        {/* Booked */}
-                        <td
-                          style={{
-                            padding: "14px 18px",
-                            fontFamily: "'DM Mono', monospace",
-                            fontWeight: 500,
-                            fontSize: "14px",
-                            lineHeight: "21px",
-                            textAlign: "center",
-                            color: bookedColor,
-                          }}
-                        >
-                          {attraction.booked.toLocaleString()}
-                        </td>
-
-                        {/* Available */}
-                        <td
-                          style={{
-                            padding: "14px 18px",
-                            fontFamily: "'DM Mono', monospace",
-                            fontWeight: 500,
-                            fontSize: "14px",
-                            lineHeight: "21px",
-                            textAlign: "center",
-                            color: availableColor,
-                          }}
-                        >
-                          {attraction.available.toLocaleString()}
-                        </td>
-
-                        {/* Status Badge */}
-                        <td style={{ padding: "14px 18px", textAlign: "center" }}>
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              width: "89px",
-                              height: attraction.status === "Near Full" ? "26px" : "28px",
-                              borderRadius: "20px",
-                              background:
-                                attraction.status === "Available"
-                                  ? "#F0FDF4"
-                                  : attraction.status === "Near Full"
-                                    ? "#FFFBEB"
-                                    : "#FEF2F2",
-                              color:
-                                attraction.status === "Available"
-                                  ? "#10B981"
-                                  : attraction.status === "Near Full"
-                                    ? "#F59E0B"
-                                    : "#EF4444",
-                              fontFamily: "'DM Mono', monospace",
-                              fontWeight: 500,
-                              fontSize: "12px",
-                              lineHeight: "21px",
-                              textAlign: "center",
-                            }}
-                          >
-                            {attraction.status}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+        {/* Filter Inputs Grid */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: "12px",
+            alignItems: "flex-end",
+          }}
+        >
+          {/* Search Box */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <label style={{ fontSize: "11px", fontWeight: 700, color: "#475569", textTransform: "uppercase" }}>
+              Search Attraction
+            </label>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                border: "1px solid #CBD5E1",
+                borderRadius: "8px",
+                padding: "8px 12px",
+                background: "#FFFFFF",
+              }}
+            >
+              <Search size={16} color="#94A3B8" />
+              <input
+                type="text"
+                placeholder="Search attraction name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  border: "none",
+                  outline: "none",
+                  width: "100%",
+                  fontSize: "13px",
+                  color: "#0F172A",
+                }}
+              />
             </div>
           </div>
+
+          {/* Attraction Dropdown */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <label style={{ fontSize: "11px", fontWeight: 700, color: "#475569", textTransform: "uppercase" }}>
+              Attraction Filter
+            </label>
+            <select
+              value={selectedAttractionId}
+              onChange={(e) => setSelectedAttractionId(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                border: "1px solid #CBD5E1",
+                fontSize: "13px",
+                color: "#0F172A",
+                background: "#FFFFFF",
+                outline: "none",
+                cursor: "pointer",
+                height: "37px",
+              }}
+            >
+              {attractionOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date From */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <label style={{ fontSize: "11px", fontWeight: 700, color: "#475569", textTransform: "uppercase" }}>
+              Date From
+            </label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "7px 12px",
+                borderRadius: "8px",
+                border: "1px solid #CBD5E1",
+                fontSize: "13px",
+                color: "#0F172A",
+                outline: "none",
+                boxSizing: "border-box",
+                height: "37px",
+              }}
+            />
+          </div>
+
+          {/* Date To */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <label style={{ fontSize: "11px", fontWeight: 700, color: "#475569", textTransform: "uppercase" }}>
+              Date To
+            </label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "7px 12px",
+                borderRadius: "8px",
+                border: "1px solid #CBD5E1",
+                fontSize: "13px",
+                color: "#0F172A",
+                outline: "none",
+                boxSizing: "border-box",
+                height: "37px",
+              }}
+            />
+          </div>
+
+          {/* Reset Button */}
+          {isFiltered && (
+            <div style={{ display: "flex", alignItems: "flex-end" }}>
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                style={{
+                  height: "37px",
+                  padding: "0 16px",
+                  borderRadius: "8px",
+                  border: "1px solid #CBD5E1",
+                  background: "#F8FAFC",
+                  color: "#475569",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <RotateCcw size={14} />
+                <span>Reset</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── ADD CAPACITY MODAL ── */}
+      {/* ── INVENTORY DATA TABLE ── */}
+      <GlobalDataTable
+        columns={columns}
+        data={filteredItems}
+        keyExtractor={(item) => item.id}
+        pageSize={ITEMS_PER_PAGE}
+        currentPage={currentPage}
+        onPageChange={setCurrentPage}
+        totalItems={pagination.total}
+        totalPages={pagination.totalPages}
+        showSNo={true}
+        sNoHeader="S.No"
+        itemLabel="inventory records"
+        isLoading={isLoading}
+        emptyIcon={isFiltered ? <SearchX size={28} color="#0C2A42" /> : <Boxes size={28} color="#0C2A42" />}
+        emptyTitle={isFiltered ? "No Matching Inventory Found" : "No Inventory Records"}
+        emptyDescription={
+          isFiltered
+            ? "No inventory records match the current filter or date range. Try adjusting your search."
+            : "No attraction daily capacity records have been configured yet. Click 'Set Daily Capacity' to get started."
+        }
+        emptyAction={
+          isFiltered ? (
+            <button
+              onClick={handleResetFilters}
+              style={{
+                marginTop: "12px",
+                padding: "8px 16px",
+                background: "#0C2A42",
+                color: "#FFFFFF",
+                border: "none",
+                borderRadius: "8px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Clear Filters
+            </button>
+          ) : (
+            <button
+              onClick={() => handleOpenAddCapacity()}
+              style={{
+                marginTop: "12px",
+                padding: "8px 16px",
+                background: "#F4BC43",
+                color: "#011B2F",
+                border: "none",
+                borderRadius: "8px",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              + Set Daily Capacity
+            </button>
+          )
+        }
+      />
+
+      {/* ── ADD / UPDATE CAPACITY MODAL ── */}
       <AddCapacityModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        selectedAttraction={selectedAttraction}
-        attractionsList={attractions}
-        onUpdateCapacity={handleUpdateCapacity}
+        selectedItem={selectedItem}
+        attractionsList={attractionOptions.filter((a) => a.id !== "All")}
+        onSuccess={() => refetch()}
       />
 
-      {/* ── SCOPED COMPONENT STYLES ── */}
+      {/* ── STYLES ── */}
       <style>{`
         .stat-card-hover:hover {
           transform: translateY(-2px);
           box-shadow: -2px 6px 12px rgba(0, 0, 0, 0.18) !important;
         }
-        .add-cap-btn:hover {
+        .row-edit-btn:hover {
           background: #0C2A42 !important;
           color: #FFFFFF !important;
           border-color: #0C2A42 !important;
-        }
-        .table-row-hover:hover {
-          background: #F8FAFC !important;
-        }
-        .row-add-btn:hover {
-          background: #F4BC43 !important;
-          border-color: #F4BC43 !important;
-          color: #011B2F !important;
         }
       `}</style>
     </div>

@@ -9,22 +9,20 @@ export const customerSchema = z.object({
     .string()
     .min(1, "Customer name is required")
     .min(2, "Customer name must be at least 2 characters")
-    .max(60, "Customer name cannot exceed 60 characters"),
+    .max(150, "Customer name cannot exceed 150 characters"),
   mobile: z
     .string()
     .min(1, "Mobile number is required")
+    .max(20, "Mobile number cannot exceed 20 characters")
     .refine((val) => {
       const cleanVal = val.replace(/\s/g, "");
-      return /^(\+91)?[6-9]\d{9}$/.test(cleanVal);
-    }, "Please enter a valid 10-digit mobile number"),
+      return /^(\+91)?[6-9]\d{9}$/.test(cleanVal) || cleanVal.length >= 7;
+    }, "Please enter a valid mobile number"),
   gstn: z
     .string()
-    .min(1, "GSTN number is required")
-    .refine((val) => {
-      const cleanGstn = val.trim().toUpperCase();
-      // GSTN format: 2 digits, 5 letters, 4 digits, 1 letter, 1 alphanumeric/z/etc, 15 chars total
-      return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(cleanGstn);
-    }, "Please enter a valid 15-character GSTN format (e.g. 08ABCDE1234F1Z5)"),
+    .max(20, "GSTN cannot exceed 20 characters")
+    .optional()
+    .or(z.literal("")),
 });
 
 export type CustomerFormData = z.infer<typeof customerSchema>;

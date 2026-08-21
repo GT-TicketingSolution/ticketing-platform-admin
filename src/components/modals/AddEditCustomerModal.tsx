@@ -1,16 +1,15 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, AlertCircle, Check, Loader2 } from "lucide-react";
-import { Customer } from "@/types/admin";
-import { typography } from "@/lib/theme";
+import { X, AlertCircle, Loader2 } from "lucide-react";
+import { Customer } from "@/app/(dashboard)/customer-management/types";
 import { validateCustomer } from "@/app/(dashboard)/customer-management/schema";
 
 interface AddEditCustomerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  customer: Customer | null; // Null means adding a new customer, non-null means editing
-  onSave: (customerData: { name: string; mobile: string; gstn: string; id?: string }) => void;
+  customer: Customer | null;
+  onSave: (customerData: { name: string; mobile: string; gstn?: string; id?: string }) => Promise<void> | void;
   isSaving?: boolean;
 }
 
@@ -41,11 +40,10 @@ export default function AddEditCustomerModal({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Schema-based validation using Zod schema from schema.ts
-    const validation = validateCustomer({ name, mobile, gstn });
+
+    const validation = validateCustomer({ name: name.trim(), mobile: mobile.trim(), gstn: gstn.trim() });
     if (!validation.success) {
       setErrors(validation.errors);
       return;
@@ -53,23 +51,12 @@ export default function AddEditCustomerModal({
 
     setErrors({});
 
-    // Standardize phone format if entered without +91 prefix
-    let formattedMobile = mobile.trim();
-    if (!formattedMobile.startsWith("+91")) {
-      const cleanDigits = formattedMobile.replace(/\D/g, "");
-      if (cleanDigits.length === 10) {
-        formattedMobile = `+91 ${cleanDigits}`;
-      }
-    }
-
-    onSave({
+    await onSave({
       id: customer?.id,
       name: name.trim(),
-      mobile: formattedMobile,
-      gstn: gstn.trim().toUpperCase(),
+      mobile: mobile.trim(),
+      gstn: gstn.trim() ? gstn.trim().toUpperCase() : undefined,
     });
-
-    onClose();
   };
 
   const isEdit = !!customer;
@@ -105,7 +92,7 @@ export default function AddEditCustomerModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Header Banner matching exact Figma Rectangle 98 styling */}
+        {/* Top Header */}
         <div
           style={{
             position: "relative",
@@ -148,16 +135,14 @@ export default function AddEditCustomerModal({
               borderRadius: "50%",
               transition: "background-color 0.2s ease",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.15)")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
           >
             <X size={24} color="#FFFFFF" />
           </button>
         </div>
 
-        {/* Modal Form Body matching exact positions & styles */}
+        {/* Modal Form Body */}
         <form onSubmit={handleSubmit} style={{ padding: "28px 30px 30px 30px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "22px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
             {/* Customer Name */}
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               <label
@@ -177,7 +162,10 @@ export default function AddEditCustomerModal({
                 type="text"
                 placeholder="Enter Customer Name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (errors.name) setErrors((prev) => ({ ...prev, name: "" }));
+                }}
                 style={{
                   width: "100%",
                   height: "38px",
@@ -190,13 +178,7 @@ export default function AddEditCustomerModal({
                   fontSize: "13px",
                   color: "#011B2F",
                   outline: "none",
-                  transition: "border-color 0.2s ease",
-                }}
-                onFocus={(e) => {
-                  if (!errors.name) e.target.style.borderColor = "#F4BC43";
-                }}
-                onBlur={(e) => {
-                  if (!errors.name) e.target.style.borderColor = "rgba(179, 175, 175, 0.51)";
+                  boxSizing: "border-box",
                 }}
               />
               {errors.name && (
@@ -232,10 +214,15 @@ export default function AddEditCustomerModal({
               </label>
               <input
                 id="customer-mobile-input"
-                type="text"
+                type="tel"
                 placeholder="Enter Mobile Number"
                 value={mobile}
-                onChange={(e) => setMobile(e.target.value)}
+                maxLength={10}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                  setMobile(digits);
+                  if (errors.mobile) setErrors((prev) => ({ ...prev, mobile: "" }));
+                }}
                 style={{
                   width: "100%",
                   height: "38px",
@@ -248,13 +235,7 @@ export default function AddEditCustomerModal({
                   fontSize: "13px",
                   color: "#011B2F",
                   outline: "none",
-                  transition: "border-color 0.2s ease",
-                }}
-                onFocus={(e) => {
-                  if (!errors.mobile) e.target.style.borderColor = "#F4BC43";
-                }}
-                onBlur={(e) => {
-                  if (!errors.mobile) e.target.style.borderColor = "rgba(179, 175, 175, 0.51)";
+                  boxSizing: "border-box",
                 }}
               />
               {errors.mobile && (
@@ -274,7 +255,7 @@ export default function AddEditCustomerModal({
               )}
             </div>
 
-            {/* GSTN */}
+            {/* GSTN (Optional) */}
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               <label
                 htmlFor="customer-gstn-input"
@@ -286,14 +267,17 @@ export default function AddEditCustomerModal({
                   color: "#011B2F",
                 }}
               >
-                GSTN<span style={{ color: "#DC2626" }}>*</span>
+                GSTN <span style={{ color: "#64748B", fontWeight: 400, fontSize: "12px" }}>(Optional)</span>
               </label>
               <input
                 id="customer-gstn-input"
                 type="text"
-                placeholder="Enter GSTN"
+                placeholder="Enter GSTN (Optional)"
                 value={gstn}
-                onChange={(e) => setGstn(e.target.value.toUpperCase())}
+                onChange={(e) => {
+                  setGstn(e.target.value.toUpperCase());
+                  if (errors.gstn) setErrors((prev) => ({ ...prev, gstn: "" }));
+                }}
                 style={{
                   width: "100%",
                   height: "38px",
@@ -306,13 +290,7 @@ export default function AddEditCustomerModal({
                   fontSize: "13px",
                   color: "#011B2F",
                   outline: "none",
-                  transition: "border-color 0.2s ease",
-                }}
-                onFocus={(e) => {
-                  if (!errors.gstn) e.target.style.borderColor = "#F4BC43";
-                }}
-                onBlur={(e) => {
-                  if (!errors.gstn) e.target.style.borderColor = "rgba(179, 175, 175, 0.51)";
+                  boxSizing: "border-box",
                 }}
               />
               {errors.gstn && (
@@ -333,10 +311,10 @@ export default function AddEditCustomerModal({
             </div>
           </div>
 
-          {/* Action Row matching Figma button: width 125px, height 36px, background #F4BC43 */}
+          {/* Action Row */}
           <div
             style={{
-              marginTop: "32px",
+              marginTop: "28px",
               display: "flex",
               alignItems: "center",
               justifyContent: "flex-end",
@@ -363,6 +341,7 @@ export default function AddEditCustomerModal({
             </button>
             <button
               type="submit"
+              disabled={isSaving}
               style={{
                 width: "125px",
                 height: "36px",

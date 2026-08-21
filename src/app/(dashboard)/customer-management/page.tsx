@@ -1,26 +1,39 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  UserRound,
   Search,
   Plus,
   Pencil,
   Trash2,
   RotateCcw,
+  ShieldAlert,
+  Users,
+  SearchX,
 } from "lucide-react";
-import { Customer, INITIAL_CUSTOMERS } from "./types";
+import { Customer } from "./types";
 import AddEditCustomerModal from "@/components/modals/AddEditCustomerModal";
 import { useToast } from "@/components/ui/Toast";
 import { confirmDelete } from "@/lib/notify";
 import ExportButtons from "@/components/ui/ExportButtons";
 import { exportToCSV } from "@/lib/exportUtils";
-import { handleDownloadCustomerListPDF } from "@/lib/printUtils";
 import { GlobalDataTable, GlobalColumn } from "@/components/ui/GlobalDataTable";
+import { useUserRole } from "@/hooks/useUserRole";
+import {
+  useCustomerList,
+  useCreateCustomer,
+  useUpdateCustomer,
+  useDeleteCustomer,
+  CustomerItem,
+} from "@/hooks/useCustomerQueries";
+import { META_CONSTANTS } from "@/lib/metaConstant";
 
 export default function CustomerManagementPage() {
-  const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS);
+  const { role, isStaff } = useUserRole();
+  const { showToast } = useToast();
+
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -28,108 +41,273 @@ export default function CustomerManagementPage() {
   const [isAddEditModalOpen, setIsAddEditModalOpen] = useState(false);
   const [selectedCustomerForEdit, setSelectedCustomerForEdit] = useState<Customer | null>(null);
 
-  const { showToast } = useToast();
+  useEffect(() => {
+    document.title = META_CONSTANTS.customerManagement.fullTitle;
+  }, []);
 
-  // Search filter
-  const filteredCustomers = useMemo(() => {
-    if (!searchTerm.trim()) return customers;
-    const term = searchTerm.toLowerCase();
-    return customers.filter(
-      (cust) =>
-        cust.name.toLowerCase().includes(term) ||
-        cust.mobile.toLowerCase().includes(term) ||
-        cust.gstn.toLowerCase().includes(term) ||
-        cust.sNo.toString().includes(term)
-    );
-  }, [customers, searchTerm]);
+  // Debounce search query for API
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 400);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
-  // Pagination calculation
-  const totalItems = filteredCustomers.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
-  const currentCustomers = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return filteredCustomers.slice(start, start + itemsPerPage);
-  }, [filteredCustomers, currentPage, itemsPerPage]);
+  // Reset to page 1 on search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch]);
 
-  // Handlers
+  // ── Queries & Mutations ───────────────────────────────────────────────────
+  const {
+    data: customerData,
+    isLoading,
+    isError,
+  } = useCustomerList(
+    {
+      page: currentPage,
+      limit: itemsPerPage,
+      search: debouncedSearch || undefined,
+    },
+    !isStaff // Don't query if staff
+  );
+
+  const createCustomerMutation = useCreateCustomer();
+  const updateCustomerMutation = useUpdateCustomer();
+  const deleteCustomerMutation = useDeleteCustomer();
+
+  const customers: CustomerItem[] = customerData?.items ?? [];
+  const pagination = customerData?.pagination ?? {
+    page: 1,
+    limit: itemsPerPage,
+    total: 0,
+    totalPages: 0,
+  };
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
   const handleOpenAddModal = () => {
     setSelectedCustomerForEdit(null);
     setIsAddEditModalOpen(true);
   };
 
-  const handleOpenEditModal = (cust: Customer) => {
-    setSelectedCustomerForEdit(cust);
+  const handleOpenEditModal = (cust: CustomerItem) => {
+    setSelectedCustomerForEdit({
+      id: cust.id,
+      name: cust.name,
+      mobile: cust.mobile,
+      gstn: cust.gstn,
+      createdAt: cust.createdAt,
+      updatedAt: cust.updatedAt,
+    });
     setIsAddEditModalOpen(true);
   };
 
-  const handleSaveCustomer = (data: { name: string; mobile: string; gstn: string; id?: string }) => {
-    if (data.id) {
-      // Update existing customer
-      setCustomers((prev) =>
-        prev.map((c) =>
-          c.id === data.id
-            ? { ...c, name: data.name, mobile: data.mobile, gstn: data.gstn }
-            : c
-        )
-      );
-      showToast("Customer details updated successfully!");
-    } else {
-      // Add new customer
-      const newCustomer: Customer = {
-        id: `CUST-${Date.now().toString().slice(-4)}`,
-        sNo: customers.length + 1,
-        name: data.name,
-        mobile: data.mobile,
-        gstn: data.gstn,
-      };
-      setCustomers((prev) => [...prev, newCustomer]);
-      showToast("New customer added successfully!");
+  const handleSaveCustomer = async (data: { name: string; mobile: string; gstn?: string; id?: string }) => {
+    try {
+      if (data.id) {
+        await updateCustomerMutation.mutateAsync({
+          id: data.id,
+          name: data.name,
+          mobile: data.mobile,
+          gstn: data.gstn || undefined,
+        });
+      } else {
+        await createCustomerMutation.mutateAsync({
+          name: data.name,
+          mobile: data.mobile,
+          gstn: data.gstn || undefined,
+        });
+      }
+      setIsAddEditModalOpen(false);
+    } catch {
+      // Handled in mutation onError
     }
-    setIsAddEditModalOpen(false);
   };
 
-  const handleDeleteCustomer = async (cust: Customer) => {
+  const handleDeleteCustomer = async (cust: CustomerItem) => {
     const confirmed = await confirmDelete(`customer "${cust.name}"`);
     if (!confirmed) return;
 
-    setCustomers((prev) => {
-      const updated = prev.filter((c) => c.id !== cust.id);
-      // Re-index S.NO.
-      return updated.map((c, index) => ({ ...c, sNo: index + 1 }));
-    });
-    showToast(`Customer "${cust.name}" has been deleted.`, "info");
+    try {
+      await deleteCustomerMutation.mutateAsync(cust.id);
+    } catch {
+      // Handled in mutation onError
+    }
   };
 
+  // ── Export Handlers (Matching Bookings Module Pattern) ────────────────────
   const handleExportCSV = () => {
-    const headers = ["S.NO.", "Customer Name", "Mobile Number", "GSTN"];
-    const rows = filteredCustomers.map((c) => [c.sNo, c.name, c.mobile, c.gstn]);
-    exportToCSV("Customer_List", headers, rows);
-    showToast("Customer list exported to Excel (CSV)!", "success");
+    if (customers.length === 0) {
+      showToast("No customer records to export.", "info");
+      return;
+    }
+    const headers = ["#", "Customer Name", "Mobile Number", "GSTN"];
+    const rows = customers.map((c, i) => [
+      (currentPage - 1) * itemsPerPage + i + 1,
+      c.name || "-",
+      c.mobile || "-",
+      c.gstn || "-",
+    ]);
+    exportToCSV(`Customers_${new Date().toISOString().slice(0, 10)}`, headers, rows);
+    showToast("Excel (CSV) file downloaded successfully.", "success");
   };
 
   const handleExportPDF = async () => {
-    if (filteredCustomers.length === 0) {
-      showToast("No customer records to export.", "error");
+    if (customers.length === 0) {
+      showToast("No customer records to export.", "info");
       return;
     }
-    const filterInfo = searchTerm ? `Search: "${searchTerm}"` : "All Customers";
-    await handleDownloadCustomerListPDF(filteredCustomers, filterInfo);
-    showToast("Customer list exported as PDF!", "success");
+
+    try {
+      if (!(window as any).html2pdf) {
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error("Failed to load PDF library"));
+          document.head.appendChild(script);
+        });
+      }
+
+      const dateLabel = new Date().toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+
+      const rowsHtml = customers
+        .map(
+          (c, idx) => `
+        <tr style="border-bottom: 1px solid #E5E7EB; font-size: 11px;">
+          <td style="padding: 8px 10px;">${(currentPage - 1) * itemsPerPage + idx + 1}</td>
+          <td style="padding: 8px 10px; font-weight: 600; color: #0C2A42;">${c.name || "-"}</td>
+          <td style="padding: 8px 10px;">${c.mobile || "-"}</td>
+          <td style="padding: 8px 10px;">${c.gstn || "-"}</td>
+        </tr>`
+        )
+        .join("");
+
+      const reportHtml = `
+        <div style="font-family: Arial, sans-serif; padding: 24px; color: #011B2F; background: #FFFFFF;">
+          <table style="width: 100%; border-collapse: collapse; border-bottom: 2px solid #F4BC43; padding-bottom: 10px; margin-bottom: 16px;">
+            <tr>
+              <td style="vertical-align: top;">
+                <div style="font-size: 20px; font-weight: bold; color: #0C2A42;">TICKETING PLATFORM</div>
+                <div style="font-size: 13px; color: #0C2A42; font-weight: 600; margin-top: 2px;">CUSTOMER MANAGEMENT REPORT</div>
+                <div style="font-size: 11px; color: #6B7280; margin-top: 2px;">Generated: ${dateLabel}</div>
+              </td>
+              <td style="text-align: right; vertical-align: top;">
+                <div style="font-size: 11px; color: #6B7280;">Total Records: <strong>${pagination.total || customers.length}</strong></div>
+              </td>
+            </tr>
+          </table>
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 20px;">
+            <thead>
+              <tr style="background: #F1F5F9; color: #374151; font-weight: bold;">
+                <th style="padding: 8px 10px; text-align: left; width: 40px;">#</th>
+                <th style="padding: 8px 10px; text-align: left;">Customer Name</th>
+                <th style="padding: 8px 10px; text-align: left;">Mobile Number</th>
+                <th style="padding: 8px 10px; text-align: left;">GSTN</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>`;
+
+      const element = document.createElement("div");
+      element.style.width = "750px";
+      element.innerHTML = reportHtml;
+      document.body.appendChild(element);
+
+      const opt = {
+        margin: [10, 10, 10, 10],
+        filename: `Customers_Report_${new Date().toISOString().slice(0, 10)}.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      };
+
+      await (window as any).html2pdf().set(opt).from(element).save();
+      document.body.removeChild(element);
+      showToast("PDF downloaded successfully.", "success");
+    } catch (err) {
+      console.error("Customer PDF export error:", err);
+      showToast("PDF export failed. Please try again.", "error");
+    }
   };
 
-  // Define columns for GlobalDataTable (matching Invoices/Bookings/Transactions)
-  const columns: GlobalColumn<Customer>[] = [
+  // ── Forbidden Screen for STAFF Role ───────────────────────────────────────
+  if (isStaff) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "400px",
+          background: "#FFFFFF",
+          borderRadius: "12px",
+          padding: "32px",
+          border: "1px solid #E2E8F0",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.04)",
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            width: "56px",
+            height: "56px",
+            borderRadius: "50%",
+            background: "#FEF2F2",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: "16px",
+          }}
+        >
+          <ShieldAlert size={28} color="#DC2626" />
+        </div>
+        <h2 style={{ fontSize: "18px", fontWeight: 700, color: "#0F172A", margin: "0 0 8px 0" }}>
+          Access Forbidden
+        </h2>
+        <p style={{ fontSize: "13px", color: "#64748B", maxWidth: "420px", margin: 0 }}>
+          Staff roles do not have permission to view or manage customer records. Please contact your system administrator.
+        </p>
+      </div>
+    );
+  }
+
+  // ── Table Columns Definition ──────────────────────────────────────────────
+  const columns: GlobalColumn<CustomerItem>[] = [
     {
       header: "Customer Name",
-      accessorKey: "name",
+      cell: (item) => (
+        <span style={{ fontWeight: 600, color: "#0C2A42", fontSize: "13px" }}>
+          {item.name || "-"}
+        </span>
+      ),
     },
     {
       header: "Mobile No.",
-      accessorKey: "mobile",
+      cell: (item) => (
+        <span style={{ color: "#374151", fontSize: "13px" }}>
+          {item.mobile || "-"}
+        </span>
+      ),
     },
     {
       header: "GSTN",
-      cell: (item) => item.gstn || "—",
+      cell: (item) => (
+        <span
+          style={{
+            fontFamily: item.gstn ? "'DM Mono', monospace" : "inherit",
+            color: item.gstn ? "#0C2A42" : "#94A3B8",
+            fontWeight: item.gstn ? 600 : 400,
+            fontSize: "12px",
+          }}
+        >
+          {item.gstn || "-"}
+        </span>
+      ),
     },
     {
       header: "Actions",
@@ -165,7 +343,7 @@ export default function CustomerManagementPage() {
             onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.15)")}
             onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
           >
-            <Pencil size={17} color="#2372A5" />
+            <Pencil size={16} color="#2372A5" />
           </button>
 
           <button
@@ -189,12 +367,14 @@ export default function CustomerManagementPage() {
             onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.15)")}
             onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
           >
-            <Trash2 size={17} color="#DC2626" />
+            <Trash2 size={16} color="#DC2626" />
           </button>
         </div>
       ),
     },
   ];
+
+  const isFiltered = !!debouncedSearch.trim();
 
   return (
     <div
@@ -205,7 +385,7 @@ export default function CustomerManagementPage() {
         width: "100%",
       }}
     >
-      {/* ── Row 1: Export buttons + Add Customer — right-aligned (matches Bookings) ── */}
+      {/* ── Row 1: Export buttons + Add Customer ── */}
       <div
         style={{
           display: "flex",
@@ -220,10 +400,10 @@ export default function CustomerManagementPage() {
           onExportExcel={handleExportCSV}
           pdfLabel="Export PDF"
           excelLabel="Export Excel"
-          disabled={filteredCustomers.length === 0}
+          disabled={customers.length === 0}
         />
 
-        {/* Add Customer */}
+        {/* Add Customer Button */}
         <button
           type="button"
           onClick={handleOpenAddModal}
@@ -263,7 +443,7 @@ export default function CustomerManagementPage() {
         </button>
       </div>
 
-      {/* ── Row 2: Filter card (matches Bookings white card style) ── */}
+      {/* ── Row 2: Search & Filter Card ── */}
       <div
         style={{
           display: "flex",
@@ -277,7 +457,7 @@ export default function CustomerManagementPage() {
           border: "1px solid rgba(179, 175, 175, 0.4)",
         }}
       >
-        {/* Search */}
+        {/* Search Input */}
         <div style={{ flex: 1, minWidth: "260px", maxWidth: "420px" }}>
           <div
             style={{
@@ -295,15 +475,15 @@ export default function CustomerManagementPage() {
             <Search size={18} color="#B3AFAF" />
             <input
               type="text"
-              placeholder="Search by Customer Name, Mobile No., GSTN........"
+              placeholder="Search by Customer Name, Mobile No., GSTN..."
               value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+              onChange={(e) => setSearchTerm(e.target.value)}
               style={{
                 width: "100%",
                 border: "none",
                 outline: "none",
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: 700,
+                fontWeight: 600,
                 fontSize: "12px",
                 color: "#011B2F",
                 background: "transparent",
@@ -313,56 +493,111 @@ export default function CustomerManagementPage() {
         </div>
 
         {/* Reset Button */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          <div style={{ height: "14px" }} />
-          <button
-            type="button"
-            onClick={() => { setSearchTerm(""); setCurrentPage(1); }}
-            style={{
-              height: "40px",
-              width: "95px",
-              borderRadius: "4px",
-              border: "0.5px solid rgba(179, 175, 175, 0.66)",
-              background: "#FFFFFF",
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontWeight: 500,
-              fontSize: "12px",
-              color: "#173F63",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "6px",
-              boxSizing: "border-box",
-              transition: "all 0.15s ease",
-            }}
-          >
-            <RotateCcw size={14} />
-            <span>Reset</span>
-          </button>
-        </div>
+        {isFiltered && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm("");
+                setDebouncedSearch("");
+                setCurrentPage(1);
+              }}
+              style={{
+                height: "40px",
+                padding: "0 16px",
+                borderRadius: "4px",
+                border: "0.5px solid rgba(179, 175, 175, 0.66)",
+                background: "#FFFFFF",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                fontWeight: 500,
+                fontSize: "12px",
+                color: "#173F63",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+                boxSizing: "border-box",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <RotateCcw size={14} />
+              <span>Reset</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* ── Table ── */}
+      {/* ── Table with Server-side Pagination ── */}
       <GlobalDataTable
         columns={columns}
-        data={filteredCustomers}
+        data={customers}
         keyExtractor={(item) => item.id}
         pageSize={itemsPerPage}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
+        totalItems={pagination.total}
+        totalPages={pagination.totalPages}
         showSNo={true}
         sNoHeader="S.NO."
         itemLabel="customers"
-        emptyMessage="No customers found matching current search."
+        isLoading={isLoading}
+        emptyIcon={isFiltered ? <SearchX size={26} color="#0C2A42" /> : <Users size={26} color="#0C2A42" />}
+        emptyTitle={isFiltered ? "No Matching Customers Found" : "No Customers Found"}
+        emptyDescription={
+          isFiltered
+            ? `No customers found matching "${debouncedSearch}". Try adjusting your search query.`
+            : "There are currently no customers recorded in the system. Click 'Add Customer' to create one."
+        }
+        emptyAction={
+          isFiltered ? (
+            <button
+              onClick={() => {
+                setSearchTerm("");
+                setDebouncedSearch("");
+              }}
+              style={{
+                marginTop: "12px",
+                padding: "8px 16px",
+                background: "#0C2A42",
+                color: "#FFFFFF",
+                border: "none",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Clear Search
+            </button>
+          ) : (
+            <button
+              onClick={handleOpenAddModal}
+              style={{
+                marginTop: "12px",
+                padding: "8px 16px",
+                background: "#F4BC43",
+                color: "#011B2F",
+                border: "none",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              + Add Customer
+            </button>
+          )
+        }
       />
 
-      {/* ── Modals ── */}
+      {/* ── Add / Edit Customer Modal ── */}
       <AddEditCustomerModal
         isOpen={isAddEditModalOpen}
         onClose={() => setIsAddEditModalOpen(false)}
         customer={selectedCustomerForEdit}
         onSave={handleSaveCustomer}
+        isSaving={createCustomerMutation.isPending || updateCustomerMutation.isPending}
       />
     </div>
   );

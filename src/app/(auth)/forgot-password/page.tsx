@@ -34,20 +34,34 @@ export default function ForgotPasswordPage() {
   const {
     register,
     handleSubmit,
+    setError,
+    clearErrors,
     formState: { errors },
   } = useForm<ForgotPasswordFormData>({
     resolver: zodResolver(forgotPasswordSchema),
     defaultValues: { email: "" },
+    mode: "onTouched",
   });
 
   const onSubmit = async (data: ForgotPasswordFormData) => {
+    clearErrors("email");
     try {
       await forgotPasswordMutation.mutateAsync({
         email: data.email.trim(),
       });
       setIsSuccess(true);
-    } catch {
-      // Error is handled in mutation onError toast
+    } catch (err: any) {
+      const serverMessage =
+        err?.error?.message ||
+        err?.response?.data?.error?.message ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "No Account Is Associated With This Email Address. Please Check Your Email Or Create An Account.";
+
+      setError("email", {
+        type: "server",
+        message: serverMessage,
+      });
     }
   };
 
@@ -319,7 +333,7 @@ export default function ForgotPasswordPage() {
                   >
                     <Mail
                       size={18}
-                      color={colors.login.inputIcon}
+                      color={errors.email ? colors.status.error : colors.login.inputIcon}
                       style={{ flexShrink: 0, marginRight: "10px" }}
                     />
                     <input
@@ -340,20 +354,21 @@ export default function ForgotPasswordPage() {
                   </div>
 
                   {errors.email && (
-                    <span
+                    <div
                       style={{
                         fontFamily: typography.fontFamily.sans,
                         fontSize: "12px",
+                        lineHeight: "16px",
                         color: colors.status.error,
                         display: "flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        marginTop: "1px",
+                        alignItems: "flex-start",
+                        gap: "6px",
+                        marginTop: "2px",
                       }}
                     >
-                      <AlertCircle size={13} />
-                      {errors.email.message}
-                    </span>
+                      <AlertCircle size={14} style={{ flexShrink: 0, marginTop: "1px" }} />
+                      <span>{errors.email.message}</span>
+                    </div>
                   )}
                 </div>
 

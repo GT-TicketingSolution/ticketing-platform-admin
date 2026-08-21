@@ -63,13 +63,13 @@ export default function SingleAttractionReportView({
 
   const handleExportCSV = () => {
     const headers = ["Transaction ID", "Customer Name", "Date & Time", "Payment Mode", "Amount (₹)", "Status"];
-    const rows = filteredTransactions.map((t) => [
-      t.id,
-      t.customerName,
-      t.dateTime,
-      t.paymentMode,
-      t.amount,
-      t.status,
+    const rows: (string | number | boolean)[][] = filteredTransactions.map((t) => [
+      t.id || "",
+      t.customerName || "",
+      t.dateTime || t.transactionDate || "",
+      t.paymentMode || "",
+      t.amount ?? 0,
+      t.status || "",
     ]);
 
     exportToCSV(
@@ -96,8 +96,7 @@ export default function SingleAttractionReportView({
     },
     {
       header: "Date & Time",
-      accessorKey: "dateTime",
-      cell: (t) => <span style={{ color: colors.text.muted }}>{t.dateTime}</span>,
+      cell: (t) => <span style={{ color: colors.text.muted }}>{t.dateTime || t.transactionDate || "-"}</span>,
     },
     {
       header: "Payment Mode",
@@ -345,38 +344,44 @@ export default function SingleAttractionReportView({
           </h3>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {categoryBreakdown.map((cat) => (
-              <div
-                key={cat.category}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "12px 16px",
-                  borderRadius: "10px",
-                  backgroundColor: "#F8FAFC",
-                  border: "1px solid #E2E8F0",
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 700, color: colors.text.primary, fontSize: "14px" }}>
-                    {cat.category} Ticket
+            {categoryBreakdown.length > 0 ? (
+              categoryBreakdown.map((cat) => (
+                <div
+                  key={cat.category}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "12px 16px",
+                    borderRadius: "10px",
+                    backgroundColor: "#F8FAFC",
+                    border: "1px solid #E2E8F0",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, color: colors.text.primary, fontSize: "14px" }}>
+                      {cat.category} Ticket
+                    </div>
+                    <div style={{ fontSize: "12px", color: colors.text.muted }}>
+                      Unit Price: ₹{cat.unitPrice}
+                    </div>
                   </div>
-                  <div style={{ fontSize: "12px", color: colors.text.muted }}>
-                    Unit Price: ₹{cat.unitPrice}
-                  </div>
-                </div>
 
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 700, color: "#16A34A", fontSize: "15px" }}>
-                    ₹{cat.revenue.toLocaleString("en-IN")}
-                  </div>
-                  <div style={{ fontSize: "12px", fontWeight: 600, color: "#0284C7" }}>
-                    {cat.count} sold
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontWeight: 700, color: "#16A34A", fontSize: "15px" }}>
+                      ₹{cat.revenue.toLocaleString("en-IN")}
+                    </div>
+                    <div style={{ fontSize: "12px", fontWeight: 600, color: "#0284C7" }}>
+                      {cat.count} sold
+                    </div>
                   </div>
                 </div>
+              ))
+            ) : (
+              <div style={{ padding: "16px", textAlign: "center", color: colors.text.muted, fontSize: "13px" }}>
+                No ticket category sales recorded in the selected date range.
               </div>
-            ))}
+            )}
           </div>
         </div>
 
@@ -395,34 +400,40 @@ export default function SingleAttractionReportView({
           </h3>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {paymentBreakdown.map((pm) => (
-              <div
-                key={pm.mode}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "12px 16px",
-                  borderRadius: "10px",
-                  backgroundColor: "#F8FAFC",
-                  border: "1px solid #E2E8F0",
-                }}
-              >
-                <div style={{ fontWeight: 600, color: colors.text.primary, fontSize: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
-                  <CreditCard size={16} color="#64748B" />
-                  {pm.mode}
-                </div>
+            {paymentBreakdown.length > 0 ? (
+              paymentBreakdown.map((pm) => (
+                <div
+                  key={pm.mode}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "12px 16px",
+                    borderRadius: "10px",
+                    backgroundColor: "#F8FAFC",
+                    border: "1px solid #E2E8F0",
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: colors.text.primary, fontSize: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
+                    <CreditCard size={16} color="#64748B" />
+                    {pm.mode}
+                  </div>
 
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 700, color: colors.text.primary, fontSize: "15px" }}>
-                    ₹{pm.revenue.toLocaleString("en-IN")}
-                  </div>
-                  <div style={{ fontSize: "12px", color: colors.text.muted }}>
-                    {pm.count} transactions
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontWeight: 700, color: colors.text.primary, fontSize: "15px" }}>
+                      ₹{pm.revenue.toLocaleString("en-IN")}
+                    </div>
+                    <div style={{ fontSize: "12px", color: colors.text.muted }}>
+                      {pm.count} transactions
+                    </div>
                   </div>
                 </div>
+              ))
+            ) : (
+              <div style={{ padding: "16px", textAlign: "center", color: colors.text.muted, fontSize: "13px" }}>
+                No payment data recorded in the selected date range.
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>

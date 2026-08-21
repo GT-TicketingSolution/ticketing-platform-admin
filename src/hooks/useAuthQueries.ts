@@ -224,14 +224,6 @@ export function useForgotPasswordMutation() {
         data
       );
     },
-    onError: (error: any) => {
-      const serverMessage =
-        error?.error?.message ||
-        error?.response?.data?.error?.message ||
-        error?.message ||
-        "Unable to process password reset request.";
-      showErrorOnce(serverMessage, "Request Failed");
-    },
   });
 }
 
