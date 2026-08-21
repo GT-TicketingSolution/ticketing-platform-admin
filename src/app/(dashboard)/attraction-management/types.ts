@@ -62,7 +62,7 @@ export interface UpdateAttractionPayload {
 
 // ── Bulk upload ──────────────────────────────────────────────────────────────
 export interface BulkAttractionItem {
-  attractionId: string;
+  attractionName: string;
   image?: string | null;
   description?: string | null;
   timing?: string | null;
@@ -72,8 +72,6 @@ export interface BulkAttractionItem {
   studentPrice?: number;
   seniorPrice?: number;
   foreignerPrice?: number;
-
-  hasSeating?: boolean;
 }
 
 export type BulkAttractionPayload = BulkAttractionItem[];

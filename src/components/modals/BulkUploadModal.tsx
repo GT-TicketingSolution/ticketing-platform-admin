@@ -64,7 +64,7 @@ function parseCsvToBulkPayload(csvText: string): BulkAttractionPayload {
       rowObj[h] = values[idx] !== undefined ? values[idx].trim() : "";
     });
 
-    const attractionId =
+    const attractionName =
       rowObj["attractionname"] ||
       rowObj["name"] ||
       rowObj["attraction"] ||
@@ -72,15 +72,9 @@ function parseCsvToBulkPayload(csvText: string): BulkAttractionPayload {
       rowObj["id"] ||
       "";
 
-    if (!attractionId) {
+    if (!attractionName) {
       continue;
     }
-
-    const parseBool = (val?: string) => {
-      if (!val) return false;
-      const lower = val.toLowerCase().trim();
-      return lower === "true" || lower === "yes" || lower === "1";
-    };
 
     const parseNum = (val?: string) => {
       if (!val) return 0;
@@ -90,7 +84,7 @@ function parseCsvToBulkPayload(csvText: string): BulkAttractionPayload {
     };
 
     items.push({
-      attractionId,
+      attractionName,
       image: rowObj["image"] || rowObj["imageurl"] || null,
       description: rowObj["description"] || rowObj["desc"] || null,
       timing: rowObj["timing"] || rowObj["timings"] || rowObj["time"] || null,
@@ -99,7 +93,6 @@ function parseCsvToBulkPayload(csvText: string): BulkAttractionPayload {
       studentPrice: parseNum(rowObj["studentprice"] || rowObj["student"]),
       seniorPrice: parseNum(rowObj["seniorprice"] || rowObj["senior"]),
       foreignerPrice: parseNum(rowObj["foreignerprice"] || rowObj["foreigner"]),
-      hasSeating: parseBool(rowObj["hasseating"] || rowObj["seating"]),
     });
   }
 
@@ -123,7 +116,7 @@ async function parseFileToPayload(file: File): Promise<BulkAttractionPayload> {
         throw new Error(`Item ${idx + 1} is missing required 'attractionName'.`);
       }
       return {
-        attractionId: String(attractionIdentifier).trim(),
+        attractionName: String(attractionIdentifier).trim(),
         image: item.image ?? null,
         description: item.description ?? null,
         timing: item.timing ?? null,
@@ -132,7 +125,6 @@ async function parseFileToPayload(file: File): Promise<BulkAttractionPayload> {
         studentPrice: typeof item.studentPrice === "number" ? item.studentPrice : (Number(item.studentPrice) || 0),
         seniorPrice: typeof item.seniorPrice === "number" ? item.seniorPrice : (Number(item.seniorPrice) || 0),
         foreignerPrice: typeof item.foreignerPrice === "number" ? item.foreignerPrice : (Number(item.foreignerPrice) || 0),
-        hasSeating: typeof item.hasSeating === "boolean" ? item.hasSeating : Boolean(item.hasSeating),
       };
     });
   }
@@ -184,31 +176,38 @@ export default function BulkUploadModal({
       return;
     }
 
+    let payload: BulkAttractionPayload;
     try {
-      const payload = await parseFileToPayload(selectedFile);
-      if (!payload || payload.length === 0) {
-        showToast("No valid attraction records found in the file.", "error");
-        return;
-      }
+      payload = await parseFileToPayload(selectedFile);
+    } catch (err: any) {
+      showToast(err?.message || "Failed to process file for upload.", "error");
+      return;
+    }
 
+    if (!payload || payload.length === 0) {
+      showToast("No valid attraction records found in the file.", "error");
+      return;
+    }
+
+    try {
       const result = await bulkUploadMutation.mutateAsync(payload);
       const count = Array.isArray(result?.data) ? result.data.length : payload.length;
       onUploadSuccess(count);
       setSelectedFile(null);
       onClose();
-    } catch (err: any) {
-      const errorMsg = err?.message || "Failed to process file for upload.";
-      showToast(errorMsg, "error");
+    } catch {
+      // Backend error is handled and toasted centrally by the axios response interceptor.
+      // We avoid showing duplicate error toasts here.
     }
   };
 
   const handleDownloadTemplate = () => {
-    // Generate sample CSV for download with attractionName column
+    // Generate sample CSV for download with attractionName column and without hasSeating
     const csvContent =
       "data:text/csv;charset=utf-8," +
-      "attractionName,image,description,timing,adultPrice,childPrice,studentPrice,seniorPrice,foreignerPrice,hasSeating\n" +
-      "Toy Train,https://example.com/toy-train.jpg,Toy train ride,09:00 AM - 06:00 PM,100,50,70,60,200,true\n" +
-      "Rope Way,https://example.com/rope-way.jpg,Rope way ride,10:00 AM - 05:00 PM,200,100,150,120,400,true\n";
+      "attractionName,image,description,timing,adultPrice,childPrice,studentPrice,seniorPrice,foreignerPrice\n" +
+      "Toy Train,https://example.com/toy-train.jpg,Toy train ride,09:00 AM - 06:00 PM,100,50,70,60,200\n" +
+      "Rope Way,https://example.com/rope-way.jpg,Rope way ride,10:00 AM - 05:00 PM,200,100,150,120,400\n";
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);

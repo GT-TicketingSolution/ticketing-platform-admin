@@ -295,14 +295,30 @@ export interface AttractionItem {
 }
 
 /**
- * Fetch attractions list from API
+ * Fetch attractions list for dropdowns (e.g. Bookings filter).
+ * Sources data from the Attraction Management listing — same data shown on the Attractions page.
  */
 export function useAttractions() {
   return useQuery({
     queryKey: ["attractions", "list"] as const,
     queryFn: async () => {
-      return getData<AttractionItem[]>(AppUrl.attraction.list);
+      const res = await getData<any>(AppUrl.attractionManagement.list);
+      // Normalise different response shapes from the server
+      const items: any[] = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.data)
+        ? res.data
+        : [];
+      // Map AttractionManagement → AttractionItem
+      return items.map((a) => ({
+        id: a.id ?? a.attractionId,
+        name: a.name,
+        category: a.category,
+        status: a.status,
+      })) as AttractionItem[];
     },
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 

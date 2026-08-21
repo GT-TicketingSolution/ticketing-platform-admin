@@ -58,15 +58,16 @@ export const AppUrl = {
     delete: (transactionId: string) => `/admin/transactions/${transactionId}`,
   },
 
+  // Invoice Management
+  invoice: {
+    list: "/admin/invoices",
+    get: (invoiceId: string) => `/admin/invoices/${invoiceId}`,
+    delete: (invoiceId: string) => `/admin/invoices/${invoiceId}`,
+  },
+
   // System Modules
   systemModule: {
     list: "/admin/system-modules",
-  },
-
-  // Attractions Management (manager query hook — dropdown list)
-  attraction: {
-    list: "/admin/attractions",
-    getModules: (attractionId: string) => `/admin/attractions/${attractionId}/modules`,
   },
 
   // Attraction Management CRUD
@@ -86,6 +87,21 @@ export const AppUrl = {
     get: (seatId: string) => `/admin/seats/${seatId}`,
     update: (seatId: string) => `/admin/seats/${seatId}`,
     delete: (seatId: string) => `/admin/seats/${seatId}`,
+  },
+
+  // Inventory Management
+  inventory: {
+    list: "/admin/inventory",
+    upsert: "/admin/inventory",
+    capacity: "/admin/inventory/capacity",
+  },
+
+  // Customer Management
+  customer: {
+    list: "/admin/customers",
+    create: "/admin/customers",
+    update: (id: string) => `/admin/customers/${id}`,
+    delete: (id: string) => `/admin/customers/${id}`,
   },
 } as const;
 

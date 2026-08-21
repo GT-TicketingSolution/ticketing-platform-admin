@@ -113,16 +113,10 @@ export function useBulkUploadAttractions() {
       const count = Array.isArray(data?.data) ? data.data.length : 0;
       showToast(`${count} attraction${count !== 1 ? "s" : ""} uploaded successfully!`, "success");
     },
-    onError: (error: any) => {
-      const message =
-        error?.error?.message || error?.message || "Bulk upload failed.";
-      showErrorOnce(message, "Bulk Upload Failed");
-      showToast(message, "error");
-    },
   });
 }
 
-// ── Assign seat layout ───────────────────────────────────────────────────────
+// ── Assign seat layout 
 export function useAssignSeatLayout() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();

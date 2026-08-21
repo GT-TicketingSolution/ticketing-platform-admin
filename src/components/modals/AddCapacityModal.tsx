@@ -4,66 +4,65 @@ import React, { useState, useEffect } from "react";
 import { X, PlusCircle, Check, Loader2 } from "lucide-react";
 import { typography } from "@/lib/theme";
 import { useToast } from "@/components/ui/Toast";
-import { validateAddCapacitySchema } from "@/app/(dashboard)/inventory/schema";
+import { validateUpsertCapacitySchema } from "@/app/(dashboard)/inventory/schema";
+import { useUpsertDailyCapacity, InventoryItem } from "@/hooks/useInventoryQueries";
 
-
-export interface AttractionInventoryItem {
+interface AttractionOption {
   id: string;
   name: string;
-  dailyCap: number;
-  booked: number;
-  available: number;
-  status: "Available" | "Near Full" | "Full";
-  alertText?: string;
-  alertType?: "warning" | "danger";
-  slots?: { time: string; booked: number; capacity: number; status: string }[];
 }
 
 interface AddCapacityModalProps {
   isOpen: boolean;
   onClose: () => void;
-  selectedAttraction: AttractionInventoryItem | null;
-  attractionsList: AttractionInventoryItem[];
-  onUpdateCapacity: (attractionId: string, addedSeats: number, slotTime?: string) => void;
+  selectedItem?: InventoryItem | null;
+  attractionsList: AttractionOption[];
+  onSuccess?: () => void;
 }
 
 export default function AddCapacityModal({
   isOpen,
   onClose,
-  selectedAttraction,
+  selectedItem,
   attractionsList,
-  onUpdateCapacity,
+  onSuccess,
 }: AddCapacityModalProps) {
   const { showToast } = useToast();
-  const [targetId, setTargetId] = useState<string>("");
-  const [selectedSlot, setSelectedSlot] = useState<string>("All Slots");
-  const [addAmount, setAddAmount] = useState<number>(25);
-  const [customAmount, setCustomAmount] = useState<string>("");
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [errors, setErrors] = useState<{ targetId?: string; selectedSlot?: string; addedSeats?: string }>({});
+  const upsertMutation = useUpsertDailyCapacity();
+
+  const [attractionId, setAttractionId] = useState<string>("");
+  const [capacityDate, setCapacityDate] = useState<string>("");
+  const [totalCapacity, setTotalCapacity] = useState<string>("");
+  const [errors, setErrors] = useState<{ attractionId?: string; capacityDate?: string; totalCapacity?: string }>({});
+
+  const todayStr = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
-    if (selectedAttraction) {
-      setTargetId(selectedAttraction.id);
-    } else if (attractionsList.length > 0) {
-      setTargetId(attractionsList[0].id);
+    if (selectedItem) {
+      setAttractionId(selectedItem.attraction?.id || "");
+      setCapacityDate(selectedItem.capacityDate && selectedItem.capacityDate !== "-" ? selectedItem.capacityDate : todayStr);
+      setTotalCapacity(String(selectedItem.totalCapacity ?? ""));
+    } else {
+      if (attractionsList.length > 0 && !attractionId) {
+        setAttractionId(attractionsList[0].id);
+      }
+      setCapacityDate(todayStr);
+      setTotalCapacity("");
     }
     setErrors({});
-  }, [selectedAttraction, attractionsList]);
+  }, [selectedItem, attractionsList, isOpen]);
 
   if (!isOpen) return null;
 
-  const currentAttraction = attractionsList.find((a) => a.id === targetId) || selectedAttraction;
+  const currentAttraction = attractionsList.find((a) => a.id === attractionId);
 
-  const handleAddSeats = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const finalAmount = customAmount !== "" ? customAmount : addAmount;
 
-    // Schema-based validation check
-    const validation = validateAddCapacitySchema({
-      targetId,
-      selectedSlot,
-      addedSeats: finalAmount,
+    const validation = validateUpsertCapacitySchema({
+      attractionId,
+      capacityDate,
+      totalCapacity,
     });
 
     if (!validation.isValid) {
@@ -74,19 +73,25 @@ export default function AddCapacityModal({
     }
 
     setErrors({});
-    const numSeats = typeof finalAmount === "number" ? finalAmount : parseInt(finalAmount, 10);
+    const numCapacity = parseInt(String(totalCapacity), 10);
 
-    setIsSubmitting(true);
-    setTimeout(() => {
-      onUpdateCapacity(targetId, numSeats, selectedSlot);
-      showToast(
-        `Added +${numSeats} seats to ${currentAttraction?.name || "attraction"} (${selectedSlot})`,
-        "success"
-      );
-      setIsSubmitting(false);
+    try {
+      await upsertMutation.mutateAsync({
+        attractionId,
+        capacityDate,
+        totalCapacity: numCapacity,
+      });
+      onSuccess?.();
       onClose();
-      setCustomAmount("");
-    }, 400);
+    } catch (err: any) {
+      // Handled in mutation onError
+    }
+  };
+
+  const handleAddPreset = (amount: number) => {
+    const current = parseInt(totalCapacity || "0", 10) || 0;
+    setTotalCapacity(String(current + amount));
+    if (errors.totalCapacity) setErrors((prev) => ({ ...prev, totalCapacity: undefined }));
   };
 
   const presetAmounts = [10, 25, 50, 100];
@@ -159,7 +164,7 @@ export default function AddCapacityModal({
                   color: "#FFFFFF",
                 }}
               >
-                Add Inventory Capacity
+                {selectedItem ? "Update Daily Capacity" : "Set Daily Capacity"}
               </h3>
               <p
                 style={{
@@ -169,7 +174,7 @@ export default function AddCapacityModal({
                   fontFamily: typography.fontFamily.sans,
                 }}
               >
-                Increase available seating slots dynamically
+                Configure attraction capacity for a specific date
               </p>
             </div>
           </div>
@@ -193,7 +198,7 @@ export default function AddCapacityModal({
         </div>
 
         {/* Modal Body Form */}
-        <form onSubmit={handleAddSeats} style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
+        <form onSubmit={handleSubmit} style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "18px" }}>
           {/* Target Attraction Selection */}
           <div>
             <label
@@ -206,19 +211,19 @@ export default function AddCapacityModal({
                 fontFamily: typography.fontFamily.sans,
               }}
             >
-              Select Attraction <span style={{ color: "#EF4444", fontWeight: 700 }}>*</span>
+              Attraction <span style={{ color: "#EF4444", fontWeight: 700 }}>*</span>
             </label>
             <select
-              value={targetId}
+              value={attractionId}
               onChange={(e) => {
-                setTargetId(e.target.value);
-                if (errors.targetId) setErrors((prev) => ({ ...prev, targetId: undefined }));
+                setAttractionId(e.target.value);
+                if (errors.attractionId) setErrors((prev) => ({ ...prev, attractionId: undefined }));
               }}
               style={{
                 width: "100%",
                 padding: "11px 14px",
                 borderRadius: "10px",
-                border: errors.targetId ? "1.5px solid #EF4444" : "1px solid #A0A0A0",
+                border: errors.attractionId ? "1.5px solid #EF4444" : "1px solid #A0A0A0",
                 fontSize: "14px",
                 fontWeight: 600,
                 color: "#011B2F",
@@ -228,73 +233,21 @@ export default function AddCapacityModal({
                 cursor: "pointer",
               }}
             >
+              <option value="" disabled>Select an attraction</option>
               {attractionsList.map((att) => (
                 <option key={att.id} value={att.id}>
-                  {att.name} (Available: {att.available} / Cap: {att.dailyCap})
+                  {att.name}
                 </option>
               ))}
             </select>
-            {errors.targetId && (
+            {errors.attractionId && (
               <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "4px", display: "block" }}>
-                {errors.targetId}
+                {errors.attractionId}
               </span>
             )}
           </div>
 
-          {/* Current Status Box */}
-          {currentAttraction && (
-            <div
-              style={{
-                background: currentAttraction.status === "Full" ? "#FEF2F2" : currentAttraction.status === "Near Full" ? "#FFFBEB" : "#F0FDF4",
-                border: `1px solid ${currentAttraction.status === "Full" ? "#FEE2E2" : currentAttraction.status === "Near Full" ? "#FEF3C7" : "#BBF7D0"}`,
-                borderRadius: "12px",
-                padding: "14px 16px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <div>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    color: currentAttraction.status === "Full" ? "#DC2626" : currentAttraction.status === "Near Full" ? "#D97706" : "#166534",
-                    fontFamily: "'Inter', sans-serif",
-                  }}
-                >
-                  Current Live Capacity State
-                </span>
-                <span
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    color: "#011B2F",
-                    fontFamily: typography.fontFamily.sans,
-                  }}
-                >
-                  {currentAttraction.booked} booked out of {currentAttraction.dailyCap} total
-                </span>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <span
-                  style={{
-                    fontSize: "18px",
-                    fontWeight: 700,
-                    color: currentAttraction.available === 0 ? "#EF4444" : "#10B981",
-                    fontFamily: "'DM Mono', monospace",
-                  }}
-                >
-                  {currentAttraction.available} Left
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Time Slot Selection */}
+          {/* Capacity Date */}
           <div>
             <label
               style={{
@@ -306,42 +259,36 @@ export default function AddCapacityModal({
                 fontFamily: typography.fontFamily.sans,
               }}
             >
-              Time Slot Allocation <span style={{ color: "#EF4444", fontWeight: 700 }}>*</span>
+              Capacity Date <span style={{ color: "#EF4444", fontWeight: 700 }}>*</span>
             </label>
-            <select
-              value={selectedSlot}
+            <input
+              type="date"
+              value={capacityDate}
               onChange={(e) => {
-                setSelectedSlot(e.target.value);
-                if (errors.selectedSlot) setErrors((prev) => ({ ...prev, selectedSlot: undefined }));
+                setCapacityDate(e.target.value);
+                if (errors.capacityDate) setErrors((prev) => ({ ...prev, capacityDate: undefined }));
               }}
               style={{
                 width: "100%",
                 padding: "11px 14px",
                 borderRadius: "10px",
-                border: errors.selectedSlot ? "1.5px solid #EF4444" : "1px solid #A0A0A0",
+                border: errors.capacityDate ? "1.5px solid #EF4444" : "1px solid #A0A0A0",
                 fontSize: "14px",
                 fontWeight: 600,
                 color: "#011B2F",
                 fontFamily: typography.fontFamily.sans,
-                backgroundColor: "#FFFFFF",
                 outline: "none",
+                boxSizing: "border-box",
               }}
-            >
-              <option value="All Slots">All Slots (Distribute evenly)</option>
-              <option value="09:00 AM">09:00 AM Slot</option>
-              <option value="10:30 AM">10:30 AM Slot</option>
-              <option value="11:00 AM">11:00 AM Slot</option>
-              <option value="02:00 PM">02:00 PM Slot</option>
-              <option value="04:30 PM">04:30 PM Slot</option>
-            </select>
-            {errors.selectedSlot && (
+            />
+            {errors.capacityDate && (
               <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "4px", display: "block" }}>
-                {errors.selectedSlot}
+                {errors.capacityDate}
               </span>
             )}
           </div>
 
-          {/* Preset Buttons & Custom Input */}
+          {/* Total Capacity Field */}
           <div>
             <label
               style={{
@@ -353,73 +300,66 @@ export default function AddCapacityModal({
                 fontFamily: typography.fontFamily.sans,
               }}
             >
-              Additional Seats Count <span style={{ color: "#EF4444", fontWeight: 700 }}>*</span>
+              Total Daily Capacity <span style={{ color: "#EF4444", fontWeight: 700 }}>*</span>
             </label>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginBottom: "12px" }}>
-              {presetAmounts.map((amt) => {
-                const isSelected = !customAmount && addAmount === amt;
-                return (
-                  <button
-                    key={amt}
-                    type="button"
-                    onClick={() => {
-                      setAddAmount(amt);
-                      setCustomAmount("");
-                      if (errors.addedSeats) setErrors((prev) => ({ ...prev, addedSeats: undefined }));
-                    }}
-                    style={{
-                      padding: "10px",
-                      borderRadius: "10px",
-                      border: isSelected ? "2px solid #0C2A42" : "1px solid #A0A0A0",
-                      background: isSelected ? "#0C2A42" : "#FFFFFF",
-                      color: isSelected ? "#FFFFFF" : "#011B2F",
-                      fontWeight: 700,
-                      fontSize: "14px",
-                      fontFamily: "'DM Mono', monospace",
-                      cursor: "pointer",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    +{amt}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Custom Input */}
-            <div>
-              <input
-                type="number"
-                min="1"
-                max="5000"
-                placeholder="Or enter custom seat amount..."
-                value={customAmount}
-                onChange={(e) => {
-                  setCustomAmount(e.target.value);
-                  if (errors.addedSeats) setErrors((prev) => ({ ...prev, addedSeats: undefined }));
-                }}
-                style={{
-                  width: "100%",
-                  padding: "11px 14px",
-                  borderRadius: "10px",
-                  border: errors.addedSeats ? "1.5px solid #EF4444" : customAmount ? "2px solid #0C2A42" : "1px solid #A0A0A0",
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  color: "#011B2F",
-                  fontFamily: typography.fontFamily.sans,
-                  outline: "none",
-                }}
-              />
-            </div>
-            {errors.addedSeats && (
-              <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "4px", display: "block" }}>
-                {errors.addedSeats}
+            <input
+              type="number"
+              min="0"
+              max="50000"
+              placeholder="e.g. 500"
+              value={totalCapacity}
+              onChange={(e) => {
+                setTotalCapacity(e.target.value);
+                if (errors.totalCapacity) setErrors((prev) => ({ ...prev, totalCapacity: undefined }));
+              }}
+              style={{
+                width: "100%",
+                padding: "11px 14px",
+                borderRadius: "10px",
+                border: errors.totalCapacity ? "1.5px solid #EF4444" : "1px solid #A0A0A0",
+                fontSize: "14px",
+                fontWeight: 600,
+                color: "#011B2F",
+                fontFamily: typography.fontFamily.sans,
+                outline: "none",
+                boxSizing: "border-box",
+                marginBottom: "8px",
+              }}
+            />
+            {errors.totalCapacity && (
+              <span style={{ fontSize: "12px", color: "#EF4444", marginBottom: "8px", display: "block" }}>
+                {errors.totalCapacity}
               </span>
             )}
+
+            {/* Quick Add Presets */}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "6px" }}>
+              <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 500 }}>Quick add:</span>
+              {presetAmounts.map((amt) => (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => handleAddPreset(amt)}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: "6px",
+                    border: "1px solid #CBD5E1",
+                    background: "#F8FAFC",
+                    color: "#0C2A42",
+                    fontWeight: 600,
+                    fontSize: "12px",
+                    fontFamily: "'DM Mono', monospace",
+                    cursor: "pointer",
+                  }}
+                >
+                  +{amt}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Action Buttons */}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "10px" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "12px" }}>
             <button
               type="button"
               onClick={onClose}
@@ -439,32 +379,32 @@ export default function AddCapacityModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={upsertMutation.isPending}
               style={{
                 padding: "10px 24px",
                 borderRadius: "10px",
                 border: "none",
-                background: isSubmitting ? "#E5E7EB" : "#F4BC43",
-                color: isSubmitting ? "#6B7280" : "#011B2F",
+                background: upsertMutation.isPending ? "#E5E7EB" : "#F4BC43",
+                color: upsertMutation.isPending ? "#6B7280" : "#011B2F",
                 fontSize: "14px",
                 fontWeight: 700,
                 fontFamily: typography.fontFamily.sans,
-                cursor: isSubmitting ? "not-allowed" : "pointer",
+                cursor: upsertMutation.isPending ? "not-allowed" : "pointer",
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
-                boxShadow: isSubmitting ? "none" : "0 4px 12px rgba(244, 188, 67, 0.35)",
+                boxShadow: upsertMutation.isPending ? "none" : "0 4px 12px rgba(244, 188, 67, 0.35)",
               }}
             >
-              {isSubmitting ? (
+              {upsertMutation.isPending ? (
                 <>
                   <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
-                  <span>Updating...</span>
+                  <span>Saving...</span>
                 </>
               ) : (
                 <>
                   <Check size={18} />
-                  <span>Confirm &amp; Add Capacity</span>
+                  <span>Save Capacity</span>
                 </>
               )}
             </button>

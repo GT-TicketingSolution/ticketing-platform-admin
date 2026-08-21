@@ -1,292 +1,344 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   Search,
+  RotateCcw,
   MoreVertical,
   Eye,
   Trash2,
+  SearchX,
+  FileText,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
-import { INITIAL_TRANSACTIONS } from "@/lib/mockTransactions";
-import { Transaction } from "@/app/(dashboard)/transactions/types";
-import { PaymentModeFilter } from "./types";
 import { META_CONSTANTS } from "@/lib/metaConstant";
-import { handleDownloadInvoicesListPDF } from "@/lib/printUtils";
-
-import { exportToCSV } from "@/lib/exportUtils";
 import ExportButtons from "@/components/ui/ExportButtons";
 import DateRangePicker from "@/components/ui/DateRangePicker";
 import InvoiceDetailsModal from "@/components/modals/InvoiceDetailsModal";
-import { GlobalDataTable, GlobalColumn } from "@/components/ui/GlobalDataTable";
+import { GlobalDataTable } from "@/components/ui/GlobalDataTable";
 import { useToast } from "@/components/ui/Toast";
 import { confirmDelete } from "@/lib/notify";
+import {
+  useInvoiceList,
+  useDeleteInvoice,
+  InvoiceListItem,
+  InvoiceListParams,
+} from "@/hooks/useInvoiceQueries";
 
-function getInvoiceId(txn: Transaction) {
-  return txn.invoiceId || txn.id.replace("TXN-", "INV-");
-}
-
-const PAYMENT_MODES = ["All", "Cash", "UPI", "Card"] as const;
 const PAGE_SIZE = 10;
 
+// ── Date format helpers
+function formatDateVal(val?: string | null): string {
+  if (!val) return "-";
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? val : d.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+}
+
+function formatDateOnly(val?: string | null): string {
+  if (!val) return "-";
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? val : d.toLocaleDateString("en-IN", { dateStyle: "medium" });
+}
+
+// ── Status badge renderer 
+function StatusBadge({ status }: { status: string }) {
+  const upper = status?.toUpperCase() || "";
+  const isSuccess = upper === "SUCCESS" || upper === "SUCCESSFUL" || upper === "CONFIRMED" || upper === "PAID";
+  const isFailed = upper === "FAILED" || upper === "CANCELLED";
+
+  const bg = isSuccess ? "#B5FFE7" : isFailed ? "#FEE2E2" : "rgba(255,248,217,0.93)";
+  const dot = isSuccess ? "#119167" : isFailed ? "rgba(220,38,38,0.88)" : "#D97706";
+  const text = isSuccess ? "#119167" : isFailed ? "rgba(220,38,38,0.86)" : "#D97706";
+  const label = isSuccess ? "Success" : isFailed ? "Failed" : status || "Pending";
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
+        padding: "3px 10px",
+        borderRadius: "7px",
+        background: bg,
+        fontFamily: typography.fontFamily.sans,
+        fontWeight: 500,
+        fontSize: "10px",
+        color: text,
+      }}
+    >
+      <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: dot }} />
+      {label}
+    </span>
+  );
+}
+
+// ── Build CSV export ──────────────────────────────────────────────────────────
+function exportToCSV(items: InvoiceListItem[], filename: string) {
+  const headers = [
+    "Invoice ID",
+    "Customer Name",
+    "Date & Time",
+    "Booking ID",
+    "Visit Date",
+    "Attraction",
+    "Visitors",
+    "Amount",
+    "Payment Mode",
+    "Status",
+  ];
+  const rows = items.map((inv) => [
+    `"${inv.invoiceId || inv.invoiceNumber || "-"}"`,
+    `"${inv.customerName || "-"}"`,
+    `"${formatDateVal(inv.dateTime || inv.invoiceDate)}"`,
+    `"${inv.bookingId || "-"}"`,
+    `"${formatDateOnly(inv.visitAt)}"`,
+    `"${inv.attraction?.name || "-"}"`,
+    inv.visitors ?? 0,
+    inv.amount ?? 0,
+    `"${inv.paymentMode || "-"}"`,
+    `"${inv.status || "-"}"`,
+  ]);
+  const csv = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+  const link = document.createElement("a");
+  link.setAttribute("href", encodeURI(csv));
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// ── Build PDF export using html2pdf.js ───────────────────────────────────────
+async function exportToPDF(
+  items: InvoiceListItem[],
+  filterInfo: string,
+  filename: string
+) {
+  if (!(window as any).html2pdf) {
+    await new Promise<void>((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("Failed to load PDF export library"));
+      document.head.appendChild(s);
+    });
+  }
+
+  const rows = items.map((inv, i) => `
+    <tr style="background:${i % 2 === 0 ? "#FFFFFF" : "#F8FAFC"};">
+      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${i + 1}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;font-weight:600;">${inv.invoiceId || inv.invoiceNumber || "-"}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${inv.customerName || "-"}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${formatDateOnly(inv.dateTime || inv.invoiceDate)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${inv.bookingId || "-"}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${formatDateOnly(inv.visitAt)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${inv.attraction?.name || "-"}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;text-align:center;">${inv.visitors ?? 0}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;text-align:right;">&#8377;${Number(inv.amount ?? 0).toFixed(2)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${inv.paymentMode || "-"}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${inv.status || "-"}</td>
+    </tr>`).join("");
+
+  const totalAmount = items.reduce((s, inv) => s + Number(inv.amount ?? 0), 0);
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;padding:24px;color:#011B2F;">
+      <div style="border-bottom:3px solid #F4BC43;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-end;">
+        <div>
+          <div style="font-size:20px;font-weight:bold;color:#0C2A42;">TICKETING PLATFORM</div>
+          <div style="font-size:12px;color:#6B7280;">Invoices Summary Report</div>
+        </div>
+        <div style="font-size:11px;color:#6B7280;text-align:right;">
+          <div>${filterInfo}</div>
+          <div>Generated: ${new Date().toLocaleString("en-IN")}</div>
+        </div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background:#0C2A42;color:#FFFFFF;">
+            <th style="padding:9px 10px;font-size:11px;text-align:left;">#</th>
+            <th style="padding:9px 10px;font-size:11px;text-align:left;">Invoice ID</th>
+            <th style="padding:9px 10px;font-size:11px;text-align:left;">Customer</th>
+            <th style="padding:9px 10px;font-size:11px;text-align:left;">Date</th>
+            <th style="padding:9px 10px;font-size:11px;text-align:left;">Booking ID</th>
+            <th style="padding:9px 10px;font-size:11px;text-align:left;">Visit Date</th>
+            <th style="padding:9px 10px;font-size:11px;text-align:left;">Attraction</th>
+            <th style="padding:9px 10px;font-size:11px;text-align:center;">Visitors</th>
+            <th style="padding:9px 10px;font-size:11px;text-align:right;">Amount</th>
+            <th style="padding:9px 10px;font-size:11px;text-align:left;">Mode</th>
+            <th style="padding:9px 10px;font-size:11px;text-align:left;">Status</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr style="background:#FFFBEB;font-weight:bold;">
+            <td colspan="8" style="padding:10px;font-size:12px;">Total: ${items.length} Invoices</td>
+            <td style="padding:10px;font-size:12px;text-align:right;">&#8377;${totalAmount.toFixed(2)}</td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>`;
+
+  const el = document.createElement("div");
+  el.style.width = "900px";
+  el.innerHTML = html;
+  document.body.appendChild(el);
+
+  await (window as any).html2pdf().set({
+    margin: [8, 8, 8, 8],
+    filename,
+    image: { type: "jpeg", quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true },
+    jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
+  }).from(el).save();
+
+  document.body.removeChild(el);
+}
+
+// ── Main Page Component ───────────────────────────────────────────────────────
 export default function InvoicesPage() {
   const { showToast } = useToast();
 
-  const [invoices, setInvoices] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
+  // Filters State
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedPaymentMode, setSelectedPaymentMode] = useState<PaymentModeFilter>("All");
+  const [selectedPaymentMode, setSelectedPaymentMode] = useState<string>("All");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Modals & Action Menu State
-  const [selectedInvoice, setSelectedInvoice] = useState<Transaction | null>(null);
+  // Debounced search for API
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Reset pagination on filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, selectedPaymentMode, fromDate, toDate]);
+
+  // Modals & Dropdown State
+  const [selectedInvoice, setSelectedInvoice] = useState<InvoiceListItem | null>(null);
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number; openUp: boolean } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     document.title = META_CONSTANTS.invoices.fullTitle;
   }, []);
 
-  // Close active action dropdown on click outside
+  // Close dropdown on click outside
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handler = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setActiveDropdownId(null);
+        setDropdownPos(null);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Reset pagination when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, selectedPaymentMode, fromDate, toDate]);
+  // ── API Query ──────────────────────────────────────────────────────────────
+  const queryParams: InvoiceListParams = {
+    page: currentPage,
+    limit: PAGE_SIZE,
+    search: debouncedSearch || undefined,
+    paymentMode: selectedPaymentMode !== "All" ? selectedPaymentMode : undefined,
+    dateFrom: fromDate || undefined,
+    dateTo: toDate || undefined,
+  };
 
-  // Filtered Invoices
-  const filteredInvoices = useMemo(() => {
-    return invoices.filter((t) => {
-      const invId = getInvoiceId(t);
-      const matchSearch =
-        searchQuery === "" ||
-        invId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (t.attraction && t.attraction.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        t.paymentMode.toLowerCase().includes(searchQuery.toLowerCase());
+  const { data, isLoading, isError } = useInvoiceList(queryParams);
+  const deleteInvoiceMutation = useDeleteInvoice();
 
-      const matchPayment =
-        selectedPaymentMode === "All" ||
-        t.paymentMode === (selectedPaymentMode as string);
+  const invoices = data?.items ?? [];
+  const pagination = data?.pagination ?? { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 };
 
-      let matchDate = true;
-      if (fromDate && t.date) matchDate = matchDate && t.date >= fromDate;
-      if (toDate && t.date) matchDate = matchDate && t.date <= toDate;
+  const isFiltered = !!debouncedSearch || selectedPaymentMode !== "All" || !!fromDate || !!toDate;
 
-      return matchSearch && matchPayment && matchDate;
-    });
-  }, [invoices, searchQuery, selectedPaymentMode, fromDate, toDate]);
+  // Stats from backend summary, fallback to live data calculation
+  const totalRevenue = data?.summary?.totalRevenue ?? invoices.reduce((s, inv) => s + (Number(inv.amount) || 0), 0);
+  const totalInvoicesCount = data?.summary?.totalInvoices ?? pagination.total ?? invoices.length;
+  const paidInvoicesCount = data?.summary?.paidInvoices ?? invoices.filter((inv) => {
+    const u = (inv.status || "").toUpperCase();
+    return u === "SUCCESS" || u === "SUCCESSFUL" || u === "CONFIRMED" || u === "PAID";
+  }).length;
 
-  // Stats calculation
-  const totalRevenue = invoices.reduce((s, t) => s + t.amount, 0);
-  const totalInvoices = invoices.length;
-  const paidInvoices = invoices.filter((t) => t.status === "Confirmed").length;
-
+  // ── Handlers ───────────────────────────────────────────────────────────────
   const handleResetFilters = () => {
     setSearchQuery("");
     setSelectedPaymentMode("All");
     setFromDate("");
     setToDate("");
     setCurrentPage(1);
-    showToast("Filters reset successfully", "info");
   };
 
-  const handleOpenDetails = (inv: Transaction) => {
+  const handleOpenDetails = (inv: InvoiceListItem) => {
     setSelectedInvoice(inv);
     setActiveDropdownId(null);
+    setDropdownPos(null);
   };
 
-  const handleDeleteInvoice = async (inv: Transaction) => {
+  const handleDeleteInvoice = async (inv: InvoiceListItem) => {
     setActiveDropdownId(null);
-    const invId = getInvoiceId(inv);
-    const confirmed = await confirmDelete(`invoice "${invId} (${inv.customerName})"`);
+    setDropdownPos(null);
+    const label = inv.invoiceId || inv.invoiceNumber || inv.customerName || "invoice";
+    const confirmed = await confirmDelete(`invoice "${label}"`);
     if (!confirmed) return;
 
-    setInvoices((prev) => prev.filter((t) => t.id !== inv.id));
-    showToast(`Invoice "${invId}" has been deleted.`, "info");
+    deleteInvoiceMutation.mutate(inv.id);
   };
 
-  const handleExportPDF = () => {
-    if (filteredInvoices.length === 0) {
-      showToast("No invoice data matches current filters", "info");
+  const toggleDropdown = useCallback((e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    e.stopPropagation();
+    if (activeDropdownId === id) {
+      setActiveDropdownId(null);
+      setDropdownPos(null);
+      return;
+    }
+    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < 110;
+    setDropdownPos({
+      top: openUp ? rect.top - 4 : rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+      openUp,
+    });
+    setActiveDropdownId(id);
+  }, [activeDropdownId]);
+
+  // ── Export Handlers ────────────────────────────────────────────────────────
+  const handleExportPDF = async () => {
+    if (invoices.length === 0) {
+      showToast("No invoice data to export", "info");
       return;
     }
     const parts: string[] = [];
     if (selectedPaymentMode !== "All") parts.push(`Mode: ${selectedPaymentMode}`);
-    if (fromDate) parts.push(`From: ${fromDate}`);
-    if (toDate) parts.push(`To: ${toDate}`);
-    if (searchQuery) parts.push(`Search: "${searchQuery}"`);
+    if (fromDate || toDate) parts.push(`Date: ${fromDate || "Start"} → ${toDate || "End"}`);
+    if (debouncedSearch) parts.push(`Search: "${debouncedSearch}"`);
     const filterInfo = parts.length > 0 ? parts.join(" | ") : "All Invoices";
-    handleDownloadInvoicesListPDF(filteredInvoices, filterInfo);
-    showToast(`Exported PDF for ${filteredInvoices.length} invoices`, "success");
+    const rangeLabel = fromDate && toDate ? `${fromDate}_to_${toDate}` : "All";
+
+    try {
+      await exportToPDF(invoices, filterInfo, `Invoices_${rangeLabel}.pdf`);
+      showToast(`PDF report generated for ${invoices.length} invoices`, "success");
+    } catch {
+      showToast("Failed to generate PDF", "error");
+    }
   };
 
   const handleExportExcel = () => {
-    if (filteredInvoices.length === 0) {
-      showToast("No invoice data matches current filters", "info");
+    if (invoices.length === 0) {
+      showToast("No invoice data to export", "info");
       return;
     }
-    const parts: string[] = [];
-    if (selectedPaymentMode !== "All") parts.push(selectedPaymentMode);
-    if (fromDate || toDate) parts.push(`${fromDate || ""}_${toDate || ""}`);
-    const label = parts.length > 0 ? parts.join("_") : "All";
-    exportToCSV(
-      `Invoices_Export_${label}`,
-      ["Invoice ID", "Customer Name", "Date & Time", "Attraction", "Visitors", "Amount (₹)", "Payment Mode", "Status"],
-      filteredInvoices.map((t) => [
-        getInvoiceId(t),
-        t.customerName,
-        t.dateTime,
-        t.attraction || "—",
-        (t as any).visitors || "2 Adults + 1 Child",
-        t.amount,
-        t.paymentMode,
-        t.status,
-      ])
-    );
-    showToast(`Exported ${filteredInvoices.length} invoices to Excel (CSV)`, "success");
+    const rangeLabel = fromDate && toDate ? `${fromDate}_to_${toDate}` : "All";
+    exportToCSV(invoices, `Invoices_${rangeLabel}.csv`);
+    showToast(`Exported ${invoices.length} invoices to CSV`, "success");
   };
-
-
-  // Table Column Definitions
-  const columns: GlobalColumn<Transaction>[] = [
-    {
-      header: "Invoice ID",
-      cell: (item) => getInvoiceId(item),
-    },
-    {
-      header: "Customer Name",
-      accessorKey: "customerName",
-    },
-    {
-      header: "Date & Time",
-      accessorKey: "dateTime",
-    },
-    {
-      header: "Attraction",
-      cell: (item) => item.attraction || "—",
-    },
-    {
-      header: "Visitors",
-      cell: (item) => (item as any).visitors || "2 Adults + 1 Child",
-    },
-    {
-      header: "Amount",
-      cell: (item) => `₹${item.amount}`,
-    },
-    {
-      header: "Payment Mode",
-      accessorKey: "paymentMode",
-    },
-    {
-      header: "Actions",
-      align: "center",
-      cell: (item) => {
-        const isDropdownOpen = activeDropdownId === item.id;
-        return (
-          <div style={{ position: "relative", display: "inline-block" }}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveDropdownId(isDropdownOpen ? null : item.id);
-              }}
-              title="Actions Menu"
-              style={{
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                padding: "6px",
-                borderRadius: "4px",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#374151",
-              }}
-            >
-              <MoreVertical size={18} />
-            </button>
-
-            {isDropdownOpen && (
-              <div
-                ref={dropdownRef}
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  top: "32px",
-                  zIndex: 100,
-                  background: "#FFFFFF",
-                  border: "1px solid #E5E7EB",
-                  borderRadius: "8px",
-                  boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
-                  width: "150px",
-                  padding: "4px 0",
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenDetails(item);
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    width: "100%",
-                    padding: "8px 14px",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                    fontFamily: typography.fontFamily.sans,
-                    color: "#374151",
-                    textAlign: "left",
-                  }}
-                >
-                  <Eye size={14} color="#6B7280" />
-                  <span>View Details</span>
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteInvoice(item);
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    width: "100%",
-                    padding: "8px 14px",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                    fontFamily: typography.fontFamily.sans,
-                    color: "#DC2626",
-                    textAlign: "left",
-                  }}
-                >
-                  <Trash2 size={14} color="#DC2626" />
-                  <span>Delete</span>
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      },
-    },
-  ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px", width: "100%" }}>
@@ -295,16 +347,16 @@ export default function InvoicesPage() {
         <ExportButtons
           onExportPDF={handleExportPDF}
           onExportExcel={handleExportExcel}
-          disabled={filteredInvoices.length === 0}
+          disabled={invoices.length === 0 || isLoading}
         />
       </div>
 
       {/* ── Stats Cards ── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "20px" }}>
         {[
-          { label: "Total Revenue", value: `₹${totalRevenue.toLocaleString("en-IN")}.00`, color: "#F59E0B" },
-          { label: "Total Invoices", value: totalInvoices.toLocaleString(), color: "#1E3A5F" },
-          { label: "Paid Invoices", value: paidInvoices.toLocaleString(), color: "#10B981" },
+          { label: "Total Revenue", value: `₹${totalRevenue.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: "#F59E0B" },
+          { label: "Total Invoices", value: totalInvoicesCount.toLocaleString(), color: "#1E3A5F" },
+          { label: "Paid Invoices", value: paidInvoicesCount.toLocaleString(), color: "#10B981" },
         ].map((card) => (
           <div
             key={card.label}
@@ -342,7 +394,7 @@ export default function InvoicesPage() {
         ))}
       </div>
 
-      {/* ── Filters Container (Replicating Transactions Filter UI & Container) ── */}
+      {/* ── Filters Bar ── */}
       <div
         style={{
           display: "flex",
@@ -356,7 +408,7 @@ export default function InvoicesPage() {
           border: "1px solid rgba(179, 175, 175, 0.4)",
         }}
       >
-        {/* Search Bar */}
+        {/* Search Input Box */}
         <div
           style={{
             boxSizing: "border-box",
@@ -375,7 +427,7 @@ export default function InvoicesPage() {
           <Search size={18} color="#A0A0A0" strokeWidth={2} />
           <input
             type="text"
-            placeholder="Search by Invoice ID, Customer Name..."
+            placeholder="Search by Invoice ID, Customer..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
@@ -391,7 +443,7 @@ export default function InvoicesPage() {
           />
         </div>
 
-        {/* Filter Controls */}
+        {/* Right Filter Controls */}
         <div style={{ display: "flex", alignItems: "flex-end", gap: "14px", flexWrap: "wrap" }}>
           {/* Payment Mode Select */}
           <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
@@ -407,7 +459,7 @@ export default function InvoicesPage() {
             </label>
             <select
               value={selectedPaymentMode}
-              onChange={(e) => setSelectedPaymentMode(e.target.value as PaymentModeFilter)}
+              onChange={(e) => setSelectedPaymentMode(e.target.value)}
               style={{
                 height: "40px",
                 padding: "0 12px",
@@ -420,13 +472,14 @@ export default function InvoicesPage() {
                 color: "#173F63",
                 outline: "none",
                 cursor: "pointer",
-                minWidth: "110px",
+                minWidth: "120px",
               }}
             >
-              <option value="All">Modes</option>
-              <option value="Cash">Cash</option>
+              <option value="All">All Modes</option>
+              <option value="ONLINE">Online</option>
+              <option value="CASH">Cash</option>
               <option value="UPI">UPI</option>
-              <option value="Card">Card</option>
+              <option value="CARD">Card</option>
             </select>
           </div>
 
@@ -447,7 +500,10 @@ export default function InvoicesPage() {
               toDate={toDate}
               onFromDateChange={setFromDate}
               onToDateChange={setToDate}
-              onClear={() => { setFromDate(""); setToDate(""); }}
+              onClear={() => {
+                setFromDate("");
+                setToDate("");
+              }}
             />
           </div>
 
@@ -456,7 +512,7 @@ export default function InvoicesPage() {
             onClick={handleResetFilters}
             style={{
               height: "40px",
-              padding: "0 18px",
+              padding: "0 16px",
               background: "#FFFFFF",
               border: "0.5px solid rgba(179, 175, 175, 0.66)",
               borderRadius: "4px",
@@ -465,33 +521,251 @@ export default function InvoicesPage() {
               fontSize: "12px",
               color: "#173F63",
               cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
             }}
           >
-            Reset
+            <RotateCcw size={14} />
+            <span>Reset</span>
           </button>
         </div>
       </div>
 
-      {/* ── Global Data Table Component (Unified S.No, Headers, Row Styles & Pagination) ── */}
+      {/* ── Global Data Table Component ── */}
       <GlobalDataTable
-        columns={columns}
-        data={filteredInvoices}
+        columns={[
+          {
+            header: "Invoice ID",
+            cell: (item) => (
+              <span
+                style={{
+                  fontFamily: typography.fontFamily.sans,
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  color: colors.brand.accent,
+                }}
+              >
+                {item.invoiceId || item.invoiceNumber || "-"}
+              </span>
+            ),
+          },
+          {
+            header: "Customer Name",
+            cell: (item) => item.customerName || "-",
+          },
+          {
+            header: "Date & Time",
+            cell: (item) => formatDateVal(item.dateTime || item.invoiceDate),
+          },
+          {
+            header: "Booking ID",
+            cell: (item) => item.bookingId || "-",
+          },
+          {
+            header: "Visit Date",
+            cell: (item) => formatDateOnly(item.visitAt),
+          },
+          {
+            header: "Attraction",
+            cell: (item) => item.attraction?.name || "-",
+          },
+          {
+            header: "Visitors",
+            align: "center",
+            cell: (item) => (
+              <span
+                style={{
+                  fontFamily: typography.fontFamily.sans,
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  color: "#374151",
+                }}
+              >
+                {item.visitors !== undefined && item.visitors !== null ? item.visitors : "-"}
+              </span>
+            ),
+          },
+          {
+            header: "Amount",
+            cell: (item) => (
+              <span
+                style={{
+                  fontFamily: typography.fontFamily.sans,
+                  fontWeight: 700,
+                  fontSize: "13px",
+                  color: "#011B2F",
+                }}
+              >
+                ₹{Number(item.amount ?? 0).toFixed(2)}
+              </span>
+            ),
+          },
+          {
+            header: "Payment Mode",
+            cell: (item) => item.paymentMode || "-",
+          },
+          {
+            header: "Status",
+            cell: (item) => <StatusBadge status={item.status} />,
+          },
+          {
+            header: "Actions",
+            align: "center",
+            cell: (item) => (
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <button
+                  onClick={(e) => toggleDropdown(e, item.id)}
+                  aria-label="Actions menu"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "6px",
+                    borderRadius: "4px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#374151",
+                  }}
+                >
+                  <MoreVertical size={18} />
+                </button>
+              </div>
+            ),
+          },
+        ]}
+        data={invoices}
         keyExtractor={(item) => item.id}
         pageSize={PAGE_SIZE}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
+        totalItems={pagination.total}
+        totalPages={pagination.totalPages}
         showSNo={true}
         sNoHeader="S.No"
         itemLabel="invoices"
-        emptyMessage="No invoices found matching current search or filters."
+        isLoading={isLoading}
+        emptyIcon={
+          isFiltered ? (
+            <SearchX size={26} color={colors.brand.accent} />
+          ) : (
+            <FileText size={26} color={colors.brand.accent} />
+          )
+        }
+        emptyTitle={isFiltered ? "No Matching Invoices Found" : "No Invoices Found"}
+        emptyDescription={
+          isFiltered
+            ? debouncedSearch.trim()
+              ? `No invoices found matching "${debouncedSearch}". Try adjusting your search or filters.`
+              : "No invoices match the selected filter criteria. Try adjusting or clearing your filters."
+            : "There are currently no invoices recorded in the system."
+        }
+        emptyAction={
+          isFiltered ? (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              style={{
+                padding: "8px 16px",
+                borderRadius: "8px",
+                border: `1px solid ${colors.header.border}`,
+                background: "#FFFFFF",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: colors.brand.accent,
+                cursor: "pointer",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+              }}
+            >
+              Clear Filters &amp; Search
+            </button>
+          ) : undefined
+        }
       />
+
+      {/* ── Fixed Dropdown Menu ── */}
+      {activeDropdownId && dropdownPos && (
+        <div
+          ref={dropdownRef}
+          style={{
+            position: "fixed",
+            top: dropdownPos.openUp ? undefined : dropdownPos.top,
+            bottom: dropdownPos.openUp ? window.innerHeight - dropdownPos.top : undefined,
+            right: dropdownPos.right,
+            zIndex: 9999,
+            background: "#FFFFFF",
+            border: "1px solid #E5E7EB",
+            borderRadius: "8px",
+            boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
+            width: "160px",
+            padding: "4px 0",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <button
+            onClick={() => {
+              const inv = invoices.find((t) => t.id === activeDropdownId);
+              if (inv) handleOpenDetails(inv);
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              width: "100%",
+              padding: "9px 14px",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "13px",
+              fontFamily: typography.fontFamily.sans,
+              color: "#374151",
+              textAlign: "left",
+            }}
+          >
+            <Eye size={14} color="#6B7280" />
+            <span>View Details</span>
+          </button>
+          <button
+            onClick={() => {
+              const inv = invoices.find((t) => t.id === activeDropdownId);
+              if (inv) handleDeleteInvoice(inv);
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              width: "100%",
+              padding: "9px 14px",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "13px",
+              fontFamily: typography.fontFamily.sans,
+              color: "#DC2626",
+              textAlign: "left",
+            }}
+          >
+            <Trash2 size={14} color="#DC2626" />
+            <span>Delete</span>
+          </button>
+        </div>
+      )}
 
       {/* ── Invoice Details Modal ── */}
       <InvoiceDetailsModal
-        txn={selectedInvoice}
+        invoice={selectedInvoice}
         isOpen={Boolean(selectedInvoice)}
         onClose={() => setSelectedInvoice(null)}
       />
+
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }

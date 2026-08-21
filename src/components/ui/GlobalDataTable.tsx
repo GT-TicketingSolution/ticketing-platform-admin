@@ -19,6 +19,8 @@ interface GlobalDataTableProps<T> {
   pageSize?: number;
   currentPage?: number;
   onPageChange?: (page: number) => void;
+  totalItems?: number;
+  totalPages?: number;
   emptyMessage?: string | React.ReactNode;
   emptyIcon?: React.ReactNode;
   emptyTitle?: string;
@@ -38,6 +40,8 @@ export function GlobalDataTable<T>({
   pageSize = 10,
   currentPage = 1,
   onPageChange,
+  totalItems: propTotalItems,
+  totalPages: propTotalPages,
   emptyMessage = "No records found matching current filters.",
   emptyIcon,
   emptyTitle,
@@ -49,12 +53,16 @@ export function GlobalDataTable<T>({
   itemLabel = "items",
   onRowClick,
 }: GlobalDataTableProps<T>) {
-  const totalItems = data.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const activePage = Math.min(currentPage, totalPages);
+  const isServerSide = propTotalItems !== undefined;
+  const totalItems = isServerSide ? propTotalItems : data.length;
+  const totalPages =
+    propTotalPages !== undefined
+      ? propTotalPages
+      : Math.max(1, Math.ceil(totalItems / pageSize));
+  const activePage = isServerSide ? currentPage : Math.min(currentPage, totalPages);
 
   const startIndex = (activePage - 1) * pageSize;
-  const currentData = data.slice(startIndex, startIndex + pageSize);
+  const currentData = isServerSide ? data : data.slice(startIndex, startIndex + pageSize);
 
   const handlePageClick = (page: number) => {
     if (onPageChange && page >= 1 && page <= totalPages) {
