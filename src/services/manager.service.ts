@@ -36,7 +36,7 @@ export async function getManagers({
   page?: number;
   limit?: number;
   search?: string;
-  status?: "ACTIVE" | "SUSPENDED" | "DISABLED";
+  status?: "ACTIVE" | "INACTIVE";
 }) {
   const offset = (page - 1) * limit;
 
@@ -259,7 +259,7 @@ export async function createManager(
     email: string;
     phone?: string;
     password: string;
-    status?: "ACTIVE" | "SUSPENDED" | "DISABLED";
+    status?: "ACTIVE" | "INACTIVE";
 
     systemModuleIds?: string[];
 
@@ -551,7 +551,7 @@ export async function updateManager(
     email?: string;
     phone?: string;
     password?: string;
-    status?: "ACTIVE" | "SUSPENDED" | "DISABLED";
+    status?: "ACTIVE" | "INACTIVE";
   },
 ) {
   /*
@@ -581,7 +581,7 @@ export async function updateManager(
     email?: string;
     phone?: string | null;
     passwordHash?: string;
-    status?: "ACTIVE" | "SUSPENDED" | "DISABLED";
+    status?: "ACTIVE" | "INACTIVE";
     updatedAt: Date;
   } = {
     updatedAt: new Date(),
@@ -644,7 +644,7 @@ export async function disableManager(adminId: string, managerId: string) {
   const [manager] = await db
     .update(users)
     .set({
-      status: "DISABLED",
+      status: "INACTIVE",
       updatedAt: new Date(),
     })
     .where(

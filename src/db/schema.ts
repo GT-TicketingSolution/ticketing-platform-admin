@@ -27,11 +27,7 @@ export const ticketScanVerdictEnum = pgEnum("ticket_scan_verdict", [
   "DENIED",
 ]);
 
-export const userStatusEnum = pgEnum("user_status", [
-  "ACTIVE",
-  "SUSPENDED",
-  "DISABLED",
-]);
+export const userStatusEnum = pgEnum("user_status", ["ACTIVE", "INACTIVE"]);
 
 export const attractionStatusEnum = pgEnum("attraction_status", [
   "ACTIVE",

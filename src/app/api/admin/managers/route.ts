@@ -14,7 +14,7 @@ const createManagerSchema = z.object({
 
   password: z.string().min(8),
 
-  status: z.enum(["ACTIVE", "SUSPENDED", "DISABLED"]).optional(),
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
 
   systemModuleIds: z.array(z.string()).default([]),
 
@@ -45,8 +45,7 @@ export async function GET(request: Request) {
 
     const status = searchParams.get("status") as
       | "ACTIVE"
-      | "SUSPENDED"
-      | "DISABLED"
+      | "INACTIVE"
       | undefined;
 
     const result = await getManagers({
