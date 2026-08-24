@@ -31,6 +31,7 @@ import {
   ExportScope,
   exportTableToPDF,
   exportToCSV,
+  fetchAllPages,
 } from "@/lib/exportUtils";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 
@@ -147,18 +148,25 @@ export default function CustomerManagementPage() {
     return debouncedSearch ? `Search: "${debouncedSearch}"` : undefined;
   };
 
-  const getExportParams = (scope: ExportScope): CustomerListParams => {
+  const getExportData = async (scope: ExportScope): Promise<CustomerItem[]> => {
     const base: CustomerListParams = {
       search: debouncedSearch || undefined,
     };
-    return scope === "all" ? { ...base, page: 1, limit: 0 } : { ...base, page: currentPage, limit: itemsPerPage };
+
+    if (scope === "current") {
+      const res = await fetchCustomerList({ ...base, page: currentPage, limit: itemsPerPage });
+      return res.items;
+    } else {
+      return await fetchAllPages<CustomerItem>((page, limit) =>
+        fetchCustomerList({ ...base, page, limit })
+      );
+    }
   };
 
   const handleExportPDF = async (scope: ExportScope) => {
     setIsExportingPDF(true);
     try {
-      const result = await fetchCustomerList(getExportParams(scope));
-      const items = result.items;
+      const items = await getExportData(scope);
       if (!items.length) {
         showToast("No customer records to export.", "info");
         return;
@@ -195,8 +203,7 @@ export default function CustomerManagementPage() {
   const handleExportCSV = async (scope: ExportScope) => {
     setIsExportingExcel(true);
     try {
-      const result = await fetchCustomerList(getExportParams(scope));
-      const items = result.items;
+      const items = await getExportData(scope);
       if (!items.length) {
         showToast("No customer records to export.", "info");
         return;

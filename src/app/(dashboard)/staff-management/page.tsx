@@ -46,6 +46,7 @@ import {
   exportTableToPDF,
   exportToCSV,
   renderStatusBadgeHTML,
+  fetchAllPages,
 } from "@/lib/exportUtils";
 import { useAttractions, AttractionItem } from "@/hooks/useManagerQueries";
 
@@ -374,21 +375,27 @@ function StaffManagementInner() {
     return parts.length > 0 ? parts.join(" | ") : undefined;
   };
 
-  const getExportParams = (scope: ExportScope): StaffQueryParams => {
-    return {
+  const getExportData = async (scope: ExportScope) => {
+    const base: StaffQueryParams = {
       search: search.trim() || undefined,
       status: apiStatus,
       attractionId: selectedAttractionFilter !== "All" ? selectedAttractionFilter : undefined,
-      page: 1,
-      limit: scope === "all" ? 0 : 10,
     };
+
+    if (scope === "current") {
+      const res = await fetchStaffList({ ...base, page: 1, limit: 10 });
+      return res.items;
+    } else {
+      return await fetchAllPages((page, limit) =>
+        fetchStaffList({ ...base, page, limit })
+      );
+    }
   };
 
   const handleExportPDF = async (scope: ExportScope) => {
     setIsExportingPDF(true);
     try {
-      const result = await fetchStaffList(getExportParams(scope));
-      const items = result.items;
+      const items = await getExportData(scope);
       if (!items.length) {
         showToast("No staff data matches current filters", "info");
         return;
@@ -444,8 +451,7 @@ function StaffManagementInner() {
   const handleExportExcel = async (scope: ExportScope) => {
     setIsExportingExcel(true);
     try {
-      const result = await fetchStaffList(getExportParams(scope));
-      const items = result.items;
+      const items = await getExportData(scope);
       if (!items.length) {
         showToast("No staff data matches current filters", "info");
         return;

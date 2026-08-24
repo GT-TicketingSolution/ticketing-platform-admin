@@ -17,64 +17,31 @@ import {
   CalendarX,
   Clock,
   ArrowRight,
-  Volume2,
-  VolumeX,
   Search,
-  Building2,
   Check,
   X,
   RefreshCw,
-  QrCode,
   Info,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
+import {
+  useRecentScans,
+  fetchTicketDetails,
+  useAdmitTicketMutation,
+  useRejectTicketMutation,
+  type ScannerTicketDetails,
+  type ScanItem,
+} from "@/hooks/useScannerQueries";
+import type { TicketStatus, ScannedTicketData } from "./types";
 
-// Types
-export type TicketStatus = "valid" | "used" | "expired" | "future" | "cancelled" | "invalid";
-
-export interface TicketBreakdown {
-  category: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
-}
-
-export interface ScannedTicketData {
-  id: string; // e.g. TKT-2026-9021 or INV-84920
-  invoiceNumber: string;
-  visitorName: string;
-  mobileNumber: string;
-  email: string;
-  visitorType: "Individual" | "Family" | "Group" | "VIP";
-  attraction: string;
-  zone: string;
-  gate: string;
-  timeSlot: string;
-  visitDate: string; // YYYY-MM-DD
-  totalVisitors: number;
-  breakdown: TicketBreakdown[];
-  totalAmount: number;
-  paymentMode: "UPI" | "Card" | "Cash" | "Online";
-  paymentStatus: "Paid" | "Pending" | "Refunded";
-  status: TicketStatus;
-  scannedAt?: string;
-  validatedBy?: string;
-  seats?: string;
-  bogie?: string;
-  specialNotes?: string;
-}
-
-export interface ScanLogItem {
-  id: string;
-  ticketId: string;
-  visitorName: string;
-  attraction: string;
-  visitorsCount: number;
-  status: TicketStatus;
-  timestamp: string;
-  verdict: "Allowed" | "Denied" | "Pending";
-  reason?: string;
-}
+const REJECTION_REASONS = [
+  "Date Mismatch / Expired Ticket",
+  "Future Date Ticket (Not Valid Today)",
+  "Already Used / Duplicate Entry Attempt",
+  "Unrecognized / Fake QR Code",
+  "Incorrect Gate / Venue Access",
+  "Payment Disputed / Pending",
+] as const;
 
 // Helper to format date strings
 const getTodayFormatted = () => {
@@ -85,18 +52,11 @@ const getTodayFormatted = () => {
   return `${year}-${month}-${day}`;
 };
 
-const getRelativeDate = (offsetDays: number) => {
-  const date = new Date();
-  date.setDate(date.getDate() + offsetDays);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const formatDisplayDate = (dateStr: string) => {
+const formatDisplayDate = (dateStr: string | null) => {
+  if (!dateStr || dateStr === "-" || dateStr === "—") return "-";
   try {
     const [y, m, d] = dateStr.split("-").map(Number);
+    if (!y || !m || !d) return dateStr;
     const date = new Date(y, m - 1, d);
     return date.toLocaleDateString("en-GB", {
       day: "2-digit",
@@ -108,255 +68,63 @@ const formatDisplayDate = (dateStr: string) => {
   }
 };
 
-// Initial mock database dynamically tuned to current date
-const generateMockDatabase = (): Record<string, ScannedTicketData> => {
-  const today = getTodayFormatted();
-  const yesterday = getRelativeDate(-1);
-  const tomorrow = getRelativeDate(2);
-
-  return {
-    "TKT-9021": {
-      id: "TKT-9021",
-      invoiceNumber: "INV-2026-8801",
-      visitorName: "Priya Sharma",
-      mobileNumber: "+91 98765 43210",
-      email: "priya.sharma@example.com",
-      visitorType: "Family",
-      attraction: "Grand Palace & Royal Gardens",
-      zone: "East Wing Courtyard",
-      gate: "Gate 1 - Main Entrance",
-      timeSlot: "10:00 AM - 01:00 PM",
-      visitDate: today,
-      totalVisitors: 3,
-      breakdown: [
-        { category: "Adult", quantity: 2, unitPrice: 250, total: 500 },
-        { category: "Child (Under 12)", quantity: 1, unitPrice: 150, total: 150 },
-      ],
-      totalAmount: 650,
-      paymentMode: "UPI",
-      paymentStatus: "Paid",
-      status: "valid",
-      seats: "Row C: 12, 13, 14",
-    },
-    "TKT-9022": {
-      id: "TKT-9022",
-      invoiceNumber: "INV-2026-8802",
-      visitorName: "Rahul Verma",
-      mobileNumber: "+91 98112 34567",
-      email: "rahul.verma@example.com",
-      visitorType: "Individual",
-      attraction: "Heritage Wax Museum",
-      zone: "Level 2 Gallery",
-      gate: "Gate 2 - Express Lane",
-      timeSlot: "11:30 AM - 02:30 PM",
-      visitDate: today,
-      totalVisitors: 1,
-      breakdown: [{ category: "Adult", quantity: 1, unitPrice: 350, total: 350 }],
-      totalAmount: 350,
-      paymentMode: "Card",
-      paymentStatus: "Paid",
-      status: "valid",
-    },
-    "TKT-9023": {
-      id: "TKT-9023",
-      invoiceNumber: "INV-2026-8803",
-      visitorName: "Vikram Malhotra",
-      mobileNumber: "+91 97654 32190",
-      email: "vikram.m@corporatedomain.com",
-      visitorType: "Group",
-      attraction: "Wildlife Safari & Forest Trail",
-      zone: "Safari Sector B",
-      gate: "Gate 4 - Safari Depot",
-      timeSlot: "09:00 AM - 12:00 PM",
-      visitDate: yesterday, // Expired / Past Date
-      totalVisitors: 5,
-      breakdown: [
-        { category: "Adult", quantity: 4, unitPrice: 400, total: 1600 },
-        { category: "Senior Citizen", quantity: 1, unitPrice: 200, total: 200 },
-      ],
-      totalAmount: 1800,
-      paymentMode: "Online",
-      paymentStatus: "Paid",
-      status: "expired",
-      bogie: "Safari Vehicle #04",
-      specialNotes: "Scheduled for yesterday's safari slot",
-    },
-    "TKT-9024": {
-      id: "TKT-9024",
-      invoiceNumber: "INV-2026-8804",
-      visitorName: "Ananya Desai",
-      mobileNumber: "+91 99201 55432",
-      email: "ananya.desai@gmail.com",
-      visitorType: "VIP",
-      attraction: "Sheesh Mahal & Light Show",
-      zone: "VIP Royal Balcony",
-      gate: "VIP Gate A",
-      timeSlot: "06:00 PM - 08:30 PM",
-      visitDate: tomorrow, // Future Date
-      totalVisitors: 2,
-      breakdown: [{ category: "VIP Pass", quantity: 2, unitPrice: 750, total: 1500 }],
-      totalAmount: 1500,
-      paymentMode: "UPI",
-      paymentStatus: "Paid",
-      status: "future",
-      seats: "Balcony VIP-1 & VIP-2",
-      specialNotes: "Valid for upcoming weekend show",
-    },
-    "TKT-9025": {
-      id: "TKT-9025",
-      invoiceNumber: "INV-2026-8805",
-      visitorName: "Sanjay Singhania",
-      mobileNumber: "+91 98450 12345",
-      email: "sanjay.s@techgroup.in",
-      visitorType: "Family",
-      attraction: "Aquarium & Ocean Tunnel",
-      zone: "Oceanic Pavilion",
-      gate: "Gate 3 - Aquatic Center",
-      timeSlot: "10:00 AM - 01:00 PM",
-      visitDate: today,
-      totalVisitors: 4,
-      breakdown: [
-        { category: "Adult", quantity: 2, unitPrice: 300, total: 600 },
-        { category: "Child (Under 12)", quantity: 2, unitPrice: 200, total: 400 },
-      ],
-      totalAmount: 1000,
-      paymentMode: "Cash",
-      paymentStatus: "Paid",
-      status: "used",
-      scannedAt: "10:15 AM Today",
-      validatedBy: "Staff Counter #1 (Rajesh K.)",
-      specialNotes: "Already checked in at 10:15 AM",
-    },
-  };
+const formatTimeDisplay = (isoOrTime: string | null) => {
+  if (!isoOrTime || isoOrTime === "-" || isoOrTime === "—") return "-";
+  try {
+    if (isoOrTime.includes("T") || isoOrTime.includes("Z")) {
+      return new Date(isoOrTime).toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+    return isoOrTime;
+  } catch {
+    return isoOrTime;
+  }
 };
 
 export default function ScannerPage() {
   const todayDateStr = getTodayFormatted();
-  const [ticketDB, setTicketDB] = useState<Record<string, ScannedTicketData>>(generateMockDatabase);
   const [manualInput, setManualInput] = useState("");
-  const [isScanningActive] = useState(true);
+  const isScanningActive = true;
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentTicket, setCurrentTicket] = useState<ScannedTicketData | null>(null);
   const [scanVerdict, setScanVerdict] = useState<"Allowed" | "Denied" | null>(null);
   const [rejectionReason, setRejectionReason] = useState<string>("");
   const [showRejectModal, setShowRejectModal] = useState(false);
-  
+
   // Camera feed states
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [audioEnabled, setAudioEnabled] = useState(true);
-  
-  // Session stats & history
-  const [stats, setStats] = useState({
-    totalScans: 48,
-    allowed: 42,
-    rejected: 6,
-  });
 
-  const [scanHistory, setScanHistory] = useState<ScanLogItem[]>([
-    {
-      id: "LOG-1",
-      ticketId: "TKT-9019",
-      visitorName: "Amitabh Sen",
-      attraction: "Grand Palace",
-      visitorsCount: 2,
-      status: "valid",
-      timestamp: "10:28 AM",
-      verdict: "Allowed",
-    },
-    {
-      id: "LOG-2",
-      ticketId: "TKT-9018",
-      visitorName: "Manish Rao",
-      attraction: "Wax Museum",
-      visitorsCount: 1,
-      status: "expired",
-      timestamp: "10:22 AM",
-      verdict: "Denied",
-      reason: "Date Expired (Yesterday)",
-    },
-    {
-      id: "LOG-3",
-      ticketId: "TKT-9017",
-      visitorName: "Kavya Nair",
-      attraction: "Sheesh Mahal",
-      visitorsCount: 4,
-      status: "valid",
-      timestamp: "10:14 AM",
-      verdict: "Allowed",
-    },
-  ]);
+  // React Query Hooks for Server APIs
+  const { data: scansData, isLoading: isLoadingScans } = useRecentScans(20);
+  const admitMutation = useAdmitTicketMutation();
+  const rejectMutation = useRejectTicketMutation();
+
+  const stats = scansData?.summary || {
+    totalScans: scansData?.scans?.length ?? 0,
+    allowedAdmitted: (scansData?.scans || []).filter((s) => s.verdict === "ALLOWED" || s.verdict === "Allowed").length,
+    rejectedIssues: (scansData?.scans || []).filter((s) => s.verdict !== "ALLOWED" && s.verdict !== "Allowed").length,
+  };
+
+  const scanHistory: ScanItem[] = scansData?.scans || [];
 
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const ticketSectionRef = useRef<HTMLDivElement>(null);
-  const scanLoopRef = useRef<number | null>(null); // requestAnimationFrame handle
-  const lastScannedRef = useRef<string>("");        // prevent duplicate scans
-  const scanCooldownRef = useRef<boolean>(false);    // 2.5s cooldown between scans
+  const scanLoopRef = useRef<number | null>(null);
+  const lastScannedRef = useRef<string>("");
+  const scanCooldownRef = useRef<boolean>(false);
 
-  // Play audio tones for validation feedback (alert buzzer for invalid/expired bill)
-  const playSound = useCallback((type: "success" | "error" | "admit") => {
-    if (!audioEnabled || typeof window === "undefined") return;
-    try {
-      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextClass) return;
-      const ctx = new AudioContextClass();
-      if (ctx.state === "suspended") {
-        ctx.resume();
-      }
+  useEffect(() => {
+    document.title = "Ticket Scanner | Ticketing Solution";
+  }, []);
 
-      if (type === "success" || type === "admit") {
-        // High-pitched pleasant double chime for valid admission
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-        osc.frequency.setValueAtTime(880, ctx.currentTime + 0.1); // A5
-        gain.gain.setValueAtTime(0.25, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.3);
-      } else {
-        // Distinct double warning buzzer alarm to immediately alert staff of invalid/expired bill
-        const now = ctx.currentTime;
-
-        // First buzz
-        const osc1 = ctx.createOscillator();
-        const gain1 = ctx.createGain();
-        osc1.type = "sawtooth";
-        osc1.connect(gain1);
-        gain1.connect(ctx.destination);
-        osc1.frequency.setValueAtTime(220, now);
-        osc1.frequency.setValueAtTime(130, now + 0.08);
-        gain1.gain.setValueAtTime(0.35, now);
-        gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.16);
-        osc1.start(now);
-        osc1.stop(now + 0.16);
-
-        // Second buzz
-        const osc2 = ctx.createOscillator();
-        const gain2 = ctx.createGain();
-        osc2.type = "sawtooth";
-        osc2.connect(gain2);
-        gain2.connect(ctx.destination);
-        osc2.frequency.setValueAtTime(220, now + 0.2);
-        osc2.frequency.setValueAtTime(110, now + 0.28);
-        gain2.gain.setValueAtTime(0.35, now + 0.2);
-        gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.38);
-        osc2.start(now + 0.2);
-        osc2.stop(now + 0.38);
-      }
-    } catch {
-      // Audio context might be restricted
-    }
-  }, [audioEnabled]);
-
-  // ── QR decode loop using jsQR ──────────────────────────────────────────────
+  // QR decode loop using jsQR
   const startScanLoop = useCallback((onDetect: (code: string) => void) => {
     const tick = () => {
       const video = videoRef.current;
@@ -388,14 +156,12 @@ export default function ScannerPage() {
         lastScannedRef.current = code.data;
         scanCooldownRef.current = true;
         onDetect(code.data);
-        // Reset cooldown after 2.5s so next visitor can be scanned
         setTimeout(() => {
           scanCooldownRef.current = false;
           lastScannedRef.current = "";
         }, 2500);
       }
 
-      // ~10 fps is enough for QR scanning and keeps CPU low
       setTimeout(() => {
         scanLoopRef.current = requestAnimationFrame(tick);
       }, 100);
@@ -410,7 +176,7 @@ export default function ScannerPage() {
     }
   }, []);
 
-  // ── Start / Stop Camera Stream ─────────────────────────────────────────────
+  // Start / Stop Camera Stream
   const startCamera = async () => {
     setCameraError(null);
     try {
@@ -420,14 +186,10 @@ export default function ScannerPage() {
           audio: false,
         });
         mediaStreamRef.current = stream;
-        // videoRef is always mounted — safe to assign directly
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.onloadedmetadata = () => {
-            videoRef.current?.play().catch(() => {
-              // play() promise rejection is safe to swallow here
-            });
-            // Start the QR scan loop once video is actually playing
+            videoRef.current?.play().catch(() => { });
             startScanLoop((decoded) => handleProcessScan(decoded));
           };
         }
@@ -437,11 +199,12 @@ export default function ScannerPage() {
       }
     } catch (err: unknown) {
       const error = err as Error;
-      const msg = error?.name === "NotAllowedError"
-        ? "Camera permission denied. Please allow camera access in your browser settings."
-        : error?.name === "NotFoundError"
-        ? "No camera device found on this device."
-        : error?.message || "Unable to access camera. Please allow camera permissions.";
+      const msg =
+        error?.name === "NotAllowedError"
+          ? "Camera permission denied. Please allow camera access in your browser settings."
+          : error?.name === "NotFoundError"
+            ? "No camera device found on this device."
+            : error?.message || "Unable to access camera. Please allow camera permissions.";
       setCameraError(msg);
       setCameraActive(false);
     }
@@ -459,7 +222,6 @@ export default function ScannerPage() {
     setCameraActive(false);
   };
 
-  // Toggle Camera
   const handleToggleCamera = () => {
     if (cameraActive) {
       stopCamera();
@@ -468,7 +230,6 @@ export default function ScannerPage() {
     }
   };
 
-  // Flip Camera
   const handleFlipCamera = () => {
     const nextFacing = cameraFacing === "environment" ? "user" : "environment";
     setCameraFacing(nextFacing);
@@ -478,7 +239,6 @@ export default function ScannerPage() {
     }
   };
 
-  // Clean up camera stream and QR scan loop on unmount
   useEffect(() => {
     return () => {
       stopScanLoop();
@@ -489,82 +249,89 @@ export default function ScannerPage() {
     };
   }, [stopScanLoop]);
 
-  // Process ticket search/scan
+  // Process ticket search/scan via API
   const handleProcessScan = useCallback(
-    (codeOrId: string) => {
-      const sanitized = codeOrId.trim().toUpperCase();
+    async (codeOrId: string) => {
+      const sanitized = codeOrId.trim();
       if (!sanitized) return;
 
       setIsProcessing(true);
       setScanVerdict(null);
+      setRejectionReason("");
 
-      // Simulate quick QR decode & database lookup
-      setTimeout(() => {
-        setIsProcessing(false);
-        const foundTicket = ticketDB[sanitized];
+      try {
+        const ticket: ScannerTicketDetails = await fetchTicketDetails(sanitized);
 
-        if (foundTicket) {
-          // Check date rule: Must be TODAY only
-          const isDateToday = foundTicket.visitDate === todayDateStr;
-          const isPast = foundTicket.visitDate < todayDateStr;
-
-          let computedStatus: TicketStatus = foundTicket.status;
-          if (foundTicket.status !== "used" && foundTicket.status !== "cancelled") {
+        let computedStatus: TicketStatus = ticket.status;
+        if (ticket.status !== "used" && ticket.status !== "cancelled") {
+          if (ticket.visitDate) {
+            const isDateToday = ticket.visitDate === todayDateStr;
+            const isPast = ticket.visitDate < todayDateStr;
             if (!isDateToday) {
               computedStatus = isPast ? "expired" : "future";
             } else {
               computedStatus = "valid";
             }
           }
-
-          const ticketWithComputedStatus = {
-            ...foundTicket,
-            status: computedStatus,
-          };
-
-          setCurrentTicket(ticketWithComputedStatus);
-
-          if (computedStatus === "valid") {
-            playSound("success");
-          } else {
-            playSound("error");
-          }
-        } else {
-          // Create invalid ticket entry
-          const invalidTicket: ScannedTicketData = {
-            id: sanitized,
-            invoiceNumber: sanitized.startsWith("INV") ? sanitized : `INV-UNKNOWN`,
-            visitorName: "Unknown / Not Found",
-            mobileNumber: "—",
-            email: "—",
-            visitorType: "Individual",
-            attraction: "Unrecognized QR Code",
-            zone: "—",
-            gate: "—",
-            timeSlot: "—",
-            visitDate: "—",
-            totalVisitors: 0,
-            breakdown: [],
-            totalAmount: 0,
-            paymentMode: "Cash",
-            paymentStatus: "Pending",
-            status: "invalid",
-            specialNotes: "This QR Code or Invoice number was not found in the ticketing system.",
-          };
-          setCurrentTicket(invalidTicket);
-          playSound("error");
         }
 
-        // Smooth scroll to ticket details
+        const ticketData: ScannedTicketData = {
+          id: ticket.id,
+          invoiceNumber: ticket.invoiceNumber || ticket.id,
+          visitorName: ticket.visitorName || "-",
+          mobileNumber: ticket.mobileNumber || "-",
+          email: ticket.email || "-",
+          visitorType: ticket.visitorType || "-",
+          attraction: ticket.attraction || "-",
+          zone: ticket.zone || "-",
+          gate: ticket.gate || "-",
+          timeSlot: ticket.timeSlot || "-",
+          visitDate: ticket.visitDate || "-",
+          totalVisitors: ticket.totalVisitors || 1,
+          breakdown: ticket.breakdown || [],
+          totalAmount: ticket.totalAmount || 0,
+          paymentMode: ticket.paymentMode || "-",
+          paymentStatus: ticket.paymentStatus || "Paid",
+          status: computedStatus,
+          seats: ticket.seats || null,
+          bogie: ticket.bogie || null,
+          specialNotes: ticket.specialNotes || null,
+        };
+
+        setCurrentTicket(ticketData);
+      } catch (err: any) {
+        // Unknown or invalid QR code
+        const invalidTicket: ScannedTicketData = {
+          id: sanitized,
+          invoiceNumber: sanitized,
+          visitorName: "Unknown / Not Found",
+          mobileNumber: "-",
+          email: "-",
+          visitorType: "-",
+          attraction: "-",
+          zone: "-",
+          gate: "-",
+          timeSlot: "-",
+          visitDate: "-",
+          totalVisitors: 0,
+          breakdown: [],
+          totalAmount: 0,
+          paymentMode: "-",
+          paymentStatus: "-",
+          status: "invalid",
+          specialNotes: "No active booking or ticket matches this scanned identifier.",
+        };
+        setCurrentTicket(invalidTicket);
+      } finally {
+        setIsProcessing(false);
         setTimeout(() => {
           ticketSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
         }, 100);
-      }, 500);
+      }
     },
-    [ticketDB, todayDateStr, playSound]
+    [todayDateStr]
   );
 
-  // Handle Manual Form Submit
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (manualInput.trim()) {
@@ -573,80 +340,44 @@ export default function ScannerPage() {
     }
   };
 
-  // Action: Allow / Admit Visitor
-  const handleAllowEntry = () => {
-    if (!currentTicket) return;
+  // Action: Allow / Admit Visitor via Server API
+  const handleAllowEntry = async () => {
+    if (!currentTicket || currentTicket.status !== "valid") return;
 
-    const timeString = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    try {
+      const res = await admitMutation.mutateAsync(currentTicket.id);
+      const updatedTicket: ScannedTicketData = {
+        ...currentTicket,
+        status: "used",
+        scannedAt: res?.admission?.admittedAt
+          ? formatTimeDisplay(res.admission.admittedAt) + " Today"
+          : "Just now",
+        validatedBy: "Gate Staff (You)",
+      };
 
-    // Update ticket state in DB as used
-    const updatedTicket: ScannedTicketData = {
-      ...currentTicket,
-      status: "used",
-      scannedAt: `${timeString} Today`,
-      validatedBy: "Gate Staff (You)",
-    };
-
-    setTicketDB((prev) => ({
-      ...prev,
-      [currentTicket.id]: updatedTicket,
-    }));
-
-    setCurrentTicket(updatedTicket);
-    setScanVerdict("Allowed");
-    playSound("admit");
-
-    // Update stats
-    setStats((prev) => ({
-      ...prev,
-      totalScans: prev.totalScans + 1,
-      allowed: prev.allowed + 1,
-    }));
-
-    // Add to session history
-    const logItem: ScanLogItem = {
-      id: `LOG-${Date.now()}`,
-      ticketId: currentTicket.id,
-      visitorName: currentTicket.visitorName,
-      attraction: currentTicket.attraction,
-      visitorsCount: currentTicket.totalVisitors || 1,
-      status: "valid",
-      timestamp: timeString,
-      verdict: "Allowed",
-    };
-    setScanHistory((prev) => [logItem, ...prev]);
+      setCurrentTicket(updatedTicket);
+      setScanVerdict("Allowed");
+    } catch {
+      // Handled in mutation onError
+    }
   };
 
-  // Action: Deny / Reject Entry
-  const handleRejectEntry = (reasonText: string) => {
+  // Action: Deny / Reject Entry via Server API
+  const handleRejectEntry = async (reasonText: string) => {
     if (!currentTicket) return;
 
-    const timeString = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    setScanVerdict("Denied");
-    setRejectionReason(reasonText);
-    setShowRejectModal(false);
-    playSound("error");
+    try {
+      await rejectMutation.mutateAsync({
+        ticketId: currentTicket.id,
+        reason: reasonText,
+      });
 
-    // Update stats
-    setStats((prev) => ({
-      ...prev,
-      totalScans: prev.totalScans + 1,
-      rejected: prev.rejected + 1,
-    }));
-
-    // Add to session history
-    const logItem: ScanLogItem = {
-      id: `LOG-${Date.now()}`,
-      ticketId: currentTicket.id,
-      visitorName: currentTicket.visitorName,
-      attraction: currentTicket.attraction,
-      visitorsCount: currentTicket.totalVisitors || 1,
-      status: currentTicket.status,
-      timestamp: timeString,
-      verdict: "Denied",
-      reason: reasonText,
-    };
-    setScanHistory((prev) => [logItem, ...prev]);
+      setScanVerdict("Denied");
+      setRejectionReason(reasonText);
+      setShowRejectModal(false);
+    } catch {
+      // Handled in mutation onError
+    }
   };
 
   // Action: NEXT SCAN (Resets scanner for the next visitor)
@@ -659,12 +390,9 @@ export default function ScannerPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Keyboard shortcut listener: Spacebar for Next Scan when ticket is active
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // If user is typing in manual input, don't trigger shortcut
       if (document.activeElement === inputRef.current) return;
-
       if (e.code === "Space" && currentTicket) {
         e.preventDefault();
         handleNextScan();
@@ -674,15 +402,23 @@ export default function ScannerPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [currentTicket]);
 
-  // Date check evaluation
   const isDateToday = currentTicket ? currentTicket.visitDate === todayDateStr : false;
-  const isPastDate = currentTicket ? currentTicket.visitDate < todayDateStr && currentTicket.visitDate !== "—" : false;
-  const isFutureDate = currentTicket ? currentTicket.visitDate > todayDateStr && currentTicket.visitDate !== "—" : false;
+  const isPastDate =
+    currentTicket && currentTicket.visitDate && currentTicket.visitDate !== "-" && currentTicket.visitDate !== "—"
+      ? currentTicket.visitDate < todayDateStr
+      : false;
+  const isFutureDate =
+    currentTicket && currentTicket.visitDate && currentTicket.visitDate !== "-" && currentTicket.visitDate !== "—"
+      ? currentTicket.visitDate > todayDateStr
+      : false;
+
+  const isAllowButtonEnabled =
+    Boolean(currentTicket && currentTicket.status === "valid" && currentTicket.paymentStatus === "Paid") &&
+    !admitMutation.isPending;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px", paddingBottom: "110px", maxWidth: "1200px", margin: "0 auto" }}>
-      
-      {/* ── Page Header & Gate Status ── */}
+      {/* ── Page Header & Shift Info ── */}
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "16px" }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -738,37 +474,15 @@ export default function ScannerPage() {
           </div>
         </div>
 
-        {/* Top Controls: Audio & Shift Info */}
+        {/* Top Controls: Today Date */}
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <button
-            onClick={() => setAudioEnabled(!audioEnabled)}
-            title={audioEnabled ? "Mute beep sound" : "Enable beep sound"}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "8px 14px",
-              borderRadius: "8px",
-              border: `1px solid ${colors.header.border}`,
-              background: audioEnabled ? "#F0FDF4" : "#FFFFFF",
-              color: audioEnabled ? "#16A34A" : colors.text.muted,
-              fontSize: "13px",
-              fontWeight: 600,
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-            }}
-          >
-            {audioEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-            <span>{audioEnabled ? "Sound On" : "Sound Muted"}</span>
-          </button>
-
           <div
             style={{
               display: "flex",
               alignItems: "center",
               gap: "8px",
               background: "#FFFFFF",
-              padding: "6px 14px",
+              padding: "8px 16px",
               borderRadius: "8px",
               border: `1px solid ${colors.header.border}`,
               fontSize: "13px",
@@ -782,90 +496,98 @@ export default function ScannerPage() {
         </div>
       </div>
 
-      {/* ── Stat Bar ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px" }}>
-        <div
-          style={{
-            background: "#FFFFFF",
-            padding: "14px 18px",
-            borderRadius: "12px",
-            border: `1px solid ${colors.header.border}`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: "12px", color: colors.text.muted, fontWeight: 600, textTransform: "uppercase" }}>Total Scans Today</div>
-            <div style={{ fontSize: "24px", fontWeight: 800, color: colors.text.primary, marginTop: "2px" }}>{stats.totalScans}</div>
-          </div>
-          <div style={{ width: "38px", height: "38px", borderRadius: "8px", background: "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", color: "#2563EB" }}>
-            <ScanLine size={20} />
-          </div>
-        </div>
+      {/* ── Stat Bar (3 Balanced Cards) ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>
+        {isLoadingScans ? (
+          [1, 2, 3].map((i) => (
+            <div
+              key={i}
+              style={{
+                background: "#FFFFFF",
+                padding: "16px 20px",
+                borderRadius: "12px",
+                border: `1px solid ${colors.header.border}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <div>
+                <div className="scanner-sk" style={{ width: "110px", height: "12px", borderRadius: "4px", marginBottom: "8px" }} />
+                <div className="scanner-sk" style={{ width: "50px", height: "26px", borderRadius: "6px" }} />
+              </div>
+              <div className="scanner-sk" style={{ width: "42px", height: "42px", borderRadius: "10px" }} />
+            </div>
+          ))
+        ) : (
+          <>
+            <div
+              style={{
+                background: "#FFFFFF",
+                padding: "16px 20px",
+                borderRadius: "12px",
+                border: `1px solid ${colors.header.border}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: "12px", color: colors.text.muted, fontWeight: 600, textTransform: "uppercase" }}>Total Scans Today</div>
+                <div style={{ fontSize: "26px", fontWeight: 800, color: colors.text.primary, marginTop: "2px" }}>{stats.totalScans}</div>
+              </div>
+              <div style={{ width: "42px", height: "42px", borderRadius: "10px", background: "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", color: "#2563EB" }}>
+                <ScanLine size={22} />
+              </div>
+            </div>
 
-        <div
-          style={{
-            background: "#FFFFFF",
-            padding: "14px 18px",
-            borderRadius: "12px",
-            border: `1px solid ${colors.header.border}`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: "12px", color: "#16A34A", fontWeight: 600, textTransform: "uppercase" }}>Allowed / Admitted</div>
-            <div style={{ fontSize: "24px", fontWeight: 800, color: "#16A34A", marginTop: "2px" }}>{stats.allowed}</div>
-          </div>
-          <div style={{ width: "38px", height: "38px", borderRadius: "8px", background: "#DCFCE7", display: "flex", alignItems: "center", justifyContent: "center", color: "#16A34A" }}>
-            <CheckCircle2 size={20} />
-          </div>
-        </div>
+            <div
+              style={{
+                background: "#FFFFFF",
+                padding: "16px 20px",
+                borderRadius: "12px",
+                border: `1px solid ${colors.header.border}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: "12px", color: "#16A34A", fontWeight: 600, textTransform: "uppercase" }}>Allowed / Admitted</div>
+                <div style={{ fontSize: "26px", fontWeight: 800, color: "#16A34A", marginTop: "2px" }}>{stats.allowedAdmitted}</div>
+              </div>
+              <div style={{ width: "42px", height: "42px", borderRadius: "10px", background: "#DCFCE7", display: "flex", alignItems: "center", justifyContent: "center", color: "#16A34A" }}>
+                <CheckCircle2 size={22} />
+              </div>
+            </div>
 
-        <div
-          style={{
-            background: "#FFFFFF",
-            padding: "14px 18px",
-            borderRadius: "12px",
-            border: `1px solid ${colors.header.border}`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: "12px", color: "#DC2626", fontWeight: 600, textTransform: "uppercase" }}>Rejected / Issues</div>
-            <div style={{ fontSize: "24px", fontWeight: 800, color: "#DC2626", marginTop: "2px" }}>{stats.rejected}</div>
-          </div>
-          <div style={{ width: "38px", height: "38px", borderRadius: "8px", background: "#FEE2E2", display: "flex", alignItems: "center", justifyContent: "center", color: "#DC2626" }}>
-            <XCircle size={20} />
-          </div>
-        </div>
-
-        <div
-          style={{
-            background: `linear-gradient(135deg, ${colors.sidebar.bg} 0%, #153E61 100%)`,
-            padding: "14px 18px",
-            borderRadius: "12px",
-            color: "#FFFFFF",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.7)", fontWeight: 600, textTransform: "uppercase" }}>Gate Station</div>
-            <div style={{ fontSize: "16px", fontWeight: 700, color: colors.brand.primary, marginTop: "2px" }}>Gate 1 — Main Entry</div>
-          </div>
-          <div style={{ width: "38px", height: "38px", borderRadius: "8px", background: "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: colors.brand.primary }}>
-            <Building2 size={20} />
-          </div>
-        </div>
+            <div
+              style={{
+                background: "#FFFFFF",
+                padding: "16px 20px",
+                borderRadius: "12px",
+                border: `1px solid ${colors.header.border}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: "12px", color: "#DC2626", fontWeight: 600, textTransform: "uppercase" }}>Rejected / Issues</div>
+                <div style={{ fontSize: "26px", fontWeight: 800, color: "#DC2626", marginTop: "2px" }}>{stats.rejectedIssues}</div>
+              </div>
+              <div style={{ width: "42px", height: "42px", borderRadius: "10px", background: "#FEE2E2", display: "flex", alignItems: "center", justifyContent: "center", color: "#DC2626" }}>
+                <XCircle size={22} />
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* ── Main Scanner Area (Top Panel) ── */}
+      {/* ── Main Scanner Area (Expanded Full-Width QR Scanner) ── */}
       <div
         style={{
           background: "#FFFFFF",
@@ -875,13 +597,12 @@ export default function ScannerPage() {
           overflow: "hidden",
         }}
       >
-        <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", minHeight: "auto" }}>
-          
-          {/* LEFT: QR Code Camera & Viewfinder Box */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", minHeight: "360px" }}>
+          {/* LEFT: QR Code Camera & Viewfinder Box (Expanded size) */}
           <div
             style={{
               background: colors.sidebar.bg,
-              padding: "20px 24px",
+              padding: "28px 24px",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
@@ -894,19 +615,19 @@ export default function ScannerPage() {
             <div
               style={{
                 position: "absolute",
-                top: "14px",
-                left: "16px",
-                right: "16px",
+                top: "16px",
+                left: "20px",
+                right: "20px",
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
                 zIndex: 10,
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(0,0,0,0.4)", backdropFilter: "blur(6px)", padding: "4px 10px", borderRadius: "20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)", padding: "5px 12px", borderRadius: "20px" }}>
                 <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: isScanningActive ? "#22C55E" : "#9CA3AF", animation: isScanningActive ? "pulseDot 1.5s infinite" : "none" }} />
                 <span style={{ color: "#FFFFFF", fontSize: "12px", fontWeight: 600 }}>
-                  {cameraActive ? "Live Camera" : "Interactive Scanner"}
+                  {cameraActive ? "Live Camera Viewfinder" : "Interactive QR Scanner"}
                 </span>
               </div>
 
@@ -914,22 +635,22 @@ export default function ScannerPage() {
                 <button
                   onClick={handleToggleCamera}
                   style={{
-                    background: cameraActive ? colors.brand.primary : "rgba(255,255,255,0.15)",
+                    background: cameraActive ? colors.brand.primary : "rgba(255,255,255,0.18)",
                     color: cameraActive ? colors.sidebar.bg : "#FFFFFF",
                     border: "none",
                     borderRadius: "6px",
-                    padding: "6px 10px",
+                    padding: "7px 12px",
                     fontSize: "12px",
-                    fontWeight: 600,
+                    fontWeight: 700,
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
-                    gap: "5px",
+                    gap: "6px",
                     transition: "all 0.15s ease",
                   }}
                 >
-                  {cameraActive ? <CameraOff size={14} /> : <Camera size={14} />}
-                  <span>{cameraActive ? "Stop Cam" : "Use Cam"}</span>
+                  {cameraActive ? <CameraOff size={15} /> : <Camera size={15} />}
+                  <span>{cameraActive ? "Stop Camera" : "Start Live Cam"}</span>
                 </button>
 
                 {cameraActive && (
@@ -937,45 +658,43 @@ export default function ScannerPage() {
                     onClick={handleFlipCamera}
                     title="Flip camera"
                     style={{
-                      background: "rgba(255,255,255,0.15)",
+                      background: "rgba(255,255,255,0.18)",
                       color: "#FFFFFF",
                       border: "none",
                       borderRadius: "6px",
-                      padding: "6px 8px",
+                      padding: "7px 10px",
                       cursor: "pointer",
                     }}
                   >
-                    <RefreshCw size={14} />
+                    <RefreshCw size={15} />
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Hidden canvas for jsQR frame capture — must be in DOM, not visible */}
+            {/* Hidden canvas for jsQR frame capture */}
             <canvas ref={canvasRef} style={{ display: "none" }} />
 
-            {/* ── Camera Viewfinder: video always mounted so ref is never null ── */}
-            <div style={{ position: "relative", width: "100%", height: "240px", display: cameraActive ? "flex" : "none", alignItems: "center", justifyContent: "center", overflow: "hidden", borderRadius: "12px", marginTop: "32px" }}>
+            {/* Large Camera Viewfinder */}
+            <div style={{ position: "relative", width: "100%", height: "290px", display: cameraActive ? "flex" : "none", alignItems: "center", justifyContent: "center", overflow: "hidden", borderRadius: "14px", marginTop: "32px" }}>
               <video
                 ref={videoRef}
                 playsInline
                 autoPlay
                 muted
-                style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "12px", background: "#000" }}
+                style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "14px", background: "#000" }}
               />
-              {/* Overlay Scanning Guide Box */}
               <div
                 style={{
                   position: "absolute",
-                  width: "180px",
-                  height: "180px",
-                  border: "2px solid rgba(244, 188, 67, 0.4)",
-                  borderRadius: "12px",
+                  width: "220px",
+                  height: "220px",
+                  border: "2px solid rgba(244, 188, 67, 0.45)",
+                  borderRadius: "14px",
                   boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.45)",
                   pointerEvents: "none",
                 }}
               >
-                {/* Glowing Laser Scan Line */}
                 <div
                   style={{
                     position: "absolute",
@@ -984,86 +703,86 @@ export default function ScannerPage() {
                     right: 0,
                     height: "3px",
                     background: `linear-gradient(90deg, transparent, ${colors.brand.primary}, transparent)`,
-                    boxShadow: `0 0 12px ${colors.brand.primary}`,
+                    boxShadow: `0 0 14px ${colors.brand.primary}`,
                     animation: "laserScan 2.4s ease-in-out infinite",
                   }}
                 />
-                {/* 4 Corners */}
-                <div style={{ position: "absolute", top: -2, left: -2, width: 22, height: 22, borderTop: `4px solid ${colors.brand.primary}`, borderLeft: `4px solid ${colors.brand.primary}`, borderRadius: "6px 0 0 0" }} />
-                <div style={{ position: "absolute", top: -2, right: -2, width: 22, height: 22, borderTop: `4px solid ${colors.brand.primary}`, borderRight: `4px solid ${colors.brand.primary}`, borderRadius: "0 6px 0 0" }} />
-                <div style={{ position: "absolute", bottom: -2, left: -2, width: 22, height: 22, borderBottom: `4px solid ${colors.brand.primary}`, borderLeft: `4px solid ${colors.brand.primary}`, borderRadius: "0 0 0 6px" }} />
-                <div style={{ position: "absolute", bottom: -2, right: -2, width: 22, height: 22, borderBottom: `4px solid ${colors.brand.primary}`, borderRight: `4px solid ${colors.brand.primary}`, borderRadius: "0 0 6px 0" }} />
+                <div style={{ position: "absolute", top: -2, left: -2, width: 26, height: 26, borderTop: `4px solid ${colors.brand.primary}`, borderLeft: `4px solid ${colors.brand.primary}`, borderRadius: "8px 0 0 0" }} />
+                <div style={{ position: "absolute", top: -2, right: -2, width: 26, height: 26, borderTop: `4px solid ${colors.brand.primary}`, borderRight: `4px solid ${colors.brand.primary}`, borderRadius: "0 8px 0 0" }} />
+                <div style={{ position: "absolute", bottom: -2, left: -2, width: 26, height: 26, borderBottom: `4px solid ${colors.brand.primary}`, borderLeft: `4px solid ${colors.brand.primary}`, borderRadius: "0 0 0 8px" }} />
+                <div style={{ position: "absolute", bottom: -2, right: -2, width: 26, height: 26, borderBottom: `4px solid ${colors.brand.primary}`, borderRight: `4px solid ${colors.brand.primary}`, borderRadius: "0 0 8px 0" }} />
               </div>
             </div>
 
-            {/* Simulated Scanner Box — shown only when camera is OFF */}
+            {/* Large Interactive Scanner Box — shown when camera is OFF */}
             {!cameraActive && (
               <div
                 onClick={handleToggleCamera}
                 title="Click to activate camera"
                 style={{
                   position: "relative",
-                  width: "200px",
-                  height: "200px",
-                  background: "radial-gradient(circle, rgba(35, 114, 165, 0.25) 0%, rgba(12, 42, 66, 0.8) 100%)",
+                  width: "100%",
+                  maxWidth: "360px",
+                  height: "250px",
+                  background: "radial-gradient(circle, rgba(35, 114, 165, 0.28) 0%, rgba(12, 42, 66, 0.85) 100%)",
                   borderRadius: "16px",
-                  border: "1.5px dashed rgba(244, 188, 67, 0.5)",
+                  border: "2px dashed rgba(244, 188, 67, 0.55)",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
-                  boxShadow: "inset 0 0 30px rgba(0,0,0,0.5)",
+                  boxShadow: "inset 0 0 35px rgba(0,0,0,0.55), 0 4px 16px rgba(0,0,0,0.2)",
                   cursor: "pointer",
                   transition: "all 0.2s ease",
                   marginTop: "32px",
                 }}
               >
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
                   <div
                     style={{
-                      width: "50px",
-                      height: "50px",
+                      width: "60px",
+                      height: "60px",
                       borderRadius: "50%",
-                      background: "rgba(244, 188, 67, 0.15)",
-                      border: `1.5px solid ${colors.brand.primary}`,
+                      background: "rgba(244, 188, 67, 0.18)",
+                      border: `2px solid ${colors.brand.primary}`,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       color: colors.brand.primary,
-                      marginBottom: "2px",
+                      marginBottom: "4px",
                     }}
                   >
-                    <Camera size={24} />
+                    <Camera size={28} />
                   </div>
-                  <span style={{ fontSize: "13px", color: "#FFFFFF", letterSpacing: "0.3px", fontWeight: 700 }}>
-                    Click to Use Camera
+                  <span style={{ fontSize: "14px", color: "#FFFFFF", letterSpacing: "0.3px", fontWeight: 700 }}>
+                    Click to Start Camera Scanner
                   </span>
-                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>
-                    or enter invoice manually
+                  <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.7)", fontWeight: 500 }}>
+                    or enter invoice code manually on the right
                   </span>
                 </div>
-                <div style={{ position: "absolute", top: 10, left: 10, width: 20, height: 20, borderTop: `3px solid ${colors.brand.primary}`, borderLeft: `3px solid ${colors.brand.primary}`, borderRadius: "4px 0 0 0" }} />
-                <div style={{ position: "absolute", top: 10, right: 10, width: 20, height: 20, borderTop: `3px solid ${colors.brand.primary}`, borderRight: `3px solid ${colors.brand.primary}`, borderRadius: "0 4px 0 0" }} />
-                <div style={{ position: "absolute", bottom: 10, left: 10, width: 20, height: 20, borderBottom: `3px solid ${colors.brand.primary}`, borderLeft: `3px solid ${colors.brand.primary}`, borderRadius: "0 0 0 4px" }} />
-                <div style={{ position: "absolute", bottom: 10, right: 10, width: 20, height: 20, borderBottom: `3px solid ${colors.brand.primary}`, borderRight: `3px solid ${colors.brand.primary}`, borderRadius: "0 0 4px 0" }} />
+                <div style={{ position: "absolute", top: 12, left: 12, width: 24, height: 24, borderTop: `3px solid ${colors.brand.primary}`, borderLeft: `3px solid ${colors.brand.primary}`, borderRadius: "6px 0 0 0" }} />
+                <div style={{ position: "absolute", top: 12, right: 12, width: 24, height: 24, borderTop: `3px solid ${colors.brand.primary}`, borderRight: `3px solid ${colors.brand.primary}`, borderRadius: "0 6px 0 0" }} />
+                <div style={{ position: "absolute", bottom: 12, left: 12, width: 24, height: 24, borderBottom: `3px solid ${colors.brand.primary}`, borderLeft: `3px solid ${colors.brand.primary}`, borderRadius: "0 0 0 6px" }} />
+                <div style={{ position: "absolute", bottom: 12, right: 12, width: 24, height: 24, borderBottom: `3px solid ${colors.brand.primary}`, borderRight: `3px solid ${colors.brand.primary}`, borderRadius: "0 0 6px 0" }} />
               </div>
             )}
 
             {cameraError && (
-              <div style={{ marginTop: "10px", background: "rgba(220, 38, 38, 0.2)", border: "1px solid rgba(220, 38, 38, 0.4)", borderRadius: "6px", padding: "6px 12px", color: "#FCA5A5", fontSize: "12px", textAlign: "center" }}>
+              <div style={{ marginTop: "12px", background: "rgba(220, 38, 38, 0.2)", border: "1px solid rgba(220, 38, 38, 0.4)", borderRadius: "6px", padding: "6px 14px", color: "#FCA5A5", fontSize: "12px", textAlign: "center" }}>
                 {cameraError}
               </div>
             )}
 
-            <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.7)" }}>
-                {cameraActive ? "Align invoice QR code inside the viewfinder box" : "Click 'Use Cam' to start webcam QR scanner"}
+            <div style={{ marginTop: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)" }}>
+                {cameraActive ? "Align invoice QR code inside the viewfinder box" : "Click box above or 'Start Live Cam' to scan with webcam"}
               </span>
             </div>
           </div>
 
           {/* RIGHT: Validation & Manual Search Form */}
-          <div style={{ padding: "24px", display: "flex", flexDirection: "column", justifyContent: "center", gap: "16px" }}>
+          <div style={{ padding: "28px 24px", display: "flex", flexDirection: "column", justifyContent: "center", gap: "16px" }}>
             <div>
               <h2 style={{ margin: "0 0 6px 0", fontSize: "17px", fontWeight: 700, color: colors.text.primary, display: "flex", alignItems: "center", gap: "8px" }}>
                 <Search size={18} color={colors.brand.accent} />
@@ -1081,7 +800,7 @@ export default function ScannerPage() {
                     type="text"
                     value={manualInput}
                     onChange={(e) => setManualInput(e.target.value)}
-                    placeholder="e.g. TKT-9021 or INV-2026-8801"
+                    placeholder="Enter Ticket ID / Invoice No / QR Code…"
                     style={{
                       width: "100%",
                       padding: "11px 14px",
@@ -1181,20 +900,44 @@ export default function ScannerPage() {
 
       {/* ── Ticket Details Rendered Directly Below the Scanner UI ── */}
       <div ref={ticketSectionRef} style={{ scrollMarginTop: "20px" }}>
-        {currentTicket ? (
+        {isProcessing ? (
           <div
             style={{
               background: "#FFFFFF",
               borderRadius: "16px",
-              border: `1.5px solid ${
-                currentTicket.status === "valid"
-                  ? "#22C55E"
-                  : currentTicket.status === "used"
+              border: `1.5px solid ${colors.header.border}`,
+              padding: "36px",
+              boxShadow: "0 8px 30px rgba(0,0,0,0.08)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "20px",
+            }}
+          >
+            <div className="scanner-sk" style={{ width: "100%", height: "48px", borderRadius: "8px" }} />
+            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "24px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div className="scanner-sk" style={{ width: "100%", height: "140px", borderRadius: "12px" }} />
+                <div className="scanner-sk" style={{ width: "100%", height: "100px", borderRadius: "12px" }} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div className="scanner-sk" style={{ width: "100%", height: "180px", borderRadius: "12px" }} />
+                <div className="scanner-sk" style={{ width: "100%", height: "100px", borderRadius: "12px" }} />
+              </div>
+            </div>
+          </div>
+        ) : currentTicket ? (
+          <div
+            style={{
+              background: "#FFFFFF",
+              borderRadius: "16px",
+              border: `1.5px solid ${currentTicket.status === "valid"
+                ? "#22C55E"
+                : currentTicket.status === "used"
                   ? "#EA580C"
                   : currentTicket.status === "future"
-                  ? "#EAB308"
-                  : "#DC2626"
-              }`,
+                    ? "#EAB308"
+                    : "#DC2626"
+                }`,
               boxShadow: "0 8px 30px rgba(0,0,0,0.08)",
               overflow: "hidden",
               animation: "fadeInSlide 0.3s ease-out",
@@ -1207,10 +950,10 @@ export default function ScannerPage() {
                   currentTicket.status === "valid"
                     ? "linear-gradient(90deg, #16A34A 0%, #15803D 100%)"
                     : currentTicket.status === "used"
-                    ? "linear-gradient(90deg, #EA580C 0%, #C2410C 100%)"
-                    : currentTicket.status === "future"
-                    ? "linear-gradient(90deg, #CA8A04 0%, #A16207 100%)"
-                    : "linear-gradient(90deg, #DC2626 0%, #B91C1C 100%)",
+                      ? "linear-gradient(90deg, #EA580C 0%, #C2410C 100%)"
+                      : currentTicket.status === "future"
+                        ? "linear-gradient(90deg, #CA8A04 0%, #A16207 100%)"
+                        : "linear-gradient(90deg, #DC2626 0%, #B91C1C 100%)",
                 color: "#FFFFFF",
                 padding: "16px 24px",
                 display: "flex",
@@ -1244,6 +987,7 @@ export default function ScannerPage() {
                     {currentTicket.status === "future" && `This pass is scheduled for ${formatDisplayDate(currentTicket.visitDate)}. Entry not permitted today.`}
                     {currentTicket.status === "expired" && `This pass was scheduled for ${formatDisplayDate(currentTicket.visitDate)} (Expired).`}
                     {currentTicket.status === "invalid" && "No active booking or ticket matches this scanned identifier."}
+                    {currentTicket.status === "cancelled" && "This ticket has been cancelled."}
                   </div>
                 </div>
               </div>
@@ -1286,10 +1030,10 @@ export default function ScannerPage() {
                     {isDateToday
                       ? "✓ Date Verification PASSED: Valid for Today"
                       : isPastDate
-                      ? "✕ Date Verification FAILED: Expired Visit Date"
-                      : isFutureDate
-                      ? "⚠ Date Verification FAILED: Future Scheduled Visit"
-                      : "✕ Date Verification FAILED"}
+                        ? "✕ Date Verification FAILED: Expired Visit Date"
+                        : isFutureDate
+                          ? "⚠ Date Verification FAILED: Future Scheduled Visit"
+                          : "✕ Date Verification FAILED"}
                   </span>
                   <div style={{ fontSize: "12px", color: colors.text.muted, marginTop: "2px" }}>
                     Ticket Date: <strong>{formatDisplayDate(currentTicket.visitDate)}</strong> | Gate Current Date: <strong>{formatDisplayDate(todayDateStr)}</strong>
@@ -1317,16 +1061,14 @@ export default function ScannerPage() {
 
             {/* Ticket Information Body */}
             <div style={{ padding: "24px", display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "24px" }}>
-              
-              {/* LEFT COLUMN: Visitor, Attraction, and Gate Details */}
+              {/* LEFT COLUMN: Visitor and Attraction Details */}
               <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                
                 {/* Visitor Card */}
                 <div style={{ background: "#F8FAFC", borderRadius: "12px", padding: "16px", border: `1px solid ${colors.header.border}` }}>
                   <div style={{ fontSize: "12px", fontWeight: 700, color: colors.brand.accent, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px", display: "flex", alignItems: "center", gap: "6px" }}>
                     <User size={15} /> Primary Visitor Information
                   </div>
-                  
+
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                     <div>
                       <div style={{ fontSize: "11px", color: colors.text.muted }}>Visitor Name</div>
@@ -1351,34 +1093,20 @@ export default function ScannerPage() {
                   </div>
                 </div>
 
-                {/* Attraction & Gate Card */}
+                {/* Attraction Card (Removed Access Zone, Gate, Seat Allocations) */}
                 <div style={{ background: "#F8FAFC", borderRadius: "12px", padding: "16px", border: `1px solid ${colors.header.border}` }}>
                   <div style={{ fontSize: "12px", fontWeight: 700, color: colors.brand.accent, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px", display: "flex", alignItems: "center", gap: "6px" }}>
-                    <MapPin size={15} /> Attraction &amp; Access Zone
+                    <MapPin size={15} /> Attraction Details
                   </div>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                    <div style={{ gridColumn: "span 2" }}>
-                      <div style={{ fontSize: "11px", color: colors.text.muted }}>Attraction / Venue</div>
+                    <div>
+                      <div style={{ fontSize: "11px", color: colors.text.muted }}>Attraction</div>
                       <div style={{ fontSize: "15px", fontWeight: 700, color: colors.text.primary }}>{currentTicket.attraction}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "11px", color: colors.text.muted }}>Access Zone</div>
-                      <div style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary }}>{currentTicket.zone}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "11px", color: colors.text.muted }}>Designated Gate</div>
-                      <div style={{ fontSize: "13px", fontWeight: 600, color: colors.sidebar.bg }}>{currentTicket.gate}</div>
                     </div>
                     <div>
                       <div style={{ fontSize: "11px", color: colors.text.muted }}>Time Slot</div>
                       <div style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary }}>{currentTicket.timeSlot}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "11px", color: colors.text.muted }}>Seat / Bogie Allocations</div>
-                      <div style={{ fontSize: "13px", fontWeight: 600, color: colors.brand.accent }}>
-                        {currentTicket.seats || currentTicket.bogie || "General Entry (No Seat)"}
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -1390,9 +1118,8 @@ export default function ScannerPage() {
                 )}
               </div>
 
-              {/* RIGHT COLUMN: Ticket Breakdown, Amount & Gate Action Controls */}
+              {/* RIGHT COLUMN: Ticket Breakdown, Amount & Action Controls */}
               <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", gap: "16px" }}>
-                
                 {/* Breakdown Table */}
                 <div style={{ background: "#F8FAFC", borderRadius: "12px", padding: "16px", border: `1px solid ${colors.header.border}` }}>
                   <div style={{ fontSize: "12px", fontWeight: 700, color: colors.brand.accent, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1461,7 +1188,7 @@ export default function ScannerPage() {
                   }}
                 >
                   <div style={{ fontSize: "12px", fontWeight: 700, color: colors.text.muted, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "12px" }}>
-                    Gate Validator Action
+                    Validator Action
                   </div>
 
                   {scanVerdict ? (
@@ -1484,7 +1211,7 @@ export default function ScannerPage() {
                         </div>
                       )}
                       <div style={{ fontSize: "12px", color: colors.text.muted, marginTop: "8px" }}>
-                        Click <strong>"Next Scan"</strong> at the bottom right to validate the next visitor in queue.
+                        Click <strong>&quot;Next Scan&quot;</strong> at the bottom right to validate the next visitor in queue.
                       </div>
                     </div>
                   ) : (
@@ -1492,9 +1219,9 @@ export default function ScannerPage() {
                       {/* Primary Allow Button */}
                       <button
                         onClick={handleAllowEntry}
-                        disabled={currentTicket.status !== "valid"}
+                        disabled={!isAllowButtonEnabled}
                         style={{
-                          background: currentTicket.status === "valid" ? "#16A34A" : "#94A3B8",
+                          background: isAllowButtonEnabled ? "#16A34A" : "#94A3B8",
                           color: "#FFFFFF",
                           border: "none",
                           borderRadius: "8px",
@@ -1502,22 +1229,32 @@ export default function ScannerPage() {
                           fontFamily: typography.fontFamily.sans,
                           fontWeight: 700,
                           fontSize: "15px",
-                          cursor: currentTicket.status === "valid" ? "pointer" : "not-allowed",
+                          cursor: isAllowButtonEnabled ? "pointer" : "not-allowed",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           gap: "8px",
-                          boxShadow: currentTicket.status === "valid" ? "0 4px 14px rgba(22, 163, 74, 0.3)" : "none",
+                          boxShadow: isAllowButtonEnabled ? "0 4px 14px rgba(22, 163, 74, 0.3)" : "none",
                           transition: "all 0.15s ease",
                         }}
                       >
-                        <Check size={20} />
-                        <span>Allow Entry / Admit Visitor</span>
+                        {admitMutation.isPending ? (
+                          <>
+                            <RefreshCw size={18} style={{ animation: "spin 1s linear infinite" }} />
+                            <span>Admitting…</span>
+                          </>
+                        ) : (
+                          <>
+                            <Check size={20} />
+                            <span>Allow Entry / Admit Visitor</span>
+                          </>
+                        )}
                       </button>
 
                       {/* Deny / Reject Button */}
                       <button
                         onClick={() => setShowRejectModal(true)}
+                        disabled={rejectMutation.isPending}
                         style={{
                           background: "#FFFFFF",
                           color: "#DC2626",
@@ -1614,20 +1351,6 @@ export default function ScannerPage() {
               {scanHistory.length} logged
             </span>
           </div>
-
-          <button
-            onClick={() => setScanHistory([])}
-            style={{
-              background: "none",
-              border: "none",
-              color: colors.text.muted,
-              fontSize: "12px",
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
-          >
-            Clear Log
-          </button>
         </div>
 
         <div style={{ overflowX: "auto" }}>
@@ -1644,51 +1367,77 @@ export default function ScannerPage() {
               </tr>
             </thead>
             <tbody>
-              {scanHistory.map((item) => (
-                <tr key={item.id} style={{ borderTop: `1px solid ${colors.header.border}` }}>
-                  <td style={{ padding: "12px 18px", color: colors.text.muted, fontWeight: 500 }}>{item.timestamp}</td>
-                  <td style={{ padding: "12px 18px", fontWeight: 700, color: colors.sidebar.bg }}>{item.ticketId}</td>
-                  <td style={{ padding: "12px 18px", fontWeight: 600, color: colors.text.primary }}>{item.visitorName}</td>
-                  <td style={{ padding: "12px 18px", color: colors.text.primary }}>{item.attraction}</td>
-                  <td style={{ padding: "12px 18px", fontWeight: 600 }}>{item.visitorsCount} Pax</td>
-                  <td style={{ padding: "12px 18px" }}>
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        padding: "3px 10px",
-                        borderRadius: "20px",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        background: item.verdict === "Allowed" ? "#DCFCE7" : "#FEE2E2",
-                        color: item.verdict === "Allowed" ? "#16A34A" : "#DC2626",
-                      }}
-                    >
-                      {item.verdict === "Allowed" ? <Check size={12} /> : <X size={12} />}
-                      {item.verdict}
-                      {item.reason && ` (${item.reason})`}
-                    </span>
-                  </td>
-                  <td style={{ padding: "12px 18px", textAlign: "right" }}>
-                    <button
-                      onClick={() => handleProcessScan(item.ticketId)}
-                      style={{
-                        background: "#F1F5F9",
-                        border: "none",
-                        borderRadius: "6px",
-                        padding: "4px 8px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        color: colors.brand.accent,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Re-Check
-                    </button>
+              {isLoadingScans ? (
+                [1, 2, 3, 4, 5].map((i) => (
+                  <tr key={i} style={{ borderTop: `1px solid ${colors.header.border}` }}>
+                    <td style={{ padding: "12px 18px" }}><div className="scanner-sk" style={{ width: "60px", height: "14px", borderRadius: "4px" }} /></td>
+                    <td style={{ padding: "12px 18px" }}><div className="scanner-sk" style={{ width: "80px", height: "14px", borderRadius: "4px" }} /></td>
+                    <td style={{ padding: "12px 18px" }}><div className="scanner-sk" style={{ width: "110px", height: "14px", borderRadius: "4px" }} /></td>
+                    <td style={{ padding: "12px 18px" }}><div className="scanner-sk" style={{ width: "100px", height: "14px", borderRadius: "4px" }} /></td>
+                    <td style={{ padding: "12px 18px" }}><div className="scanner-sk" style={{ width: "50px", height: "14px", borderRadius: "4px" }} /></td>
+                    <td style={{ padding: "12px 18px" }}><div className="scanner-sk" style={{ width: "90px", height: "20px", borderRadius: "10px" }} /></td>
+                    <td style={{ padding: "12px 18px", textAlign: "right" }}><div className="scanner-sk" style={{ width: "60px", height: "22px", borderRadius: "6px", marginLeft: "auto" }} /></td>
+                  </tr>
+                ))
+              ) : scanHistory.length > 0 ? (
+                scanHistory.map((item) => {
+                  const isAllowed = item.verdict === "ALLOWED" || item.verdict === "Allowed";
+                  const gateVerdict = isAllowed ? "Allowed" : item.reason ? `Denied (${item.reason})` : "Denied";
+                  const visitorsText = `${item.visitorsCount || 1} Pax`;
+                  const scanTime = formatTimeDisplay(item.timestamp);
+
+                  return (
+                    <tr key={item.id} style={{ borderTop: `1px solid ${colors.header.border}` }}>
+                      <td style={{ padding: "12px 18px", color: colors.text.muted, fontWeight: 500 }}>{scanTime}</td>
+                      <td style={{ padding: "12px 18px", fontWeight: 700, color: colors.sidebar.bg }}>{item.ticketId || "-"}</td>
+                      <td style={{ padding: "12px 18px", fontWeight: 600, color: colors.text.primary }}>{item.visitorName || "-"}</td>
+                      <td style={{ padding: "12px 18px", color: colors.text.primary }}>{item.attraction || "-"}</td>
+                      <td style={{ padding: "12px 18px", fontWeight: 600 }}>{visitorsText}</td>
+                      <td style={{ padding: "12px 18px" }}>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: "3px 10px",
+                            borderRadius: "20px",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            background: isAllowed ? "#DCFCE7" : "#FEE2E2",
+                            color: isAllowed ? "#16A34A" : "#DC2626",
+                          }}
+                        >
+                          {isAllowed ? <Check size={12} /> : <X size={12} />}
+                          {gateVerdict}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px 18px", textAlign: "right" }}>
+                        <button
+                          onClick={() => handleProcessScan(item.ticketId)}
+                          style={{
+                            background: "#F1F5F9",
+                            border: "none",
+                            borderRadius: "6px",
+                            padding: "4px 8px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: colors.brand.accent,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Re-Check
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={7} style={{ padding: "32px 18px", textAlign: "center", color: colors.text.muted, fontSize: "14px" }}>
+                    No recent scans logged yet for this shift.
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -1739,17 +1488,11 @@ export default function ScannerPage() {
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
-              {[
-                "Date Mismatch / Expired Ticket",
-                "Future Date Ticket (Not Valid Today)",
-                "Already Used / Duplicate Entry Attempt",
-                "Unrecognized / Fake QR Code",
-                "Incorrect Gate / Venue Access",
-                "Payment Disputed / Pending",
-              ].map((reason) => (
+              {REJECTION_REASONS.map((reason) => (
                 <button
                   key={reason}
                   onClick={() => handleRejectEntry(reason)}
+                  disabled={rejectMutation.isPending}
                   style={{
                     textAlign: "left",
                     padding: "10px 14px",
@@ -1759,7 +1502,7 @@ export default function ScannerPage() {
                     fontSize: "13px",
                     fontWeight: 600,
                     color: colors.text.primary,
-                    cursor: "pointer",
+                    cursor: rejectMutation.isPending ? "not-allowed" : "pointer",
                     transition: "all 0.15s ease",
                   }}
                   className="reject-reason-btn"
@@ -1771,6 +1514,7 @@ export default function ScannerPage() {
 
             <button
               onClick={() => setShowRejectModal(false)}
+              disabled={rejectMutation.isPending}
               style={{
                 width: "100%",
                 padding: "10px",
@@ -1862,10 +1606,14 @@ export default function ScannerPage() {
           from { opacity: 0; transform: translateY(12px); }
           to { opacity: 1; transform: translateY(0); }
         }
-        .quick-btn:hover {
-          background: #EFF6FF !important;
-          border-color: ${colors.brand.accent} !important;
-          transform: translateY(-1px);
+        @keyframes scannerShimmer {
+          0% { background-position: -600px 0; }
+          100% { background-position: 600px 0; }
+        }
+        .scanner-sk {
+          background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+          background-size: 600px 100%;
+          animation: scannerShimmer 1.4s infinite linear;
         }
         .reject-reason-btn:hover {
           background: #FEF2F2 !important;

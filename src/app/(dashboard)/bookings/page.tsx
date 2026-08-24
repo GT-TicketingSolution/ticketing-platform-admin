@@ -26,7 +26,7 @@ import {
 import BookingDetailsModal from "@/components/modals/BookingDetailsModal";
 import EditBookingModal from "@/components/modals/EditBookingModal";
 import { useAttractions } from "@/hooks/useManagerQueries";
-import { exportToCSV, exportTableToPDF, renderStatusBadgeHTML } from "@/lib/exportUtils";
+import { exportToCSV, exportTableToPDF, renderStatusBadgeHTML, fetchAllPages } from "@/lib/exportUtils";
 import { ExportScope } from "@/components/ui/ExportButtons";
 
 const ITEMS_PER_PAGE = 10;
@@ -271,13 +271,14 @@ export default function BookingsPage() {
       });
       return res.items;
     } else {
-      // All data requested: API limit set to 0
-      const res = await fetchBookingList({
-        ...params,
-        page: 1,
-        limit: 0,
-      });
-      return res.items;
+      // Fetch all pages dynamically so no data is truncated or limited
+      return await fetchAllPages<BookingListItem>((page, limit) =>
+        fetchBookingList({
+          ...params,
+          page,
+          limit,
+        })
+      );
     }
   };
 

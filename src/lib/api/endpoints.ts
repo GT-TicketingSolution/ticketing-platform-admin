@@ -129,6 +129,14 @@ export const AppUrl = {
     payment: "/admin/reports/payment",
     tickets: "/admin/reports/tickets",
   },
+
+  // Ticket Scanner
+  scanner: {
+    scans: (limit = 20) => `/admin/ticketing-scanner/scans?limit=${limit}`,
+    getTicket: (ticketId: string) => `/admin/ticketing-scanner/tickets/${encodeURIComponent(ticketId)}`,
+    admit: (ticketId: string) => `/admin/ticketing-scanner/tickets/${encodeURIComponent(ticketId)}/admit`,
+    reject: (ticketId: string) => `/admin/ticketing-scanner/tickets/${encodeURIComponent(ticketId)}/reject`,
+  },
 } as const;
 
 export default AppUrl;
