@@ -36,6 +36,7 @@ export async function getCustomers({
       )!,
     );
   }
+
   const data = await db
     .select({
       id: customers.id,

@@ -27,11 +27,7 @@ export const ticketScanVerdictEnum = pgEnum("ticket_scan_verdict", [
   "DENIED",
 ]);
 
-export const userStatusEnum = pgEnum("user_status", [
-  "ACTIVE",
-  "SUSPENDED",
-  "DISABLED",
-]);
+export const userStatusEnum = pgEnum("user_status", ["ACTIVE", "INACTIVE"]);
 
 export const attractionStatusEnum = pgEnum("attraction_status", [
   "ACTIVE",
@@ -606,7 +602,7 @@ export const bookingSeats = pgTable(
       }),
 
     // NEW
-    slotId: uuid("slot_id")
+    slotId: uuid("time_slot_id")
       .notNull()
       .references(() => attractionTimeSlots.id, {
         onDelete: "restrict",
@@ -1740,11 +1736,9 @@ export const ticketScanLogs = pgTable(
         onDelete: "cascade",
       }),
 
-    attractionId: uuid("attraction_id")
-      .notNull()
-      .references(() => attractions.id, {
-        onDelete: "cascade",
-      }),
+    scannedCode: varchar("scanned_code", {
+      length: 255,
+    }).notNull(),
 
     scannedBy: uuid("scanned_by")
       .notNull()
@@ -1759,13 +1753,13 @@ export const ticketScanLogs = pgTable(
     reason: text("reason"),
 
     scannedAt: timestamp("scanned_at", {
-      withTimezone: true,
+      withTimezone: false,
     })
       .defaultNow()
       .notNull(),
 
     createdAt: timestamp("created_at", {
-      withTimezone: true,
+      withTimezone: false,
     })
       .defaultNow()
       .notNull(),
@@ -1774,8 +1768,8 @@ export const ticketScanLogs = pgTable(
   (table) => ({
     bookingIdx: index("ticket_scan_logs_booking_idx").on(table.bookingId),
 
-    attractionIdx: index("ticket_scan_logs_attraction_idx").on(
-      table.attractionId,
+    scannedCodeIdx: index("ticket_scan_logs_scanned_code_idx").on(
+      table.scannedCode,
     ),
 
     scannedByIdx: index("ticket_scan_logs_scanned_by_idx").on(table.scannedBy),
