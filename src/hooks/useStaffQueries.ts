@@ -13,6 +13,8 @@ import {
   UpdateStaffPayload,
 } from "@/app/(dashboard)/staff-management/types";
 
+export type { StaffQueryParams };
+
 // ── Query Keys Factory 
 export const staffKeys = {
   all: ["staff"] as const,
@@ -25,66 +27,66 @@ export const staffKeys = {
 // ── Queries 
 
 /**
+ * Fetch paginated list of staff members or all records when limit: 0.
+ * GET /api/admin/staff
+ */
+export async function fetchStaffList(params?: StaffQueryParams): Promise<StaffListResponse> {
+  const page = params?.page ?? 1;
+  const limit = params?.limit !== undefined ? params.limit : 10;
+
+  const searchParams = new URLSearchParams();
+  searchParams.set("page", String(page));
+  searchParams.set("limit", String(limit));
+  if (params?.search?.trim()) searchParams.set("search", params.search.trim());
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.attractionId && params.attractionId !== "All" && params.attractionId !== "all") {
+    searchParams.set("attractionId", params.attractionId);
+  }
+
+  const url = `${AppUrl.staff.list}?${searchParams.toString()}`;
+  const res = await getData<any>(url);
+
+  // Normalize response
+  const payload = res?.data ?? res;
+  if (payload && Array.isArray(payload.items)) {
+    const total = payload.pagination?.total ?? payload.items.length;
+    return {
+      items: payload.items,
+      pagination: payload.pagination || {
+        page,
+        limit,
+        total,
+        totalPages: limit > 0 ? (Math.ceil(total / limit) || 1) : 1,
+      },
+    };
+  }
+  if (Array.isArray(payload)) {
+    return {
+      items: payload,
+      pagination: {
+        page,
+        limit,
+        total: payload.length,
+        totalPages: limit > 0 ? (Math.ceil(payload.length / limit) || 1) : 1,
+      },
+    };
+  }
+  return {
+    items: [],
+    pagination: { page: 1, limit, total: 0, totalPages: 0 },
+  };
+}
+
+/**
  * Fetch paginated list of staff members (GET /api/admin/staff)
  */
 export function useStaffList(params?: StaffQueryParams) {
   const page = params?.page ?? 1;
-  const limit = params?.limit ?? 10;
+  const limit = params?.limit !== undefined ? params.limit : 10;
 
   return useQuery<StaffListResponse>({
     queryKey: staffKeys.list({ ...params, page, limit }),
-    queryFn: async () => {
-      const searchParams = new URLSearchParams();
-      searchParams.set("page", String(page));
-      searchParams.set("limit", String(limit));
-      if (params?.search?.trim()) {
-        searchParams.set("search", params.search.trim());
-      }
-      if (params?.status) {
-        searchParams.set("status", params.status);
-      }
-      if (params?.attractionId && params.attractionId !== "All" && params.attractionId !== "all") {
-        searchParams.set("attractionId", params.attractionId);
-      }
-
-      const queryString = searchParams.toString();
-      const url = `${AppUrl.staff.list}?${queryString}`;
-      const res = await getData<any>(url);
-
-      // Normalize response
-      if (Array.isArray(res)) {
-        return {
-          items: res,
-          pagination: { page, limit, total: res.length, totalPages: Math.ceil(res.length / limit) || 1 },
-        };
-      }
-      if (res && Array.isArray(res.items)) {
-        return {
-          items: res.items,
-          pagination: res.pagination || {
-            page,
-            limit,
-            total: res.items.length,
-            totalPages: Math.ceil(res.items.length / limit) || 1,
-          },
-        };
-      }
-      if (res && Array.isArray(res.data)) {
-        return {
-          items: res.data,
-          pagination: res.pagination || {
-            page,
-            limit,
-            total: res.data.length,
-            totalPages: Math.ceil(res.data.length / limit) || 1,
-          },
-        };
-      }
-      return {
-        items: [],
-        pagination: { page: 1, limit: 10, total: 0, totalPages: 0 },
-      };
-    },
+    queryFn: () => fetchStaffList({ ...params, page, limit }),
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });

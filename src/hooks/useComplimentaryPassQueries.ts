@@ -11,6 +11,8 @@ import type {
   ComplimentaryPassListResponse,
 } from "@/app/(dashboard)/complimentary-passes/types";
 
+export type { ComplimentaryPassListParams };
+
 export const complimentaryPassKeys = {
   all: ["complimentary-passes"] as const,
   lists: () => [...complimentaryPassKeys.all, "list"] as const,
@@ -19,80 +21,82 @@ export const complimentaryPassKeys = {
 };
 
 /**
+ * Fetch complimentary passes or all records when limit: 0.
+ * GET /api/admin/complimentary-passes
+ */
+export async function fetchComplimentaryPassList(params: ComplimentaryPassListParams = {}): Promise<ComplimentaryPassListResponse> {
+  const page = params.page ?? 1;
+  const limit = params.limit !== undefined ? params.limit : 10;
+
+  const sp = new URLSearchParams();
+  sp.set("page", String(page));
+  sp.set("limit", String(limit));
+  if (params.search?.trim()) sp.set("search", params.search.trim());
+  if (params.attractionId && params.attractionId !== "ALL" && params.attractionId !== "All") {
+    sp.set("attractionId", params.attractionId);
+  }
+  if (params.fromDate) sp.set("fromDate", params.fromDate);
+  if (params.toDate) sp.set("toDate", params.toDate);
+  if (params.status && params.status !== "ALL" && params.status !== "All") {
+    sp.set("status", params.status);
+  }
+
+  const res = await getData<any>(`${AppUrl.complimentaryPass.list}?${sp.toString()}`);
+  const payload = res?.data ?? res;
+
+  const mapItem = (item: any) => ({
+    ...item,
+    id: item.id || item.passId || "",
+    visitorName: item.visitorName || "",
+    mobile: item.mobile || "",
+    attractionId: item.attractionId || "",
+    attractionName: item.attractionName || item.attraction?.name || "-",
+    visitors: Number(item.visitors) || 1,
+    referenceId: item.referenceId || "",
+    referenceName: item.referenceName || item.reference?.referenceName || "-",
+    visitDate: item.visitDate || "",
+    status: (item.status || "ACTIVE").toUpperCase(),
+  });
+
+  if (payload && Array.isArray(payload.items)) {
+    const total = payload.pagination?.total ?? payload.items.length;
+    return {
+      items: payload.items.map(mapItem),
+      pagination: payload.pagination || {
+        page,
+        limit,
+        total,
+        totalPages: limit > 0 ? (Math.ceil(total / limit) || 1) : 1,
+      },
+    };
+  }
+
+  if (Array.isArray(payload)) {
+    return {
+      items: payload.map(mapItem),
+      pagination: {
+        page,
+        limit,
+        total: payload.length,
+        totalPages: limit > 0 ? (Math.ceil(payload.length / limit) || 1) : 1,
+      },
+    };
+  }
+
+  return {
+    items: [],
+    pagination: { page: 1, limit, total: 0, totalPages: 0 },
+  };
+}
+
+/**
  * Fetch complimentary passes list with pagination, search, attractionId, fromDate, toDate, status.
  * GET /api/admin/complimentary-passes
  */
 export function useComplimentaryPassList(params: ComplimentaryPassListParams = {}) {
-  const page = params.page ?? 1;
-  const limit = params.limit ?? 10;
-
   return useQuery<ComplimentaryPassListResponse>({
     queryKey: complimentaryPassKeys.list(params),
-    queryFn: async () => {
-      const sp = new URLSearchParams();
-      sp.set("page", String(page));
-      sp.set("limit", String(limit));
-      if (params.search?.trim()) sp.set("search", params.search.trim());
-      if (params.attractionId && params.attractionId !== "ALL" && params.attractionId !== "All") {
-        sp.set("attractionId", params.attractionId);
-      }
-      if (params.fromDate) sp.set("fromDate", params.fromDate);
-      if (params.toDate) sp.set("toDate", params.toDate);
-      if (params.status && params.status !== "ALL" && params.status !== "All") {
-        sp.set("status", params.status);
-      }
-
-      const res = await getData<any>(`${AppUrl.complimentaryPass.list}?${sp.toString()}`);
-      const payload = res?.data ?? res;
-
-      if (payload && Array.isArray(payload.items)) {
-        return {
-          items: payload.items.map((item: any) => ({
-            ...item,
-            id: item.id || item.passId || "",
-            visitorName: item.visitorName || "",
-            mobile: item.mobile || "",
-            attractionId: item.attractionId || "",
-            attractionName: item.attractionName || item.attraction?.name || "-",
-            visitors: Number(item.visitors) || 1,
-            referenceId: item.referenceId || "",
-            referenceName: item.referenceName || item.reference?.referenceName || "-",
-            visitDate: item.visitDate || "",
-            status: (item.status || "ACTIVE").toUpperCase(),
-          })),
-          pagination: payload.pagination || {
-            page,
-            limit,
-            total: payload.items.length,
-            totalPages: Math.ceil(payload.items.length / limit) || 1,
-          },
-        };
-      }
-
-      if (Array.isArray(payload)) {
-        return {
-          items: payload.map((item: any) => ({
-            ...item,
-            id: item.id || item.passId || "",
-            visitorName: item.visitorName || "",
-            mobile: item.mobile || "",
-            attractionId: item.attractionId || "",
-            attractionName: item.attractionName || item.attraction?.name || "-",
-            visitors: Number(item.visitors) || 1,
-            referenceId: item.referenceId || "",
-            referenceName: item.referenceName || item.reference?.referenceName || "-",
-            visitDate: item.visitDate || "",
-            status: (item.status || "ACTIVE").toUpperCase(),
-          })),
-          pagination: { page, limit, total: payload.length, totalPages: Math.ceil(payload.length / limit) || 1 },
-        };
-      }
-
-      return {
-        items: [],
-        pagination: { page: 1, limit, total: 0, totalPages: 0 },
-      };
-    },
+    queryFn: () => fetchComplimentaryPassList(params),
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });

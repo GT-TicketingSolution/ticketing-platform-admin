@@ -40,10 +40,10 @@ import { confirmDelete, confirmAdd, confirmStatusChange, showSuccessNotify } fro
 import { addManagerSchema, AddManagerFormData } from "./schema";
 import { DataTable, Column } from "@/components/ui/DataTable";
 import { META_CONSTANTS } from "@/lib/metaConstant";
-import { handleDownloadManagersListPDF, handleExportManagersCSV } from "@/lib/printUtils";
 import ExportButtons from "@/components/ui/ExportButtons";
 import {
   useManagers,
+  fetchManagers,
   useCreateManager,
   useUpdateManager,
   useDisableManager,
@@ -52,6 +52,12 @@ import {
   useAttractions,
   type AttractionItem,
 } from "@/hooks/useManagerQueries";
+import {
+  ExportScope,
+  exportTableToPDF,
+  exportToCSV,
+  renderStatusBadgeHTML,
+} from "@/lib/exportUtils";
 import { useSystemModules, SystemModule } from "@/hooks/useSystemModuleQueries";
 
 // Sub-modules available inside each attraction
@@ -303,11 +309,14 @@ function getAttractionFromPermissions(
   permissions: AttractionPermission[],
   attractionsList: AttractionItem[] = []
 ): string {
-  if (!permissions || permissions.length === 0) return "General Access";
+  if (!permissions || permissions.length === 0) return "—";
   const names = permissions
-    .map((p) => attractionsList.find((a) => a.id === p.attractionId)?.name)
+    .map((p) => {
+      const found = attractionsList.find((a) => a.id === p.attractionId);
+      return found?.name || p.attractionName || p.attractionId;
+    })
     .filter(Boolean);
-  return names.length > 0 ? names.join(", ") : "General Access";
+  return names.length > 0 ? names.join(", ") : "—";
 }
 
 // Attraction Permission Tree
@@ -673,23 +682,35 @@ function ManagerManagementInner() {
   // Sync API managers when loaded — strictly use backend data only
   useEffect(() => {
     if (apiManagerData?.managers) {
-      const mapped: ManagerUser[] = apiManagerData.managers.map((m) => ({
-        id: m.id,
-        name: m.name,
-        email: m.email,
-        phone: m.phone ?? null,
-        role: m.role || "MANAGER",
-        status: (m.status as import("./types").ManagerStatus) || "ACTIVE",
-        createdAt: m.createdAt || new Date().toISOString(),
-        lastLoginAt: m.lastLoginAt ?? null,
-        attraction: "",
-        totalBookings: 0,
-        revenueGenerated: 0,
-        attractionManagementEnabled: false,
-        staffCreationEnabled: true,
-        allowedModules: [],
-        attractionPermissions: [],
-      }));
+      const mapped: ManagerUser[] = apiManagerData.managers.map((m: any) => {
+        const attractions = m.attractions || [];
+        const attractionNames = attractions.map((a: any) => a.name).filter(Boolean);
+        const attractionLabel = attractionNames.length > 0 ? attractionNames.join(", ") : "—";
+        const attrPerms: AttractionPermission[] = attractions.map((a: any) => ({
+          attractionId: a.id,
+          attractionName: a.name,
+          modules: (a.modules || []).map((mod: any) => mod.name || mod.id),
+        }));
+
+        return {
+          id: m.id,
+          name: m.name,
+          email: m.email,
+          phone: m.phone ?? null,
+          role: m.role || "MANAGER",
+          status: (m.status as import("./types").ManagerStatus) || "ACTIVE",
+          createdAt: m.createdAt || new Date().toISOString(),
+          lastLoginAt: m.lastLoginAt ?? null,
+          attraction: attractionLabel,
+          attractions: attractions,
+          totalBookings: 0,
+          revenueGenerated: 0,
+          attractionManagementEnabled: attractions.length > 0,
+          staffCreationEnabled: true,
+          allowedModules: [],
+          attractionPermissions: attrPerms,
+        };
+      });
       setManagers(mapped);
     } else {
       setManagers([]);
@@ -756,15 +777,21 @@ function ManagerManagementInner() {
       (selectedStatusFilter === "Active" && m.status.toUpperCase() === "ACTIVE") ||
       (selectedStatusFilter === "Inactive" && m.status.toUpperCase() === "DISABLED");
 
+    const attractionMatches =
+      selectedAttractionFilter === "All" ||
+      (m.attractions && m.attractions.some((a) => a.name === selectedAttractionFilter || a.id === selectedAttractionFilter)) ||
+      (m.attraction && m.attraction.toLowerCase().includes(selectedAttractionFilter.toLowerCase()));
+
     const searchLower = searchQuery.toLowerCase();
     const searchMatches =
       !searchQuery ||
       m.name.toLowerCase().includes(searchLower) ||
       m.email.toLowerCase().includes(searchLower) ||
       (m.phone && m.phone.toLowerCase().includes(searchLower)) ||
+      (m.attraction && m.attraction.toLowerCase().includes(searchLower)) ||
       m.status.toLowerCase().includes(searchLower);
 
-    return statusMatches && searchMatches;
+    return statusMatches && attractionMatches && searchMatches;
   });
 
   const isFiltered =
@@ -868,28 +895,119 @@ function ManagerManagementInner() {
     setIsEditing(false);
   };
 
-  // Export Handlers
-  const handleExportPDF = () => {
-    if (filteredManagers.length === 0) {
-      showToast("No manager data matches current filters", "info");
-      return;
-    }
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+
+  // ── Export Handlers (Scoped Export) ───────────────────────────────────────
+  const getFilterInfo = () => {
     const parts: string[] = [];
     if (selectedStatusFilter !== "All") parts.push(`Status: ${selectedStatusFilter}`);
     if (searchQuery) parts.push(`Search: "${searchQuery}"`);
-    const filterInfo = parts.length > 0 ? parts.join(" | ") : "All Managers";
-    handleDownloadManagersListPDF(filteredManagers, filterInfo);
-    showToast(`Generated PDF report for ${filteredManagers.length} managers`, "success");
+    return parts.length > 0 ? parts.join(" | ") : undefined;
   };
 
-  const handleExportExcel = () => {
-    if (filteredManagers.length === 0) {
-      showToast("No manager data matches current filters", "info");
-      return;
+  const getExportParams = (scope: ExportScope) => {
+    const statusParam =
+      selectedStatusFilter === "Active"
+        ? ("ACTIVE" as const)
+        : selectedStatusFilter === "Inactive"
+        ? ("DISABLED" as const)
+        : selectedStatusFilter !== "All"
+        ? (selectedStatusFilter as any)
+        : undefined;
+
+    return {
+      search: searchQuery.trim() || undefined,
+      status: statusParam,
+      page: 1,
+      limit: scope === "all" ? 0 : 10,
+    };
+  };
+
+  const handleExportPDF = async (scope: ExportScope) => {
+    setIsExportingPDF(true);
+    try {
+      const result = await fetchManagers(getExportParams(scope));
+      const items = result.managers;
+      if (!items.length) {
+        showToast("No manager data matches current filters", "info");
+        return;
+      }
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : "Current";
+      await exportTableToPDF<ManagerUser | (typeof items)[0]>({
+        title: "MANAGERS REPORT",
+        filterInfo: getFilterInfo(),
+        scope,
+        filename: `Managers_${scopeLabel}_${dateKey}.pdf`,
+        orientation: "portrait",
+        columns: [
+          { header: "#", accessor: (_, i) => i + 1, width: "40px" },
+          { header: "Manager Name", accessor: (m) => m.name || "-" },
+          { header: "Email Address", accessor: (m) => m.email || "-" },
+          { header: "Phone Number", accessor: (m) => m.phone || "-" },
+          {
+            header: "Assigned Attraction",
+            accessor: (m: any) => {
+              if (m.attractions && m.attractions.length > 0) {
+                return m.attractions.map((a: any) => a.name).join(", ");
+              }
+              return m.attraction || "—";
+            },
+          },
+          { header: "Role", accessor: (m) => m.role || "MANAGER" },
+          {
+            header: "Status",
+            renderCell: (m) => renderStatusBadgeHTML(m.status === "ACTIVE" ? "ACTIVE" : "INACTIVE"),
+            align: "center",
+          },
+        ],
+        data: items,
+        summaryCards: [
+          { label: "Total Managers", value: items.length },
+          { label: "Active Managers", value: items.filter((m) => m.status === "ACTIVE").length },
+        ],
+      });
+      showToast(`PDF downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Manager PDF export error:", err);
+      showToast("PDF export failed. Please try again.", "error");
+    } finally {
+      setIsExportingPDF(false);
     }
-    const label = selectedStatusFilter !== "All" ? selectedStatusFilter : "All";
-    handleExportManagersCSV(filteredManagers, label);
-    showToast(`Exported ${filteredManagers.length} managers to CSV`, "success");
+  };
+
+  const handleExportExcel = async (scope: ExportScope) => {
+    setIsExportingExcel(true);
+    try {
+      const result = await fetchManagers(getExportParams(scope));
+      const items = result.managers;
+      if (!items.length) {
+        showToast("No manager data matches current filters", "info");
+        return;
+      }
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : "Current";
+      const headers = ["#", "Manager Name", "Email Address", "Phone Number", "Assigned Attraction", "Role", "Status"];
+      const rows = items.map((m: any, i) => [
+        i + 1,
+        m.name || "-",
+        m.email || "-",
+        m.phone || "-",
+        m.attractions && m.attractions.length > 0
+          ? m.attractions.map((a: any) => a.name).join(", ")
+          : m.attraction || "-",
+        m.role || "MANAGER",
+        m.status === "ACTIVE" ? "Active" : "Inactive",
+      ]);
+      exportToCSV(`Managers_${scopeLabel}_${dateKey}`, headers, rows);
+      showToast(`Excel downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Manager Excel export error:", err);
+      showToast("Excel export failed. Please try again.", "error");
+    } finally {
+      setIsExportingExcel(false);
+    }
   };
 
   // Delete
@@ -977,18 +1095,46 @@ function ManagerManagementInner() {
     },
     {
       header: "Assigned Attraction",
-      cell: (manager) => (
-        <span
-          style={{
-            display: "inline-flex", alignItems: "center", gap: "5px",
-            background: "rgba(35,114,165,0.08)", color: colors.brand.accent,
-            padding: "4px 10px", borderRadius: "6px", fontSize: "13px", fontWeight: 600,
-          }}
-        >
-          <Building size={13} color={colors.brand.accent} />
-          {manager.attraction || "—"}
-        </span>
-      ),
+      cell: (manager) => {
+        const attractions =
+          manager.attractions && manager.attractions.length > 0
+            ? manager.attractions
+            : manager.attraction && manager.attraction !== "—"
+            ? [{ id: manager.id, name: manager.attraction }]
+            : [];
+
+        if (attractions.length === 0) {
+          return (
+            <span style={{ fontSize: "13px", color: colors.text.muted }}>
+              —
+            </span>
+          );
+        }
+
+        return (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+            {attractions.map((attr, idx) => (
+              <span
+                key={attr.id || idx}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  background: "rgba(35,114,165,0.08)",
+                  color: colors.brand.accent,
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                }}
+              >
+                <Building size={13} color={colors.brand.accent} />
+                {attr.name}
+              </span>
+            ))}
+          </div>
+        );
+      },
     },
     {
       header: "Status",
@@ -1061,9 +1207,6 @@ function ManagerManagementInner() {
                 </span>
                 <StatusBadge status={selectedManager.status} />
               </div>
-              <p style={{ fontFamily: typography.fontFamily.sans, fontSize: "12px", color: colors.text.muted, margin: "3px 0 0" }}>
-                ID: {selectedManager.id}
-              </p>
             </div>
           </div>
 
@@ -1327,7 +1470,10 @@ function ManagerManagementInner() {
               {selectedManager.attractionManagementEnabled && (selectedManager.attractionPermissions || []).length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   {(selectedManager.attractionPermissions || []).map((perm) => {
-                    const attraction = attractionsList.find((a) => a.id === perm.attractionId);
+                    const attraction =
+                      attractionsList.find((a) => a.id === perm.attractionId) ||
+                      selectedManager.attractions?.find((a) => a.id === perm.attractionId) ||
+                      { name: perm.attractionName || "Attraction", category: "RIDE" };
                     if (!attraction) return null;
                     return (
                       <div
@@ -1337,7 +1483,7 @@ function ManagerManagementInner() {
                         <div style={{ background: "rgba(35,114,165,0.06)", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
                           <Building size={14} color={colors.brand.accent} />
                           <span style={{ fontWeight: 700, fontSize: "13px", color: colors.brand.accent, flex: 1, fontFamily: typography.fontFamily.sans }}>{attraction.name}</span>
-                          <span style={{ fontSize: "11px", color: colors.brand.primary, fontWeight: 600 }}>{attraction.category}</span>
+                          <span style={{ fontSize: "11px", color: colors.brand.primary, fontWeight: 600 }}>{attraction.category || "ATTRACTION"}</span>
                         </div>
                         <div style={{ padding: "10px 14px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
                           {perm.modules.length > 0 ? (
@@ -1393,9 +1539,11 @@ function ManagerManagementInner() {
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap", gap: "12px" }}>
         <ExportButtons
-          onExportPDF={handleExportPDF}
-          onExportExcel={handleExportExcel}
-          disabled={isFetchingManagers || filteredManagers.length === 0}
+          onExportPDFScope={handleExportPDF}
+          onExportExcelScope={handleExportExcel}
+          isExportingPDF={isExportingPDF}
+          isExportingExcel={isExportingExcel}
+          disabled={isFetchingManagers || (filteredManagers.length === 0 && (apiManagerData?.pagination?.total ?? 0) === 0)}
         />
 
         <button

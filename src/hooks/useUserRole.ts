@@ -58,7 +58,15 @@ export function useUserRole() {
       }
       if (role === "Manager") {
         if (!managerAllowedModules) return true; // Full manager access default if no restrict array
-        return managerAllowedModules.has(moduleName);
+        if (managerAllowedModules.has(moduleName)) return true;
+        const cleanMod = moduleName.toLowerCase().replace(/[^a-z0-9]/g, "");
+        for (const allowed of managerAllowedModules) {
+          const cleanAllowed = allowed.toLowerCase().replace(/[^a-z0-9]/g, "");
+          if (cleanMod === cleanAllowed || (cleanMod.includes("inventory") && cleanAllowed.includes("inventory"))) {
+            return true;
+          }
+        }
+        return false;
       }
       return false;
     },

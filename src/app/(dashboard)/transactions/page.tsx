@@ -20,10 +20,17 @@ import { confirmDelete } from "@/lib/notify";
 import TransactionDetailsModal from "@/components/modals/TransactionDetailsModal";
 import {
   useTransactionList,
+  fetchTransactionList,
   useDeleteTransaction,
   TransactionListItem,
   TransactionListParams,
 } from "@/hooks/useTransactionQueries";
+import {
+  ExportScope,
+  exportTableToPDF,
+  exportToCSV,
+  renderStatusBadgeHTML,
+} from "@/lib/exportUtils";
 import { useAttractions } from "@/hooks/useManagerQueries";
 
 const ITEMS_PER_PAGE = 10;
@@ -52,111 +59,9 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// ── Build CSV export ──────────────────────────────────────────────────────────
-function exportToCSV(items: TransactionListItem[], filename: string) {
-  const headers = ["Transaction ID", "Customer Name", "Date & Time", "Booking ID", "Attraction", "Amount", "Payment Mode", "Status"];
-  const rows = items.map((t) => [
-    t.transactionId,
-    `"${t.customerName}"`,
-    `"${new Date(t.transactionDate).toLocaleString("en-IN")}"`,
-    t.bookingId,
-    `"${t.attraction?.name ?? "-"}"`,
-    t.amount,
-    t.paymentMode,
-    t.status,
-  ]);
-  const csv = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-  const link = document.createElement("a");
-  link.setAttribute("href", encodeURI(csv));
-  link.setAttribute("download", filename);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
-// ── Build PDF export using html2pdf.js ───────────────────────────────────────
-async function exportToPDF(
-  items: TransactionListItem[],
-  filterInfo: string,
-  filename: string
-) {
-  if (!(window as any).html2pdf) {
-    await new Promise<void>((resolve, reject) => {
-      const s = document.createElement("script");
-      s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
-      s.onload = () => resolve();
-      s.onerror = () => reject();
-      document.head.appendChild(s);
-    });
-  }
-
-  const rows = items.map((t, i) => `
-    <tr style="background:${i % 2 === 0 ? "#FFFFFF" : "#F8FAFC"};">
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${i + 1}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${t.transactionId}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${t.customerName}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${new Date(t.transactionDate).toLocaleDateString("en-IN")}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${t.bookingId}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${t.attraction?.name ?? "-"}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;text-align:right;">&#8377;${Number(t.amount).toFixed(2)}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${t.paymentMode}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${t.status}</td>
-    </tr>`).join("");
-
-  const html = `
-    <div style="font-family:Arial,sans-serif;padding:24px;color:#011B2F;">
-      <div style="border-bottom:3px solid #F4BC43;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-end;">
-        <div>
-          <div style="font-size:20px;font-weight:bold;color:#0C2A42;">TICKETING PLATFORM</div>
-          <div style="font-size:12px;color:#6B7280;">Transactions Report</div>
-        </div>
-        <div style="font-size:11px;color:#6B7280;text-align:right;">
-          <div>${filterInfo}</div>
-          <div>Generated: ${new Date().toLocaleString("en-IN")}</div>
-        </div>
-      </div>
-      <table style="width:100%;border-collapse:collapse;">
-        <thead>
-          <tr style="background:#0C2A42;color:#FFFFFF;">
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">#</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Txn ID</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Customer</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Date</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Booking ID</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Attraction</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:right;">Amount</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Mode</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Status</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-        <tfoot>
-          <tr style="background:#FFFBEB;font-weight:bold;">
-            <td colspan="6" style="padding:10px;font-size:12px;">Total: ${items.length} transactions</td>
-            <td style="padding:10px;font-size:12px;text-align:right;">&#8377;${items.reduce((s, t) => s + Number(t.amount), 0).toFixed(2)}</td>
-            <td colspan="2"></td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>`;
-
-  const el = document.createElement("div");
-  el.style.width = "900px";
-  el.innerHTML = html;
-  document.body.appendChild(el);
-
-  await (window as any).html2pdf().set({
-    margin: [8, 8, 8, 8],
-    filename,
-    image: { type: "jpeg", quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true },
-    jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
-  }).from(el).save();
-
-  document.body.removeChild(el);
-}
 
 // ── Page ─────────────────────────────────────────────────────────────────────
+
 export default function TransactionsPage() {
   const { showToast } = useToast();
 
@@ -168,6 +73,9 @@ export default function TransactionsPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+
 
   // Debounced search for API
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -279,11 +187,7 @@ export default function TransactionsPage() {
   }, [activeDropdownId]);
 
   // ── Export handlers ───────────────────────────────────────────────────────
-  const handleExportPDF = async () => {
-    if (transactions.length === 0) {
-      showToast("No transaction data to export", "info");
-      return;
-    }
+  const getFilterInfo = () => {
     const parts: string[] = [];
     if (selectedAttractionId !== "All") {
       const found = attractionOptions.find((a) => a.id === selectedAttractionId);
@@ -293,26 +197,88 @@ export default function TransactionsPage() {
     if (selectedPaymentMode !== "All") parts.push(`Mode: ${selectedPaymentMode}`);
     if (selectedStatus !== "All") parts.push(`Status: ${selectedStatus}`);
     if (debouncedSearch) parts.push(`Search: "${debouncedSearch}"`);
-    const filterInfo = parts.length > 0 ? parts.join(" | ") : "All Transactions";
-    const rangeLabel = fromDate && toDate ? `${fromDate}_to_${toDate}` : "All";
+    return parts.length > 0 ? parts.join(" | ") : undefined;
+  };
 
+  const getExportParams = (scope: ExportScope): TransactionListParams => {
+    const base: TransactionListParams = {
+      search: debouncedSearch || undefined,
+      attractionId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
+      paymentMode: selectedPaymentMode !== "All" ? selectedPaymentMode : undefined,
+      status: selectedStatus !== "All" ? selectedStatus : undefined,
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
+    };
+    return scope === "all" ? { ...base, page: 1, limit: 0 } : { ...base, page: currentPage, limit: ITEMS_PER_PAGE };
+  };
+
+  const handleExportPDF = async (scope: ExportScope) => {
+    setIsExportingPDF(true);
     try {
-      await exportToPDF(transactions, filterInfo, `Transactions_${rangeLabel}.pdf`);
-      showToast(`PDF report generated for ${transactions.length} transactions`, "success");
-    } catch {
-      showToast("Failed to generate PDF", "error");
+      const result = await fetchTransactionList(getExportParams(scope));
+      const items = result.items;
+      if (!items.length) { showToast("No transaction data to export.", "info"); return; }
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
+      await exportTableToPDF<TransactionListItem>({
+        title: "TRANSACTIONS REPORT",
+        filterInfo: getFilterInfo(),
+        scope,
+        currentPage,
+        filename: `Transactions_${scopeLabel}_${dateKey}.pdf`,
+        orientation: "landscape",
+        columns: [
+          { header: "#", accessor: (_, i) => i + 1, width: "30px" },
+          { header: "Transaction ID", accessor: "transactionId" },
+          { header: "Customer", accessor: "customerName" },
+          { header: "Date", accessor: (t) => t.transactionDate ? new Date(t.transactionDate).toLocaleDateString("en-IN") : "-" },
+          { header: "Booking ID", accessor: "bookingId" },
+          { header: "Attraction", accessor: (t) => t.attraction?.name ?? "-" },
+          { header: "Amount (₹)", accessor: (t) => `₹${Number(t.amount).toFixed(2)}`, align: "right" },
+          { header: "Mode", accessor: "paymentMode" },
+          { header: "Status", renderCell: (t) => renderStatusBadgeHTML(t.status), align: "center" },
+        ],
+        data: items,
+        summaryCards: [
+          { label: "Total Transactions", value: items.length },
+          { label: "Total Revenue", value: `₹${items.reduce((s, t) => s + Number(t.amount), 0).toFixed(2)}` },
+        ],
+      });
+      showToast(`PDF downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Transactions PDF export error:", err);
+      showToast("PDF export failed. Please try again.", "error");
+    } finally {
+      setIsExportingPDF(false);
     }
   };
 
-  const handleExportExcel = () => {
-    if (transactions.length === 0) {
-      showToast("No transaction data to export", "info");
-      return;
+  const handleExportExcel = async (scope: ExportScope) => {
+    setIsExportingExcel(true);
+    try {
+      const result = await fetchTransactionList(getExportParams(scope));
+      const items = result.items;
+      if (!items.length) { showToast("No transaction data to export.", "info"); return; }
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
+      const headers = ["#", "Transaction ID", "Customer", "Date", "Booking ID", "Attraction", "Amount (₹)", "Mode", "Status"];
+      const rows = items.map((t, i) => [
+        i + 1, t.transactionId, t.customerName,
+        t.transactionDate ? new Date(t.transactionDate).toLocaleDateString("en-IN") : "-",
+        t.bookingId, t.attraction?.name ?? "-",
+        Number(t.amount).toFixed(2), t.paymentMode, t.status,
+      ]);
+      exportToCSV(`Transactions_${scopeLabel}_${dateKey}`, headers, rows);
+      showToast(`Excel downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Transactions Excel export error:", err);
+      showToast("Excel export failed. Please try again.", "error");
+    } finally {
+      setIsExportingExcel(false);
     }
-    const rangeLabel = fromDate && toDate ? `${fromDate}_to_${toDate}` : "All";
-    exportToCSV(transactions, `Transactions_${rangeLabel}.csv`);
-    showToast(`Exported ${transactions.length} transactions to CSV`, "success");
   };
+
+
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -321,9 +287,11 @@ export default function TransactionsPage() {
       {/* ── Export Buttons ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
         <ExportButtons
-          onExportPDF={handleExportPDF}
-          onExportExcel={handleExportExcel}
-          disabled={transactions.length === 0 || isLoading}
+          onExportPDFScope={handleExportPDF}
+          onExportExcelScope={handleExportExcel}
+          isExportingPDF={isExportingPDF}
+          isExportingExcel={isExportingExcel}
+          disabled={isLoading || (transactions.length === 0 && (data?.pagination?.total ?? 0) === 0)}
         />
       </div>
 

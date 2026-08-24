@@ -20,10 +20,17 @@ import { useToast } from "@/components/ui/Toast";
 import { confirmDelete } from "@/lib/notify";
 import {
   useInvoiceList,
+  fetchInvoiceList,
   useDeleteInvoice,
   InvoiceListItem,
   InvoiceListParams,
 } from "@/hooks/useInvoiceQueries";
+import {
+  ExportScope,
+  exportTableToPDF,
+  exportToCSV,
+  renderStatusBadgeHTML,
+} from "@/lib/exportUtils";
 
 const PAGE_SIZE = 10;
 
@@ -72,122 +79,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// ── Build CSV export ──────────────────────────────────────────────────────────
-function exportToCSV(items: InvoiceListItem[], filename: string) {
-  const headers = [
-    "Invoice ID",
-    "Customer Name",
-    "Date & Time",
-    "Attraction",
-    "Visitors",
-    "Amount",
-    "Payment Mode",
-    "Status",
-  ];
-  const rows = items.map((inv) => [
-    `"${inv.invoiceId || inv.invoiceNumber || "-"}"`,
-    `"${inv.customerName || "-"}"`,
-    `"${formatDateVal(inv.dateTime || inv.invoiceDate)}"`,
-    `"${inv.attraction?.name || "-"}"`,
-    inv.visitors ?? 0,
-    inv.amount ?? 0,
-    `"${inv.paymentMode || "-"}"`,
-    `"${inv.status || "-"}"`,
-  ]);
-  const csv = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-  const link = document.createElement("a");
-  link.setAttribute("href", encodeURI(csv));
-  link.setAttribute("download", filename);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
-// ── Build PDF export using html2pdf.js 
-async function exportToPDF(
-  items: InvoiceListItem[],
-  filterInfo: string,
-  filename: string
-) {
-  if (!(window as any).html2pdf) {
-    await new Promise<void>((resolve, reject) => {
-      const s = document.createElement("script");
-      s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error("Failed to load PDF export library"));
-      document.head.appendChild(s);
-    });
-  }
-
-  const rows = items.map((inv, i) => `
-    <tr style="background:${i % 2 === 0 ? "#FFFFFF" : "#F8FAFC"};">
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${i + 1}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;font-weight:600;">${inv.invoiceId || inv.invoiceNumber || "-"}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${inv.customerName || "-"}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${formatDateOnly(inv.dateTime || inv.invoiceDate)}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${inv.attraction?.name || "-"}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;text-align:center;">${inv.visitors ?? 0}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;text-align:right;">&#8377;${Number(inv.amount ?? 0).toFixed(2)}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${inv.paymentMode || "-"}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #E5E7EB;font-size:11px;">${inv.status || "-"}</td>
-    </tr>`).join("");
-
-  const totalAmount = items.reduce((s, inv) => s + Number(inv.amount ?? 0), 0);
-
-  const html = `
-    <div style="font-family:Arial,sans-serif;padding:24px;color:#011B2F;">
-      <div style="border-bottom:3px solid #F4BC43;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-end;">
-        <div>
-          <div style="font-size:20px;font-weight:bold;color:#0C2A42;">TICKETING PLATFORM</div>
-          <div style="font-size:12px;color:#6B7280;">Invoices Summary Report</div>
-        </div>
-        <div style="font-size:11px;color:#6B7280;text-align:right;">
-          <div>${filterInfo}</div>
-          <div>Generated: ${new Date().toLocaleString("en-IN")}</div>
-        </div>
-      </div>
-      <table style="width:100%;border-collapse:collapse;">
-        <thead>
-          <tr style="background:#0C2A42;color:#FFFFFF;">
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">#</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Invoice ID</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Customer</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Date</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Booking ID</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Visit Date</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Attraction</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:center;">Visitors</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:right;">Amount</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Mode</th>
-            <th style="padding:9px 10px;font-size:11px;text-align:left;">Status</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-        <tfoot>
-          <tr style="background:#FFFBEB;font-weight:bold;">
-            <td colspan="8" style="padding:10px;font-size:12px;">Total: ${items.length} Invoices</td>
-            <td style="padding:10px;font-size:12px;text-align:right;">&#8377;${totalAmount.toFixed(2)}</td>
-            <td colspan="2"></td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>`;
-
-  const el = document.createElement("div");
-  el.style.width = "900px";
-  el.innerHTML = html;
-  document.body.appendChild(el);
-
-  await (window as any).html2pdf().set({
-    margin: [8, 8, 8, 8],
-    filename,
-    image: { type: "jpeg", quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true },
-    jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
-  }).from(el).save();
-
-  document.body.removeChild(el);
-}
 
 // ── Main Page Component ───────────────────────────────────────────────────────
 export default function InvoicesPage() {
@@ -199,6 +90,8 @@ export default function InvoicesPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
 
   // Debounced search for API
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -281,39 +174,105 @@ export default function InvoicesPage() {
     const label = inv.invoiceId || inv.invoiceNumber || inv.customerName || "invoice";
     const confirmed = await confirmDelete(`invoice "${label}"`);
     if (!confirmed) return;
-
     deleteInvoiceMutation.mutate(inv.id);
   };
 
   // ── Export Handlers ────────────────────────────────────────────────────────
-  const handleExportPDF = async () => {
-    if (invoices.length === 0) {
-      showToast("No invoice data to export", "info");
-      return;
-    }
+  const getFilterInfo = () => {
     const parts: string[] = [];
     if (selectedPaymentMode !== "All") parts.push(`Mode: ${selectedPaymentMode}`);
     if (fromDate || toDate) parts.push(`Date: ${fromDate || "Start"} → ${toDate || "End"}`);
     if (debouncedSearch) parts.push(`Search: "${debouncedSearch}"`);
-    const filterInfo = parts.length > 0 ? parts.join(" | ") : "All Invoices";
-    const rangeLabel = fromDate && toDate ? `${fromDate}_to_${toDate}` : "All";
+    return parts.length > 0 ? parts.join(" | ") : undefined;
+  };
 
+  const getExportParams = (scope: ExportScope): InvoiceListParams => {
+    const base: InvoiceListParams = {
+      search: debouncedSearch || undefined,
+      paymentMode: selectedPaymentMode !== "All" ? selectedPaymentMode : undefined,
+      dateFrom: fromDate || undefined,
+      dateTo: toDate || undefined,
+    };
+    return scope === "all" ? { ...base, page: 1, limit: 0 } : { ...base, page: currentPage, limit: PAGE_SIZE };
+  };
+
+  const handleExportPDF = async (scope: ExportScope) => {
+    setIsExportingPDF(true);
     try {
-      await exportToPDF(invoices, filterInfo, `Invoices_${rangeLabel}.pdf`);
-      showToast(`PDF report generated for ${invoices.length} invoices`, "success");
-    } catch {
-      showToast("Failed to generate PDF", "error");
+      const result = await fetchInvoiceList(getExportParams(scope));
+      const items = result.items;
+      if (!items.length) {
+        showToast("No invoice data to export.", "info");
+        return;
+      }
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
+      await exportTableToPDF<InvoiceListItem>({
+        title: "INVOICES REPORT",
+        filterInfo: getFilterInfo(),
+        scope,
+        currentPage,
+        filename: `Invoices_${scopeLabel}_${dateKey}.pdf`,
+        orientation: "landscape",
+        columns: [
+          { header: "#", accessor: (_, i) => i + 1, width: "30px" },
+          { header: "Invoice ID", accessor: (inv) => inv.invoiceId || inv.invoiceNumber || "-" },
+          { header: "Customer", accessor: "customerName" },
+          { header: "Date", accessor: (inv) => formatDateOnly(inv.dateTime || inv.invoiceDate) },
+          { header: "Booking ID", accessor: (inv) => inv.bookingId || "-" },
+          { header: "Attraction", accessor: (inv) => inv.attraction?.name || "-" },
+          { header: "Visitors", accessor: (inv) => inv.visitors ?? 0, align: "center" },
+          { header: "Amount (₹)", accessor: (inv) => `₹${Number(inv.amount ?? 0).toFixed(2)}`, align: "right" },
+          { header: "Mode", accessor: "paymentMode" },
+          { header: "Status", renderCell: (inv) => renderStatusBadgeHTML(inv.status || "-"), align: "center" },
+        ],
+        data: items,
+        summaryCards: [
+          { label: "Total Invoices", value: items.length },
+          { label: "Total Revenue", value: `₹${items.reduce((s, inv) => s + Number(inv.amount ?? 0), 0).toFixed(2)}` },
+        ],
+      });
+      showToast(`PDF downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Invoices PDF export error:", err);
+      showToast("PDF export failed. Please try again.", "error");
+    } finally {
+      setIsExportingPDF(false);
     }
   };
 
-  const handleExportExcel = () => {
-    if (invoices.length === 0) {
-      showToast("No invoice data to export", "info");
-      return;
+  const handleExportExcel = async (scope: ExportScope) => {
+    setIsExportingExcel(true);
+    try {
+      const result = await fetchInvoiceList(getExportParams(scope));
+      const items = result.items;
+      if (!items.length) {
+        showToast("No invoice data to export.", "info");
+        return;
+      }
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
+      const headers = ["#", "Invoice ID", "Customer", "Date", "Booking ID", "Attraction", "Visitors", "Amount (₹)", "Mode", "Status"];
+      const rows = items.map((inv, i) => [
+        i + 1,
+        inv.invoiceId || inv.invoiceNumber || "-",
+        inv.customerName || "-",
+        formatDateOnly(inv.dateTime || inv.invoiceDate),
+        inv.bookingId || "-",
+        inv.attraction?.name || "-",
+        inv.visitors ?? 0,
+        Number(inv.amount ?? 0).toFixed(2),
+        inv.paymentMode || "-",
+        inv.status || "-",
+      ]);
+      exportToCSV(`Invoices_${scopeLabel}_${dateKey}`, headers, rows);
+      showToast(`Excel downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Invoices Excel export error:", err);
+      showToast("Excel export failed. Please try again.", "error");
+    } finally {
+      setIsExportingExcel(false);
     }
-    const rangeLabel = fromDate && toDate ? `${fromDate}_to_${toDate}` : "All";
-    exportToCSV(invoices, `Invoices_${rangeLabel}.csv`);
-    showToast(`Exported ${invoices.length} invoices to CSV`, "success");
   };
 
   return (
@@ -321,9 +280,11 @@ export default function InvoicesPage() {
       {/* ── Top Export Buttons Row ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
         <ExportButtons
-          onExportPDF={handleExportPDF}
-          onExportExcel={handleExportExcel}
-          disabled={invoices.length === 0 || isLoading}
+          onExportPDFScope={handleExportPDF}
+          onExportExcelScope={handleExportExcel}
+          isExportingPDF={isExportingPDF}
+          isExportingExcel={isExportingExcel}
+          disabled={isLoading || (invoices.length === 0 && (data?.pagination?.total ?? 0) === 0)}
         />
       </div>
 

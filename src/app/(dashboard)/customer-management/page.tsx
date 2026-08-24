@@ -16,16 +16,22 @@ import AddEditCustomerModal from "@/components/modals/AddEditCustomerModal";
 import { useToast } from "@/components/ui/Toast";
 import { confirmDelete } from "@/lib/notify";
 import ExportButtons from "@/components/ui/ExportButtons";
-import { exportToCSV } from "@/lib/exportUtils";
 import { GlobalDataTable, GlobalColumn } from "@/components/ui/GlobalDataTable";
 import { useUserRole } from "@/hooks/useUserRole";
 import {
   useCustomerList,
+  fetchCustomerList,
   useCreateCustomer,
   useUpdateCustomer,
   useDeleteCustomer,
   CustomerItem,
+  CustomerListParams,
 } from "@/hooks/useCustomerQueries";
+import {
+  ExportScope,
+  exportTableToPDF,
+  exportToCSV,
+} from "@/lib/exportUtils";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 
 export default function CustomerManagementPage() {
@@ -133,104 +139,84 @@ export default function CustomerManagementPage() {
     }
   };
 
-  // ── Export Handlers (Matching Bookings Module Pattern) ────────────────────
-  const handleExportCSV = () => {
-    if (customers.length === 0) {
-      showToast("No customer records to export.", "info");
-      return;
-    }
-    const headers = ["#", "Customer Name", "Mobile Number", "GSTN"];
-    const rows = customers.map((c, i) => [
-      (currentPage - 1) * itemsPerPage + i + 1,
-      c.name || "-",
-      c.mobile || "-",
-      c.gstn || "-",
-    ]);
-    exportToCSV(`Customers_${new Date().toISOString().slice(0, 10)}`, headers, rows);
-    showToast("Excel (CSV) file downloaded successfully.", "success");
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+
+  // ── Export Handlers (Scoped Export) ───────────────────────────────────────
+  const getFilterInfo = () => {
+    return debouncedSearch ? `Search: "${debouncedSearch}"` : undefined;
   };
 
-  const handleExportPDF = async () => {
-    if (customers.length === 0) {
-      showToast("No customer records to export.", "info");
-      return;
-    }
+  const getExportParams = (scope: ExportScope): CustomerListParams => {
+    const base: CustomerListParams = {
+      search: debouncedSearch || undefined,
+    };
+    return scope === "all" ? { ...base, page: 1, limit: 0 } : { ...base, page: currentPage, limit: itemsPerPage };
+  };
 
+  const handleExportPDF = async (scope: ExportScope) => {
+    setIsExportingPDF(true);
     try {
-      if (!(window as any).html2pdf) {
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement("script");
-          script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error("Failed to load PDF library"));
-          document.head.appendChild(script);
-        });
+      const result = await fetchCustomerList(getExportParams(scope));
+      const items = result.items;
+      if (!items.length) {
+        showToast("No customer records to export.", "info");
+        return;
       }
-
-      const dateLabel = new Date().toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
+      await exportTableToPDF<CustomerItem>({
+        title: "CUSTOMER MANAGEMENT REPORT",
+        filterInfo: getFilterInfo(),
+        scope,
+        currentPage,
+        filename: `Customers_${scopeLabel}_${dateKey}.pdf`,
+        orientation: "portrait",
+        columns: [
+          { header: "#", accessor: (_, i) => (scope === "all" ? i + 1 : (currentPage - 1) * itemsPerPage + i + 1), width: "40px" },
+          { header: "Customer Name", accessor: (c) => c.name || "-" },
+          { header: "Mobile Number", accessor: (c) => c.mobile || "-" },
+          { header: "GSTN", accessor: (c) => c.gstn || "-" },
+        ],
+        data: items,
+        summaryCards: [
+          { label: "Total Customers", value: items.length },
+        ],
       });
-
-      const rowsHtml = customers
-        .map(
-          (c, idx) => `
-        <tr style="border-bottom: 1px solid #E5E7EB; font-size: 11px;">
-          <td style="padding: 8px 10px;">${(currentPage - 1) * itemsPerPage + idx + 1}</td>
-          <td style="padding: 8px 10px; font-weight: 600; color: #0C2A42;">${c.name || "-"}</td>
-          <td style="padding: 8px 10px;">${c.mobile || "-"}</td>
-          <td style="padding: 8px 10px;">${c.gstn || "-"}</td>
-        </tr>`
-        )
-        .join("");
-
-      const reportHtml = `
-        <div style="font-family: Arial, sans-serif; padding: 24px; color: #011B2F; background: #FFFFFF;">
-          <table style="width: 100%; border-collapse: collapse; border-bottom: 2px solid #F4BC43; padding-bottom: 10px; margin-bottom: 16px;">
-            <tr>
-              <td style="vertical-align: top;">
-                <div style="font-size: 20px; font-weight: bold; color: #0C2A42;">TICKETING PLATFORM</div>
-                <div style="font-size: 13px; color: #0C2A42; font-weight: 600; margin-top: 2px;">CUSTOMER MANAGEMENT REPORT</div>
-                <div style="font-size: 11px; color: #6B7280; margin-top: 2px;">Generated: ${dateLabel}</div>
-              </td>
-              <td style="text-align: right; vertical-align: top;">
-                <div style="font-size: 11px; color: #6B7280;">Total Records: <strong>${pagination.total || customers.length}</strong></div>
-              </td>
-            </tr>
-          </table>
-          <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 20px;">
-            <thead>
-              <tr style="background: #F1F5F9; color: #374151; font-weight: bold;">
-                <th style="padding: 8px 10px; text-align: left; width: 40px;">#</th>
-                <th style="padding: 8px 10px; text-align: left;">Customer Name</th>
-                <th style="padding: 8px 10px; text-align: left;">Mobile Number</th>
-                <th style="padding: 8px 10px; text-align: left;">GSTN</th>
-              </tr>
-            </thead>
-            <tbody>${rowsHtml}</tbody>
-          </table>
-        </div>`;
-
-      const element = document.createElement("div");
-      element.style.width = "750px";
-      element.innerHTML = reportHtml;
-      document.body.appendChild(element);
-
-      const opt = {
-        margin: [10, 10, 10, 10],
-        filename: `Customers_Report_${new Date().toISOString().slice(0, 10)}.pdf`,
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      };
-
-      await (window as any).html2pdf().set(opt).from(element).save();
-      document.body.removeChild(element);
-      showToast("PDF downloaded successfully.", "success");
+      showToast(`PDF downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
     } catch (err) {
       console.error("Customer PDF export error:", err);
       showToast("PDF export failed. Please try again.", "error");
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
+  const handleExportCSV = async (scope: ExportScope) => {
+    setIsExportingExcel(true);
+    try {
+      const result = await fetchCustomerList(getExportParams(scope));
+      const items = result.items;
+      if (!items.length) {
+        showToast("No customer records to export.", "info");
+        return;
+      }
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
+      const headers = ["#", "Customer Name", "Mobile Number", "GSTN"];
+      const rows = items.map((c, i) => [
+        scope === "all" ? i + 1 : (currentPage - 1) * itemsPerPage + i + 1,
+        c.name || "-",
+        c.mobile || "-",
+        c.gstn || "-",
+      ]);
+      exportToCSV(`Customers_${scopeLabel}_${dateKey}`, headers, rows);
+      showToast(`Excel downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Customer Excel export error:", err);
+      showToast("Excel export failed. Please try again.", "error");
+    } finally {
+      setIsExportingExcel(false);
     }
   };
 
@@ -396,11 +382,13 @@ export default function CustomerManagementPage() {
         }}
       >
         <ExportButtons
-          onExportPDF={handleExportPDF}
-          onExportExcel={handleExportCSV}
+          onExportPDFScope={handleExportPDF}
+          onExportExcelScope={handleExportCSV}
           pdfLabel="Export PDF"
           excelLabel="Export Excel"
-          disabled={customers.length === 0}
+          isExportingPDF={isExportingPDF}
+          isExportingExcel={isExportingExcel}
+          disabled={isLoading || (customers.length === 0 && (customerData?.pagination?.total ?? 0) === 0)}
         />
 
         {/* Add Customer Button */}
