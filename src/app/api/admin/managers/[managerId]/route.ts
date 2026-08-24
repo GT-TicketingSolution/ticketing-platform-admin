@@ -14,7 +14,7 @@ const updateManagerSchema = z.object({
 
   password: z.string().min(8).optional(),
 
-  status: z.enum(["ACTIVE", "SUSPENDED", "DISABLED"]).optional(),
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
 });
 
 type RouteContext = {
