@@ -9,6 +9,7 @@ import {
   staffRoles,
   staffAttractionAssignments,
   attractions,
+  managerAttractionPermissions,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -57,7 +58,7 @@ function canViewStaff(role: string) {
  * Staff creation is restricted to ADMIN.
  */
 function canCreateStaff(role: string) {
-  return role === "ADMIN";
+  return role === "ADMIN" || role === "MANAGER";
 }
 
 /* =========================================================
@@ -854,6 +855,114 @@ export async function PATCH(
   }
 }
 
+// export async function DELETE(
+//   request: NextRequest,
+//   { params }: { params: Promise<{ staffId: string }> },
+// ) {
+//   try {
+//     /* -----------------------------------------------------
+//        Authentication
+//     ----------------------------------------------------- */
+
+//     const auth = await requireAuth(request);
+
+//     /* -----------------------------------------------------
+//        Authorization
+//        Only ADMIN can delete staff
+//     ----------------------------------------------------- */
+
+//     if (auth.user.role !== "ADMIN") {
+//       return failure("Admin access required.", 403, "FORBIDDEN");
+//     }
+
+//     /* -----------------------------------------------------
+//        Get staffId
+//     ----------------------------------------------------- */
+
+//     const { staffId } = await params;
+
+//     /* -----------------------------------------------------
+//        Admin ownership
+//     ----------------------------------------------------- */
+
+//     const adminId = auth.user.id;
+
+//     /* -----------------------------------------------------
+//        Check staff exists and belongs to this admin
+//     ----------------------------------------------------- */
+
+//     const [staff] = await db
+//       .select({
+//         id: users.id,
+//         name: users.name,
+//         email: users.email,
+//       })
+//       .from(users)
+//       .where(
+//         and(
+//           eq(users.id, staffId),
+//           eq(users.role, "STAFF"),
+//           eq(users.adminId, adminId),
+//         ),
+//       )
+//       .limit(1);
+
+//     if (!staff) {
+//       return failure("Staff member not found.", 404, "STAFF_NOT_FOUND");
+//     }
+
+//     /* -----------------------------------------------------
+//        Delete attraction assignments
+//     ----------------------------------------------------- */
+
+//     await db
+//       .delete(staffAttractionAssignments)
+//       .where(eq(staffAttractionAssignments.staffId, staffId));
+
+//     /* -----------------------------------------------------
+//        Delete staff roles
+//     ----------------------------------------------------- */
+
+//     await db.delete(staffRoles).where(eq(staffRoles.staffId, staffId));
+
+//     /* -----------------------------------------------------
+//        Delete staff user
+//     ----------------------------------------------------- */
+
+//     await db
+//       .delete(users)
+//       .where(
+//         and(
+//           eq(users.id, staffId),
+//           eq(users.role, "STAFF"),
+//           eq(users.adminId, adminId),
+//         ),
+//       );
+
+//     /* -----------------------------------------------------
+//        Response
+//     ----------------------------------------------------- */
+
+//     return success({
+//       message: "Staff deleted successfully.",
+//       staffId,
+//     });
+//   } catch (error) {
+//     if (error instanceof Error) {
+//       if (error.message === "UNAUTHORIZED") {
+//         return failure("Authentication required.", 401, "UNAUTHORIZED");
+//       }
+
+//       if (error.message === "ACCOUNT_NOT_ACTIVE") {
+//         return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+//       }
+//     }
+
+//     console.error("Delete staff error:", error);
+
+//     return failure("Unable to delete staff.", 500, "INTERNAL_SERVER_ERROR");
+//   }
+// }
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ staffId: string }> },
@@ -867,11 +976,12 @@ export async function DELETE(
 
     /* -----------------------------------------------------
        Authorization
-       Only ADMIN can delete staff
+       
+       ADMIN + MANAGER can delete staff.
     ----------------------------------------------------- */
 
-    if (auth.user.role !== "ADMIN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
+    if (auth.user.role !== "ADMIN" && auth.user.role !== "MANAGER") {
+      return failure("Admin or manager access required.", 403, "FORBIDDEN");
     }
 
     /* -----------------------------------------------------
@@ -881,10 +991,25 @@ export async function DELETE(
     const { staffId } = await params;
 
     /* -----------------------------------------------------
-       Admin ownership
+       Determine admin owner
+       
+       ADMIN:
+         auth.user.id = adminId
+
+       MANAGER:
+         auth.user.adminId = adminId
     ----------------------------------------------------- */
 
-    const adminId = auth.user.id;
+    const adminId =
+      auth.user.role === "ADMIN" ? auth.user.id : auth.user.adminId;
+
+    if (!adminId) {
+      return failure(
+        "Unable to determine admin ownership.",
+        403,
+        "ADMIN_CONTEXT_NOT_FOUND",
+      );
+    }
 
     /* -----------------------------------------------------
        Check staff exists and belongs to this admin
@@ -908,6 +1033,89 @@ export async function DELETE(
 
     if (!staff) {
       return failure("Staff member not found.", 404, "STAFF_NOT_FOUND");
+    }
+
+    /* -----------------------------------------------------
+       MANAGER ACCESS CHECK
+       
+       Manager can only delete staff assigned to attractions
+       that are also assigned to that manager.
+    ----------------------------------------------------- */
+
+    if (auth.user.role === "MANAGER") {
+      /* ---------------------------------------------------
+         Get attractions assigned to this manager
+      --------------------------------------------------- */
+
+      const managerAttractions = await db
+        .select({
+          attractionId: managerAttractionPermissions.attractionId,
+        })
+        .from(managerAttractionPermissions)
+        .where(eq(managerAttractionPermissions.managerId, auth.user.id));
+
+      const managerAttractionIds = [
+        ...new Set(managerAttractions.map((item) => item.attractionId)),
+      ];
+
+      /* ---------------------------------------------------
+         Manager has no attraction permissions
+      --------------------------------------------------- */
+
+      if (managerAttractionIds.length === 0) {
+        return failure(
+          "You are not assigned to any attractions.",
+          403,
+          "NO_ATTRACTION_ACCESS",
+        );
+      }
+
+      /* ---------------------------------------------------
+         Get attractions assigned to target staff
+      --------------------------------------------------- */
+
+      const staffAttractions = await db
+        .select({
+          attractionId: staffAttractionAssignments.attractionId,
+        })
+        .from(staffAttractionAssignments)
+        .where(eq(staffAttractionAssignments.staffId, staffId));
+
+      const staffAttractionIds = [
+        ...new Set(staffAttractions.map((item) => item.attractionId)),
+      ];
+
+      /* ---------------------------------------------------
+         Staff has no attraction assignment
+         
+         Manager should not be allowed to delete an
+         unassigned staff member.
+      --------------------------------------------------- */
+
+      if (staffAttractionIds.length === 0) {
+        return failure(
+          "This staff member is not assigned to any attraction you manage.",
+          403,
+          "STAFF_ATTRACTION_NOT_ASSIGNED",
+        );
+      }
+
+      /* ---------------------------------------------------
+         Verify every staff attraction is accessible
+         to this manager.
+      --------------------------------------------------- */
+
+      const unauthorizedAttractions = staffAttractionIds.filter(
+        (attractionId) => !managerAttractionIds.includes(attractionId),
+      );
+
+      if (unauthorizedAttractions.length > 0) {
+        return failure(
+          "You cannot delete this staff member because they are assigned to attractions outside your access.",
+          403,
+          "STAFF_ATTRACTION_ACCESS_DENIED",
+        );
+      }
     }
 
     /* -----------------------------------------------------

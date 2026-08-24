@@ -8,6 +8,7 @@ import {
   users,
   staffRoles,
   staffAttractionAssignments,
+  managerAttractionPermissions,
   attractions,
 } from "@/db/schema";
 
@@ -57,7 +58,7 @@ function canViewStaff(role: string) {
  * Staff creation is restricted to ADMIN.
  */
 function canCreateStaff(role: string) {
-  return role === "ADMIN";
+  return role === "ADMIN" || role === "MANAGER";
 }
 
 /* =========================================================
@@ -370,7 +371,16 @@ export async function POST(request: Request) {
     // Admin becomes staff owner
     // -----------------------------------------------------
 
-    const adminId = auth.user.id;
+    const adminId =
+      auth.user.role === "ADMIN" ? auth.user.id : auth.user.adminId;
+
+    if (!adminId) {
+      return failure(
+        "Unable to determine admin ownership.",
+        403,
+        "ADMIN_CONTEXT_NOT_FOUND",
+      );
+    }
 
     // -----------------------------------------------------
     // Validate request body
@@ -408,36 +418,89 @@ export async function POST(request: Request) {
     // -----------------------------------------------------
     // Validate attractions
     //
-    // Admin can only assign attractions belonging to
-    // that same admin.
+    // ADMIN:
+    //   Can assign any attraction belonging to that admin.
+    //
+    // MANAGER:
+    //   Can only assign attractions explicitly assigned
+    //   to that manager.
     // -----------------------------------------------------
 
     if (attractionIds.length > 0) {
-      const existingAttractions = await db
+      if (auth.user.role === "ADMIN") {
+        // -----------------------------------------------
+        // ADMIN: validate attraction ownership
+        // -----------------------------------------------
+
+        const existingAttractions = await db
+          .select({
+            id: attractions.id,
+          })
+          .from(attractions)
+          .where(
+            and(
+              inArray(attractions.id, attractionIds),
+              eq(attractions.adminId, adminId),
+            ),
+          );
+
+        const existingAttractionIds = new Set(
+          existingAttractions.map((attraction) => attraction.id),
+        );
+
+        const invalidAttractionIds = attractionIds.filter(
+          (id) => !existingAttractionIds.has(id),
+        );
+
+        if (invalidAttractionIds.length > 0) {
+          return failure(
+            "One or more attractions are invalid or do not belong to this admin.",
+            400,
+            "INVALID_ATTRACTION",
+          );
+        }
+      }
+    } else {
+      // -----------------------------------------------
+      // MANAGER: validate attraction assignment
+      // -----------------------------------------------
+      //
+      // Manager attractions are stored in:
+      // managerAttractionPermissions
+      //
+      // staffAttractionAssignments is only used to store
+      // the attractions assigned to the newly created staff.
+      //
+
+      const managerAttractions = await db
         .select({
-          id: attractions.id,
+          attractionId: managerAttractionPermissions.attractionId,
         })
-        .from(attractions)
+        .from(managerAttractionPermissions)
+        .innerJoin(
+          attractions,
+          eq(managerAttractionPermissions.attractionId, attractions.id),
+        )
         .where(
           and(
-            inArray(attractions.id, attractionIds),
+            eq(managerAttractionPermissions.managerId, auth.user.id),
             eq(attractions.adminId, adminId),
           ),
         );
 
-      const existingAttractionIds = new Set(
-        existingAttractions.map((attraction) => attraction.id),
+      const managerAttractionIds = new Set(
+        managerAttractions.map((item) => item.attractionId),
       );
 
       const invalidAttractionIds = attractionIds.filter(
-        (id) => !existingAttractionIds.has(id),
+        (id) => !managerAttractionIds.has(id),
       );
 
       if (invalidAttractionIds.length > 0) {
         return failure(
-          "One or more attractions are invalid or do not belong to this admin.",
-          400,
-          "INVALID_ATTRACTION",
+          "One or more attractions are not assigned to this manager.",
+          403,
+          "ATTRACTION_NOT_ASSIGNED",
         );
       }
     }

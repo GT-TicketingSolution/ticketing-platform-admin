@@ -80,6 +80,7 @@ export async function GET(
         amountPaid: bookings.amountPaid,
 
         paymentMode: bookings.paymentMode,
+        paymentExpiresAt: bookings.paymentExpiresAt,
 
         status: bookings.status,
 
@@ -223,6 +224,7 @@ export async function GET(
         },
 
         paymentMode: booking.paymentMode,
+        paymentExpiresAt: booking.paymentExpiresAt,
 
         status: booking.status,
 
