@@ -15,9 +15,10 @@ export const AppUrl = {
     updateProfile: "/auth/profile",
   },
 
-  // Admin Dashboard
+  // Dashboard
   dashboard: {
     get: "/admin/dashboard",
+    manager: "/admin/manager/dashboard",
   },
 
   // Manager Management — CRUD uses singular /admin/manager, permissions uses plural /admin/managers/:id/permissions

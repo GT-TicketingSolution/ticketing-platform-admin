@@ -89,6 +89,35 @@ export interface DashboardQueryParams {
   dateTo?: string;
 }
 
+// ─── Manager Dashboard Response Types
+
+export interface ManagerDashboardStaffItem {
+  id: string;
+  name: string;
+  role: string[];
+  ticketsIssued: number;
+  status: "Active" | "Inactive" | string;
+}
+
+export interface ManagerDashboardSummary {
+  totalBookings?: number;
+  totalRevenue?: number;
+  totalTickets?: number;
+  totalCustomers?: number;
+}
+
+export interface ManagerDashboardData {
+  totalStaff: number;
+  activeStaff: number;
+  totalTicketsProcessed: number;
+  estimatedRevenue: number;
+  staff: ManagerDashboardStaffItem[];
+  summary?: ManagerDashboardSummary;
+  recentBookings?: any[];
+  attractions?: any[];
+  transactions?: any[];
+}
+
 // ─── Legacy (unused going forward) 
 
 export interface MetricCardData {

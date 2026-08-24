@@ -102,74 +102,96 @@ export const invoiceKeys = {
 // ── Queries ──────────────────────────────────────────────────────────────────
 
 /**
+ * Fetch paginated list of invoices or all records when limit: 0.
+ * GET /api/admin/invoices
+ */
+export async function fetchInvoiceList(params?: InvoiceListParams): Promise<InvoiceListResponse> {
+  const page = params?.page ?? 1;
+  const limit = params?.limit !== undefined ? params.limit : 10;
+
+  const sp = new URLSearchParams();
+  sp.set("page", String(page));
+  sp.set("limit", String(limit));
+  if (params?.search?.trim()) sp.set("search", params.search.trim());
+  if (params?.paymentMode && params.paymentMode !== "All") sp.set("paymentMode", params.paymentMode);
+  if (params?.dateFrom) sp.set("dateFrom", params.dateFrom);
+  if (params?.dateTo) sp.set("dateTo", params.dateTo);
+
+  const res = await getData<any>(`${AppUrl.invoice.list}?${sp.toString()}`);
+
+  // Handle unwrap format from apiService or raw axios
+  const payload = res?.data ?? res;
+  if (payload && Array.isArray(payload.items)) {
+    const total = payload.pagination?.total ?? payload.items.length;
+    return {
+      summary: payload.summary,
+      items: payload.items.map((item: any, idx: number) => ({
+        ...item,
+        id: item.id || item.invoiceId || item.invoiceNumber || item._id || `inv-${idx + 1 + (page - 1) * (limit || 10)}`,
+        sNo: item.sNo ?? idx + 1 + (page - 1) * (limit || 10),
+        invoiceId: item.invoiceId || item.invoiceNumber || item.id || "",
+        invoiceNumber: item.invoiceNumber || item.invoiceId || item.id || "",
+        bookingId: item.bookingId || item.bookingNumber || item.booking?.bookingId || "",
+        dateTime: item.dateTime || item.invoiceDate || "",
+        invoiceDate: item.dateTime || item.invoiceDate || "",
+        visitAt: item.visitAt || "",
+        visitors: item.visitors ?? 0,
+        amount: Number(item.amount ?? 0),
+        paymentMode: item.paymentMode ?? "-",
+        status: item.status ?? "SUCCESS",
+      })),
+      pagination: payload.pagination || {
+        page,
+        limit,
+        total,
+        totalPages: limit > 0 ? (Math.ceil(total / limit) || 1) : 1,
+      },
+    };
+  }
+  if (Array.isArray(payload)) {
+    return {
+      summary: undefined,
+      items: payload.map((item: any, idx: number) => ({
+        ...item,
+        id: item.id || item.invoiceId || item.invoiceNumber || item._id || `inv-${idx + 1 + (page - 1) * (limit || 10)}`,
+        sNo: item.sNo ?? idx + 1 + (page - 1) * (limit || 10),
+        invoiceId: item.invoiceId || item.invoiceNumber || item.id || "",
+        invoiceNumber: item.invoiceNumber || item.invoiceId || item.id || "",
+        bookingId: item.bookingId || item.bookingNumber || item.booking?.bookingId || "",
+        dateTime: item.dateTime || item.invoiceDate || "",
+        invoiceDate: item.dateTime || item.invoiceDate || "",
+        visitAt: item.visitAt || "",
+        visitors: item.visitors ?? 0,
+        amount: Number(item.amount ?? 0),
+        paymentMode: item.paymentMode ?? "-",
+        status: item.status ?? "SUCCESS",
+      })),
+      pagination: {
+        page,
+        limit,
+        total: payload.length,
+        totalPages: limit > 0 ? (Math.ceil(payload.length / limit) || 1) : 1,
+      },
+    };
+  }
+  return {
+    summary: undefined,
+    items: [],
+    pagination: { page: 1, limit, total: 0, totalPages: 0 },
+  };
+}
+
+/**
  * Fetch paginated list of invoices.
  * GET /api/admin/invoices
  */
 export function useInvoiceList(params?: InvoiceListParams) {
   const page = params?.page ?? 1;
-  const limit = params?.limit ?? 10;
+  const limit = params?.limit !== undefined ? params.limit : 10;
 
   return useQuery<InvoiceListResponse>({
     queryKey: invoiceKeys.list({ ...params, page, limit }),
-    queryFn: async () => {
-      const sp = new URLSearchParams();
-      sp.set("page", String(page));
-      sp.set("limit", String(limit));
-      if (params?.search?.trim()) sp.set("search", params.search.trim());
-      if (params?.paymentMode && params.paymentMode !== "All") sp.set("paymentMode", params.paymentMode);
-      if (params?.dateFrom) sp.set("dateFrom", params.dateFrom);
-      if (params?.dateTo) sp.set("dateTo", params.dateTo);
-
-      const res = await getData<any>(`${AppUrl.invoice.list}?${sp.toString()}`);
-
-      // Handle unwrap format from apiService or raw axios
-      const payload = res?.data ?? res;
-      if (payload && Array.isArray(payload.items)) {
-        return {
-          summary: payload.summary,
-          items: payload.items.map((item: any, idx: number) => ({
-            ...item,
-            id: item.id || item.invoiceId || item.invoiceNumber || item._id || `inv-${idx + 1 + (page - 1) * limit}`,
-            sNo: item.sNo ?? idx + 1 + (page - 1) * limit,
-            invoiceId: item.invoiceId || item.invoiceNumber || item.id || "",
-            invoiceNumber: item.invoiceNumber || item.invoiceId || item.id || "",
-            bookingId: item.bookingId || item.bookingNumber || item.booking?.bookingId || "",
-            dateTime: item.dateTime || item.invoiceDate || "",
-            invoiceDate: item.dateTime || item.invoiceDate || "",
-            visitAt: item.visitAt || "",
-            visitors: item.visitors ?? 0,
-          })),
-          pagination: payload.pagination || {
-            page,
-            limit,
-            total: payload.items.length,
-            totalPages: Math.ceil(payload.items.length / limit) || 1,
-          },
-        };
-      }
-      if (Array.isArray(payload)) {
-        return {
-          items: payload.map((item: any, idx: number) => ({
-            ...item,
-            id: item.id || item.invoiceId || item.invoiceNumber || item._id || `inv-${idx + 1 + (page - 1) * limit}`,
-            sNo: item.sNo ?? idx + 1 + (page - 1) * limit,
-            invoiceId: item.invoiceId || item.invoiceNumber || item.id || "",
-            invoiceNumber: item.invoiceNumber || item.invoiceId || item.id || "",
-            bookingId: item.bookingId || item.bookingNumber || item.booking?.bookingId || "",
-            dateTime: item.dateTime || item.invoiceDate || "",
-            invoiceDate: item.dateTime || item.invoiceDate || "",
-            visitAt: item.visitAt || "",
-            visitors: item.visitors ?? 0,
-          })),
-          pagination: { page, limit, total: payload.length, totalPages: Math.ceil(payload.length / limit) || 1 },
-        };
-      }
-      return {
-        summary: undefined,
-        items: [],
-        pagination: { page: 1, limit, total: 0, totalPages: 0 },
-      };
-    },
+    queryFn: () => fetchInvoiceList({ ...params, page, limit }),
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });

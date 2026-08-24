@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getData } from "@/lib/api/apiService";
 import { AppUrl } from "@/lib/api/endpoints";
-import { DashboardData, DashboardQueryParams } from "@/app/(dashboard)/dashboard/types";
+import { DashboardData, DashboardQueryParams, ManagerDashboardData } from "@/app/(dashboard)/dashboard/types";
 
 export const dashboardKeys = {
   all: ["admin-dashboard"] as const,
@@ -39,6 +39,24 @@ export function useDashboard(params?: DashboardQueryParams) {
       return getData<DashboardData>(url);
     },
     staleTime: 30 * 1000, // 30 seconds
+    refetchOnWindowFocus: true,
+  });
+}
+
+export const managerDashboardKeys = {
+  all: ["manager-dashboard"] as const,
+};
+
+/**
+ * Fetch Manager Dashboard metrics and staff performance from GET /api/admin/manager/dashboard
+ */
+export function useManagerDashboard() {
+  return useQuery<ManagerDashboardData>({
+    queryKey: managerDashboardKeys.all,
+    queryFn: async () => {
+      return getData<ManagerDashboardData>(AppUrl.dashboard.manager);
+    },
+    staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });
 }

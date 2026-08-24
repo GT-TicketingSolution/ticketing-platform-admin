@@ -12,6 +12,16 @@ export interface ManagerQueryParams {
   status?: "ACTIVE" | "SUSPENDED" | "DISABLED";
 }
 
+export interface ManagerAttractionItem {
+  id: string;
+  name: string;
+  type?: string;
+  category?: string;
+  status?: string;
+  moduleIds?: string[];
+  modules?: any[];
+}
+
 export interface ManagerListItem {
   id: string;
   name: string;
@@ -21,6 +31,7 @@ export interface ManagerListItem {
   status: "ACTIVE" | "SUSPENDED" | "DISABLED";
   createdAt: string;
   lastLoginAt?: string | null;
+  attractions?: ManagerAttractionItem[];
 }
 
 export interface ManagerListResponse {
@@ -112,25 +123,65 @@ export const managerKeys = {
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
 /**
+ * Fetch list of managers or all records when limit: 0.
+ * GET /api/admin/manager
+ */
+export async function fetchManagers(params?: ManagerQueryParams): Promise<ManagerListResponse> {
+  const page = params?.page ?? 1;
+  const limit = params?.limit !== undefined ? params.limit : 10;
+
+  const searchParams = new URLSearchParams();
+  searchParams.set("page", String(page));
+  searchParams.set("limit", String(limit));
+  if (params?.search?.trim()) searchParams.set("search", params.search.trim());
+  if (params?.status) searchParams.set("status", params.status);
+
+  const queryString = searchParams.toString();
+  const url = `${AppUrl.manager.list}?${queryString}`;
+  const res = await getData<any>(url);
+
+  const payload = res?.data ?? res;
+  if (payload && Array.isArray(payload.managers)) {
+    const total = payload.pagination?.total ?? payload.managers.length;
+    return {
+      managers: payload.managers,
+      pagination: payload.pagination || {
+        page,
+        limit,
+        total,
+        totalPages: limit > 0 ? (Math.ceil(total / limit) || 1) : 1,
+      },
+    };
+  }
+  if (Array.isArray(payload)) {
+    return {
+      managers: payload,
+      pagination: {
+        page,
+        limit,
+        total: payload.length,
+        totalPages: limit > 0 ? (Math.ceil(payload.length / limit) || 1) : 1,
+      },
+    };
+  }
+  return {
+    managers: [],
+    pagination: { page: 1, limit, total: 0, totalPages: 0 },
+  };
+}
+
+/**
  * Fetch list of managers with pagination, search, and status filtering (GET /api/admin/manager)
  */
 export function useManagers(params?: ManagerQueryParams) {
   const page = params?.page ?? 1;
-  const limit = params?.limit ?? 10;
+  const limit = params?.limit !== undefined ? params.limit : 10;
 
   return useQuery({
     queryKey: managerKeys.list({ ...params, page, limit }),
-    queryFn: async () => {
-      const searchParams = new URLSearchParams();
-      searchParams.set("page", String(page));
-      searchParams.set("limit", String(limit));
-      if (params?.search) searchParams.set("search", params.search);
-      if (params?.status) searchParams.set("status", params.status);
-
-      const queryString = searchParams.toString();
-      const url = `${AppUrl.manager.list}?${queryString}`;
-      return getData<ManagerListResponse>(url);
-    },
+    queryFn: () => fetchManagers({ ...params, page, limit }),
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 

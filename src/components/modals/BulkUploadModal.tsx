@@ -1,10 +1,18 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Upload, Download, FileSpreadsheet, Loader2 } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { X, Upload, Download, FileSpreadsheet, Loader2, AlertCircle, CheckCircle2, FileX } from "lucide-react";
 import { useBulkUploadAttractions } from "@/hooks/useAttractionManagementQueries";
 import { useToast } from "@/components/ui/Toast";
 import type { BulkAttractionPayload } from "@/app/(dashboard)/attraction-management/types";
+import {
+  bulkUploadFormSchema,
+  validateBulkUploadRows,
+  isAllowedBulkFile,
+  type BulkUploadFormData,
+} from "@/app/(dashboard)/attraction-management/bulkUploadSchema";
 
 interface BulkUploadModalProps {
   isOpen: boolean;
@@ -38,22 +46,26 @@ function parseCsvLine(line: string): string[] {
   return result;
 }
 
-function parseCsvToBulkPayload(csvText: string): BulkAttractionPayload {
+function parseCsvToRawRows(csvText: string): Record<string, string>[] {
   const lines = csvText
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
   if (lines.length < 2) {
-    throw new Error("CSV file must contain a header row and at least one data row.");
+    throw new Error(
+      "CSV file must contain a header row and at least one data row.\nFirst row must contain column headers."
+    );
   }
 
-  // Normalize header keys: lowercase and alphanumeric only
-  const headers = parseCsvLine(lines[0]).map((h) =>
-    h.toLowerCase().replace(/[^a-z0-9]/g, "")
-  );
+  const headers = parseCsvLine(lines[0]).map((h) => h.trim());
 
-  const items: BulkAttractionPayload = [];
+  // Validate that headers are present (first row must have column headers)
+  if (headers.length === 0 || headers.every((h) => !h)) {
+    throw new Error("First row must contain column headers.");
+  }
+
+  const rows: Record<string, string>[] = [];
 
   for (let i = 1; i < lines.length; i++) {
     const values = parseCsvLine(lines[i]);
@@ -63,92 +75,15 @@ function parseCsvToBulkPayload(csvText: string): BulkAttractionPayload {
     headers.forEach((h, idx) => {
       rowObj[h] = values[idx] !== undefined ? values[idx].trim() : "";
     });
-
-    const name =
-      rowObj["name"] ||
-      rowObj["attractionname"] ||
-      rowObj["attraction"] ||
-      rowObj["attractionid"] ||
-      rowObj["id"] ||
-      "";
-
-    if (!name) {
-      continue;
-    }
-
-    const type = rowObj["type"] || rowObj["category"] || "RIDE";
-
-    const parseNum = (val?: string) => {
-      if (!val) return 0;
-      const cleaned = val.replace(/[^0-9.-]+/g, "");
-      const num = Number(cleaned);
-      return isNaN(num) ? 0 : num;
-    };
-
-    const parseBool = (val?: string) => {
-      if (!val) return false;
-      const lower = val.trim().toLowerCase();
-      return lower === "true" || lower === "1" || lower === "yes" || lower === "y";
-    };
-
-    items.push({
-      name,
-      type,
-      image: rowObj["image"] || rowObj["imageurl"] || null,
-      description: rowObj["description"] || rowObj["desc"] || null,
-      timing: rowObj["timing"] || rowObj["timings"] || rowObj["time"] || null,
-      adultPrice: parseNum(rowObj["adultprice"] || rowObj["adult"]),
-      childPrice: parseNum(rowObj["childprice"] || rowObj["child"]),
-      studentPrice: parseNum(rowObj["studentprice"] || rowObj["student"]),
-      seniorPrice: parseNum(rowObj["seniorprice"] || rowObj["senior"]),
-      foreignerPrice: parseNum(rowObj["foreignerprice"] || rowObj["foreigner"]),
-      hasSeating: parseBool(rowObj["hasseating"] || rowObj["seating"] || rowObj["hasseatings"]),
-      attractionName: name,
-    });
+    rows.push(rowObj);
   }
 
-  if (items.length === 0) {
-    throw new Error("No valid attraction records with a 'name' were found in the CSV.");
-  }
-
-  return items;
+  return rows;
 }
 
-async function parseFileToPayload(file: File): Promise<BulkAttractionPayload> {
+async function parseFileToRawRows(file: File): Promise<Record<string, any>[]> {
   const text = await file.text();
-  if (file.name.toLowerCase().endsWith(".json")) {
-    const parsed = JSON.parse(text);
-    if (!Array.isArray(parsed)) {
-      throw new Error("JSON file must contain an array of attraction objects.");
-    }
-    return parsed.map((item: any, idx: number) => {
-      const name = item.name || item.attractionName || item.attractionId || item.id;
-      if (!name) {
-        throw new Error(`Item ${idx + 1} is missing required 'name'.`);
-      }
-      return {
-        name: String(name).trim(),
-        type: item.type || item.category || "RIDE",
-        image: item.image ?? null,
-        description: item.description ?? null,
-        timing: item.timing ?? null,
-        adultPrice: typeof item.adultPrice === "number" ? item.adultPrice : (Number(item.adultPrice) || 0),
-        childPrice: typeof item.childPrice === "number" ? item.childPrice : (Number(item.childPrice) || 0),
-        studentPrice: typeof item.studentPrice === "number" ? item.studentPrice : (Number(item.studentPrice) || 0),
-        seniorPrice: typeof item.seniorPrice === "number" ? item.seniorPrice : (Number(item.seniorPrice) || 0),
-        foreignerPrice: typeof item.foreignerPrice === "number" ? item.foreignerPrice : (Number(item.foreignerPrice) || 0),
-        hasSeating: Boolean(
-          item.hasSeating === true ||
-          item.hasSeating === "true" ||
-          item.hasSeating === 1 ||
-          item.hasSeating === "1" ||
-          item.hasSeating === "yes"
-        ),
-        attractionName: String(name).trim(),
-      };
-    });
-  }
-  return parseCsvToBulkPayload(text);
+  return parseCsvToRawRows(text);
 }
 
 export default function BulkUploadModal({
@@ -157,13 +92,41 @@ export default function BulkUploadModal({
   onUploadSuccess,
 }: BulkUploadModalProps) {
   const [dragActive, setDragActive] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const bulkUploadMutation = useBulkUploadAttractions();
   const { showToast } = useToast();
   const isUploading = bulkUploadMutation.isPending;
 
+  const {
+    handleSubmit,
+    setValue,
+    watch,
+    reset,
+    formState: { errors },
+  } = useForm<BulkUploadFormData>({
+    resolver: zodResolver(bulkUploadFormSchema),
+    defaultValues: {
+      file: undefined,
+    },
+  });
+
+  const selectedFile = watch("file");
+
   if (!isOpen) return null;
+
+  const handleFileSelect = (file: File) => {
+    setFileError(null);
+
+    // Validate file type immediately for instant UI feedback
+    if (!isAllowedBulkFile(file)) {
+      setFileError("Only CSV, XLS, XLSX Files are supported.");
+      setValue("file", file as any); // set so zodResolver also flags the error
+      return;
+    }
+
+    setValue("file", file, { shouldValidate: true });
+  };
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -180,32 +143,42 @@ export default function BulkUploadModal({
     e.stopPropagation();
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setSelectedFile(e.dataTransfer.files[0]);
+      handleFileSelect(e.dataTransfer.files[0]);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
+      handleFileSelect(e.target.files[0]);
     }
   };
 
-  const handleUpload = async () => {
-    if (!selectedFile) {
-      showToast("Please select a file to upload.", "error");
+  const handleRemoveFile = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setValue("file", undefined as any, { shouldValidate: false });
+    setFileError(null);
+    reset();
+  };
+
+  const onSubmit = async (data: BulkUploadFormData) => {
+    let rawRows: Record<string, any>[];
+    try {
+      rawRows = await parseFileToRawRows(data.file);
+    } catch (err: any) {
+      showToast(err?.message || "Failed to read file.", "error");
       return;
     }
 
     let payload: BulkAttractionPayload;
     try {
-      payload = await parseFileToPayload(selectedFile);
+      payload = validateBulkUploadRows(rawRows);
     } catch (err: any) {
-      showToast(err?.message || "Failed to process file for upload.", "error");
+      showToast(err?.message || "Failed to validate file data.", "error");
       return;
     }
 
     if (!payload || payload.length === 0) {
-      showToast("No valid attraction records found in the file.", "error");
+      showToast("No valid attraction records found in the file. Ensure all required fields are filled in the file.", "error");
       return;
     }
 
@@ -213,21 +186,21 @@ export default function BulkUploadModal({
       const result = await bulkUploadMutation.mutateAsync(payload);
       const count = Array.isArray(result?.data) ? result.data.length : payload.length;
       onUploadSuccess(count);
-      setSelectedFile(null);
+      reset();
+      setValue("file", undefined as any);
+      setFileError(null);
       onClose();
     } catch {
       // Backend error is handled and toasted centrally by the axios response interceptor.
-      // We avoid showing duplicate error toasts here.
     }
   };
 
   const handleDownloadTemplate = () => {
-    // Generate sample CSV for download with name, type, hasSeating and all price columns
     const csvContent =
       "data:text/csv;charset=utf-8," +
       "name,type,image,description,timing,adultPrice,childPrice,studentPrice,seniorPrice,foreignerPrice,hasSeating\n" +
       "Roller Coaster,RIDE,https://example.com/roller-coaster.jpg,High-speed roller coaster attraction,10:00 AM - 6:00 PM,500,300,350,250,800,true\n" +
-      "Water Ride,RIDE,https://example.com/water-ride.jpg,Exciting water ride,11:00 AM - 7:00 PM,400,250,300,200,700,false\n";
+      "Water Ride,RIDE,,Exciting water ride,11:00 AM - 7:00 PM,400,250,300,200,700,false\n";
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -236,6 +209,11 @@ export default function BulkUploadModal({
     link.click();
     document.body.removeChild(link);
   };
+
+  // Merge zod error and immediate fileError
+  const fileValidationError = fileError || errors.file?.message;
+  const hasFileError = Boolean(fileValidationError);
+  const hasValidFile = selectedFile && !hasFileError;
 
   return (
     <div
@@ -268,7 +246,7 @@ export default function BulkUploadModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Container Header */}
+        {/* Modal Header */}
         <div
           style={{
             padding: "24px 32px 16px 32px",
@@ -299,7 +277,7 @@ export default function BulkUploadModal({
                 color: "#6B7280",
               }}
             >
-              Upload a file to add or update multiple attractions at once.
+              Upload a CSV, XLS, or XLSX file to add or update multiple attractions at once.
             </p>
           </div>
           <button
@@ -316,172 +294,23 @@ export default function BulkUploadModal({
           </button>
         </div>
 
-        {/* Modal Outer Card Container matching Screenshot 4 */}
-        <div style={{ padding: "0 32px 32px 32px" }}>
-          <div
-            style={{
-              boxSizing: "border-box",
-              width: "100%",
-              background: "#FFFFFF",
-              border: "1.5px solid rgba(179, 175, 175, 0.51)",
-              borderRadius: "15px",
-              padding: "28px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "28px",
-            }}
-          >
-            {/* Section 1: Upload File */}
-            <div>
-              <h3
-                style={{
-                  margin: "0 0 16px 0",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 700,
-                  fontSize: "16px",
-                  color: "#0C2A42",
-                }}
-              >
-                1. Upload File
-              </h3>
-
-              {/* Dropzone matching Screenshot 4 */}
-              <div
-                onDragEnter={handleDrag}
-                onDragLeave={handleDrag}
-                onDragOver={handleDrag}
-                onDrop={handleDrop}
-                style={{
-                  boxSizing: "border-box",
-                  width: "100%",
-                  minHeight: "180px",
-                  background: dragActive ? "#F0F9FF" : "#F8FAFC",
-                  border: `1.5px ${dragActive ? "dashed" : "solid"} ${dragActive ? "#2372A5" : "rgba(179, 175, 175, 0.51)"
-                    }`,
-                  borderRadius: "12px",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: "24px",
-                  position: "relative",
-                  textAlign: "center",
-                }}
-              >
-                <input
-                  type="file"
-                  accept=".csv, .xlsx, .xls, .json"
-                  onChange={handleFileChange}
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    opacity: 0,
-                    cursor: "pointer",
-                  }}
-                />
-
-                {selectedFile ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
-                  >
-                    <FileSpreadsheet size={40} color="#2372A5" />
-                    <span
-                      style={{
-                        fontFamily: "'Plus Jakarta Sans', sans-serif",
-                        fontWeight: 700,
-                        fontSize: "14px",
-                        color: "#011B2F",
-                      }}
-                    >
-                      {selectedFile.name}
-                    </span>
-                    <span
-                      style={{
-                        fontFamily: "'Plus Jakarta Sans', sans-serif",
-                        fontSize: "12px",
-                        color: "#6B7280",
-                      }}
-                    >
-                      {(selectedFile.size / 1024).toFixed(1)} KB - Click or drag to change
-                    </span>
-                  </div>
-                ) : (
-                  <>
-                    <Upload size={32} color="#2372A5" strokeWidth={1.8} />
-                    <span
-                      style={{
-                        fontFamily: "'Plus Jakarta Sans', sans-serif",
-                        fontWeight: 600,
-                        fontSize: "13px",
-                        color: "#011B2F",
-                        marginTop: "10px",
-                      }}
-                    >
-                      Drag & Drop your File here
-                    </span>
-                    <span
-                      style={{
-                        fontFamily: "'Plus Jakarta Sans', sans-serif",
-                        fontWeight: 500,
-                        fontSize: "11px",
-                        color: "#6B7280",
-                        margin: "4px 0 10px 0",
-                      }}
-                    >
-                      or
-                    </span>
-                    <label
-                      htmlFor="bulk-file-upload"
-                      style={{
-                        boxSizing: "border-box",
-                        padding: "8px 20px",
-                        background: "#F4BC43",
-                        borderRadius: "8px",
-                        fontFamily: "'Plus Jakarta Sans', sans-serif",
-                        fontWeight: 700,
-                        fontSize: "12px",
-                        color: "#011B2F",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                      }}
-                    >
-                      <Upload size={14} color="#011B2F" />
-                      Browse File
-                    </label>
-                    <span
-                      style={{
-                        fontFamily: "'Plus Jakarta Sans', sans-serif",
-                        fontWeight: 500,
-                        fontSize: "11px",
-                        color: "#6B7280",
-                        marginTop: "12px",
-                      }}
-                    >
-                      Only .csv, .xls, .xlsx files are allowed
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Section 2: Download Template & Guidelines */}
+        {/* Form */}
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <div style={{ padding: "0 32px 32px 32px" }}>
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1px 1.4fr",
-                gap: "24px",
-                alignItems: "stretch",
+                boxSizing: "border-box",
+                width: "100%",
+                background: "#FFFFFF",
+                border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                borderRadius: "15px",
+                padding: "28px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "28px",
               }}
-              className="section-template-grid"
             >
-              {/* Left Column: Download Template */}
+              {/* Section 1: Upload File */}
               <div>
                 <h3
                   style={{
@@ -492,185 +321,478 @@ export default function BulkUploadModal({
                     color: "#0C2A42",
                   }}
                 >
-                  2. Download Template
+                  1. Upload File
                 </h3>
 
+                {/* Dropzone */}
                 <div
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={handleDrop}
                   style={{
+                    boxSizing: "border-box",
+                    width: "100%",
+                    minHeight: "180px",
+                    background: hasFileError
+                      ? "#FFF5F5"
+                      : dragActive
+                      ? "#F0F9FF"
+                      : hasValidFile
+                      ? "#F0FDF4"
+                      : "#F8FAFC",
+                    border: `1.5px ${dragActive ? "dashed" : "solid"} ${
+                      hasFileError
+                        ? "#F87171"
+                        : dragActive
+                        ? "#2372A5"
+                        : hasValidFile
+                        ? "#22C55E"
+                        : "rgba(179, 175, 175, 0.51)"
+                    }`,
+                    borderRadius: "12px",
                     display: "flex",
-                    alignItems: "flex-start",
-                    gap: "14px",
-                    marginBottom: "16px",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "24px",
+                    position: "relative",
+                    textAlign: "center",
+                    transition: "all 0.2s ease",
                   }}
                 >
-                  {/* CSV Yellow Icon Badge */}
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={handleFileChange}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      opacity: 0,
+                      cursor: "pointer",
+                      zIndex: 1,
+                    }}
+                  />
+
+                  {hasValidFile ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <CheckCircle2 size={40} color="#22C55E" />
+                      <span
+                        style={{
+                          fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          fontWeight: 700,
+                          fontSize: "14px",
+                          color: "#011B2F",
+                        }}
+                      >
+                        {selectedFile.name}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          fontSize: "12px",
+                          color: "#6B7280",
+                        }}
+                      >
+                        {(selectedFile.size / 1024).toFixed(1)} KB
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleRemoveFile}
+                        style={{
+                          marginTop: "4px",
+                          zIndex: 2,
+                          position: "relative",
+                          background: "#FEF2F2",
+                          border: "1px solid #FECACA",
+                          borderRadius: "6px",
+                          padding: "4px 12px",
+                          fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: "#DC2626",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        <X size={12} /> Remove
+                      </button>
+                    </div>
+                  ) : hasFileError && selectedFile ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <FileX size={40} color="#EF4444" />
+                      <span
+                        style={{
+                          fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          fontWeight: 700,
+                          fontSize: "14px",
+                          color: "#DC2626",
+                        }}
+                      >
+                        {selectedFile.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleRemoveFile}
+                        style={{
+                          marginTop: "4px",
+                          zIndex: 2,
+                          position: "relative",
+                          background: "#FEF2F2",
+                          border: "1px solid #FECACA",
+                          borderRadius: "6px",
+                          padding: "4px 12px",
+                          fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: "#DC2626",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        <X size={12} /> Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <Upload size={32} color="#2372A5" strokeWidth={1.8} />
+                      <span
+                        style={{
+                          fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          fontWeight: 600,
+                          fontSize: "13px",
+                          color: "#011B2F",
+                          marginTop: "10px",
+                        }}
+                      >
+                        Drag &amp; Drop your File here
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          fontWeight: 500,
+                          fontSize: "11px",
+                          color: "#6B7280",
+                          margin: "4px 0 10px 0",
+                        }}
+                      >
+                        or
+                      </span>
+                      <span
+                        style={{
+                          boxSizing: "border-box",
+                          padding: "8px 20px",
+                          background: "#F4BC43",
+                          borderRadius: "8px",
+                          fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          fontWeight: 700,
+                          fontSize: "12px",
+                          color: "#011B2F",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        <Upload size={14} color="#011B2F" />
+                        Browse File
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          fontWeight: 500,
+                          fontSize: "11px",
+                          color: "#6B7280",
+                          marginTop: "12px",
+                        }}
+                      >
+                        Only CSV, XLS, XLSX Files are supported
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {/* File Validation Error Banner */}
+                {hasFileError && (
                   <div
                     style={{
-                      width: "48px",
-                      height: "48px",
-                      background: "#FEF3C7",
-                      borderRadius: "8px",
                       display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#D97706",
-                      fontWeight: 800,
-                      fontSize: "12px",
-                      flexShrink: 0,
+                      alignItems: "flex-start",
+                      gap: "8px",
+                      marginTop: "10px",
+                      padding: "10px 14px",
+                      background: "#FEF2F2",
+                      border: "1px solid #FECACA",
+                      borderRadius: "8px",
                     }}
                   >
-                    CSV
+                    <AlertCircle size={16} color="#DC2626" style={{ flexShrink: 0, marginTop: "1px" }} />
+                    <div
+                      style={{
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontSize: "12px",
+                        fontWeight: 500,
+                        color: "#DC2626",
+                        lineHeight: "1.5",
+                        whiteSpace: "pre-line",
+                      }}
+                    >
+                      {fileValidationError}
+                    </div>
                   </div>
-                  <p
+                )}
+              </div>
+
+              {/* Section 2: Download Template & Guidelines */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1px 1.4fr",
+                  gap: "24px",
+                  alignItems: "stretch",
+                }}
+                className="section-template-grid"
+              >
+                {/* Left Column: Download Template */}
+                <div>
+                  <h3
+                    style={{
+                      margin: "0 0 16px 0",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 700,
+                      fontSize: "16px",
+                      color: "#0C2A42",
+                    }}
+                  >
+                    2. Download Template
+                  </h3>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "14px",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    {/* CSV Yellow Icon Badge */}
+                    <div
+                      style={{
+                        width: "48px",
+                        height: "48px",
+                        background: "#FEF3C7",
+                        borderRadius: "8px",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#D97706",
+                        fontWeight: 800,
+                        fontSize: "12px",
+                        flexShrink: 0,
+                      }}
+                    >
+                      CSV
+                    </div>
+                    <p
+                      style={{
+                        margin: 0,
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 500,
+                        fontSize: "12px",
+                        lineHeight: "16px",
+                        color: "#6B7280",
+                      }}
+                    >
+                      Download our sample template to see the correct format and required columns.{" "}
+                      <strong style={{ color: "#374151" }}>Image and Description are optional.</strong>
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadTemplate}
+                    style={{
+                      boxSizing: "border-box",
+                      padding: "8px 18px",
+                      background: "#FFFFFF",
+                      border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                      borderRadius: "8px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      cursor: "pointer",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 600,
+                      fontSize: "12px",
+                      color: "#011B2F",
+                      transition: "all 0.18s ease",
+                    }}
+                    className="btn-download-template"
+                  >
+                    <Download size={14} color="#011B2F" />
+                    Download Template
+                  </button>
+                </div>
+
+                {/* Vertical Line Divider */}
+                <div style={{ background: "#E2E8F0", width: "100%", height: "100%" }} />
+
+                {/* Right Column: Guidelines */}
+                <div>
+                  <h3
+                    style={{
+                      margin: "0 0 16px 0",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 700,
+                      fontSize: "16px",
+                      color: "#0C2A42",
+                    }}
+                  >
+                    Guidelines
+                  </h3>
+
+                  <ul
                     style={{
                       margin: 0,
+                      paddingLeft: "0",
+                      listStyle: "none",
                       fontFamily: "'Plus Jakarta Sans', sans-serif",
                       fontWeight: 500,
                       fontSize: "12px",
-                      lineHeight: "16px",
+                      lineHeight: "18px",
                       color: "#6B7280",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "8px",
                     }}
                   >
-                    Download our sample template to see the correct format and
-                    required columns
-                  </p>
+                    {[
+                      "Only CSV, XLS, XLSX Files are supported.",
+                      "First row must contain column headers.",
+                      "Ensure all required fields are filled in the file.",
+                      "Image and Description fields are optional.",
+                      "Maximum 500 records can be uploaded at a time.",
+                      "Existing attractions will be updated if the name matches.",
+                    ].map((rule, idx) => (
+                      <li
+                        key={idx}
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: "8px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: "16px",
+                            height: "16px",
+                            borderRadius: "50%",
+                            background: "#EFF6FF",
+                            color: "#2563EB",
+                            fontSize: "9px",
+                            fontWeight: 700,
+                            flexShrink: 0,
+                            marginTop: "1px",
+                          }}
+                        >
+                          {idx + 1}
+                        </span>
+                        <span>{rule}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
+              </div>
 
+              {/* Modal Bottom Action Row */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  gap: "14px",
+                  marginTop: "12px",
+                }}
+              >
                 <button
                   type="button"
-                  onClick={handleDownloadTemplate}
+                  onClick={onClose}
                   style={{
                     boxSizing: "border-box",
-                    padding: "8px 18px",
+                    width: "124px",
+                    height: "44px",
                     background: "#FFFFFF",
                     border: "1.5px solid rgba(179, 175, 175, 0.51)",
                     borderRadius: "8px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    cursor: "pointer",
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 600,
-                    fontSize: "12px",
-                    color: "#011B2F",
-                    transition: "all 0.18s ease",
-                  }}
-                  className="btn-download-template"
-                >
-                  <Download size={14} color="#011B2F" />
-                  Download Template
-                </button>
-              </div>
-
-              {/* Vertical Line Divider */}
-              <div style={{ background: "#E2E8F0", width: "100%", height: "100%" }} />
-
-              {/* Right Column: Template Guidelines */}
-              <div>
-                <h3
-                  style={{
-                    margin: "0 0 16px 0",
                     fontFamily: "'Plus Jakarta Sans', sans-serif",
                     fontWeight: 700,
-                    fontSize: "16px",
-                    color: "#0C2A42",
+                    fontSize: "14px",
+                    color: "#011B2F",
+                    cursor: "pointer",
                   }}
                 >
-                  Guidelines
-                </h3>
+                  Cancel
+                </button>
 
-                <ul
+                <button
+                  type="submit"
+                  disabled={isUploading || !hasValidFile}
                   style={{
-                    margin: 0,
-                    paddingLeft: "18px",
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 500,
-                    fontSize: "12px",
-                    lineHeight: "20px",
-                    color: "#6B7280",
+                    boxSizing: "border-box",
+                    width: "153px",
                     display: "flex",
-                    flexDirection: "column",
-                    gap: "4px",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    height: "44px",
+                    background: isUploading || !hasValidFile ? "#E5E7EB" : "#F4BC43",
+                    borderRadius: "8px",
+                    border: "none",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 700,
+                    fontSize: "14px",
+                    color: isUploading || !hasValidFile ? "#6B7280" : "#011B2F",
+                    cursor: isUploading || !hasValidFile ? "not-allowed" : "pointer",
+                    boxShadow:
+                      isUploading || !hasValidFile ? "none" : "0 4px 12px rgba(244, 188, 67, 0.3)",
+                    transition: "all 0.2s ease",
                   }}
                 >
-                  <li>Only CSV, XLS, XLSX Files are supported.</li>
-                  <li>Maximum 500 records can be uploaded at a time.</li>
-                  <li>First row must contain column headers.</li>
-                  <li>
-                    Existing attractions will be updated if the attraction name
-                    matches.
-                  </li>
-                  <li>Ensure all required fields are filled in the file.</li>
-                </ul>
+                  {isUploading ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>Uploading...</span>
+                    </>
+                  ) : (
+                    <span>Upload File</span>
+                  )}
+                </button>
               </div>
             </div>
-
-            {/* Modal Bottom Action Row */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "flex-end",
-                gap: "14px",
-                marginTop: "12px",
-              }}
-            >
-              <button
-                type="button"
-                onClick={onClose}
-                style={{
-                  boxSizing: "border-box",
-                  width: "124px",
-                  height: "44px",
-                  background: "#FFFFFF",
-                  border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                  borderRadius: "8px",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 700,
-                  fontSize: "14px",
-                  color: "#011B2F",
-                  cursor: "pointer",
-                }}
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={handleUpload}
-                disabled={isUploading}
-                style={{
-                  boxSizing: "border-box",
-                  width: "153px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "6px",
-                  height: "44px",
-                  background: isUploading ? "#E5E7EB" : "#F4BC43",
-                  borderRadius: "8px",
-                  border: "none",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 700,
-                  fontSize: "14px",
-                  color: isUploading ? "#6B7280" : "#011B2F",
-                  cursor: isUploading ? "not-allowed" : "pointer",
-                  boxShadow: isUploading ? "none" : "0 4px 12px rgba(244, 188, 67, 0.3)",
-                }}
-              >
-                {isUploading ? (
-                  <>
-                    <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
-                    <span>Uploading...</span>
-                  </>
-                ) : (
-                  <span>Upload File</span>
-                )}
-              </button>
-            </div>
           </div>
-        </div>
+        </form>
       </div>
 
       <style>{`
@@ -681,10 +803,6 @@ export default function BulkUploadModal({
           .section-template-grid {
             grid-template-columns: 1fr !important;
           }
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
         }
       `}</style>
     </div>

@@ -20,12 +20,14 @@ import {
   useBookingList,
   useUpdateBooking,
   useDeleteBooking,
+  fetchBookingList,
   BookingListItem,
 } from "@/hooks/useBookingQueries";
 import BookingDetailsModal from "@/components/modals/BookingDetailsModal";
 import EditBookingModal from "@/components/modals/EditBookingModal";
 import { useAttractions } from "@/hooks/useManagerQueries";
-import { exportToCSV } from "@/lib/exportUtils";
+import { exportToCSV, exportTableToPDF, renderStatusBadgeHTML } from "@/lib/exportUtils";
+import { ExportScope } from "@/components/ui/ExportButtons";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -121,6 +123,10 @@ export default function BookingsPage() {
   const [toDate, setToDate] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
+
+  // ── Export Loading State ─────────────────────────────────────────────────
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
 
   // ── Modal State ──────────────────────────────────────────────────────────
   const [selectedBooking, setSelectedBooking] = useState<BookingListItem | null>(null);
@@ -247,131 +253,133 @@ export default function BookingsPage() {
     }
   };
 
-  // ── Export handlers
-  const handleExportPDF = async () => {
-    if (bookings.length === 0) { showToast("No booking data to export.", "info"); return; }
+  // Helper to fetch data for export based on scope
+  const getExportData = async (scope: ExportScope): Promise<BookingListItem[]> => {
+    const params = {
+      search: debouncedSearch || undefined,
+      attractionId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
+      status: selectedStatus !== "All" ? selectedStatus : undefined,
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
+    };
 
-    try {
-      if (!(window as any).html2pdf) {
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement("script");
-          script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error("Failed to load PDF library"));
-          document.head.appendChild(script);
-        });
-      }
-
-      const totalAmount = bookings.reduce((sum, b) => sum + (b.amount || 0), 0);
-      const dateLabel = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-
-      const rowsHtml = bookings.map((b, idx) => `
-        <tr style="border-bottom: 1px solid #E5E7EB; font-size: 11px;">
-          <td style="padding: 8px 10px;">${idx + 1}</td>
-          <td style="padding: 8px 10px; font-weight: 600; color: #0C2A42;">${b.bookingId}</td>
-          <td style="padding: 8px 10px;">${b.customerName}</td>
-          <td style="padding: 8px 10px;">${b.mobileNumber ?? "-"}</td>
-          <td style="padding: 8px 10px;">${b.bookingDate ? new Date(b.bookingDate).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "-"}</td>
-          <td style="padding: 8px 10px;">${b.attraction?.name ?? "-"}</td>
-          <td style="padding: 8px 10px;">${b.visitors?.total ?? "-"}</td>
-          <td style="padding: 8px 10px; text-align: right; font-weight: 600;">&#8377;${(b.amount || 0).toFixed(2)}</td>
-          <td style="padding: 8px 10px; text-align: right;">&#8377;${(b.amountPaid || 0).toFixed(2)}</td>
-          <td style="padding: 8px 10px;">${b.paymentMode ?? "-"}</td>
-          <td style="padding: 8px 10px; text-align: center;">
-            <span style="display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold;
-              background: ${b.status === "CONFIRMED" ? "#B5FFE7" : b.status === "CANCELLED" ? "#FEE2E2" : "#FFF8D9"};
-              color: ${b.status === "CONFIRMED" ? "#119167" : b.status === "CANCELLED" ? "#DC2626" : "#D97706"};">
-              ${b.status}
-            </span>
-          </td>
-        </tr>`).join("");
-
-      const reportHtml = `
-        <div style="font-family: Arial, sans-serif; padding: 24px; color: #011B2F; background: #FFFFFF;">
-          <table style="width: 100%; border-collapse: collapse; border-bottom: 2px solid #F4BC43; padding-bottom: 10px; margin-bottom: 16px;">
-            <tr>
-              <td style="vertical-align: top;">
-                <div style="font-size: 20px; font-weight: bold; color: #0C2A42;">TICKETING PLATFORM</div>
-                <div style="font-size: 13px; color: #0C2A42; font-weight: 600; margin-top: 2px;">BOOKINGS LIST REPORT</div>
-                <div style="font-size: 11px; color: #6B7280; margin-top: 2px;">Generated: ${dateLabel}</div>
-              </td>
-              <td style="text-align: right; vertical-align: top;">
-                <div style="font-size: 11px; color: #6B7280;">Total Records: <strong>${bookings.length}</strong></div>
-              </td>
-            </tr>
-          </table>
-          <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 20px;">
-            <thead>
-              <tr style="background: #F1F5F9; color: #374151; font-weight: bold;">
-                <th style="padding: 8px 10px; text-align: left; width: 30px;">#</th>
-                <th style="padding: 8px 10px; text-align: left;">Booking ID</th>
-                <th style="padding: 8px 10px; text-align: left;">Customer</th>
-                <th style="padding: 8px 10px; text-align: left;">Mobile</th>
-                <th style="padding: 8px 10px; text-align: left;">Date &amp; Time</th>
-                <th style="padding: 8px 10px; text-align: left;">Attraction</th>
-                <th style="padding: 8px 10px; text-align: left;">Visitors</th>
-                <th style="padding: 8px 10px; text-align: right;">Amount</th>
-                <th style="padding: 8px 10px; text-align: right;">Paid</th>
-                <th style="padding: 8px 10px; text-align: left;">Mode</th>
-                <th style="padding: 8px 10px; text-align: center;">Status</th>
-              </tr>
-            </thead>
-            <tbody>${rowsHtml}</tbody>
-          </table>
-          <table style="width: 100%; border-collapse: collapse; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px;">
-            <tr>
-              <td style="padding: 10px 14px; font-weight: bold; font-size: 12px; color: #0C2A42;">
-                Total Bookings: ${bookings.length}
-              </td>
-              <td style="padding: 10px 14px; text-align: right; font-weight: bold; font-size: 14px; color: #0C2A42;">
-                Total Revenue: &#8377;${totalAmount.toFixed(2)}
-              </td>
-            </tr>
-          </table>
-        </div>`;
-
-      const element = document.createElement("div");
-      element.style.width = "820px";
-      element.innerHTML = reportHtml;
-      document.body.appendChild(element);
-
-      const opt = {
-        margin: [10, 10, 10, 10],
-        filename: `Bookings_Report_${new Date().toISOString().slice(0, 10)}.pdf`,
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
-      };
-
-      await (window as any).html2pdf().set(opt).from(element).save();
-      document.body.removeChild(element);
-      showToast("PDF downloaded successfully.", "success");
-    } catch (err) {
-      console.error("Bookings PDF export error:", err);
-      showToast("PDF export failed. Please try again.", "error");
+    if (scope === "current") {
+      const res = await fetchBookingList({
+        ...params,
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
+      });
+      return res.items;
+    } else {
+      // All data requested: API limit set to 0
+      const res = await fetchBookingList({
+        ...params,
+        page: 1,
+        limit: 0,
+      });
+      return res.items;
     }
   };
 
-  const handleExportExcel = () => {
-    if (bookings.length === 0) { showToast("No booking data to export.", "info"); return; }
+  const isFiltered = !!debouncedSearch || selectedAttractionId !== "All" || selectedStatus !== "All" || !!fromDate || !!toDate;
 
-    const headers = ["#", "Booking ID", "Customer Name", "Mobile", "Date & Time", "Attraction", "Visitors", "Amount (₹)", "Paid (₹)", "Payment Mode", "Status"];
-    const rows = bookings.map((b, i) => [
-      i + 1,
-      b.bookingId,
-      b.customerName,
-      b.mobileNumber ?? "-",
-      b.bookingDate ? new Date(b.bookingDate).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "-",
-      b.attraction?.name ?? "-",
-      b.visitors?.total ?? "-",
-      b.amount ?? 0,
-      b.amountPaid ?? 0,
-      b.paymentMode ?? "-",
-      b.status,
-    ]);
+  const getFilterInfo = () => {
+    const parts: string[] = [];
+    if (selectedAttractionId !== "All") {
+      const found = attractionOptions.find((a) => a.id === selectedAttractionId);
+      parts.push(`Attraction: ${found?.name || selectedAttractionId}`);
+    }
+    if (selectedStatus !== "All") parts.push(`Status: ${selectedStatus}`);
+    if (fromDate || toDate) parts.push(`Date: ${fromDate || "Start"} → ${toDate || "End"}`);
+    if (debouncedSearch) parts.push(`Search: "${debouncedSearch}"`);
+    return parts.length > 0 ? parts.join(" | ") : undefined;
+  };
 
-    exportToCSV(`Bookings_${new Date().toISOString().slice(0, 10)}`, headers, rows);
-    showToast("Excel (CSV) file downloaded successfully.", "success");
+  // ── Export PDF Handler
+  const handleExportPDF = async (scope: ExportScope) => {
+    setIsExportingPDF(true);
+    try {
+      const dataToExport = await getExportData(scope);
+
+      if (!dataToExport || dataToExport.length === 0) {
+        showToast("No booking data to export.", "info");
+        return;
+      }
+
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
+
+      await exportTableToPDF<BookingListItem>({
+        title: "BOOKINGS LIST REPORT",
+        filterInfo: getFilterInfo(),
+        scope,
+        currentPage,
+        filename: `Bookings_${scopeLabel}_${dateKey}.pdf`,
+        orientation: "landscape",
+        columns: [
+          { header: "#", accessor: (_, idx) => (scope === "all" ? idx + 1 : (currentPage - 1) * ITEMS_PER_PAGE + idx + 1), width: "30px" },
+          { header: "Booking ID", accessor: "bookingId" },
+          { header: "Customer", accessor: "customerName" },
+          { header: "Mobile", accessor: (b) => b.mobileNumber ?? "-" },
+          { header: "Date & Time", accessor: (b) => b.bookingDate ? new Date(b.bookingDate).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "-" },
+          { header: "Attraction", accessor: (b) => b.attraction?.name ?? "-" },
+          { header: "Visitors", accessor: (b) => b.visitors?.total ?? "-", align: "center" },
+          { header: "Amount (₹)", accessor: (b) => `₹${(b.amount || 0).toFixed(2)}`, align: "right" },
+          { header: "Paid (₹)", accessor: (b) => `₹${(b.amountPaid || 0).toFixed(2)}`, align: "right" },
+          { header: "Mode", accessor: (b) => b.paymentMode ?? "-" },
+          { header: "Status", renderCell: (b) => renderStatusBadgeHTML(b.status), align: "center" },
+        ],
+        data: dataToExport,
+        summaryCards: [
+          { label: "Total Bookings", value: dataToExport.length },
+          { label: "Total Revenue", value: `₹${dataToExport.reduce((sum, b) => sum + (b.amount || 0), 0).toFixed(2)}` },
+        ],
+      });
+
+      showToast(`PDF downloaded successfully (${dataToExport.length} record${dataToExport.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Bookings PDF export error:", err);
+      showToast("PDF export failed. Please try again.", "error");
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
+  // ── Export Excel Handler
+  const handleExportExcel = async (scope: ExportScope) => {
+    setIsExportingExcel(true);
+    try {
+      const dataToExport = await getExportData(scope);
+
+      if (!dataToExport || dataToExport.length === 0) {
+        showToast("No booking data to export.", "info");
+        return;
+      }
+
+      const headers = ["#", "Booking ID", "Customer Name", "Mobile", "Date & Time", "Attraction", "Visitors", "Amount (₹)", "Paid (₹)", "Payment Mode", "Status"];
+      const rows = dataToExport.map((b, i) => [
+        i + 1,
+        b.bookingId,
+        b.customerName,
+        b.mobileNumber ?? "-",
+        b.bookingDate ? new Date(b.bookingDate).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "-",
+        b.attraction?.name ?? "-",
+        b.visitors?.total ?? "-",
+        b.amount ?? 0,
+        b.amountPaid ?? 0,
+        b.paymentMode ?? "-",
+        b.status,
+      ]);
+
+      const fileNameScope = scope === "all" ? "All" : `Page_${currentPage}`;
+      exportToCSV(`Bookings_${fileNameScope}_${new Date().toISOString().slice(0, 10)}`, headers, rows);
+      showToast(`Excel (CSV) file downloaded successfully (${dataToExport.length} record${dataToExport.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Bookings Excel export error:", err);
+      showToast("Excel export failed. Please try again.", "error");
+    } finally {
+      setIsExportingExcel(false);
+    }
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -383,9 +391,11 @@ export default function BookingsPage() {
       {/* ── Top Export Buttons Row ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
         <ExportButtons
-          onExportPDF={handleExportPDF}
-          onExportExcel={handleExportExcel}
-          disabled={isLoading || bookings.length === 0}
+          onExportPDFScope={handleExportPDF}
+          onExportExcelScope={handleExportExcel}
+          isExportingPDF={isExportingPDF}
+          isExportingExcel={isExportingExcel}
+          disabled={isLoading || (bookings.length === 0 && (pagination?.total ?? 0) === 0)}
         />
       </div>
 

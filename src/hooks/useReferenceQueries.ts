@@ -11,6 +11,8 @@ import type {
   ReferenceListResponse,
 } from "@/app/(dashboard)/complimentary-passes/types";
 
+export type { ReferenceListParams };
+
 export const referenceKeys = {
   all: ["references"] as const,
   lists: () => [...referenceKeys.all, "list"] as const,
@@ -19,66 +21,71 @@ export const referenceKeys = {
 };
 
 /**
+ * Fetch reference records or all when limit: 0.
+ * GET /api/admin/references
+ */
+export async function fetchReferenceList(params: ReferenceListParams = {}): Promise<ReferenceListResponse> {
+  const page = params.page ?? 1;
+  const limit = params.limit !== undefined ? params.limit : 10;
+
+  const sp = new URLSearchParams();
+  sp.set("page", String(page));
+  sp.set("limit", String(limit));
+  if (params.search?.trim()) sp.set("search", params.search.trim());
+
+  const res = await getData<any>(`${AppUrl.reference.list}?${sp.toString()}`);
+  const payload = res?.data ?? res;
+
+  const mapItem = (item: any) => ({
+    ...item,
+    id: item.id || "",
+    referenceName: item.referenceName || "",
+    department: item.department || "",
+    contactPerson: item.contactPerson || "",
+    post: item.post || "",
+    mobile: item.mobile || "",
+    status: (item.status || "ACTIVE").toUpperCase(),
+  });
+
+  if (payload && Array.isArray(payload.items)) {
+    const total = payload.pagination?.total ?? payload.items.length;
+    return {
+      items: payload.items.map(mapItem),
+      pagination: payload.pagination || {
+        page,
+        limit,
+        total,
+        totalPages: limit > 0 ? (Math.ceil(total / limit) || 1) : 1,
+      },
+    };
+  }
+
+  if (Array.isArray(payload)) {
+    return {
+      items: payload.map(mapItem),
+      pagination: {
+        page,
+        limit,
+        total: payload.length,
+        totalPages: limit > 0 ? (Math.ceil(payload.length / limit) || 1) : 1,
+      },
+    };
+  }
+
+  return {
+    items: [],
+    pagination: { page: 1, limit, total: 0, totalPages: 0 },
+  };
+}
+
+/**
  * Fetch references list with pagination and search.
  * GET /api/admin/references
  */
 export function useReferenceList(params: ReferenceListParams = {}) {
-  const page = params.page ?? 1;
-  const limit = params.limit ?? 10;
-
   return useQuery<ReferenceListResponse>({
     queryKey: referenceKeys.list(params),
-    queryFn: async () => {
-      const sp = new URLSearchParams();
-      sp.set("page", String(page));
-      sp.set("limit", String(limit));
-      if (params.search?.trim()) sp.set("search", params.search.trim());
-
-      const res = await getData<any>(`${AppUrl.reference.list}?${sp.toString()}`);
-      const payload = res?.data ?? res;
-
-      if (payload && Array.isArray(payload.items)) {
-        return {
-          items: payload.items.map((item: any) => ({
-            ...item,
-            id: item.id || "",
-            referenceName: item.referenceName || "",
-            department: item.department || "",
-            contactPerson: item.contactPerson || "",
-            post: item.post || "",
-            mobile: item.mobile || "",
-            status: (item.status || "ACTIVE").toUpperCase(),
-          })),
-          pagination: payload.pagination || {
-            page,
-            limit,
-            total: payload.items.length,
-            totalPages: Math.ceil(payload.items.length / limit) || 1,
-          },
-        };
-      }
-
-      if (Array.isArray(payload)) {
-        return {
-          items: payload.map((item: any) => ({
-            ...item,
-            id: item.id || "",
-            referenceName: item.referenceName || "",
-            department: item.department || "",
-            contactPerson: item.contactPerson || "",
-            post: item.post || "",
-            mobile: item.mobile || "",
-            status: (item.status || "ACTIVE").toUpperCase(),
-          })),
-          pagination: { page, limit, total: payload.length, totalPages: Math.ceil(payload.length / limit) || 1 },
-        };
-      }
-
-      return {
-        items: [],
-        pagination: { page: 1, limit, total: 0, totalPages: 0 },
-      };
-    },
+    queryFn: () => fetchReferenceList(params),
     staleTime: 60 * 1000,
     refetchOnWindowFocus: true,
   });

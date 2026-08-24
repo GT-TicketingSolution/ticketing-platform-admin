@@ -11,6 +11,7 @@ export const ERROR_MESSAGES = {
   SERVER_ERROR: "An internal server error occurred. Please try again later.",
   UNEXPECTED_ERROR: "Something went wrong. Please try again.",
   NETWORK_ERROR: "Network error. Please check your internet connection.",
+  TIMEOUT: "The request took too long. Please try again later.",
 } as const;
 
 // ── Toast Deduplication 
@@ -82,7 +83,17 @@ axiosInstance.interceptors.response.use(
     }
 
     if (!error.response) {
-      showErrorOnce(ERROR_MESSAGES.NETWORK_ERROR, "Connection Error");
+      // Detect axios timeout (ECONNABORTED) or fetch-level network timeout
+      const isTimeout =
+        error.code === "ECONNABORTED" ||
+        error.code === "ERR_NETWORK" ||
+        (error.message && error.message.toLowerCase().includes("timeout"));
+
+      if (isTimeout) {
+        showErrorOnce(ERROR_MESSAGES.TIMEOUT, "Request Timed Out");
+      } else {
+        showErrorOnce(ERROR_MESSAGES.NETWORK_ERROR, "Connection Error");
+      }
       return Promise.reject(error);
     }
 

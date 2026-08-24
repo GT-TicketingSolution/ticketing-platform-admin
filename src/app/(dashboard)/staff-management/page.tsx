@@ -31,15 +31,22 @@ import StatusToggle from "@/components/ui/StatusToggle";
 import StatusFilterSelect from "@/components/ui/StatusFilterSelect";
 import MultiSelectDropdown from "@/components/ui/MultiSelectDropdown";
 import { RoleGuard } from "@/components/auth/RoleGuard";
-import { handleDownloadStaffListPDF, handleExportStaffCSV } from "@/lib/printUtils";
 import ExportButtons from "@/components/ui/ExportButtons";
 import {
   useStaffList,
+  fetchStaffList,
   useCreateStaff,
   useUpdateStaff,
   useDisableStaff,
   useDeleteStaff,
+  StaffQueryParams,
 } from "@/hooks/useStaffQueries";
+import {
+  ExportScope,
+  exportTableToPDF,
+  exportToCSV,
+  renderStatusBadgeHTML,
+} from "@/lib/exportUtils";
 import { useAttractions, AttractionItem } from "@/hooks/useManagerQueries";
 
 const MultiSelect = MultiSelectDropdown;
@@ -352,29 +359,126 @@ function StaffManagementInner() {
     }
   };
 
-  // Export Handlers
-  const handleExportPDF = () => {
-    if (staffList.length === 0) {
-      showToast("No staff data matches current filters", "info");
-      return;
-    }
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+
+  // ── Export Handlers (Scoped Export) ───────────────────────────────────────
+  const getFilterInfo = () => {
     const parts: string[] = [];
-    if (selectedAttractionFilter !== "All") parts.push(`Attraction: ${selectedAttractionFilter}`);
+    if (selectedAttractionFilter !== "All") {
+      const found = attractionsList.find((a) => a.id === selectedAttractionFilter);
+      parts.push(`Attraction: ${found?.name || selectedAttractionFilter}`);
+    }
     if (selectedStatusFilter !== "All") parts.push(`Status: ${selectedStatusFilter}`);
     if (search) parts.push(`Search: "${search}"`);
-    const filterInfo = parts.length > 0 ? parts.join(" | ") : "All Staff";
-    handleDownloadStaffListPDF(staffList, filterInfo);
-    showToast(`Generated PDF report for ${staffList.length} staff members`, "success");
+    return parts.length > 0 ? parts.join(" | ") : undefined;
   };
 
-  const handleExportExcel = () => {
-    if (staffList.length === 0) {
-      showToast("No staff data matches current filters", "info");
-      return;
+  const getExportParams = (scope: ExportScope): StaffQueryParams => {
+    return {
+      search: search.trim() || undefined,
+      status: apiStatus,
+      attractionId: selectedAttractionFilter !== "All" ? selectedAttractionFilter : undefined,
+      page: 1,
+      limit: scope === "all" ? 0 : 10,
+    };
+  };
+
+  const handleExportPDF = async (scope: ExportScope) => {
+    setIsExportingPDF(true);
+    try {
+      const result = await fetchStaffList(getExportParams(scope));
+      const items = result.items;
+      if (!items.length) {
+        showToast("No staff data matches current filters", "info");
+        return;
+      }
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : "Current";
+      await exportTableToPDF({
+        title: "STAFF MEMBERS REPORT",
+        filterInfo: getFilterInfo(),
+        scope,
+        filename: `Staff_${scopeLabel}_${dateKey}.pdf`,
+        orientation: "landscape",
+        columns: [
+          { header: "#", accessor: (_, i) => i + 1, width: "35px" },
+          { header: "Staff Name", accessor: (s: any) => s.name || "-" },
+          { header: "Email Address", accessor: (s: any) => s.email || "-" },
+          { header: "Phone", accessor: (s: any) => s.phone || "-" },
+          {
+            header: "Role",
+            accessor: (s: any) =>
+              Array.isArray(s.role) ? s.role.join(", ") : Array.isArray(s.roles) ? s.roles.join(", ") : s.role || "-",
+          },
+          {
+            header: "Attraction",
+            accessor: (s: any) =>
+              Array.isArray(s.assignedAttraction) && s.assignedAttraction.length > 0
+                ? s.assignedAttraction.join(", ")
+                : Array.isArray(s.attractions) && s.attractions.length > 0
+                ? s.attractions.map((a: any) => a.name).join(", ")
+                : "-",
+          },
+          {
+            header: "Status",
+            renderCell: (s: any) => renderStatusBadgeHTML(String(s.status).toUpperCase() === "ACTIVE" ? "ACTIVE" : "INACTIVE"),
+            align: "center",
+          },
+        ],
+        data: items,
+        summaryCards: [
+          { label: "Total Staff", value: items.length },
+          { label: "Active Staff", value: items.filter((s: any) => String(s.status).toUpperCase() === "ACTIVE").length },
+        ],
+      });
+      showToast(`PDF downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Staff PDF export error:", err);
+      showToast("PDF export failed. Please try again.", "error");
+    } finally {
+      setIsExportingPDF(false);
     }
-    const label = selectedAttractionFilter !== "All" ? selectedAttractionFilter : "All";
-    handleExportStaffCSV(staffList, label);
-    showToast(`Exported ${staffList.length} staff members to CSV`, "success");
+  };
+
+  const handleExportExcel = async (scope: ExportScope) => {
+    setIsExportingExcel(true);
+    try {
+      const result = await fetchStaffList(getExportParams(scope));
+      const items = result.items;
+      if (!items.length) {
+        showToast("No staff data matches current filters", "info");
+        return;
+      }
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : "Current";
+      const headers = ["#", "Staff Name", "Email Address", "Phone", "Role", "Attraction", "Status"];
+      const rows = items.map((s: any, i: number) => {
+        const roles = Array.isArray(s.role) ? s.role.join(", ") : Array.isArray(s.roles) ? s.roles.join(", ") : s.role || "-";
+        const attrs =
+          Array.isArray(s.assignedAttraction) && s.assignedAttraction.length > 0
+            ? s.assignedAttraction.join(", ")
+            : Array.isArray(s.attractions) && s.attractions.length > 0
+            ? s.attractions.map((a: any) => a.name).join(", ")
+            : "-";
+        return [
+          i + 1,
+          s.name || "-",
+          s.email || "-",
+          s.phone || "-",
+          roles,
+          attrs,
+          String(s.status).toUpperCase() === "ACTIVE" ? "Active" : "Inactive",
+        ];
+      });
+      exportToCSV(`Staff_${scopeLabel}_${dateKey}`, headers, rows);
+      showToast(`Excel downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Staff Excel export error:", err);
+      showToast("Excel export failed. Please try again.", "error");
+    } finally {
+      setIsExportingExcel(false);
+    }
   };
 
   // DataTable Columns
@@ -588,18 +692,6 @@ function StaffManagementInner() {
                 >
                   {selectedStaff.name}
                 </h1>
-                <span
-                  style={{
-                    background: "rgba(35,114,165,0.1)",
-                    color: colors.brand.accent,
-                    padding: "2px 8px",
-                    borderRadius: "4px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                  }}
-                >
-                  {selectedStaff.id}
-                </span>
                 <span
                   style={{
                     background: isAct ? "#F0FDF4" : "#FEF2F2",
@@ -1162,9 +1254,11 @@ function StaffManagementInner() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <ExportButtons
-            onExportPDF={handleExportPDF}
-            onExportExcel={handleExportExcel}
-            disabled={isFetchingStaff || staffList.length === 0}
+            onExportPDFScope={handleExportPDF}
+            onExportExcelScope={handleExportExcel}
+            isExportingPDF={isExportingPDF}
+            isExportingExcel={isExportingExcel}
+            disabled={isFetchingStaff || (staffList.length === 0 && (staffData?.pagination?.total ?? 0) === 0)}
           />
 
           <button

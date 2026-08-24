@@ -15,11 +15,6 @@ import {
 import { GlobalDataTable, GlobalColumn } from "@/components/ui/GlobalDataTable";
 import { confirmDelete } from "@/lib/notify";
 import { useToast } from "@/components/ui/Toast";
-import { exportToCSV } from "@/lib/exportUtils";
-import {
-  handleDownloadComplimentaryPassesPDF,
-  handleDownloadReferencesPDF,
-} from "@/lib/printUtils";
 import DateRangePicker from "@/components/ui/DateRangePicker";
 import ExportButtons from "@/components/ui/ExportButtons";
 import { colors, typography } from "@/lib/theme";
@@ -27,16 +22,26 @@ import { META_CONSTANTS } from "@/lib/metaConstant";
 import { useAttractions } from "@/hooks/useManagerQueries";
 import {
   useComplimentaryPassList,
+  fetchComplimentaryPassList,
   useCreateComplimentaryPass,
   useUpdateComplimentaryPass,
   useDeleteComplimentaryPass,
+  ComplimentaryPassListParams,
 } from "@/hooks/useComplimentaryPassQueries";
 import {
   useReferenceList,
+  fetchReferenceList,
   useCreateReference,
   useUpdateReference,
   useDeleteReference,
+  ReferenceListParams,
 } from "@/hooks/useReferenceQueries";
+import {
+  ExportScope,
+  exportTableToPDF,
+  exportToCSV,
+  renderStatusBadgeHTML,
+} from "@/lib/exportUtils";
 import type {
   ComplimentaryPass,
   Reference,
@@ -274,77 +279,192 @@ export default function ComplimentaryPassesPage() {
 
   const isRefFiltered = !!debouncedRefSearch;
 
-  // ── Export Handlers ────────────────────────────────────────────────────────
-  const handleExportPassesPDF = () => {
-    if (passes.length === 0) {
-      showToast("No complimentary passes to export", "info");
-      return;
-    }
-    const filterInfo = isPassFiltered
-      ? [
-          debouncedPassSearch ? `Search: "${debouncedPassSearch}"` : null,
-          selectedAttraction !== "ALL" ? `Attraction: ${selectedAttraction}` : null,
-          selectedPassStatus !== "ALL" ? `Status: ${selectedPassStatus}` : null,
-          fromDate ? `Date: ${fromDate} → ${toDate || "Now"}` : null,
-        ]
-          .filter(Boolean)
-          .join(" | ")
-      : "All Complimentary Passes";
+  const [isExportingPassesPDF, setIsExportingPassesPDF] = useState(false);
+  const [isExportingPassesExcel, setIsExportingPassesExcel] = useState(false);
+  const [isExportingRefsPDF, setIsExportingRefsPDF] = useState(false);
+  const [isExportingRefsExcel, setIsExportingRefsExcel] = useState(false);
 
-    handleDownloadComplimentaryPassesPDF(passes, filterInfo);
+  // ── Export Handlers: Complimentary Passes ─────────────────────────────────
+  const getPassesFilterInfo = () => {
+    const parts = [
+      debouncedPassSearch ? `Search: "${debouncedPassSearch}"` : null,
+      selectedAttraction !== "ALL" ? `Attraction: ${selectedAttraction}` : null,
+      selectedPassStatus !== "ALL" ? `Status: ${selectedPassStatus}` : null,
+      fromDate ? `Date: ${fromDate} → ${toDate || "Now"}` : null,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(" | ") : undefined;
   };
 
-  const handleExportPassesExcel = () => {
-    if (passes.length === 0) {
-      showToast("No complimentary passes to export", "info");
-      return;
-    }
-    const filename = `Complimentary_Passes_${new Date().toISOString().slice(0, 10)}.csv`;
-    const headers = ["S.No", "Pass ID", "Visitor Name", "Mobile", "Attraction", "Visitors", "Reference", "Visit Date", "Status"];
-    const rows = passes.map((p, idx) => [
-      idx + 1 + (passPage - 1) * PAGE_SIZE,
-      p.passId || p.id,
-      p.visitorName || "-",
-      p.mobile || "-",
-      p.attractionName || "-",
-      p.visitors || 1,
-      p.referenceName || "-",
-      formatDate(p.visitDate),
-      p.status || "ACTIVE",
-    ]);
-    exportToCSV(filename, headers, rows);
-    showToast(`Exported ${passes.length} passes to CSV`, "success");
+  const getPassesExportParams = (scope: ExportScope): ComplimentaryPassListParams => {
+    const base: ComplimentaryPassListParams = {
+      search: debouncedPassSearch || undefined,
+      attractionId: selectedAttraction !== "ALL" ? selectedAttraction : undefined,
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
+      status: selectedPassStatus !== "ALL" ? selectedPassStatus : undefined,
+    };
+    return scope === "all" ? { ...base, page: 1, limit: 0 } : { ...base, page: passPage, limit: PAGE_SIZE };
   };
 
-  const handleExportRefsPDF = () => {
-    if (references.length === 0) {
-      showToast("No references to export", "info");
-      return;
+  const handleExportPassesPDF = async (scope: ExportScope) => {
+    setIsExportingPassesPDF(true);
+    try {
+      const result = await fetchComplimentaryPassList(getPassesExportParams(scope));
+      const items = result.items;
+      if (!items.length) {
+        showToast("No complimentary passes to export", "info");
+        return;
+      }
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : `Page_${passPage}`;
+      await exportTableToPDF<ComplimentaryPass>({
+        title: "COMPLIMENTARY PASSES REPORT",
+        filterInfo: getPassesFilterInfo(),
+        scope,
+        currentPage: passPage,
+        filename: `Complimentary_Passes_${scopeLabel}_${dateKey}.pdf`,
+        orientation: "landscape",
+        columns: [
+          { header: "#", accessor: (_, idx) => (scope === "all" ? idx + 1 : idx + 1 + (passPage - 1) * PAGE_SIZE), width: "35px" },
+          { header: "Pass ID", accessor: (p) => p.passId || p.id },
+          { header: "Visitor Name", accessor: (p) => p.visitorName || "-" },
+          { header: "Mobile", accessor: (p) => p.mobile || "-" },
+          { header: "Attraction", accessor: (p) => p.attractionName || "-" },
+          { header: "Visitors", accessor: (p) => p.visitors || 1, align: "center" },
+          { header: "Reference", accessor: (p) => p.referenceName || "-" },
+          { header: "Visit Date", accessor: (p) => formatDate(p.visitDate) },
+          { header: "Status", renderCell: (p) => renderStatusBadgeHTML(p.status || "ACTIVE"), align: "center" },
+        ],
+        data: items,
+        summaryCards: [
+          { label: "Total Passes", value: items.length },
+          { label: "Total Visitors", value: items.reduce((s, p) => s + (Number(p.visitors) || 1), 0) },
+        ],
+      });
+      showToast(`PDF downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Passes PDF export error:", err);
+      showToast("PDF export failed. Please try again.", "error");
+    } finally {
+      setIsExportingPassesPDF(false);
     }
-    const filterInfo = isRefFiltered
-      ? `Search: "${debouncedRefSearch}"`
-      : "All References";
-    handleDownloadReferencesPDF(references, filterInfo);
   };
 
-  const handleExportRefsExcel = () => {
-    if (references.length === 0) {
-      showToast("No references to export", "info");
-      return;
+  const handleExportPassesExcel = async (scope: ExportScope) => {
+    setIsExportingPassesExcel(true);
+    try {
+      const result = await fetchComplimentaryPassList(getPassesExportParams(scope));
+      const items = result.items;
+      if (!items.length) {
+        showToast("No complimentary passes to export", "info");
+        return;
+      }
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : `Page_${passPage}`;
+      const headers = ["S.No", "Pass ID", "Visitor Name", "Mobile", "Attraction", "Visitors", "Reference", "Visit Date", "Status"];
+      const rows = items.map((p, idx) => [
+        scope === "all" ? idx + 1 : idx + 1 + (passPage - 1) * PAGE_SIZE,
+        p.passId || p.id,
+        p.visitorName || "-",
+        p.mobile || "-",
+        p.attractionName || "-",
+        p.visitors || 1,
+        p.referenceName || "-",
+        formatDate(p.visitDate),
+        p.status || "ACTIVE",
+      ]);
+      exportToCSV(`Complimentary_Passes_${scopeLabel}_${dateKey}`, headers, rows);
+      showToast(`Excel downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Passes Excel export error:", err);
+      showToast("Excel export failed. Please try again.", "error");
+    } finally {
+      setIsExportingPassesExcel(false);
     }
-    const filename = `References_Master_${new Date().toISOString().slice(0, 10)}.csv`;
-    const headers = ["S.No", "Reference Name", "Department / Organization", "Contact Person", "Post / Designation", "Mobile", "Status"];
-    const rows = references.map((r, idx) => [
-      idx + 1 + (refPage - 1) * PAGE_SIZE,
-      r.referenceName || "-",
-      r.department || "-",
-      r.contactPerson || "-",
-      r.post || "-",
-      r.mobile || "-",
-      r.status || "ACTIVE",
-    ]);
-    exportToCSV(filename, headers, rows);
-    showToast(`Exported ${references.length} references to CSV`, "success");
+  };
+
+  // ── Export Handlers: Reference Management ─────────────────────────────────
+  const getRefsFilterInfo = () => {
+    return isRefFiltered ? `Search: "${debouncedRefSearch}"` : undefined;
+  };
+
+  const getRefsExportParams = (scope: ExportScope): ReferenceListParams => {
+    const base: ReferenceListParams = {
+      search: debouncedRefSearch || undefined,
+    };
+    return scope === "all" ? { ...base, page: 1, limit: 0 } : { ...base, page: refPage, limit: PAGE_SIZE };
+  };
+
+  const handleExportRefsPDF = async (scope: ExportScope) => {
+    setIsExportingRefsPDF(true);
+    try {
+      const result = await fetchReferenceList(getRefsExportParams(scope));
+      const items = result.items;
+      if (!items.length) {
+        showToast("No references to export", "info");
+        return;
+      }
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : `Page_${refPage}`;
+      await exportTableToPDF<Reference>({
+        title: "REFERENCE MASTER REPORT",
+        filterInfo: getRefsFilterInfo(),
+        scope,
+        currentPage: refPage,
+        filename: `References_Master_${scopeLabel}_${dateKey}.pdf`,
+        orientation: "landscape",
+        columns: [
+          { header: "#", accessor: (_, idx) => (scope === "all" ? idx + 1 : idx + 1 + (refPage - 1) * PAGE_SIZE), width: "35px" },
+          { header: "Reference Name", accessor: (r) => r.referenceName || "-" },
+          { header: "Department / Organization", accessor: (r) => r.department || "-" },
+          { header: "Contact Person", accessor: (r) => r.contactPerson || "-" },
+          { header: "Post / Designation", accessor: (r) => r.post || "-" },
+          { header: "Mobile", accessor: (r) => r.mobile || "-" },
+          { header: "Status", renderCell: (r) => renderStatusBadgeHTML(r.status || "ACTIVE"), align: "center" },
+        ],
+        data: items,
+        summaryCards: [
+          { label: "Total References", value: items.length },
+        ],
+      });
+      showToast(`PDF downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Refs PDF export error:", err);
+      showToast("PDF export failed. Please try again.", "error");
+    } finally {
+      setIsExportingRefsPDF(false);
+    }
+  };
+
+  const handleExportRefsExcel = async (scope: ExportScope) => {
+    setIsExportingRefsExcel(true);
+    try {
+      const result = await fetchReferenceList(getRefsExportParams(scope));
+      const items = result.items;
+      if (!items.length) {
+        showToast("No references to export", "info");
+        return;
+      }
+      const dateKey = new Date().toISOString().slice(0, 10);
+      const scopeLabel = scope === "all" ? "All" : `Page_${refPage}`;
+      const headers = ["S.No", "Reference Name", "Department / Organization", "Contact Person", "Post / Designation", "Mobile", "Status"];
+      const rows = items.map((r, idx) => [
+        scope === "all" ? idx + 1 : idx + 1 + (refPage - 1) * PAGE_SIZE,
+        r.referenceName || "-",
+        r.department || "-",
+        r.contactPerson || "-",
+        r.post || "-",
+        r.mobile || "-",
+        r.status || "ACTIVE",
+      ]);
+      exportToCSV(`References_Master_${scopeLabel}_${dateKey}`, headers, rows);
+      showToast(`Excel downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
+    } catch (err) {
+      console.error("Refs Excel export error:", err);
+      showToast("Excel export failed. Please try again.", "error");
+    } finally {
+      setIsExportingRefsExcel(false);
+    }
   };
 
   // ── Columns for Passes Table ───────────────────────────────────────────────
@@ -757,9 +877,11 @@ export default function ComplimentaryPassesPage() {
           {activeTab === "passes" ? (
             <>
               <ExportButtons
-                onExportPDF={handleExportPassesPDF}
-                onExportExcel={handleExportPassesExcel}
-                disabled={passes.length === 0 || isPassesLoading}
+                onExportPDFScope={handleExportPassesPDF}
+                onExportExcelScope={handleExportPassesExcel}
+                isExportingPDF={isExportingPassesPDF}
+                isExportingExcel={isExportingPassesExcel}
+                disabled={isPassesLoading || (passes.length === 0 && (passesResponse?.pagination?.total ?? 0) === 0)}
               />
               <button
                 type="button"
@@ -791,9 +913,11 @@ export default function ComplimentaryPassesPage() {
           ) : (
             <>
               <ExportButtons
-                onExportPDF={handleExportRefsPDF}
-                onExportExcel={handleExportRefsExcel}
-                disabled={references.length === 0 || isReferencesLoading}
+                onExportPDFScope={handleExportRefsPDF}
+                onExportExcelScope={handleExportRefsExcel}
+                isExportingPDF={isExportingRefsPDF}
+                isExportingExcel={isExportingRefsExcel}
+                disabled={isReferencesLoading || (references.length === 0 && (referencesResponse?.pagination?.total ?? 0) === 0)}
               />
               <button
                 type="button"

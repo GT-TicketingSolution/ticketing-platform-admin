@@ -10,52 +10,176 @@ import {
   ArrowUpRight,
   CheckCircle2,
   XCircle,
+  RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
-import { StaffUser } from "@/types/admin";
+import { useManagerDashboard } from "@/hooks/useDashboard";
+import { ManagerDashboardStaffItem } from "@/app/(dashboard)/dashboard/types";
+
+const shimmerCSS = `
+  @keyframes managerDashShimmer {
+    0%   { background-position: -800px 0; }
+    100% { background-position: 800px 0; }
+  }
+  .mdsk {
+    background: linear-gradient(90deg, #e8edf2 25%, #f5f7fa 50%, #e8edf2 75%);
+    background-size: 800px 100%;
+    animation: managerDashShimmer 1.4s infinite linear;
+    border-radius: 8px;
+  }
+`;
+
+function ManagerDashboardSkeleton() {
+  return (
+    <>
+      <style>{shimmerCSS}</style>
+      <div style={{ display: "flex", flexDirection: "column", gap: "24px", width: "100%" }}>
+        {/* Title row */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div className="mdsk" style={{ height: 28, width: 240, marginBottom: 8 }} />
+            <div className="mdsk" style={{ height: 16, width: 300 }} />
+          </div>
+        </div>
+
+        {/* Stat cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: "18px" }}>
+          {[1, 2, 3].map((i: number) => (
+            <div key={i} className="mdsk" style={{ height: 110, borderRadius: 12 }} />
+          ))}
+        </div>
+
+        {/* Staff Table */}
+        <div style={{ background: "#FFFFFF", borderRadius: 12, overflow: "hidden", border: "1px solid #E5E7EB", padding: "20px" }}>
+          <div className="mdsk" style={{ height: 40, width: "100%", marginBottom: 16 }} />
+          {[1, 2, 3, 4, 5].map((i: number) => (
+            <div key={i} className="mdsk" style={{ height: 48, width: "100%", marginBottom: 8 }} />
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
 
 export default function ManagerDashboardView() {
-  const [staff] = useState<StaffUser[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const { data, isLoading, isError, error, refetch } = useManagerDashboard();
 
-  const filteredStaff = useMemo(() => {
+  const staff: ManagerDashboardStaffItem[] = useMemo(() => {
+    return Array.isArray(data?.staff) ? data.staff : [];
+  }, [data]);
+
+  const filteredStaff: ManagerDashboardStaffItem[] = useMemo(() => {
+    if (!searchQuery.trim()) return staff;
+    const query = searchQuery.toLowerCase().trim();
     return staff.filter(
-      (s) =>
-        searchQuery === "" ||
-        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (Array.isArray(s.role) ? s.role : [String(s.role)]).some((r) => r.toLowerCase().includes(searchQuery.toLowerCase()))
+      (s: ManagerDashboardStaffItem) =>
+        s.name.toLowerCase().includes(query) ||
+        (Array.isArray(s.role) ? s.role : [String(s.role)]).some((r: string) => r.toLowerCase().includes(query)) ||
+        (s.status && s.status.toLowerCase().includes(query))
     );
   }, [staff, searchQuery]);
 
-  const totalStaff = filteredStaff.length;
-  const activeStaff = filteredStaff.filter((s) => String(s.status).toUpperCase() === "ACTIVE").length;
-  const totalTicketsProcessed = useMemo(
-    () => filteredStaff.reduce((sum, s) => sum + (s.ticketsIssued ?? 0), 0),
-    [filteredStaff]
-  );
+  const totalStaff = data?.totalStaff ?? staff.length;
+  const activeStaff = data?.activeStaff ?? staff.filter((s: ManagerDashboardStaffItem) => String(s.status).toUpperCase() === "ACTIVE").length;
+  const totalTicketsProcessed = data?.totalTicketsProcessed ?? staff.reduce((sum: number, s: ManagerDashboardStaffItem) => sum + (s.ticketsIssued ?? 0), 0);
+  const estimatedRevenue = data?.estimatedRevenue ?? totalTicketsProcessed * 250;
 
-  const estimatedRevenue = totalTicketsProcessed * 250;
+  if (isLoading) {
+    return <ManagerDashboardSkeleton />;
+  }
+
+  if (isError) {
+    const errorMsg = (error as any)?.response?.data?.message || (error as any)?.message || "Failed to load manager dashboard data.";
+    return (
+      <div
+        style={{
+          background: "#FFFFFF",
+          borderRadius: "16px",
+          padding: "48px 24px",
+          textAlign: "center",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
+          border: `1px solid ${colors.header.border}`,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "16px",
+        }}
+      >
+        <div
+          style={{
+            width: "56px",
+            height: "56px",
+            borderRadius: "50%",
+            background: "#FEF2F2",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <AlertCircle size={28} color="#DC2626" />
+        </div>
+        <div>
+          <h2
+            style={{
+              fontFamily: typography.fontFamily.sans,
+              fontWeight: 700,
+              fontSize: "18px",
+              color: colors.text.primary,
+              margin: "0 0 6px 0",
+            }}
+          >
+            Unable to Load Manager Dashboard
+          </h2>
+          <p style={{ margin: 0, fontSize: "14px", color: colors.text.muted, maxWidth: "420px" }}>
+            {errorMsg}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "10px 20px",
+            borderRadius: "8px",
+            background: colors.brand.primary,
+            color: colors.sidebar.bg,
+            border: "none",
+            fontSize: "14px",
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: typography.fontFamily.sans,
+            boxShadow: "0 4px 12px rgba(244, 188, 67, 0.3)",
+          }}
+        >
+          <RefreshCw size={15} />
+          <span>Try Again</span>
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* Header Title */}
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "16px" }}>
-        <div>
-          <h1
-            style={{
-              fontFamily: typography.fontFamily.sans,
-              fontWeight: typography.fontWeight.bold,
-              fontSize: typography.fontSize["2xl"],
-              color: colors.text.primary,
-              margin: 0,
-            }}
-          >
-            Manager Dashboard
-          </h1>
-          <p style={{ margin: "4px 0 0 0", fontSize: "14px", color: colors.text.muted }}>
-            Operations &amp; Staff Performance Overview
-          </p>
-        </div>
+      <div>
+        <h1
+          style={{
+            fontFamily: typography.fontFamily.sans,
+            fontWeight: typography.fontWeight.bold,
+            fontSize: typography.fontSize["2xl"],
+            color: colors.text.primary,
+            margin: 0,
+          }}
+        >
+          Manager Dashboard
+        </h1>
+        <p style={{ margin: "4px 0 0 0", fontSize: "14px", color: colors.text.muted }}>
+          Operations &amp; Staff Performance Overview
+        </p>
       </div>
 
       {/* Stat Cards */}
@@ -83,7 +207,7 @@ export default function ManagerDashboardView() {
               Total Number of Staff
             </span>
             <span style={{ fontFamily: typography.fontFamily.sans, fontSize: "28px", fontWeight: typography.fontWeight.bold, color: colors.text.primary, margin: "4px 0", display: "block" }}>
-              {totalStaff}
+              {totalStaff.toLocaleString("en-IN")}
             </span>
             <span style={{ fontSize: "12px", color: colors.status.success, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "3px" }}>
               <UserCog size={14} /> {activeStaff} Active &bull; View All &rarr;
@@ -114,7 +238,7 @@ export default function ManagerDashboardView() {
               {totalTicketsProcessed.toLocaleString("en-IN")}
             </span>
             <span style={{ fontSize: "12px", color: colors.brand.accent, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-              <BookOpen size={14} /> Across All Counters
+              <BookOpen size={14} /> Across All Assigned Counters
             </span>
           </div>
           <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "rgba(35, 114, 165, 0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -142,7 +266,7 @@ export default function ManagerDashboardView() {
               ₹{estimatedRevenue.toLocaleString("en-IN")}
             </span>
             <span style={{ fontSize: "12px", color: colors.status.success, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "2px" }}>
-              <ArrowUpRight size={14} /> Based on Tickets × ₹250
+              <ArrowUpRight size={14} /> Live Staff Collections
             </span>
           </div>
           <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "rgba(244, 188, 67, 0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -167,7 +291,7 @@ export default function ManagerDashboardView() {
               Staff Overview
             </h3>
             <span style={{ fontSize: "13px", color: colors.text.muted }}>
-              Showing {Math.min(5, filteredStaff.length)} of {filteredStaff.length} staff members
+              Showing {filteredStaff.length} staff member{filteredStaff.length !== 1 ? "s" : ""}
             </span>
           </div>
 
@@ -188,7 +312,7 @@ export default function ManagerDashboardView() {
             style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: colors.brand.accent, textDecoration: "none", padding: "6px 14px", borderRadius: "8px", border: `1px solid ${colors.header.border}`, background: "#FFFFFF", transition: "all 0.18s ease" }}
             className="view-all-link"
           >
-            View All →
+            View All Staff →
           </Link>
         </div>
 
@@ -203,25 +327,37 @@ export default function ManagerDashboardView() {
               </tr>
             </thead>
             <tbody>
-              {filteredStaff.slice(0, 5).map((s) => (
-                <tr key={s.id} style={{ borderBottom: `1px solid ${colors.header.border}`, transition: "background 0.15s ease" }} className="table-row-hover">
-                  <td style={{ padding: "14px 20px", fontWeight: 600 }}>{s.name}</td>
-                  <td style={{ padding: "14px 20px" }}>
-                    <span style={{ background: colors.bg.page, padding: "4px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, color: colors.brand.accent }}>
-                      {(Array.isArray(s.role) ? s.role : [String(s.role)]).map(String).join(", ")}
-                    </span>
-                  </td>
-                  <td style={{ padding: "14px 20px", fontWeight: 700 }}>{(typeof s.ticketsIssued === 'number' ? s.ticketsIssued : 0).toLocaleString()}</td>
-                  <td style={{ padding: "14px 20px" }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: 600, background: String(s.status).toUpperCase() === "ACTIVE" ? "#F0FDF4" : "#FEF2F2", color: String(s.status).toUpperCase() === "ACTIVE" ? colors.status.success : colors.status.error }}>
-                       {String(s.status).toUpperCase() === "ACTIVE" ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
-                       {String(s.status).toUpperCase() === "ACTIVE" ? "Active" : "Inactive"}
-                    </span>
+              {filteredStaff.map((s: ManagerDashboardStaffItem) => {
+                const isAct = String(s.status).toUpperCase() === "ACTIVE";
+                const roles = Array.isArray(s.role) ? s.role : [String(s.role)];
+                return (
+                  <tr key={s.id} style={{ borderBottom: `1px solid ${colors.header.border}`, transition: "background 0.15s ease" }} className="table-row-hover">
+                    <td style={{ padding: "14px 20px", fontWeight: 600 }}>{s.name}</td>
+                    <td style={{ padding: "14px 20px" }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                        {roles.map((r: string) => (
+                          <span key={r} style={{ background: colors.bg.page, padding: "4px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, color: colors.brand.accent }}>
+                            {r}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td style={{ padding: "14px 20px", fontWeight: 700 }}>{(typeof s.ticketsIssued === "number" ? s.ticketsIssued : 0).toLocaleString("en-IN")}</td>
+                    <td style={{ padding: "14px 20px" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: 600, background: isAct ? "#F0FDF4" : "#FEF2F2", color: isAct ? colors.status.success : colors.status.error }}>
+                        {isAct ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                        {isAct ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredStaff.length === 0 && (
+                <tr>
+                  <td colSpan={4} style={{ padding: "32px", textAlign: "center", color: colors.text.muted }}>
+                    {searchQuery ? `No staff found matching "${searchQuery}".` : "No staff members assigned to this manager yet."}
                   </td>
                 </tr>
-              ))}
-              {filteredStaff.length === 0 && (
-                <tr><td colSpan={4} style={{ padding: "32px", textAlign: "center", color: colors.text.muted }}>No staff found.</td></tr>
               )}
             </tbody>
           </table>
@@ -236,3 +372,4 @@ export default function ManagerDashboardView() {
     </div>
   );
 }
+

@@ -84,62 +84,67 @@ export const transactionKeys = {
 // ── Queries ──────────────────────────────────────────────────────────────────
 
 /**
+ * Fetch paginated list of transactions or all records when limit: 0.
+ * GET /api/admin/transactions
+ */
+export async function fetchTransactionList(params?: TransactionListParams): Promise<TransactionListResponse> {
+  const page = params?.page ?? 1;
+  const limit = params?.limit !== undefined ? params.limit : 10;
+
+  const sp = new URLSearchParams();
+  sp.set("page", String(page));
+  sp.set("limit", String(limit));
+  if (params?.search?.trim()) sp.set("search", params.search.trim());
+  if (params?.attractionId && params.attractionId !== "All") sp.set("attractionId", params.attractionId);
+  if (params?.paymentMode && params.paymentMode !== "All") sp.set("paymentMode", params.paymentMode);
+  if (params?.status && params.status !== "All") sp.set("status", params.status);
+  if (params?.fromDate) sp.set("fromDate", params.fromDate);
+  if (params?.toDate) sp.set("toDate", params.toDate);
+
+  const res = await getData<any>(`${AppUrl.transaction.list}?${sp.toString()}`);
+
+  // Normalise different response shapes
+  const payload = res?.data ?? res;
+  if (payload && Array.isArray(payload.items)) {
+    const total = payload.pagination?.total ?? payload.items.length;
+    return {
+      items: payload.items,
+      pagination: payload.pagination || {
+        page,
+        limit,
+        total,
+        totalPages: limit > 0 ? (Math.ceil(total / limit) || 1) : 1,
+      },
+    };
+  }
+  if (Array.isArray(payload)) {
+    return {
+      items: payload,
+      pagination: {
+        page,
+        limit,
+        total: payload.length,
+        totalPages: limit > 0 ? (Math.ceil(payload.length / limit) || 1) : 1,
+      },
+    };
+  }
+  return {
+    items: [],
+    pagination: { page: 1, limit, total: 0, totalPages: 0 },
+  };
+}
+
+/**
  * Fetch paginated list of transactions.
  * GET /api/admin/transactions
  */
 export function useTransactionList(params?: TransactionListParams) {
   const page = params?.page ?? 1;
-  const limit = params?.limit ?? 10;
+  const limit = params?.limit !== undefined ? params.limit : 10;
 
   return useQuery<TransactionListResponse>({
     queryKey: transactionKeys.list({ ...params, page, limit }),
-    queryFn: async () => {
-      const sp = new URLSearchParams();
-      sp.set("page", String(page));
-      sp.set("limit", String(limit));
-      if (params?.search?.trim()) sp.set("search", params.search.trim());
-      if (params?.attractionId && params.attractionId !== "All") sp.set("attractionId", params.attractionId);
-      if (params?.paymentMode && params.paymentMode !== "All") sp.set("paymentMode", params.paymentMode);
-      if (params?.status && params.status !== "All") sp.set("status", params.status);
-      if (params?.fromDate) sp.set("fromDate", params.fromDate);
-      if (params?.toDate) sp.set("toDate", params.toDate);
-
-      const res = await getData<any>(`${AppUrl.transaction.list}?${sp.toString()}`);
-
-      // Normalise different response shapes
-      if (res && res.data && Array.isArray(res.data.items)) {
-        return {
-          items: res.data.items,
-          pagination: res.data.pagination || {
-            page,
-            limit,
-            total: res.data.items.length,
-            totalPages: Math.ceil(res.data.items.length / limit) || 1,
-          },
-        };
-      }
-      if (res && Array.isArray(res.items)) {
-        return {
-          items: res.items,
-          pagination: res.pagination || {
-            page,
-            limit,
-            total: res.items.length,
-            totalPages: Math.ceil(res.items.length / limit) || 1,
-          },
-        };
-      }
-      if (Array.isArray(res)) {
-        return {
-          items: res,
-          pagination: { page, limit, total: res.length, totalPages: Math.ceil(res.length / limit) || 1 },
-        };
-      }
-      return {
-        items: [],
-        pagination: { page: 1, limit, total: 0, totalPages: 0 },
-      };
-    },
+    queryFn: () => fetchTransactionList({ ...params, page, limit }),
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });

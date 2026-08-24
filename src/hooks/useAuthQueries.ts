@@ -64,6 +64,24 @@ export const authKeys = {
 };
 
 /**
+ * Module-level flag that is set to `true` the moment the user triggers
+ * logout. All queries that use this flag will immediately become disabled,
+ * preventing stale or unnecessary API calls (e.g. GET /profile) from firing
+ * during the redirect to /login.
+ */
+let _isLoggingOut = false;
+
+/** Set the logout flag — called inside useLogoutMutation before any cleanup. */
+export function setLoggingOut() {
+  _isLoggingOut = true;
+}
+
+/** Returns true when a logout is in progress. Used to gate queries. */
+export function isLoggingOut(): boolean {
+  return _isLoggingOut;
+}
+
+/**
  * TanStack Mutation Hook for User Login
  */
 export function useLoginMutation() {
@@ -127,28 +145,33 @@ export function useLogoutMutation() {
 
   return useMutation({
     mutationFn: async () => {
-      // Cancel any pending fetches so they don't race
-      await queryClient.cancelQueries();
-      return postData(AppUrl.auth.logout);
-    },
-    onSuccess: () => {
-      // 1. Cancel all in-flight queries and remove from cache without triggering refetches
+      // 1. Set the logout flag immediately — this disables useProfileQuery
+      //    and any other query that checks isLoggingOut(), preventing stale
+      //    refetches from firing during the redirect.
+      setLoggingOut();
+
+      // 2. Synchronously clear the cache before the API call so no
+      //    already-scheduled refetches (e.g. profile) can start.
       queryClient.cancelQueries();
       queryClient.removeQueries();
 
-      // 2. Wipe ALL browser storage
+      return postData(AppUrl.auth.logout);
+    },
+    onSuccess: () => {
+      // Wipe ALL browser storage
       if (typeof window !== "undefined") {
         try { localStorage.clear(); } catch { /* ignore */ }
         try { sessionStorage.clear(); } catch { /* ignore */ }
       }
 
-      // 3. Perform a clean hard redirect to /login
-      // This unmounts all dashboard components and cancels all network requests
+      // Hard redirect to /login — unmounts all dashboard components
       if (typeof window !== "undefined") {
         window.location.replace("/login");
       }
     },
     onError: (error: any) => {
+      // Reset flag if logout failed so profile query can resume
+      _isLoggingOut = false;
       const message = error?.error?.message || error?.message || "Failed to logout. Please try again.";
       showErrorOnce(message, "Logout Error");
     },
@@ -260,7 +283,9 @@ export function useProfileQuery(enabled = true) {
     queryFn: async () => {
       return getData<ProfileResponse>(AppUrl.auth.getProfile);
     },
-    enabled,
+    // Never run when logout is in progress — prevents the profile API from
+    // being called after the user clicks logout but before the page unloads.
+    enabled: enabled && !_isLoggingOut,
     staleTime: 5 * 60 * 1000,
   });
 }

@@ -1,6 +1,17 @@
-// ─── Per-attraction module permissions ───────────────────────────────────────
+export interface ManagerAttractionItem {
+  id: string;
+  name: string;
+  type?: string;
+  category?: string;
+  status?: string;
+  moduleIds?: string[];
+  modules?: any[];
+}
+
+// ─── Per-attraction module permissions 
 export interface AttractionPermission {
   attractionId: string;
+  attractionName?: string;
   /** Which of the 4 sub-modules this manager can use within this attraction */
   modules: string[];
 }
@@ -18,6 +29,7 @@ export interface ManagerUser {
   createdAt: string;
   lastLoginAt: string | null;
   attraction?: string;
+  attractions?: ManagerAttractionItem[];
   totalBookings?: number;
   revenueGenerated?: number;
   attractionManagementEnabled?: boolean;

@@ -204,52 +204,68 @@ function mapBookingItem(item: any): BookingListItem {
 // ── Queries ──────────────────────────────────────────────────────────────────
 
 /**
+ * Fetch list of bookings with filter parameters.
+ * Supports limit: 0 for retrieving all records.
+ * GET /api/admin/bookings
+ */
+export async function fetchBookingList(params?: BookingListParams): Promise<BookingListResponse> {
+  const page = params?.page ?? 1;
+  const limit = params?.limit !== undefined ? params.limit : 10;
+
+  const sp = new URLSearchParams();
+  sp.set("page", String(page));
+  sp.set("limit", String(limit));
+  if (params?.search?.trim()) sp.set("search", params.search.trim());
+  if (params?.attractionId && params.attractionId !== "All") sp.set("attractionId", params.attractionId);
+  if (params?.status && params.status !== "All") sp.set("status", params.status);
+  if (params?.fromDate) sp.set("fromDate", params.fromDate);
+  if (params?.toDate) sp.set("toDate", params.toDate);
+
+  const res = await getData<any>(`${AppUrl.booking.list}?${sp.toString()}`);
+
+  // Normalise different response shapes
+  const payload = res?.data ?? res;
+
+  if (payload && Array.isArray(payload.items)) {
+    const totalCount = payload.pagination?.total ?? payload.items.length;
+    return {
+      items: payload.items.map(mapBookingItem),
+      pagination: payload.pagination || {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: limit > 0 ? (Math.ceil(totalCount / limit) || 1) : 1,
+      },
+    };
+  }
+  if (Array.isArray(payload)) {
+    return {
+      items: payload.map(mapBookingItem),
+      pagination: {
+        page,
+        limit,
+        total: payload.length,
+        totalPages: limit > 0 ? (Math.ceil(payload.length / limit) || 1) : 1,
+      },
+    };
+  }
+  return {
+    items: [],
+    pagination: { page: 1, limit, total: 0, totalPages: 0 },
+  };
+}
+
+/**
  * Fetch paginated list of bookings.
  * GET /api/admin/bookings
  */
 export function useBookingList(params?: BookingListParams) {
   const page = params?.page ?? 1;
-  const limit = params?.limit ?? 10;
+  const limit = params?.limit !== undefined ? params.limit : 10;
 
   return useQuery<BookingListResponse>({
     queryKey: bookingKeys.list({ ...params, page, limit }),
-    queryFn: async () => {
-      const sp = new URLSearchParams();
-      sp.set("page", String(page));
-      sp.set("limit", String(limit));
-      if (params?.search?.trim()) sp.set("search", params.search.trim());
-      if (params?.attractionId && params.attractionId !== "All") sp.set("attractionId", params.attractionId);
-      if (params?.status && params.status !== "All") sp.set("status", params.status);
-      if (params?.fromDate) sp.set("fromDate", params.fromDate);
-      if (params?.toDate) sp.set("toDate", params.toDate);
-
-      const res = await getData<any>(`${AppUrl.booking.list}?${sp.toString()}`);
-
-      // Normalise different response shapes
-      const payload = res?.data ?? res;
-
-      if (payload && Array.isArray(payload.items)) {
-        return {
-          items: payload.items.map(mapBookingItem),
-          pagination: payload.pagination || {
-            page,
-            limit,
-            total: payload.items.length,
-            totalPages: Math.ceil(payload.items.length / limit) || 1,
-          },
-        };
-      }
-      if (Array.isArray(payload)) {
-        return {
-          items: payload.map(mapBookingItem),
-          pagination: { page, limit, total: payload.length, totalPages: Math.ceil(payload.length / limit) || 1 },
-        };
-      }
-      return {
-        items: [],
-        pagination: { page: 1, limit, total: 0, totalPages: 0 },
-      };
-    },
+    queryFn: () => fetchBookingList(params),
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });

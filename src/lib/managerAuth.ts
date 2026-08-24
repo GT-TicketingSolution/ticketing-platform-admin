@@ -157,28 +157,23 @@ export function clearManagerSession(): void {
 
 /**
  * Derive the allowed sidebar nav keys for a manager based on their permissions.
- * Returns a Set of module label strings that the manager may access.
+ * Returns a Set of module strings if present in the manager session, or null (deferring to backend system modules).
  */
 export function getManagerAllowedModules(
   session: Omit<StoredManager, "password"> | null
-): Set<string> {
-  const defaultModules = [
-    "Dashboard",
-    "Staff Management",
-    "Bookings",
-    "Transactions",
-    "Invoices",
-    "Inventory / Capacity",
-    "Reports",
-  ];
+): Set<string> | null {
+  if (!session) return null;
 
-  const baseModules = (session && session.allowedModules && session.allowedModules.length > 0)
-    ? ["Dashboard", ...session.allowedModules]
-    : defaultModules;
+  if (!session.allowedModules || session.allowedModules.length === 0) {
+    return null;
+  }
 
-  const allowed = new Set<string>(baseModules);
+  const allowed = new Set<string>();
+  for (const m of session.allowedModules) {
+    allowed.add(m);
+  }
 
-  if (session && session.attractionManagementEnabled) {
+  if (session.attractionManagementEnabled) {
     allowed.add("Attraction Management");
     for (const perm of session.attractionPermissions || []) {
       for (const mod of perm.modules || []) {

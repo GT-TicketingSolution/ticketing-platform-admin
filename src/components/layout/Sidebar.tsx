@@ -42,8 +42,12 @@ const MODULE_REGISTRY: Record<string, { label: string; href: string; icon: any }
   transaction: { label: "Transactions", href: "/transactions", icon: CircleDollarSign },
   invoices: { label: "Invoices", href: "/invoices", icon: FileText },
   invoice: { label: "Invoices", href: "/invoices", icon: FileText },
-  inventory: { label: "Inventory / Capacity", href: "/inventory", icon: Boxes },
-  inventory_capacity: { label: "Inventory / Capacity", href: "/inventory", icon: Boxes },
+  inventory: { label: "Inventory & Capacity", href: "/inventory", icon: Boxes },
+  inventory_capacity: { label: "Inventory & Capacity", href: "/inventory", icon: Boxes },
+  inventory__capacity: { label: "Inventory & Capacity", href: "/inventory", icon: Boxes },
+  inventory_and_capacity: { label: "Inventory & Capacity", href: "/inventory", icon: Boxes },
+  inventorycapacity: { label: "Inventory & Capacity", href: "/inventory", icon: Boxes },
+  inventory_capacity_management: { label: "Inventory & Capacity", href: "/inventory", icon: Boxes },
   cctv_monitoring: { label: "CCTV Monitoring", href: "/cctv-monitoring", icon: Cctv },
   cctv: { label: "CCTV Monitoring", href: "/cctv-monitoring", icon: Cctv },
   seat_management: { label: "Seat Management", href: "/seat-management", icon: Armchair },
@@ -335,11 +339,24 @@ export default function Sidebar({
       const activeItems = systemModules
         .filter((mod) => String(mod.isActive).toUpperCase() === "ACTIVE" || (mod.isActive as unknown) === true)
         .map((mod) => {
-          const normalizedKey = (mod.key || "").toLowerCase().replace(/[-\s]/g, "_");
-          const normalizedName = (mod.name || "").toLowerCase().replace(/[-\s]/g, "_");
-          const match = MODULE_REGISTRY[normalizedKey] || MODULE_REGISTRY[normalizedName];
+          const rawKey = (mod.key || "").toLowerCase();
+          const rawName = (mod.name || "").toLowerCase();
+          const cleanKey = rawKey.replace(/[^a-z0-9]/g, "_").replace(/_+/g, "_");
+          const cleanName = rawName.replace(/[^a-z0-9]/g, "_").replace(/_+/g, "_");
+          const slugKey = rawKey.replace(/[^a-z0-9]/g, "");
+          const slugName = rawName.replace(/[^a-z0-9]/g, "");
+
+          const match =
+            MODULE_REGISTRY[cleanKey] ||
+            MODULE_REGISTRY[cleanName] ||
+            MODULE_REGISTRY[slugKey] ||
+            MODULE_REGISTRY[slugName] ||
+            MODULE_REGISTRY[rawKey] ||
+            MODULE_REGISTRY[rawName];
+
           if (match) {
             return {
+              key: mod.key || cleanKey,
               label: mod.name || match.label,
               href: match.href,
               icon: match.icon,
@@ -349,15 +366,11 @@ export default function Sidebar({
         })
         .filter((item): item is NonNullable<typeof item> => item !== null);
 
-      if (roleName === "Manager" && managerAllowedModules) {
-        return activeItems.filter((item) => managerAllowedModules.has(item.label));
-      }
-
       return activeItems;
     }
 
     return [];
-  }, [roleName, systemModules, managerAllowedModules, isSystemModulesError]);
+  }, [roleName, systemModules, isSystemModulesError]);
 
   // Close drawer on route change
   const closeDrawer = useCallback(onDrawerClose, [onDrawerClose]);
