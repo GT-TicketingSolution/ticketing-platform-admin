@@ -443,6 +443,10 @@ export const bookings = pgTable(
       .notNull()
       .default("0"),
 
+    paymentExpiresAt: timestamp("payment_expires_at", {
+      withTimezone: true,
+    }),
+
     paymentMode: paymentModeEnum("payment_mode").notNull(),
 
     status: bookingStatusEnum("status").notNull().default("PENDING"),

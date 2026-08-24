@@ -8,6 +8,7 @@ import {
   attractionTimeSlots,
   attractionSlotCapacities,
   bookingSeats,
+  bookings,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -50,6 +51,10 @@ export async function GET(request: NextRequest) {
       return failure("Date is required.", 400, "DATE_REQUIRED");
     }
 
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return failure("Date must be in YYYY-MM-DD format.", 400, "INVALID_DATE");
+    }
+
     // ---------------------------------------------
     // ATTRACTION ACCESS
     // ---------------------------------------------
@@ -75,14 +80,13 @@ export async function GET(request: NextRequest) {
     const rows = await db
       .select({
         id: attractionTimeSlots.id,
-
         slotTime: attractionTimeSlots.slotTime,
-
         isActive: attractionTimeSlots.isActive,
-
         capacity: attractionSlotCapacities.capacity,
 
-        booked: sql<number>`COUNT(DISTINCT ${bookingSeats.id})`,
+        booked: sql<number>`
+      COUNT(DISTINCT ${bookingSeats.id})
+    `,
       })
       .from(attractionTimeSlots)
 
@@ -99,6 +103,14 @@ export async function GET(request: NextRequest) {
         and(
           eq(bookingSeats.slotId, attractionTimeSlots.id),
           eq(bookingSeats.visitDate, sql`${date}::date`),
+        ),
+      )
+
+      .leftJoin(
+        bookings,
+        and(
+          eq(bookings.id, bookingSeats.bookingId),
+          eq(bookings.status, "CONFIRMED"),
         ),
       )
 
