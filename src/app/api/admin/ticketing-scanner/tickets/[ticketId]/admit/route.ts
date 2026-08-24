@@ -10,6 +10,7 @@ import {
   attractionManagement,
   bookingCheckins,
   auditLogs,
+  ticketScanLogs,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const auth = await requireAuth(request);
 
-    await requireModuleAccess(auth, "BOOKINGS");
+    await requireModuleAccess(auth, "SCANNER");
 
     const adminId = getAdminId(auth);
 
@@ -214,6 +215,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (!checkin) {
         throw new Error("ADMISSION_CREATE_FAILED");
       }
+
+      // ---------------------------------------------
+      // RECORD SUCCESSFUL SCAN
+      // ---------------------------------------------
+      await tx.insert(ticketScanLogs).values({
+        // attractionId: booking.attractionId,
+        bookingId: booking.id,
+        scannedCode: booking.bookingNumber,
+        visitorsCount: 0,
+        verdict: "ALLOWED",
+        reason: null,
+        scannedAt: checkedInAt,
+        scannedBy: auth.user.id,
+      });
 
       // Audit
       await tx.insert(auditLogs).values({

@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     const auth = await requireAuth(request);
 
     // ADMIN / MANAGER / STAFF with BOOKINGS access
-    await requireModuleAccess(auth, "BOOKINGS");
+    await requireModuleAccess(auth, "SCANNER");
 
     const adminId = getAdminId(auth);
 

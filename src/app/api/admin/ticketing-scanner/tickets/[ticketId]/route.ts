@@ -36,7 +36,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const auth = await requireAuth(request);
 
-    await requireModuleAccess(auth, "BOOKINGS");
+    await requireModuleAccess(auth, "SCANNER");
 
     const adminId = getAdminId(auth);
 

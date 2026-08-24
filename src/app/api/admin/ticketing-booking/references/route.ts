@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     const auth = await requireAuth(request);
 
-    await requireModuleAccess(auth, "BOOKINGS");
+    await requireModuleAccess(auth, "TICKET_BOOKING");
 
     const adminId = getAdminId(auth);
 
