@@ -35,10 +35,7 @@ const createStaffSchema = z.object({
 
   attractionIds: z.array(z.string().uuid()).optional().default([]),
 
-  status: z
-    .enum(["ACTIVE", "SUSPENDED", "DISABLED"])
-    .optional()
-    .default("ACTIVE"),
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
 });
 
 /* =========================================================
@@ -189,11 +186,7 @@ export async function GET(request: NextRequest) {
     // Status filter
     // -----------------------------------------------------
 
-    if (
-      status === "ACTIVE" ||
-      status === "SUSPENDED" ||
-      status === "DISABLED"
-    ) {
+    if (status === "ACTIVE" || status === "INACTIVE") {
       conditions.push(eq(users.status, status));
     }
 

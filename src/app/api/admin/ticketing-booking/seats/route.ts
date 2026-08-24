@@ -9,6 +9,8 @@ import {
   seatLayouts,
   seatLayoutSeats,
   bookingSeats,
+  bookings,
+  attractionTimeSlots,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -36,11 +38,11 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
 
-    const attractionId = searchParams.get("attractionId");
-    const slotId = searchParams.get("slotId");
+    const attractionIdParam = searchParams.get("attractionId");
+    const slotIdParam = searchParams.get("slotId");
     const date = searchParams.get("date");
 
-    if (!attractionId) {
+    if (!attractionIdParam) {
       return failure(
         "Attraction ID is required.",
         400,
@@ -48,12 +50,33 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!slotId) {
+    if (!slotIdParam) {
       return failure("Slot ID is required.", 400, "SLOT_ID_REQUIRED");
     }
 
     if (!date) {
       return failure("Date is required.", 400, "DATE_REQUIRED");
+    }
+
+    const attractionId = attractionIdParam;
+    const slotId = slotIdParam;
+
+    const [slot] = await db
+      .select({
+        id: attractionTimeSlots.id,
+      })
+      .from(attractionTimeSlots)
+      .where(
+        and(
+          eq(attractionTimeSlots.id, slotId),
+          eq(attractionTimeSlots.attractionId, attractionId),
+          eq(attractionTimeSlots.isActive, true),
+        ),
+      )
+      .limit(1);
+
+    if (!slot) {
+      return failure("Slot not found or inactive.", 404, "SLOT_NOT_FOUND");
     }
 
     // ---------------------------------------------
@@ -184,8 +207,13 @@ export async function GET(request: NextRequest) {
         seatNumber: bookingSeats.seatNumber,
       })
       .from(bookingSeats)
+      .innerJoin(bookings, eq(bookingSeats.bookingId, bookings.id))
       .where(
-        and(eq(bookingSeats.slotId, slotId), eq(bookingSeats.visitDate, date)),
+        and(
+          eq(bookingSeats.slotId, slotId),
+          eq(bookingSeats.visitDate, date),
+          eq(bookings.status, "CONFIRMED"),
+        ),
       );
 
     // ---------------------------------------------

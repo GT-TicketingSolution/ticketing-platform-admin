@@ -76,7 +76,7 @@ export async function PATCH(
     const [staff] = await db
       .update(users)
       .set({
-        status: "DISABLED",
+        status: "INACTIVE",
         updatedAt: new Date(),
       })
       .where(
