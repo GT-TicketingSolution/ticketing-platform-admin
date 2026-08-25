@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
-import { eq, and } from "drizzle-orm";
 
 import { db } from "@/db";
-import { bookings } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
+
+import { bookings, bookingSeats } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
 import {
@@ -98,27 +99,47 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // CANCEL BOOKING
     // ---------------------------------------------
 
-    const [cancelledBooking] = await db
-      .update(bookings)
-      .set({
-        status: "CANCELLED",
-        updatedAt: new Date(),
-      })
-      .where(and(eq(bookings.id, bookingId), eq(bookings.status, "PENDING")))
-      .returning({
-        id: bookings.id,
-        bookingNumber: bookings.bookingNumber,
-        attractionId: bookings.attractionId,
-        status: bookings.status,
-        customerName: bookings.customerName,
-        mobileNumber: bookings.mobileNumber,
-        visitAt: bookings.visitAt,
-        totalAmount: bookings.totalAmount,
-        amountPaid: bookings.amountPaid,
-        paymentMode: bookings.paymentMode,
-        createdAt: bookings.createdAt,
-        updatedAt: bookings.updatedAt,
-      });
+    const result = await db.transaction(async (tx) => {
+      // ---------------------------------------------
+      // CANCEL BOOKING
+      // ---------------------------------------------
+
+      const [cancelledBooking] = await tx
+        .update(bookings)
+        .set({
+          status: "CANCELLED",
+          updatedAt: new Date(),
+        })
+        .where(and(eq(bookings.id, bookingId), eq(bookings.status, "PENDING")))
+        .returning({
+          id: bookings.id,
+          bookingNumber: bookings.bookingNumber,
+          attractionId: bookings.attractionId,
+          status: bookings.status,
+          customerName: bookings.customerName,
+          mobileNumber: bookings.mobileNumber,
+          visitAt: bookings.visitAt,
+          totalAmount: bookings.totalAmount,
+          amountPaid: bookings.amountPaid,
+          paymentMode: bookings.paymentMode,
+          createdAt: bookings.createdAt,
+          updatedAt: bookings.updatedAt,
+        });
+
+      if (!cancelledBooking) {
+        throw new Error("BOOKING_NOT_PENDING");
+      }
+
+      // ---------------------------------------------
+      // RELEASE RESERVED SEATS
+      // ---------------------------------------------
+
+      await tx
+        .delete(bookingSeats)
+        .where(eq(bookingSeats.bookingId, bookingId));
+
+      return cancelledBooking;
+    });
 
     // ---------------------------------------------
     // RESPONSE
@@ -127,7 +148,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return success(
       {
         message: "Booking cancelled successfully.",
-        booking: cancelledBooking,
+        booking: result,
       },
       200,
     );
@@ -137,6 +158,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // ---------------------------------------------
     // AUTH ERRORS
     // ---------------------------------------------
+
+    if (error instanceof Error && error.message === "BOOKING_NOT_PENDING") {
+      return failure(
+        "Only pending bookings can be cancelled.",
+        409,
+        "BOOKING_NOT_PENDING",
+      );
+    }
 
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
       return failure("Authentication required.", 401, "UNAUTHORIZED");

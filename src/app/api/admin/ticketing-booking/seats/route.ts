@@ -1,13 +1,12 @@
 import { NextRequest } from "next/server";
-
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 
 import {
   attractionManagement,
+  attractionManagementSeatLayouts,
   seatLayouts,
-  seatLayoutSeats,
   bookingSeats,
   bookings,
   attractionTimeSlots,
@@ -38,11 +37,11 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
 
-    const attractionIdParam = searchParams.get("attractionId");
-    const slotIdParam = searchParams.get("slotId");
+    const attractionId = searchParams.get("attractionId");
+    const slotId = searchParams.get("slotId");
     const date = searchParams.get("date");
 
-    if (!attractionIdParam) {
+    if (!attractionId) {
       return failure(
         "Attraction ID is required.",
         400,
@@ -50,7 +49,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!slotIdParam) {
+    if (!slotId) {
       return failure("Slot ID is required.", 400, "SLOT_ID_REQUIRED");
     }
 
@@ -58,29 +57,8 @@ export async function GET(request: NextRequest) {
       return failure("Date is required.", 400, "DATE_REQUIRED");
     }
 
-    const attractionId = attractionIdParam;
-    const slotId = slotIdParam;
-
-    const [slot] = await db
-      .select({
-        id: attractionTimeSlots.id,
-      })
-      .from(attractionTimeSlots)
-      .where(
-        and(
-          eq(attractionTimeSlots.id, slotId),
-          eq(attractionTimeSlots.attractionId, attractionId),
-          eq(attractionTimeSlots.isActive, true),
-        ),
-      )
-      .limit(1);
-
-    if (!slot) {
-      return failure("Slot not found or inactive.", 404, "SLOT_NOT_FOUND");
-    }
-
     // ---------------------------------------------
-    // BASIC DATE VALIDATION
+    // DATE VALIDATION
     // ---------------------------------------------
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -106,20 +84,42 @@ export async function GET(request: NextRequest) {
     }
 
     // ---------------------------------------------
-    // FETCH ATTRACTION SEAT CONFIGURATION
+    // VERIFY SLOT
     // ---------------------------------------------
 
-    const [attraction] = await db
+    const [slot] = await db
       .select({
+        id: attractionTimeSlots.id,
+      })
+      .from(attractionTimeSlots)
+      .where(
+        and(
+          eq(attractionTimeSlots.id, slotId),
+          eq(attractionTimeSlots.attractionId, attractionId),
+          eq(attractionTimeSlots.isActive, true),
+        ),
+      )
+      .limit(1);
+
+    if (!slot) {
+      return failure("Slot not found or inactive.", 404, "SLOT_NOT_FOUND");
+    }
+
+    // ---------------------------------------------
+    // FETCH ATTRACTION MANAGEMENT
+    // ---------------------------------------------
+
+    const [management] = await db
+      .select({
+        id: attractionManagement.id,
         attractionId: attractionManagement.attractionId,
         hasSeating: attractionManagement.hasSeating,
-        seatLayoutId: attractionManagement.seatLayoutId,
       })
       .from(attractionManagement)
       .where(eq(attractionManagement.attractionId, attractionId))
       .limit(1);
 
-    if (!attraction) {
+    if (!management) {
       return failure(
         "Attraction configuration not found.",
         404,
@@ -131,22 +131,55 @@ export async function GET(request: NextRequest) {
     // NO SEATING
     // ---------------------------------------------
 
-    if (!attraction.hasSeating || !attraction.seatLayoutId) {
+    if (!management.hasSeating) {
       return success({
         attractionId,
         slotId,
         date,
         hasSeating: false,
         layout: null,
-        seats: [],
-        occupiedSeats: [],
-        availableSeats: 0,
         totalSeats: 0,
+        occupiedCount: 0,
+        availableSeats: 0,
+        occupiedSeats: [],
+        sections: [],
+        seats: [],
       });
     }
 
     // ---------------------------------------------
-    // VERIFY SEAT LAYOUT
+    // FETCH SEAT LAYOUT MAPPING
+    //
+    // attraction_management
+    //        ↓
+    // attraction_management_seat_layouts
+    //        ↓
+    // seat_layouts
+    // ---------------------------------------------
+
+    const [layoutMapping] = await db
+      .select({
+        seatLayoutId: attractionManagementSeatLayouts.seatLayoutId,
+      })
+      .from(attractionManagementSeatLayouts)
+      .where(
+        eq(
+          attractionManagementSeatLayouts.attractionManagementId,
+          management.id,
+        ),
+      )
+      .limit(1);
+
+    if (!layoutMapping) {
+      return failure(
+        "Seat layout configuration not found.",
+        404,
+        "SEAT_LAYOUT_CONFIGURATION_NOT_FOUND",
+      );
+    }
+
+    // ---------------------------------------------
+    // FETCH SEAT LAYOUT
     // ---------------------------------------------
 
     const [layout] = await db
@@ -161,7 +194,7 @@ export async function GET(request: NextRequest) {
       .from(seatLayouts)
       .where(
         and(
-          eq(seatLayouts.id, attraction.seatLayoutId),
+          eq(seatLayouts.id, layoutMapping.seatLayoutId),
           eq(seatLayouts.status, "ACTIVE"),
         ),
       )
@@ -176,26 +209,65 @@ export async function GET(request: NextRequest) {
     }
 
     // ---------------------------------------------
-    // FETCH SEAT DEFINITIONS
+    // GENERATE SEATS FROM LAYOUT
+    //
+    // There is NO seat_layout_seats table.
+    //
+    // Therefore:
+    //
+    // rows = number of rows
+    // cols = seats per row
+    //
+    // Example:
+    // rows = 3
+    // cols = 4
+    //
+    // A1 A2 A3 A4
+    // B1 B2 B3 B4
+    // C1 C2 C3 C4
     // ---------------------------------------------
 
-    const seatRows = await db
-      .select({
-        id: seatLayoutSeats.id,
-        rowNumber: seatLayoutSeats.rowNumber,
-        colNumber: seatLayoutSeats.colNumber,
-        bogie: seatLayoutSeats.bogie,
-        seatNumber: seatLayoutSeats.seatNumber,
-        isActive: seatLayoutSeats.isActive,
-      })
-      .from(seatLayoutSeats)
-      .where(
-        and(
-          eq(seatLayoutSeats.seatLayoutId, layout.id),
-          eq(seatLayoutSeats.isActive, true),
-        ),
-      )
-      .orderBy(seatLayoutSeats.rowNumber, seatLayoutSeats.colNumber);
+    type GeneratedSeat = {
+      id: string;
+      row: number;
+      column: number;
+      bogie: string | null;
+      seatNumber: string;
+      status: "available" | "occupied";
+    };
+
+    const generatedSeats: GeneratedSeat[] = [];
+
+    for (let row = 1; row <= layout.rows; row++) {
+      for (let col = 1; col <= layout.cols; col++) {
+        // Convert row number to alphabet.
+        //
+        // 1 -> A
+        // 2 -> B
+        // 3 -> C
+        // ...
+        const rowLabel = String.fromCharCode(64 + row);
+
+        const seatNumber = `${rowLabel}${col}`;
+
+        generatedSeats.push({
+          id: `${layout.id}-${row}-${col}`,
+          row,
+          column: col,
+          bogie: null,
+          seatNumber,
+          status: "available",
+        });
+      }
+    }
+
+    // ---------------------------------------------
+    // FETCH OCCUPIED / HELD SEATS
+    //
+    // IMPORTANT:
+    // booking_seats uses time_slot_id,
+    // NOT slot_id.
+    // ---------------------------------------------
 
     // ---------------------------------------------
     // FETCH OCCUPIED SEATS
@@ -225,23 +297,23 @@ export async function GET(request: NextRequest) {
     );
 
     // ---------------------------------------------
-    // BUILD SEAT RESPONSE
+    // APPLY OCCUPIED STATUS
     // ---------------------------------------------
 
-    const seats = seatRows.map((seat) => {
+    const seats = generatedSeats.map((seat) => {
       const key = `${seat.bogie ?? ""}-${seat.seatNumber}`;
 
       const occupied = occupiedSet.has(key);
 
       return {
-        id: seat.id,
-        row: seat.rowNumber,
-        column: seat.colNumber,
-        bogie: seat.bogie,
-        seatNumber: seat.seatNumber,
+        ...seat,
         status: occupied ? "occupied" : "available",
       };
     });
+
+    // ---------------------------------------------
+    // OCCUPIED SEATS
+    // ---------------------------------------------
 
     const occupiedSeats = seats
       .filter((seat) => seat.status === "occupied")
@@ -250,6 +322,10 @@ export async function GET(request: NextRequest) {
         seatNumber: seat.seatNumber,
       }));
 
+    // ---------------------------------------------
+    // COUNTS
+    // ---------------------------------------------
+
     const totalSeats = seats.length;
 
     const occupiedCount = occupiedSeats.length;
@@ -257,48 +333,23 @@ export async function GET(request: NextRequest) {
     const availableSeats = Math.max(0, totalSeats - occupiedCount);
 
     // ---------------------------------------------
-    // GROUP BY BOGIE / SECTION
+    // GROUP BY SECTION
+    //
+    // Since current seat_layouts does not contain
+    // bogie/section definitions, all generated seats
+    // belong to one section.
     // ---------------------------------------------
 
-    const sectionMap = new Map<
-      string,
+    const sections = [
       {
-        name: string;
-        bogie: string | null;
-        totalSeats: number;
-        occupiedSeats: string[];
-        availableSeats: number;
-        seats: typeof seats;
-      }
-    >();
-
-    for (const seat of seats) {
-      const sectionKey = seat.bogie ?? "DEFAULT";
-
-      if (!sectionMap.has(sectionKey)) {
-        sectionMap.set(sectionKey, {
-          name: seat.bogie ? `Section ${seat.bogie}` : "Section A",
-          bogie: seat.bogie,
-          totalSeats: 0,
-          occupiedSeats: [],
-          availableSeats: 0,
-          seats: [],
-        });
-      }
-
-      const section = sectionMap.get(sectionKey)!;
-
-      section.totalSeats += 1;
-      section.seats.push(seat);
-
-      if (seat.status === "occupied") {
-        section.occupiedSeats.push(seat.seatNumber);
-      } else {
-        section.availableSeats += 1;
-      }
-    }
-
-    const sections = Array.from(sectionMap.values());
+        name: "Section A",
+        bogie: null,
+        totalSeats,
+        occupiedSeats: occupiedSeats.map((seat) => seat.seatNumber),
+        availableSeats,
+        seats,
+      },
+    ];
 
     // ---------------------------------------------
     // RESPONSE
@@ -306,9 +357,7 @@ export async function GET(request: NextRequest) {
 
     return success({
       attractionId,
-
       slotId,
-
       date,
 
       hasSeating: true,
@@ -323,9 +372,7 @@ export async function GET(request: NextRequest) {
       },
 
       totalSeats,
-
       occupiedCount,
-
       availableSeats,
 
       occupiedSeats,
