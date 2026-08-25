@@ -10,7 +10,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { Attraction, INITIAL_ATTRACTIONS } from "@/app/(dashboard)/attraction-management/types";
+import { useTicketingAttractions, TicketingAttraction } from "@/hooks/useTicketingBookingQueries";
 import CustomerInfoView from "./CustomerInfoView";
 
 export const SIDEBAR_COLLAPSE_EVENT = "tbv:sidebar-collapse";
@@ -20,21 +20,57 @@ function normalizeAttractionImage(img?: string | null): string {
   return img.replace("/Assets/Attraction/", "/Assets/Attractions/");
 }
 
-function loadAttractions(): Attraction[] {
-  if (typeof window === "undefined") return INITIAL_ATTRACTIONS;
-  try {
-    const raw = sessionStorage.getItem("attractions_data");
-    const parsed = raw ? (JSON.parse(raw) as Attraction[]) : [];
-    if (parsed.length > 0) {
-      return parsed.map((a) => ({
-        ...a,
-        image: normalizeAttractionImage(a.image),
-      }));
-    }
-    return INITIAL_ATTRACTIONS;
-  } catch {
-    return INITIAL_ATTRACTIONS;
+// ── Skeleton shimmer
+const shimmerCSS = `
+  @keyframes tbvShimmer {
+    0%   { background-position: -800px 0; }
+    100% { background-position:  800px 0; }
   }
+  .tbv-sk {
+    background: linear-gradient(90deg, #e8edf2 25%, #f5f7fa 50%, #e8edf2 75%);
+    background-size: 800px 100%;
+    animation: tbvShimmer 1.4s infinite linear;
+    border-radius: 8px;
+  }
+`;
+
+function GridAttractionsSkeleton() {
+  return (
+    <>
+      <style>{shimmerCSS}</style>
+      <div className="tbv-initial-grid">
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <div key={i} style={{ borderRadius: 14, overflow: "hidden", border: "1.5px solid rgba(179,175,175,0.35)" }}>
+            <div className="tbv-sk" style={{ height: 145, borderRadius: 0 }} />
+            <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="tbv-sk" style={{ height: 14, width: "70%", borderRadius: 6 }} />
+              <div className="tbv-sk" style={{ height: 10, width: "40%", borderRadius: 4 }} />
+              <div className="tbv-sk" style={{ height: 10, width: "30%", borderRadius: 4 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function AttractionListSkeleton() {
+  return (
+    <>
+      <style>{shimmerCSS}</style>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: "1.5px solid rgba(179,175,175,0.35)", borderRadius: 10 }}>
+            <div className="tbv-sk" style={{ width: 42, height: 42, borderRadius: 6, flexShrink: 0 }} />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+              <div className="tbv-sk" style={{ height: 12, width: "70%", borderRadius: 4 }} />
+              <div className="tbv-sk" style={{ height: 10, width: "40%", borderRadius: 4 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
 }
 
 export type CategoryKey = "adult" | "child" | "senior" | "student" | "foreigner";
@@ -54,6 +90,9 @@ export const VISITOR_CATEGORIES: VisitorCategoryMeta[] = [
   { key: "foreigner", label: "Foreigner", subLabel: "Passport verification", image: "/Assets/Visitors/Foreigner.jpg", defaultPrice: 500 },
   { key: "senior", label: "Senior Citizen", subLabel: "60+ yrs", image: "", defaultPrice: 75 },
 ];
+
+// Re-export type alias so remaining code can use it without change
+type Attraction = TicketingAttraction;
 
 interface CartEntry {
   attraction: Attraction;
@@ -357,18 +396,12 @@ function VerticalAttractionCard({
       style={{
         width: "100%",
         background: "#FFFFFF",
-        border:
-          isActive || isSelected
-            ? "2px solid #F4BC43"
-            : "1.5px solid rgba(179,175,175,0.35)",
+        border: "1.5px solid rgba(179,175,175,0.35)",
         borderRadius: "10px",
         padding: "8px 10px",
         cursor: "pointer",
         position: "relative",
-        boxShadow:
-          isActive || isSelected
-            ? "0 3px 12px rgba(244,188,67,0.2)"
-            : "0 1px 3px rgba(0,0,0,0.03)",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
         transition: "all 0.15s cubic-bezier(0.4, 0, 0.2, 1)",
         display: "flex",
         alignItems: "center",
@@ -669,7 +702,18 @@ function Stepper({
 
 // ── Main Ticket Booking Component ─────────────────────────────────────────────
 export default function TicketBookingView() {
-  const [allAttractions, setAllAttractions] = useState<Attraction[]>([]);
+  // ── Real API: load attractions ────────────────────────────────────────────
+  const { data: attractionsData, isLoading: attractionsLoading } = useTicketingAttractions();
+  const allAttractions = useMemo(
+    () =>
+      (attractionsData ?? [])
+        .filter((a) => a.status?.toUpperCase() === "ACTIVE")
+        .map((a) => ({
+          ...a,
+          image: normalizeAttractionImage(a.image),
+        })),
+    [attractionsData]
+  );
 
   // Mode: "grid" = initial available attractions, "booking" = selection view, "customer-info" = full separate page
   const [mode, setMode] = useState<"grid" | "booking" | "customer-info">("grid");
@@ -691,15 +735,18 @@ export default function TicketBookingView() {
 
   useEffect(() => {
     document.title = "Ticket Booking | Ticketing Solution";
-    const attractions = loadAttractions().filter((a) => a.status === "Active");
-    setAllAttractions(attractions);
-    // Initialize available trips map
-    const tripsInit: Record<string, number> = {};
-    attractions.forEach((a) => {
-      tripsInit[a.id] = getAttractionBaseMetaDetails(a).defaultTrips;
-    });
-    setAvailableTripsMap(tripsInit);
   }, []);
+
+  // Update trips map whenever attractions data changes
+  useEffect(() => {
+    if (allAttractions.length > 0) {
+      const tripsInit: Record<string, number> = {};
+      allAttractions.forEach((a) => {
+        tripsInit[a.id] = getAttractionBaseMetaDetails(a).defaultTrips;
+      });
+      setAvailableTripsMap(tripsInit);
+    }
+  }, [allAttractions]);
 
   // Sync sidebar collapse state
   useEffect(() => {
@@ -880,16 +927,28 @@ export default function TicketBookingView() {
   const hasCartItems = cart.some((e) => Object.values(e.quantities).some((v) => v > 0));
   const totalCartAmount = cart.reduce((sum, e) => sum + calcEntry(e).total, 0);
 
-  const bookingSummary = cart.map((e) => ({
-    attractionName: e.attraction.name,
-    passengers: VISITOR_CATEGORIES.filter((c) => (e.quantities[c.key] || 0) > 0).map((c) => ({
-      label: c.label,
-      qty: e.quantities[c.key],
-    })),
-    totalAmount: calcEntry(e).total,
-  }));
+  const bookingSummary = cart.map((e) => {
+    const calc = calcEntry(e);
+    return {
+      attractionId: e.attraction.id,
+      attractionName: e.attraction.name,
+      hasSeating: e.attraction.hasSeating,
+      seatLayoutId: e.attraction.seatLayoutId,
+      passengers: VISITOR_CATEGORIES.filter((c) => (e.quantities[c.key] || 0) > 0).map((c) => ({
+        key: c.key,
+        label: c.label,
+        qty: e.quantities[c.key],
+        unitPrice: e.attraction.pricing[c.key] ?? c.defaultPrice,
+      })),
+      subtotal: calc.subtotal,
+      gstAmount: calc.gst,
+      gstAdjustment: calc.gstAdj,
+      roundOff: calc.roundOff,
+      totalAmount: calc.total,
+    };
+  });
 
-  // ── 3. FULL SEPARATE PAGE: CUSTOMER INFORMATION ──────────────────────────────
+  // ── 3. FULL SEPARATE PAGE: CUSTOMER INFORMATION 
   if (mode === "customer-info") {
     return (
       <CustomerInfoView
@@ -941,15 +1000,23 @@ export default function TicketBookingView() {
         </div>
 
         {/* Attractions Grid */}
-        <div className="tbv-initial-grid">
-          {allAttractions.map((attraction) => (
-            <GridAttractionCard
-              key={attraction.id}
-              attraction={attraction}
-              onSelect={() => handleSelectGridAttraction(attraction.id)}
-            />
-          ))}
-        </div>
+        {attractionsLoading ? (
+          <GridAttractionsSkeleton />
+        ) : allAttractions.length === 0 ? (
+          <div style={{ padding: "40px 0", textAlign: "center", color: "#64748B", fontSize: "14px", fontWeight: 600 }}>
+            No attractions available.
+          </div>
+        ) : (
+          <div className="tbv-initial-grid">
+            {allAttractions.map((attraction) => (
+              <GridAttractionCard
+                key={attraction.id}
+                attraction={attraction}
+                onSelect={() => handleSelectGridAttraction(attraction.id)}
+              />
+            ))}
+          </div>
+        )}
 
         {/* Grid Styles */}
         <style jsx global>{`
@@ -1089,30 +1156,36 @@ export default function TicketBookingView() {
             }}
             className="tbv-scroll-col"
           >
-            {allAttractions.map((attraction) => {
-              const isSelected = selectedAttractionIds.has(attraction.id);
-              const isActive = activeAttractionId === attraction.id;
-              return (
-                <VerticalAttractionCard
-                  key={attraction.id}
-                  attraction={attraction}
-                  isSelected={isSelected}
-                  isActive={isActive}
-                  onSetActive={() => {
-                    if (isActive && isSelected) {
-                      // Clicking active+selected => deselect it
-                      handleToggleAttractionSelect(attraction.id);
-                    } else if (!isSelected) {
-                      setSelectedAttractionIds((prev) => new Set([...prev, attraction.id]));
-                      setActiveAttractionId(attraction.id);
-                    } else {
-                      // Already selected but not active – just switch active
-                      setActiveAttractionId(attraction.id);
-                    }
-                  }}
-                />
-              );
-            })}
+            {attractionsLoading ? (
+              <AttractionListSkeleton />
+            ) : allAttractions.length === 0 ? (
+              <p style={{ fontSize: "11px", color: "#94A3B8", textAlign: "center", padding: "16px 0" }}>-</p>
+            ) : (
+              allAttractions.map((attraction) => {
+                const isSelected = selectedAttractionIds.has(attraction.id);
+                const isActive = activeAttractionId === attraction.id;
+                return (
+                  <VerticalAttractionCard
+                    key={attraction.id}
+                    attraction={attraction}
+                    isSelected={isSelected}
+                    isActive={isActive}
+                    onSetActive={() => {
+                      if (isActive && isSelected) {
+                        // Clicking active+selected => deselect it
+                        handleToggleAttractionSelect(attraction.id);
+                      } else if (!isSelected) {
+                        setSelectedAttractionIds((prev) => new Set([...prev, attraction.id]));
+                        setActiveAttractionId(attraction.id);
+                      } else {
+                        // Already selected but not active – just switch active
+                        setActiveAttractionId(attraction.id);
+                      }
+                    }}
+                  />
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -1822,7 +1895,7 @@ export default function TicketBookingView() {
                   }}
                 >
                   <ShoppingCart size={14} strokeWidth={2.4} />
-                  Process To Checkout
+                  Proceed To Checkout
                 </button>
               </div>
             </div>

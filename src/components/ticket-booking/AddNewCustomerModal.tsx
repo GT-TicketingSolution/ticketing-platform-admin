@@ -13,6 +13,7 @@ interface AddNewCustomerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (customer: NewCustomer) => void;
+  isSaving?: boolean;
 }
 
 interface FieldErrors {
@@ -31,6 +32,7 @@ export default function AddNewCustomerModal({
   isOpen,
   onClose,
   onSave,
+  isSaving = false,
 }: AddNewCustomerModalProps) {
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState("");
@@ -264,22 +266,24 @@ export default function AddNewCustomerModal({
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "4px" }}>
               <button
                 onClick={handleSave}
+                disabled={isSaving}
                 className="anc-save-btn"
                 style={{
                   width: "125px",
                   height: "36px",
-                  background: "#F4BC43",
+                  background: isSaving ? "#E2E8F0" : "#F4BC43",
                   border: "none",
                   borderRadius: "8px",
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
                   fontWeight: 700,
                   fontSize: "14px",
-                  color: "#011B2F",
-                  cursor: "pointer",
+                  color: isSaving ? "#94A3B8" : "#011B2F",
+                  cursor: isSaving ? "not-allowed" : "pointer",
                   transition: "background 0.18s ease, transform 0.15s ease",
+                  opacity: isSaving ? 0.7 : 1,
                 }}
               >
-                Save
+                {isSaving ? "Saving..." : "Save"}
               </button>
             </div>
           </div>

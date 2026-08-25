@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -23,10 +23,28 @@ import {
   Users,
 } from "lucide-react";
 import AddNewCustomerModal, { NewCustomer } from "./AddNewCustomerModal";
+import {
+  useTicketingCustomers,
+  useCreateTicketingCustomer,
+  useCreateTicketingBooking,
+  useTicketingPayment,
+  useConfirmTicketingBooking,
+  useCancelTicketingBooking,
+  useTicketingSlots,
+  useTicketingSeats,
+  TicketingCustomer,
+} from "@/hooks/useTicketingBookingQueries";
 
 export interface BookingSummaryItem {
+  attractionId?: string;
   attractionName: string;
-  passengers: { label: string; qty: number }[];
+  hasSeating?: boolean;
+  seatLayoutId?: string | null;
+  passengers: { label: string; key?: string; qty: number; unitPrice?: number }[];
+  subtotal?: number;
+  gstAmount?: number;
+  gstAdjustment?: number;
+  roundOff?: number;
   totalAmount: number;
 }
 
@@ -36,19 +54,7 @@ interface CustomerInfoViewProps {
   bookingSummary: BookingSummaryItem[];
 }
 
-export interface CustomerRecord {
-  id: string;
-  name: string;
-  mobile: string;
-  gstn: string;
-}
-
-const MOCK_CUSTOMERS: CustomerRecord[] = [
-  { id: "C001", name: "Amit Sharma", mobile: "9876543210", gstn: "08ABCDE1234F1Z5" },
-  { id: "C002", name: "Priya Singh", mobile: "9876543211", gstn: "27AAPFU0939F1ZV" },
-  { id: "C003", name: "Rahul Gupta", mobile: "9123456780", gstn: "07AAACG0563G1ZT" },
-  { id: "C004", name: "Sunita Devi", mobile: "9988776655", gstn: "29AABCU9603R1ZM" },
-];
+export type CustomerRecord = TicketingCustomer;
 
 const SEAT_STORAGE_KEY = "seat_layouts_data";
 
@@ -60,32 +66,59 @@ interface SectionState {
   occupiedSeats: number[];
 }
 
-// ── Process Payment Modal ──────────────────────────────────────────────────────
-// ── Process Payment Modal (Compact & Proportionate) ───────────────────────────
+// ── Process Payment Modal 
+// ── Process Payment Modal (Compact & Proportionate) 
 function ProcessPaymentModal({
   isOpen,
   onClose,
   onConfirm,
   grandTotal,
   attractionName,
+  isSubmitting = false,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (payMethod: "CASH" | "UPI" | "CARD" | "ONLINE", amtRcv: number) => void;
   grandTotal: number;
   attractionName: string;
+  isSubmitting?: boolean;
 }) {
   const [payMethod, setPayMethod] = useState<"cash" | "card" | "upi">("cash");
   const [amtRcv, setAmtRcv] = useState(grandTotal.toFixed(2));
-  const change = Math.max(0, parseFloat(amtRcv || "0") - grandTotal);
+  const [hasAddedQuickNote, setHasAddedQuickNote] = useState(false);
+  const isOnline = payMethod === "upi" || payMethod === "card";
+  const change = isOnline ? 0 : Math.max(0, parseFloat(amtRcv || "0") - grandTotal);
 
   useEffect(() => {
-    if (isOpen) setAmtRcv(grandTotal.toFixed(2));
+    if (isOpen) {
+      setAmtRcv(grandTotal.toFixed(2));
+      setHasAddedQuickNote(false);
+    }
   }, [isOpen, grandTotal]);
+
+  useEffect(() => {
+    if (payMethod === "upi" || payMethod === "card") {
+      setAmtRcv(grandTotal.toFixed(2));
+    }
+  }, [payMethod, grandTotal]);
+
+  const handleQuickNoteClick = (noteVal: number) => {
+    let nextAmt: number;
+    if (!hasAddedQuickNote && parseFloat(amtRcv || "0") === grandTotal) {
+      // First quick note tap sets initial note amount
+      nextAmt = noteVal;
+    } else {
+      // Cumulative addition: e.g. 50 + 100 = 150
+      const current = parseFloat(amtRcv || "0");
+      nextAmt = current + noteVal;
+    }
+    setHasAddedQuickNote(true);
+    setAmtRcv(nextAmt.toFixed(2));
+  };
 
   if (!isOpen) return null;
 
-  const methods: { key: "cash" | "card" | "upi"; label: string; icon: React.ReactNode }[] = [
+  const methods: { key: "cash" | "card" | "upi"; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
     {
       key: "cash",
       label: "Cash",
@@ -94,10 +127,11 @@ function ProcessPaymentModal({
     {
       key: "card",
       label: "Card",
+      disabled: true,
       icon: (
         <svg width="22" height="22" viewBox="0 0 28 28" fill="none">
-          <rect x="3" y="7" width="22" height="14" rx="2" stroke={payMethod === "card" ? "#173F63" : "#808081"} strokeWidth="1.5" fill="none" />
-          <rect x="3" y="11" width="22" height="3" fill={payMethod === "card" ? "#173F63" : "#808081"} opacity="0.5" />
+          <rect x="3" y="7" width="22" height="14" rx="2" stroke="#9CA3AF" strokeWidth="1.5" fill="none" />
+          <rect x="3" y="11" width="22" height="3" fill="#9CA3AF" opacity="0.4" />
         </svg>
       ),
     },
@@ -132,30 +166,55 @@ function ProcessPaymentModal({
         style={{
           background: "#FFFFFF",
           borderRadius: "20px",
-          width: "480px",
+          width: "490px",
           maxWidth: "94vw",
           boxShadow: "0 20px 60px rgba(0,0,0,0.22)",
           fontFamily: "'Plus Jakarta Sans',sans-serif",
           overflow: "hidden",
           boxSizing: "border-box",
+          position: "relative",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ padding: "18px 24px 0 24px" }}>
-          <h2 style={{ margin: 0, fontWeight: 700, fontSize: "18px", lineHeight: "22px", color: "#011B2F" }}>
+        {/* Header with Close Icon */}
+        <div style={{ padding: "18px 24px 0 24px", position: "relative" }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              position: "absolute",
+              top: "16px",
+              right: "20px",
+              background: "rgba(0,0,0,0.05)",
+              border: "none",
+              borderRadius: "50%",
+              width: "32px",
+              height: "32px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: "#64748B",
+              transition: "background 0.15s",
+            }}
+            title="Close"
+          >
+            <X size={18} />
+          </button>
+          <h2 style={{ margin: 0, fontWeight: 700, fontSize: "18px", lineHeight: "22px", color: "#011B2F", paddingRight: "40px" }}>
             Process Payment
           </h2>
-          <p style={{ margin: "2px 0 0 0", fontWeight: 500, fontSize: "11px", color: "#A0A0A0" }}>
+          <p style={{ margin: "3px 0 0 0", fontWeight: 600, fontSize: "12px", color: "#0E4E7A", paddingRight: "40px" }}>
             {attractionName}
           </p>
         </div>
 
         <div style={{ height: "0.5px", background: "rgba(179,175,175,0.6)", margin: "14px 0 0 0" }} />
 
-        <div style={{ padding: "18px 24px 22px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+        <div style={{ padding: "18px 24px 22px 24px", display: "flex", flexDirection: "column", gap: "14px" }}>
           {/* Amount Due Card */}
           <div style={{ background: "#002A45", borderRadius: "16px", padding: "14px 18px", textAlign: "center" }}>
-            <p style={{ margin: 0, fontWeight: 800, fontSize: "14px", color: "#7599B0", letterSpacing: "0.05em" }}>
+            <p style={{ margin: 0, fontWeight: 800, fontSize: "13px", color: "#7599B0", letterSpacing: "0.05em" }}>
               AMOUNT DUE
             </p>
             <p style={{ margin: "4px 0 0 0", fontWeight: 800, fontSize: "30px", color: "#FFFFFF", lineHeight: "38px" }}>
@@ -172,7 +231,10 @@ function ProcessPaymentModal({
               {methods.map((m) => (
                 <div
                   key={m.key}
-                  onClick={() => setPayMethod(m.key)}
+                  onClick={() => {
+                    if (!m.disabled) setPayMethod(m.key);
+                  }}
+                  title={m.disabled ? "Card payment is disabled" : undefined}
                   style={{
                     flex: 1,
                     display: "flex",
@@ -182,10 +244,20 @@ function ProcessPaymentModal({
                     gap: "6px",
                     padding: "12px 8px",
                     borderRadius: "14px",
-                    border: payMethod === m.key ? "1.5px solid #173F63" : "1.5px solid rgba(179,175,175,0.45)",
-                    background: payMethod === m.key ? "rgba(122,178,214,0.18)" : "#F3F4F6",
-                    cursor: "pointer",
+                    border: m.disabled
+                      ? "1.5px solid rgba(179,175,175,0.3)"
+                      : payMethod === m.key
+                        ? "1.5px solid #173F63"
+                        : "1.5px solid rgba(179,175,175,0.45)",
+                    background: m.disabled
+                      ? "#F3F4F6"
+                      : payMethod === m.key
+                        ? "rgba(122,178,214,0.18)"
+                        : "#F3F4F6",
+                    cursor: m.disabled ? "not-allowed" : "pointer",
+                    opacity: m.disabled ? 0.45 : 1,
                     transition: "all 0.15s ease",
+                    userSelect: "none",
                   }}
                 >
                   {m.icon}
@@ -193,7 +265,7 @@ function ProcessPaymentModal({
                     style={{
                       fontWeight: 700,
                       fontSize: "15px",
-                      color: payMethod === m.key ? "#173F63" : "#808081",
+                      color: m.disabled ? "#9CA3AF" : payMethod === m.key ? "#173F63" : "#808081",
                     }}
                   >
                     {m.label}
@@ -202,6 +274,45 @@ function ProcessPaymentModal({
               ))}
             </div>
           </div>
+
+          {/* Quick Cash Options when Cash is selected */}
+          {payMethod === "cash" && (
+            <div>
+              <p style={{ margin: "0 0 6px 0", fontWeight: 700, fontSize: "12px", color: "rgba(81,82,82,0.85)" }}>
+                QUICK CASH / NOTES
+              </p>
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                {[
+                  { label: "₹50", val: 50 },
+                  { label: "₹100", val: 100 },
+                  { label: "₹200", val: 200 },
+                  { label: "₹500", val: 500 },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => handleQuickNoteClick(item.val)}
+                    style={{
+                      flex: 1,
+                      minWidth: "55px",
+                      height: "32px",
+                      background: "#F1F5F9",
+                      border: "1px solid rgba(179,175,175,0.6)",
+                      borderRadius: "8px",
+                      fontFamily: "'Plus Jakarta Sans',sans-serif",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      color: "#173F63",
+                      cursor: "pointer",
+                      transition: "background 0.15s",
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Amount Received and Change Return */}
           <div>
@@ -217,8 +328,8 @@ function ProcessPaymentModal({
               <div
                 style={{
                   flex: 1,
-                  height: "36px",
-                  background: "#FFFFFF",
+                  height: "38px",
+                  background: isOnline ? "#F8FAFC" : "#FFFFFF",
                   border: "1.5px solid rgba(179,175,175,0.51)",
                   borderRadius: "10px",
                   display: "flex",
@@ -229,6 +340,7 @@ function ProcessPaymentModal({
                 <span style={{ fontWeight: 800, fontSize: "14px", color: "#173F63" }}>Rs.</span>
                 <input
                   type="number"
+                  disabled={isOnline}
                   value={amtRcv}
                   onChange={(e) => setAmtRcv(e.target.value)}
                   style={{
@@ -241,13 +353,14 @@ function ProcessPaymentModal({
                     color: "#173F63",
                     background: "transparent",
                     marginLeft: "4px",
+                    cursor: isOnline ? "not-allowed" : "text",
                   }}
                 />
               </div>
               <div
                 style={{
                   flex: 1,
-                  height: "36px",
+                  height: "38px",
                   background: "#FFFFFF",
                   border: "1.5px solid rgba(179,175,175,0.51)",
                   borderRadius: "10px",
@@ -262,23 +375,29 @@ function ProcessPaymentModal({
           </div>
 
           <button
-            onClick={onConfirm}
+            onClick={() => {
+              const mode = payMethod.toUpperCase() as "CASH" | "UPI" | "CARD" | "ONLINE";
+              onConfirm(mode, parseFloat(amtRcv || "0"));
+            }}
+            disabled={isSubmitting}
             className="pay-confirm-btn"
             style={{
               width: "100%",
               height: "46px",
-              background: "#F4BC43",
+              background: isSubmitting ? "#E2E8F0" : "#F4BC43",
               border: "none",
               borderRadius: "14px",
               fontFamily: "'Plus Jakarta Sans',sans-serif",
               fontWeight: 800,
               fontSize: "16px",
-              color: "#173F63",
-              cursor: "pointer",
+              color: isSubmitting ? "#94A3B8" : "#173F63",
+              cursor: isSubmitting ? "not-allowed" : "pointer",
               transition: "background 0.15s, transform 0.1s",
+              marginTop: "4px",
+              opacity: isSubmitting ? 0.7 : 1,
             }}
           >
-            Confirm Payment – Rs.{grandTotal.toFixed(2)}
+            {isSubmitting ? "Processing Payment..." : `Confirm Payment – Rs.${grandTotal.toFixed(2)}`}
           </button>
         </div>
       </div>
@@ -303,6 +422,17 @@ function TicketGeneratedModal({
   grandTotal: number;
   totalPax: number;
 }) {
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(() => {
+        if (typeof window !== "undefined") {
+          window.print();
+        }
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const formattedDate = new Date().toLocaleDateString("en-GB", {
@@ -411,9 +541,10 @@ function TicketGeneratedModal({
             style={{
               margin: 0,
               fontWeight: 700,
-              fontSize: "22px",
-              lineHeight: "28px",
+              fontSize: "20px",
+              lineHeight: "26px",
               color: "#173F63",
+              wordBreak: "break-word",
             }}
           >
             {attractionName || "Nahargarh Fort"}
@@ -440,7 +571,7 @@ function TicketGeneratedModal({
                 Visitors
               </p>
               <p style={{ margin: "4px 0 0 0", fontWeight: 700, fontSize: "14px", lineHeight: "18px", color: "#173F63" }}>
-                {totalPax} Person
+                {totalPax} {totalPax === 1 ? "Person" : "Persons"}
               </p>
             </div>
 
@@ -582,6 +713,7 @@ function SeatAllocationPanel({
   onTripChange,
   totalTrips,
   timeSlot,
+  onTimeSlotChange,
   slotDate,
 }: SeatAllocationPanelProps) {
   const totalPax = bookingSummary.reduce((s, b) => s + b.passengers.reduce((x, p) => x + p.qty, 0), 0);
@@ -686,6 +818,63 @@ function SeatAllocationPanel({
     }
   };
 
+  const targetAttractionId = bookingSummary[0]?.attractionId || "";
+  const targetSeatLayoutId = bookingSummary[0]?.seatLayoutId || null;
+  const targetHasSeating = bookingSummary[0]?.hasSeating ?? true;
+  const todayDateStr = new Date().toISOString().split("T")[0];
+
+  const { data: slotsData = [] } = useTicketingSlots(targetAttractionId, todayDateStr, !!targetAttractionId);
+  const activeSlot = slotsData.find((s) => s.slotTime === timeSlot) || slotsData[0];
+  const activeSlotId = activeSlot?.id || "";
+
+  // Sync active time slot with live slots from API
+  useEffect(() => {
+    if (slotsData.length > 0) {
+      const slotIndex = Math.min(Math.max(0, currentTrip - 1), slotsData.length - 1);
+      const slotForTrip = slotsData[slotIndex] || slotsData[0];
+      if (slotForTrip?.slotTime && slotForTrip.slotTime !== timeSlot) {
+        onTimeSlotChange(slotForTrip.slotTime);
+      }
+    }
+  }, [slotsData, currentTrip]);
+
+  const {
+    data: seatsApiData,
+    refetch: refetchSeats,
+    isFetching: isFetchingSeats,
+  } = useTicketingSeats(targetAttractionId, activeSlotId, todayDateStr, !!targetAttractionId && !!activeSlotId);
+
+  // Sync occupied seats and total seats from API when data changes
+  useEffect(() => {
+    if (seatsApiData?.sections && seatsApiData.sections.length > 0) {
+      setSections(() => {
+        return BL.map((letter) => {
+          const apiSec = seatsApiData.sections.find(
+            (s) => s.bogie === letter || s.name.toUpperCase().endsWith(letter)
+          );
+          const occ = apiSec?.occupiedSeats ?? [];
+          return {
+            name: `Section ${letter}`,
+            totalSeats: apiSec?.totalSeats ?? (seatsApiData?.layout?.rows && seatsApiData?.layout?.cols ? seatsApiData.layout.rows * seatsApiData.layout.cols : TOTAL_SEATS_SECTION),
+            occupiedSeats: occ,
+          };
+        });
+      });
+    } else if (seatsApiData?.seats && seatsApiData.seats.length > 0) {
+      const occ = seatsApiData.seats
+        .filter((s) => s.status === "occupied")
+        .map((s) => parseInt(s.seatNumber, 10))
+        .filter((n) => !isNaN(n));
+      setSections((prev) =>
+        BL.map((l, i) => ({
+          name: `Section ${l}`,
+          totalSeats: seatsApiData?.layout?.rows && seatsApiData?.layout?.cols ? seatsApiData.layout.rows * seatsApiData.layout.cols : TOTAL_SEATS_SECTION,
+          occupiedSeats: i === 0 ? occ : [],
+        }))
+      );
+    }
+  }, [seatsApiData]);
+
   const newTrip = () => {
     if (isLastTrip) return;
     const nextTrip = Math.min(totalTrips, currentTrip + 1);
@@ -698,12 +887,7 @@ function SeatAllocationPanel({
   };
 
   const refresh = () => {
-    if (isLastTrip) return;
-    setSections(mkSections());
-    setSel([]);
-    setAsgn({});
-    onSelectedSeatsChange([], {});
-    setAi(0);
+    refetchSeats();
   };
 
   // Seat Component (58px × 29px)
@@ -1075,7 +1259,7 @@ function SeatAllocationPanel({
 
               <button
                 type="button"
-                disabled={isLastTrip}
+                disabled={isLastTrip || isFetchingSeats}
                 onClick={e => {
                   e.stopPropagation();
                   refresh();
@@ -1084,16 +1268,16 @@ function SeatAllocationPanel({
                 style={{
                   width: "158px",
                   height: "35px",
-                  background: isLastTrip ? "#F3F4F6" : "#FFFFFF",
-                  border: isLastTrip ? "1.5px solid #D1D5DB" : "1.5px solid #2576AB",
+                  background: isLastTrip || isFetchingSeats ? "#F3F4F6" : "#FFFFFF",
+                  border: isLastTrip || isFetchingSeats ? "1.5px solid #D1D5DB" : "1.5px solid #2576AB",
                   borderRadius: "6px",
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
                   fontWeight: 600,
                   fontSize: "12px",
                   lineHeight: "15px",
-                  color: isLastTrip ? "#9CA3AF" : "#173F63",
-                  cursor: isLastTrip ? "not-allowed" : "pointer",
-                  opacity: isLastTrip ? 0.65 : 1,
+                  color: isLastTrip || isFetchingSeats ? "#9CA3AF" : "#173F63",
+                  cursor: isLastTrip || isFetchingSeats ? "not-allowed" : "pointer",
+                  opacity: isLastTrip || isFetchingSeats ? 0.65 : 1,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -1101,7 +1285,7 @@ function SeatAllocationPanel({
                   transition: "all 0.15s",
                 }}
               >
-                <RotateCcw size={15} color={isLastTrip ? "#9CA3AF" : "#173F63"} strokeWidth={2} /> Refresh Seats
+                <RotateCcw size={15} color={isLastTrip ? "#9CA3AF" : "#173F63"} strokeWidth={2} style={{ animation: isFetchingSeats ? "spin 1s linear infinite" : "none" }} /> {isFetchingSeats ? "Refreshing..." : "Refresh Seats"}
               </button>
             </div>
           </div>
@@ -1347,14 +1531,30 @@ export default function CustomerInfoView({
   onContinue,
   bookingSummary,
 }: CustomerInfoViewProps) {
-  const [customers, setCustomers] = useState<CustomerRecord[]>(MOCK_CUSTOMERS);
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord>(MOCK_CUSTOMERS[0]);
-  const [searchQuery, setSearchQuery] = useState(MOCK_CUSTOMERS[0].name);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [isAddNewOpen, setIsAddNewOpen] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showTicketModal, setShowTicketModal] = useState(false);
+  const [createdBookingId, setCreatedBookingId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Debounce search query to prevent spamming API requests on every character typed
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // API Hooks
+  const { data: searchedCustomers = [], isLoading: isCustomersLoading } = useTicketingCustomers(debouncedSearchQuery, showDropdown);
+  const createCustomerMutation = useCreateTicketingCustomer();
+  const createBookingMutation = useCreateTicketingBooking();
+  const paymentMutation = useTicketingPayment();
+  const confirmBookingMutation = useConfirmTicketingBooking();
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -1410,12 +1610,20 @@ export default function CustomerInfoView({
 
   const grandTotal = bookingSummary.reduce((s, b) => s + b.totalAmount, 0);
 
-  const filteredCustomers = customers.filter(
-    (c) =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.mobile.includes(searchQuery) ||
-      c.gstn.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const uniquePaxCount = useMemo(() => {
+    if (!bookingSummary.length) return 2;
+    return Math.max(
+      ...bookingSummary.map((b) =>
+        b.passengers.reduce((sum, p) => sum + (p.qty || 0), 0)
+      ),
+      1
+    );
+  }, [bookingSummary]);
+
+  const allAttractionsText = useMemo(() => {
+    const names = Array.from(new Set(bookingSummary.map((b) => b.attractionName).filter(Boolean)));
+    return names.join(", ") || "Attractions";
+  }, [bookingSummary]);
 
   function handleSelectCustomer(c: CustomerRecord) {
     setSelectedCustomer(c);
@@ -1423,21 +1631,112 @@ export default function CustomerInfoView({
     setShowDropdown(false);
   }
 
-  function handleSaveNewCustomer(nc: NewCustomer) {
-    const newC: CustomerRecord = {
-      id: `C${Date.now()}`,
-      name: nc.name,
-      mobile: nc.mobile,
-      gstn: nc.gstn,
-    };
-    setCustomers((prev) => [newC, ...prev]);
-    setSelectedCustomer(newC);
-    setSearchQuery(newC.name);
-    setIsAddNewOpen(false);
+  function handleClearCustomer() {
+    setSelectedCustomer(null);
+    setSearchQuery("");
   }
 
-  function handleContinue() {
-    setShowPaymentModal(true);
+  async function handleSaveNewCustomer(nc: NewCustomer) {
+    try {
+      const res = await createCustomerMutation.mutateAsync({
+        name: nc.name,
+        mobile: nc.mobile,
+        gstn: nc.gstn,
+      });
+      const newC: CustomerRecord = {
+        id: (res as any)?.data?.id || (res as any)?.id || `C${Date.now()}`,
+        name: nc.name,
+        mobile: nc.mobile,
+        gstn: nc.gstn || null,
+      };
+      setSelectedCustomer(newC);
+      setSearchQuery(newC.name);
+      setIsAddNewOpen(false);
+    } catch {
+      // Toast notification handled by mutation onError
+    }
+  }
+
+  async function handleContinue() {
+    if (bookingSummary.length === 0) return;
+
+    const firstAttraction = bookingSummary[0];
+    const items = bookingSummary.flatMap((b) =>
+      b.passengers
+        .filter((p) => p.qty > 0)
+        .map((p) => ({
+          attractionId: b.attractionId || "attraction-id",
+          category: p.key || p.label,
+          quantity: p.qty,
+          unitPrice: p.unitPrice ?? (p.qty > 0 ? b.totalAmount / p.qty : 0),
+          totalPrice: (p.unitPrice ?? (p.qty > 0 ? b.totalAmount / p.qty : 0)) * p.qty,
+        }))
+    );
+
+    const subtotal = bookingSummary.reduce((s, b) => s + (b.subtotal ?? b.totalAmount), 0);
+    const gstAmount = bookingSummary.reduce((s, b) => s + (b.gstAmount ?? 0), 0);
+    const gstAdjustment = bookingSummary.reduce((s, b) => s + (b.gstAdjustment ?? 0), 0);
+    const roundOff = bookingSummary.reduce((s, b) => s + (b.roundOff ?? 0), 0);
+
+    const payload = {
+      customer: {
+        id: selectedCustomer?.id || null,
+        name: selectedCustomer?.name || searchQuery || guestDetails.guestName || "General Visitor",
+        mobile: selectedCustomer?.mobile || guestDetails.mobile || "9876543210",
+        gstn: selectedCustomer?.gstn || null,
+      },
+      attractionId: firstAttraction.attractionId || "attraction-id",
+      visitAt: new Date().toISOString(),
+      items: items.length > 0 ? items : [{
+        attractionId: firstAttraction.attractionId || "attraction-id",
+        category: "Adult",
+        quantity: 1,
+        unitPrice: grandTotal,
+        totalPrice: grandTotal,
+      }],
+      seats: selectedSeats.map((seatNo) => ({
+        slotId: timeSlot || "slot-id",
+        visitDate: passDetails.date || new Date().toISOString().split("T")[0],
+        bogie: "Bogie A",
+        seatNumber: seatNo,
+      })),
+      subtotal,
+      gstAmount,
+      gstAdjustment,
+      roundOff,
+      discountAmount: 0,
+      totalAmount: grandTotal,
+    };
+
+    try {
+      const res = await createBookingMutation.mutateAsync(payload as any);
+      const bookingData = (res as any)?.data?.booking || (res as any)?.booking;
+      if (bookingData?.id) {
+        setCreatedBookingId(bookingData.id);
+      }
+      setShowPaymentModal(true);
+    } catch {
+      // Toast notification handled by mutation onError
+    }
+  }
+
+  async function handleConfirmPayment(payMethod: "CASH" | "UPI" | "CARD" | "ONLINE", amtRcv: number) {
+    if (createdBookingId) {
+      try {
+        await paymentMutation.mutateAsync({
+          bookingId: createdBookingId,
+          payload: {
+            amountPaid: amtRcv,
+            payment: { mode: payMethod },
+          },
+        });
+        await confirmBookingMutation.mutateAsync(createdBookingId);
+      } catch {
+        // Handled by toast
+      }
+    }
+    setShowPaymentModal(false);
+    setShowTicketModal(true);
   }
 
   // Summary passengers text
@@ -1469,19 +1768,43 @@ export default function CustomerInfoView({
         gap: "24px",
       }}
     >
-      {/* Title */}
-      <div>
-        <h1
-          style={{
-            margin: 0,
-            fontWeight: 700,
-            fontSize: "24px",
-            lineHeight: "30px",
-            color: "#011B2F",
-          }}
-        >
-          Customer Information
-        </h1>
+      {/* Title & Top Back Button */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          <button
+            type="button"
+            onClick={onBack}
+            className="ci-top-back-btn"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "7px 14px",
+              background: "#FFFFFF",
+              border: "1px solid #002A45",
+              borderRadius: "6px",
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontWeight: 700,
+              fontSize: "13px",
+              color: "#011B2F",
+              cursor: "pointer",
+              transition: "background 0.15s",
+            }}
+          >
+            <ArrowLeft size={16} color="#011B2F" /> Back
+          </button>
+          <h1
+            style={{
+              margin: 0,
+              fontWeight: 700,
+              fontSize: "24px",
+              lineHeight: "30px",
+              color: "#011B2F",
+            }}
+          >
+            Customer Information
+          </h1>
+        </div>
       </div>
 
       {/* ── Booking Summary Box (Rectangle 94) ── */}
@@ -1608,7 +1931,7 @@ export default function CustomerInfoView({
         </p>
 
         {/* Dropdown search bar + Add New Customer button */}
-        <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "20px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: selectedCustomer ? "20px" : "0", flexWrap: "wrap" }}>
           <div ref={dropdownRef} style={{ position: "relative", flex: 1, minWidth: "260px" }}>
             <div
               style={{
@@ -1631,6 +1954,9 @@ export default function CustomerInfoView({
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
+                  if (selectedCustomer && e.target.value !== selectedCustomer.name) {
+                    setSelectedCustomer(null);
+                  }
                   setShowDropdown(true);
                 }}
                 onFocus={() => setShowDropdown(true)}
@@ -1646,6 +1972,27 @@ export default function CustomerInfoView({
                   background: "transparent",
                 }}
               />
+              {(searchQuery || selectedCustomer) && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleClearCustomer();
+                  }}
+                  title="Clear customer selection"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "2px",
+                    display: "flex",
+                    alignItems: "center",
+                    color: "#94A3B8",
+                  }}
+                >
+                  <X size={16} />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={(e) => {
@@ -1674,12 +2021,17 @@ export default function CustomerInfoView({
                   overflowY: "auto",
                 }}
               >
-                {filteredCustomers.length === 0 ? (
+                {isCustomersLoading ? (
+                  <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <div style={{ height: "12px", width: "60%", background: "#E2E8F0", borderRadius: "4px" }} />
+                    <div style={{ height: "10px", width: "40%", background: "#F1F5F9", borderRadius: "4px" }} />
+                  </div>
+                ) : searchedCustomers.length === 0 ? (
                   <p style={{ padding: "12px 16px", margin: 0, fontSize: "12px", color: "#6B7280" }}>
                     No customers found.
                   </p>
                 ) : (
-                  filteredCustomers.map((c) => (
+                  searchedCustomers.map((c) => (
                     <div
                       key={c.id}
                       onMouseDown={(e) => {
@@ -1701,7 +2053,7 @@ export default function CustomerInfoView({
                           {c.name} - {c.mobile}
                         </p>
                         <p style={{ margin: "2px 0 0", fontWeight: 500, fontSize: "10.5px", color: "#6B7280" }}>
-                          GSTN: {c.gstn}
+                          GSTN: {c.gstn || "—"}
                         </p>
                       </div>
                     </div>
@@ -1738,69 +2090,93 @@ export default function CustomerInfoView({
           </button>
         </div>
 
-        {/* ── Selected Customer Details Box (Rectangle 73) ── */}
-        <div
-          style={{
-            width: "100%",
-            background: "rgba(217, 217, 217, 0.3)",
-            border: "1px solid rgba(179, 175, 175, 0.54)",
-            borderRadius: "6px",
-            padding: "16px 22px",
-            boxSizing: "border-box",
-          }}
-        >
-          <h3
+        {/* ── Selected Customer Details Box (Rectangle 73) — Only displayed when customer is selected ── */}
+        {selectedCustomer && (
+          <div
             style={{
-              margin: "0 0 14px 0",
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontWeight: 700,
-              fontSize: "18px",
-              lineHeight: "23px",
-              color: "#011B2F",
+              width: "100%",
+              background: "rgba(217, 217, 217, 0.3)",
+              border: "1px solid rgba(179, 175, 175, 0.54)",
+              borderRadius: "6px",
+              padding: "16px 22px",
+              boxSizing: "border-box",
             }}
           >
-            Selected Customer Details
-          </h3>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {/* Row 1: Name */}
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <User size={18} color="#011B2F" style={{ flexShrink: 0 }} />
-              <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
-                Customer Name:
-              </span>
-              <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
-                {selectedCustomer.name}
-              </span>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+              <h3
+                style={{
+                  margin: 0,
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 700,
+                  fontSize: "18px",
+                  lineHeight: "23px",
+                  color: "#011B2F",
+                }}
+              >
+                Selected Customer Details
+              </h3>
+              <button
+                type="button"
+                onClick={handleClearCustomer}
+                style={{
+                  background: "#FEE2E2",
+                  color: "#DC2626",
+                  border: "1px solid #FECACA",
+                  borderRadius: "6px",
+                  padding: "4px 10px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                }}
+              >
+                <X size={14} /> Clear Selection
+              </button>
             </div>
 
-            <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {/* Row 1: Name */}
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <User size={18} color="#011B2F" style={{ flexShrink: 0 }} />
+                <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
+                  Customer Name:
+                </span>
+                <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
+                  {selectedCustomer.name}
+                </span>
+              </div>
 
-            {/* Row 2: Mobile */}
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <Phone size={18} color="#011B2F" style={{ flexShrink: 0 }} />
-              <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
-                Mobile Number:
-              </span>
-              <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
-                {selectedCustomer.mobile}
-              </span>
-            </div>
+              <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
 
-            <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
+              {/* Row 2: Mobile */}
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <Phone size={18} color="#011B2F" style={{ flexShrink: 0 }} />
+                <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
+                  Mobile Number:
+                </span>
+                <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
+                  {selectedCustomer.mobile}
+                </span>
+              </div>
 
-            {/* Row 3: GSTN */}
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <CreditCard size={18} color="#011B2F" style={{ flexShrink: 0 }} />
-              <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
-                GSTN:
-              </span>
-              <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
-                {selectedCustomer.gstn}
-              </span>
+              <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
+
+              {/* Row 3: GSTN */}
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <CreditCard size={18} color="#011B2F" style={{ flexShrink: 0 }} />
+                <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
+                  GSTN:
+                </span>
+                <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
+                  {selectedCustomer.gstn || "—"}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ── Card 2: Issue Complimentary Ticket? (Rectangle 96) ── */}
@@ -2211,6 +2587,7 @@ export default function CustomerInfoView({
 
         <button
           onClick={handleContinue}
+          disabled={createBookingMutation.isPending}
           className="ci-continue-btn"
           style={{
             display: "flex",
@@ -2219,18 +2596,19 @@ export default function CustomerInfoView({
             width: "197px",
             height: "48px",
             justifyContent: "center",
-            background: "#F4BC43",
+            background: createBookingMutation.isPending ? "#E2E8F0" : "#F4BC43",
             border: "none",
             borderRadius: "8px",
             fontFamily: "'Plus Jakarta Sans', sans-serif",
             fontWeight: 700,
             fontSize: "14px",
-            color: "#011B2F",
-            cursor: "pointer",
+            color: createBookingMutation.isPending ? "#94A3B8" : "#011B2F",
+            cursor: createBookingMutation.isPending ? "not-allowed" : "pointer",
             transition: "background 0.18s, transform 0.15s",
+            opacity: createBookingMutation.isPending ? 0.7 : 1,
           }}
         >
-          Continue <ArrowRight size={18} color="#011B2F" />
+          {createBookingMutation.isPending ? "Creating Booking..." : <>Continue <ArrowRight size={18} color="#011B2F" /></>}
         </button>
       </div>
 
@@ -2238,6 +2616,7 @@ export default function CustomerInfoView({
         isOpen={isAddNewOpen}
         onClose={() => setIsAddNewOpen(false)}
         onSave={handleSaveNewCustomer}
+        isSaving={createCustomerMutation.isPending}
       />
 
       {/* Process Payment Modal */}
@@ -2245,11 +2624,9 @@ export default function CustomerInfoView({
         isOpen={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
         grandTotal={grandTotal}
-        attractionName={bookingSummary[0]?.attractionName || "Attraction"}
-        onConfirm={() => {
-          setShowPaymentModal(false);
-          setShowTicketModal(true);
-        }}
+        attractionName={allAttractionsText}
+        isSubmitting={paymentMutation.isPending || confirmBookingMutation.isPending}
+        onConfirm={handleConfirmPayment}
       />
 
       {/* Ticket Generated Modal */}
@@ -2257,11 +2634,15 @@ export default function CustomerInfoView({
         isOpen={showTicketModal}
         onClose={() => {
           setShowTicketModal(false);
-          onContinue({ name: selectedCustomer.name, mobile: selectedCustomer.mobile, gstn: selectedCustomer.gstn });
+          onContinue({
+            name: selectedCustomer?.name || "General Visitor",
+            mobile: selectedCustomer?.mobile || "-",
+            gstn: selectedCustomer?.gstn || "",
+          });
         }}
-        attractionName={bookingSummary[0]?.attractionName || "Nahargarh Fort"}
+        attractionName={allAttractionsText}
         grandTotal={grandTotal}
-        totalPax={bookingSummary.reduce((s, b) => s + b.passengers.reduce((x, p) => x + p.qty, 0), 0) || 2}
+        totalPax={uniquePaxCount}
       />
 
       <style jsx global>{`

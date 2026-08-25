@@ -34,19 +34,9 @@ interface CustomerInfoModalProps {
   bookingSummary: BookingSummaryItem[];
 }
 
-export interface CustomerRecord {
-  id: string;
-  name: string;
-  mobile: string;
-  gstn: string;
-}
+import { useTicketingCustomers, TicketingCustomer } from "@/hooks/useTicketingBookingQueries";
 
-const MOCK_CUSTOMERS: CustomerRecord[] = [
-  { id: "C001", name: "Amit Sharma", mobile: "9876543210", gstn: "08ABCDE1234F1Z5" },
-  { id: "C002", name: "Priya Singh", mobile: "9876543211", gstn: "27AAPFU0939F1ZV" },
-  { id: "C003", name: "Rahul Gupta", mobile: "9123456780", gstn: "07AAACG0563G1ZT" },
-  { id: "C004", name: "Sunita Devi", mobile: "9988776655", gstn: "29AABCU9603R1ZM" },
-];
+export type CustomerRecord = TicketingCustomer;
 
 const SEAT_STORAGE_KEY = "seat_layouts_data";
 
@@ -697,14 +687,24 @@ export default function CustomerInfoModal({
   onContinue,
   bookingSummary,
 }: CustomerInfoModalProps) {
-  const [customers, setCustomers] = useState<CustomerRecord[]>(MOCK_CUSTOMERS);
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord>(MOCK_CUSTOMERS[0]);
-  const [searchQuery, setSearchQuery] = useState(MOCK_CUSTOMERS[0].name);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [isAddNewOpen, setIsAddNewOpen] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showTicketModal, setShowTicketModal] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Debounce search query to prevent unnecessary API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const { data: searchedCustomers = [], isLoading: isCustomersLoading } = useTicketingCustomers(debouncedSearchQuery, showDropdown);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -747,13 +747,6 @@ export default function CustomerInfoModal({
 
   const grandTotal = bookingSummary.reduce((s, b) => s + b.totalAmount, 0);
 
-  const filteredCustomers = customers.filter(
-    (c) =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.mobile.includes(searchQuery) ||
-      c.gstn.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
   function handleSelectCustomer(c: CustomerRecord) {
     setSelectedCustomer(c);
     setSearchQuery(c.name);
@@ -767,7 +760,6 @@ export default function CustomerInfoModal({
       mobile: nc.mobile,
       gstn: nc.gstn,
     };
-    setCustomers((prev) => [newC, ...prev]);
     setSelectedCustomer(newC);
     setSearchQuery(newC.name);
     setIsAddNewOpen(false);
@@ -1024,12 +1016,17 @@ export default function CustomerInfoModal({
                         overflowY: "auto",
                       }}
                     >
-                      {filteredCustomers.length === 0 ? (
+                      {isCustomersLoading ? (
+                        <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                          <div style={{ height: "12px", width: "60%", background: "#E2E8F0", borderRadius: "4px" }} />
+                          <div style={{ height: "10px", width: "40%", background: "#F1F5F9", borderRadius: "4px" }} />
+                        </div>
+                      ) : searchedCustomers.length === 0 ? (
                         <p style={{ padding: "12px 16px", margin: 0, fontSize: "12px", color: "#6B7280" }}>
                           No customers found.
                         </p>
                       ) : (
-                        filteredCustomers.map((c) => (
+                        searchedCustomers.map((c) => (
                           <div
                             key={c.id}
                             onMouseDown={(e) => { e.preventDefault(); handleSelectCustomer(c); }}
@@ -1048,7 +1045,7 @@ export default function CustomerInfoModal({
                                 {c.name} - {c.mobile}
                               </p>
                               <p style={{ margin: "2px 0 0", fontWeight: 500, fontSize: "10.5px", color: "#6B7280" }}>
-                                GSTN: {c.gstn}
+                                GSTN: {c.gstn || "—"}
                               </p>
                             </div>
                           </div>
@@ -1087,68 +1084,70 @@ export default function CustomerInfoModal({
             </div>
 
             {/* ── Selected Customer Details Box (Rectangle 73 in user specs) ── */}
-            <div
-              style={{
-                width: "100%",
-                background: "rgba(217, 217, 217, 0.3)",
-                border: "1px solid rgba(179, 175, 175, 0.54)",
-                borderRadius: "6px",
-                padding: "16px 22px",
-                boxSizing: "border-box",
-              }}
-            >
-              <h3
+            {selectedCustomer && (
+              <div
                 style={{
-                  margin: "0 0 14px 0",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 700,
-                  fontSize: "18px",
-                  lineHeight: "23px",
-                  color: "#011B2F",
+                  width: "100%",
+                  background: "rgba(217, 217, 217, 0.3)",
+                  border: "1px solid rgba(179, 175, 175, 0.54)",
+                  borderRadius: "6px",
+                  padding: "16px 22px",
+                  boxSizing: "border-box",
                 }}
               >
-                Selected Customer Details
-              </h3>
+                <h3
+                  style={{
+                    margin: "0 0 14px 0",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 700,
+                    fontSize: "18px",
+                    lineHeight: "23px",
+                    color: "#011B2F",
+                  }}
+                >
+                  Selected Customer Details
+                </h3>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {/* Row 1: Name */}
-                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                  <User size={18} color="#011B2F" style={{ flexShrink: 0 }} />
-                  <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
-                    Customer Name:
-                  </span>
-                  <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
-                    {selectedCustomer.name}
-                  </span>
-                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {/* Row 1: Name */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <User size={18} color="#011B2F" style={{ flexShrink: 0 }} />
+                    <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
+                      Customer Name:
+                    </span>
+                    <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
+                      {selectedCustomer.name || "—"}
+                    </span>
+                  </div>
 
-                <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
+                  <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
 
-                {/* Row 2: Mobile */}
-                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                  <Phone size={18} color="#011B2F" style={{ flexShrink: 0 }} />
-                  <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
-                    Mobile Number:
-                  </span>
-                  <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
-                    {selectedCustomer.mobile}
-                  </span>
-                </div>
+                  {/* Row 2: Mobile */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <Phone size={18} color="#011B2F" style={{ flexShrink: 0 }} />
+                    <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
+                      Mobile Number:
+                    </span>
+                    <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
+                      {selectedCustomer.mobile || "—"}
+                    </span>
+                  </div>
 
-                <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
+                  <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
 
-                {/* Row 3: GSTN */}
-                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                  <CreditCard size={18} color="#011B2F" style={{ flexShrink: 0 }} />
-                  <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
-                    GSTN:
-                  </span>
-                  <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
-                    {selectedCustomer.gstn}
-                  </span>
+                  {/* Row 3: GSTN */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <CreditCard size={18} color="#011B2F" style={{ flexShrink: 0 }} />
+                    <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
+                      GSTN:
+                    </span>
+                    <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
+                      {selectedCustomer.gstn || "—"}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* ── Card 2: Issue Complimentary Ticket? (Rectangle 96) ── */}
@@ -1564,9 +1563,9 @@ export default function CustomerInfoModal({
         isOpen={showTicketModal}
         onClose={() => {
           setShowTicketModal(false);
-          onContinue({ name: selectedCustomer.name, mobile: selectedCustomer.mobile, gstn: selectedCustomer.gstn });
+          onContinue({ name: selectedCustomer?.name || "-", mobile: selectedCustomer?.mobile || "-", gstn: selectedCustomer?.gstn || undefined });
         }}
-        attractionName={bookingSummary[0]?.attractionName || "Nahargarh Fort"}
+        attractionName={bookingSummary[0]?.attractionName || "-"}
         grandTotal={grandTotal}
         totalPax={bookingSummary.reduce((s, b) => s + b.passengers.reduce((x, p) => x + p.qty, 0), 0) || 2}
       />
