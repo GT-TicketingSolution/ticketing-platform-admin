@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, lt } from "drizzle-orm";
 
 import { z } from "zod";
 
@@ -55,9 +55,9 @@ const createBookingSchema = z.object({
   customer: z.object({
     id: z.string().uuid().nullable().optional(),
 
-    name: z.string().trim().min(1).max(150),
+    name: z.string().trim().min(1).max(150).nullable().optional(),
 
-    mobile: z.string().trim().min(10).max(20),
+    mobile: z.string().trim().min(10).max(20).nullable().optional(),
 
     gstn: z.string().trim().max(20).nullable().optional(),
   }),
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
       if (!customer) {
         return failure("Customer not found.", 404, "CUSTOMER_NOT_FOUND");
       }
-    } else {
+    } else if (data.customer.mobile) {
       const [existingCustomer] = await db
         .select({
           id: customers.id,
@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
           .insert(customers)
           .values({
             adminId,
-            name: data.customer.name,
+            name: data.customer.name ?? "Walk-in Customer",
             mobile: data.customer.mobile,
             gstn: data.customer.gstn || null,
           })
@@ -284,6 +284,43 @@ export async function POST(request: NextRequest) {
 
     const result = await db.transaction(async (tx) => {
       /* ---------------------------------------------------
+     CLEANUP EXPIRED PENDING BOOKINGS
+  --------------------------------------------------- */
+
+      const now = new Date();
+
+      const expiredBookings = await tx
+        .select({
+          id: bookings.id,
+        })
+        .from(bookings)
+        .where(
+          and(
+            eq(bookings.status, "PENDING"),
+            lt(bookings.paymentExpiresAt, now),
+          ),
+        );
+
+      if (expiredBookings.length > 0) {
+        const expiredBookingIds = expiredBookings.map((booking) => booking.id);
+
+        // Release seats held by expired bookings
+        await tx
+          .delete(bookingSeats)
+          .where(inArray(bookingSeats.bookingId, expiredBookingIds));
+
+        // We don't have EXPIRED status,
+        // so mark the booking as CANCELLED.
+        await tx
+          .update(bookings)
+          .set({
+            status: "CANCELLED",
+            updatedAt: now,
+          })
+          .where(inArray(bookings.id, expiredBookingIds));
+      }
+
+      /* ---------------------------------------------------
          1. CREATE PENDING BOOKING
       --------------------------------------------------- */
 
@@ -294,11 +331,10 @@ export async function POST(request: NextRequest) {
         .values({
           bookingNumber,
 
-          customerName: data.customer.name,
+          customerName: data.customer.name ?? null,
+          mobileNumber: data.customer.mobile ?? null,
 
-          mobileNumber: data.customer.mobile,
-
-          gstNumber: data.customer.gstn || null,
+          gstNumber: data.customer.gstn ?? null,
 
           attractionId: data.attractionId,
 
@@ -374,19 +410,17 @@ export async function POST(request: NextRequest) {
             })),
           );
         } catch (error: any) {
-          /*
-           * PostgreSQL unique constraint:
-           *
-           * slot_id +
-           * visit_date +
-           * bogie +
-           * seat_number
-           *
-           * guarantees that two concurrent
-           * requests cannot reserve the same seat.
-           */
+          const pgError = error?.cause ?? error;
 
-          if (error?.code === "23505") {
+          console.log("========== SEAT INSERT ERROR ==========");
+          console.log("code:", pgError?.code);
+          console.log("constraint:", pgError?.constraint);
+          console.log("detail:", pgError?.detail);
+
+          if (
+            pgError?.code === "23505" &&
+            pgError?.constraint === "booking_seats_unique_seat"
+          ) {
             throw new Error("SEAT_ALREADY_BOOKED");
           }
 

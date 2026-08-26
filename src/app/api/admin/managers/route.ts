@@ -4,6 +4,7 @@ import { getManagers, createManager } from "@/services/manager.service";
 
 import { success, failure } from "@/lib/api/response";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 const createManagerSchema = z.object({
   name: z.string().min(2).max(150),
@@ -31,6 +32,7 @@ const createManagerSchema = z.object({
 export async function GET(request: Request) {
   try {
     const auth = await requireAdmin(request);
+    await requireModuleAccess(auth, "MANAGER_MANAGEMENT");
 
     const { searchParams } = new URL(request.url);
 
@@ -58,15 +60,35 @@ export async function GET(request: Request) {
 
     return success(result);
   } catch (error) {
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return failure("Unauthorized.", 401, "UNAUTHORIZED");
+    // =====================================================
+    // AUTH ERRORS
+    // =====================================================
+
+    if (error instanceof Error) {
+      switch (error.message) {
+        case "UNAUTHORIZED":
+          return failure("Authentication required.", 401, "UNAUTHORIZED");
+
+        case "FORBIDDEN":
+          return failure("Admin access required.", 403, "FORBIDDEN");
+
+        case "ACCOUNT_NOT_ACTIVE":
+          return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+
+        case "MODULE_ACCESS_DENIED":
+          return failure(
+            "You do not have access to manager management.",
+            403,
+            "MODULE_ACCESS_DENIED",
+          );
+      }
     }
 
-    if (error instanceof Error && error.message === "FORBIDDEN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
+    // =====================================================
+    // SERVER ERROR
+    // =====================================================
 
-    console.error("Get managers error:", error);
+    console.error("GET /api/admin/managers error:", error);
 
     return failure("Unable to fetch managers.", 500, "INTERNAL_SERVER_ERROR");
   }
@@ -75,6 +97,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const auth = await requireAdmin(request);
+    await requireModuleAccess(auth, "MANAGER_MANAGEMENT");
 
     const body = await request.json();
 
@@ -95,25 +118,84 @@ export async function POST(request: Request) {
       201,
     );
   } catch (error) {
+    // =====================================================
+    // AUTH ERRORS
+    // =====================================================
+
     if (error instanceof Error) {
-      if (error.message === "UNAUTHORIZED") {
-        return failure("Unauthorized.", 401, "UNAUTHORIZED");
-      }
+      switch (error.message) {
+        case "UNAUTHORIZED":
+          return failure("Authentication required.", 401, "UNAUTHORIZED");
 
-      if (error.message === "FORBIDDEN") {
-        return failure("Admin access required.", 403, "FORBIDDEN");
-      }
+        case "FORBIDDEN":
+          return failure("Admin access required.", 403, "FORBIDDEN");
 
-      if (error.message === "EMAIL_ALREADY_EXISTS") {
-        return failure("Email already exists.", 409, "EMAIL_ALREADY_EXISTS");
-      }
+        case "ACCOUNT_NOT_ACTIVE":
+          return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
 
-      if (error.message === "MANAGER_NOT_FOUND") {
-        return failure("Manager not found.", 404, "MANAGER_NOT_FOUND");
+        case "MODULE_ACCESS_DENIED":
+          return failure(
+            "You do not have access to manager management.",
+            403,
+            "MODULE_ACCESS_DENIED",
+          );
+
+        // =================================================
+        // MANAGER ERRORS
+        // =================================================
+
+        case "EMAIL_ALREADY_EXISTS":
+          return failure(
+            "A manager with this email already exists.",
+            409,
+            "EMAIL_ALREADY_EXISTS",
+          );
+
+        case "MANAGER_NOT_FOUND":
+          return failure("Manager not found.", 404, "MANAGER_NOT_FOUND");
+
+        case "ATTRACTION_NOT_FOUND":
+          return failure(
+            "One or more selected attractions were not found.",
+            404,
+            "ATTRACTION_NOT_FOUND",
+          );
+
+        case "MODULE_NOT_FOUND":
+          return failure(
+            "One or more selected modules were not found.",
+            404,
+            "MODULE_NOT_FOUND",
+          );
+
+        case "INVALID_ATTRACTION_PERMISSION":
+          return failure(
+            "Invalid attraction permission configuration.",
+            400,
+            "INVALID_ATTRACTION_PERMISSION",
+          );
+
+        case "INVALID_MODULE_PERMISSION":
+          return failure(
+            "Invalid module permission configuration.",
+            400,
+            "INVALID_MODULE_PERMISSION",
+          );
+
+        case "INVALID_ADMIN_CONTEXT":
+          return failure(
+            "Admin context is invalid.",
+            403,
+            "INVALID_ADMIN_CONTEXT",
+          );
       }
     }
 
-    console.error("Create manager error:", error);
+    // =====================================================
+    // SERVER ERROR
+    // =====================================================
+
+    console.error("POST /api/admin/managers error:", error);
 
     return failure("Unable to create manager.", 500, "INTERNAL_SERVER_ERROR");
   }

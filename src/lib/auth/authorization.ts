@@ -4,6 +4,7 @@ import { db } from "@/db";
 import {
   systemModules,
   systemModuleRolePermissions,
+  adminSystemModulePermissions,
   managerSystemModulePermissions,
   managerAttractionPermissions,
   staffSystemModulePermissions,
@@ -42,9 +43,6 @@ export function getAdminId(auth: AuthContext): string {
   return auth.user.adminId;
 }
 
-/**
- * Check whether the current user has access to a system module.
- */
 export async function hasModuleAccess(
   auth: AuthContext,
   moduleKey: string,
@@ -66,20 +64,23 @@ export async function hasModuleAccess(
     return false;
   }
 
-  /*
-   * ADMIN
-   *
-   * Admin has all active system modules.
-   */
   if (auth.user.role === "ADMIN") {
-    return true;
+    const [permission] = await db
+      .select({
+        id: adminSystemModulePermissions.id,
+      })
+      .from(adminSystemModulePermissions)
+      .where(
+        and(
+          eq(adminSystemModulePermissions.adminId, auth.user.id),
+          eq(adminSystemModulePermissions.moduleId, module.id),
+        ),
+      )
+      .limit(1);
+
+    return !!permission;
   }
 
-  /*
-   * MANAGER
-   *
-   * First check manager-specific module permission.
-   */
   if (auth.user.role === "MANAGER") {
     const [permission] = await db
       .select({
@@ -97,16 +98,6 @@ export async function hasModuleAccess(
     return !!permission;
   }
 
-  /*
-   * STAFF
-   *
-   * Staff can receive access through:
-   *
-   * 1. direct staff_system_module_permissions
-   *
-   * We will keep this for now because your current schema
-   * already has this table.
-   */
   if (auth.user.role === "STAFF") {
     const [permission] = await db
       .select({
@@ -127,9 +118,6 @@ export async function hasModuleAccess(
   return false;
 }
 
-/**
- * Throw 403 if the user doesn't have module access.
- */
 export async function requireModuleAccess(
   auth: AuthContext,
   moduleKey: string,

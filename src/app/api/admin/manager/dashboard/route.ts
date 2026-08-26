@@ -2,6 +2,7 @@ import { getManagerDashboardRepository } from "@/services/manager-dashboard.repo
 
 import { success, failure } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 export async function GET(request: Request) {
   try {
@@ -10,6 +11,7 @@ export async function GET(request: Request) {
     // =====================================================
 
     const auth = await requireAuth(request);
+    await requireModuleAccess(auth, "DASHBOARD");
     const user = auth.user;
 
     // =====================================================
@@ -37,16 +39,30 @@ export async function GET(request: Request) {
     return success(dashboard);
   } catch (error) {
     // =====================================================
-    // AUTH ERRORS
+    // AUTHENTICATION ERRORS
     // =====================================================
 
     if (error instanceof Error) {
-      if (error.message === "UNAUTHORIZED") {
-        return failure("Authentication required.", 401, "UNAUTHORIZED");
-      }
+      switch (error.message) {
+        case "UNAUTHORIZED":
+          return failure("Authentication required.", 401, "UNAUTHORIZED");
 
-      if (error.message === "ACCOUNT_NOT_ACTIVE") {
-        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+        case "ACCOUNT_NOT_ACTIVE":
+          return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+
+        case "FORBIDDEN":
+          return failure(
+            "You do not have permission to access the manager dashboard.",
+            403,
+            "FORBIDDEN",
+          );
+
+        case "MODULE_ACCESS_DENIED":
+          return failure(
+            "You do not have access to the dashboard module.",
+            403,
+            "MODULE_ACCESS_DENIED",
+          );
       }
     }
 
@@ -54,7 +70,7 @@ export async function GET(request: Request) {
     // SERVER ERROR
     // =====================================================
 
-    console.error("Get manager dashboard error:", error);
+    console.error("GET /api/manager/dashboard error:", error);
 
     return failure(
       "Unable to fetch manager dashboard.",

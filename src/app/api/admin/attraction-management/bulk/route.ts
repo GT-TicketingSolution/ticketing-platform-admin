@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { attractions, attractionManagement } from "@/db/schema";
 import { success, failure } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 import { eq, and } from "drizzle-orm";
 
 const MAX_RECORDS = 500;
@@ -31,6 +32,8 @@ export async function POST(request: Request) {
     if (auth.user.role !== "ADMIN") {
       return failure("Only admin can bulk upload", 403, "FORBIDDEN");
     }
+
+    await requireModuleAccess(auth, "ATTRACTION_MANAGEMENT");
 
     // ==========================================
     // PARSE JSON
@@ -280,8 +283,42 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Bulk upload error:", error);
 
+    // ==========================================
+    // AUTHENTICATION ERROR
+    // ==========================================
+
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      // ==========================================
+      // ACCOUNT STATUS ERROR
+      // ==========================================
+
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      // ==========================================
+      // MODULE / ROLE AUTHORIZATION ERROR
+      // ==========================================
+
+      if (error.message === "FORBIDDEN") {
+        return failure(
+          "You are not authorized to access attraction management.",
+          403,
+          "FORBIDDEN",
+        );
+      }
+    }
+
+    // ==========================================
+    // INTERNAL SERVER ERROR
+    // ==========================================
+
     return failure(
-      "Unable to bulk upload attractions",
+      "Unable to bulk upload attractions.",
       500,
       "INTERNAL_SERVER_ERROR",
     );

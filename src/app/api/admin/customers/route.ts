@@ -5,6 +5,7 @@ import { getCustomers, createCustomer } from "@/services/customer.service";
 import { success, failure } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { getAdminId } from "@/lib/auth/get-admin-id";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 const customerSchema = z.object({
   name: z.string().min(2).max(150),
@@ -21,11 +22,7 @@ const customerSchema = z.object({
 export async function GET(request: Request) {
   try {
     const auth = await requireAuth(request);
-
-    if (auth.user.role !== "ADMIN" && auth.user.role !== "MANAGER") {
-      return failure("Forbidden", 403, "FORBIDDEN");
-    }
-
+    await requireModuleAccess(auth, "CUSTOMER_MANAGEMENT");
     const { searchParams } = new URL(request.url);
 
     const page = Math.max(Number(searchParams.get("page") ?? 1), 1);
@@ -39,10 +36,6 @@ export async function GET(request: Request) {
 
     const adminId = getAdminId(auth);
 
-    // console.log("GET CUSTOMER DEBUG");
-    // console.log("GET AUTH USER:", auth.user);
-    // console.log("GET ADMIN ID:", adminId);
-
     const result = await getCustomers({
       adminId,
       page,
@@ -52,17 +45,37 @@ export async function GET(request: Request) {
 
     return success(result);
   } catch (error) {
+    console.error("Get customers error:", error);
+
+    // ---------------------------------------------
+    // Authorization Errors
+    // ---------------------------------------------
+
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return failure("Unauthorized", 401, "UNAUTHORIZED");
+      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    }
+
+    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
     }
 
     if (error instanceof Error && error.message === "FORBIDDEN") {
-      return failure("Forbidden", 403, "FORBIDDEN");
+      return failure(
+        "You do not have permission to access customer management.",
+        403,
+        "FORBIDDEN",
+      );
     }
 
-    console.error("Get customers error:", error);
+    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+      return failure(
+        "User is not associated with an admin.",
+        403,
+        "USER_HAS_NO_ADMIN",
+      );
+    }
 
-    return failure("Unable to fetch customers", 500, "INTERNAL_SERVER_ERROR");
+    return failure("Unable to fetch customers.", 500, "INTERNAL_SERVER_ERROR");
   }
 }
 
@@ -74,9 +87,7 @@ export async function POST(request: Request) {
   try {
     const auth = await requireAuth(request);
 
-    if (auth.user.role !== "ADMIN" && auth.user.role !== "MANAGER") {
-      return failure("Forbidden", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "CUSTOMER_MANAGEMENT");
 
     const body = await request.json();
 
@@ -92,16 +103,36 @@ export async function POST(request: Request) {
 
     return success(customer, 201);
   } catch (error) {
-    if (error instanceof Error && error.message === "CUSTOMER_ALREADY_EXISTS") {
-      return failure("Customer already exists", 409, "CUSTOMER_ALREADY_EXISTS");
+    console.error("Get customers error:", error);
+
+    // ---------------------------------------------
+    // Authorization Errors
+    // ---------------------------------------------
+
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    }
+
+    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
     }
 
     if (error instanceof Error && error.message === "FORBIDDEN") {
-      return failure("Forbidden", 403, "FORBIDDEN");
+      return failure(
+        "You do not have permission to access customer management.",
+        403,
+        "FORBIDDEN",
+      );
     }
 
-    console.error("Create customer error:", error);
+    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+      return failure(
+        "User is not associated with an admin.",
+        403,
+        "USER_HAS_NO_ADMIN",
+      );
+    }
 
-    return failure("Unable to create customer", 500, "INTERNAL_SERVER_ERROR");
+    return failure("Unable to fetch customers.", 500, "INTERNAL_SERVER_ERROR");
   }
 }

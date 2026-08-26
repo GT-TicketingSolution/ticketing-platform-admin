@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+
 import {
   and,
   desc,
@@ -11,56 +12,52 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+
 import { z } from "zod";
 
 import { db } from "@/db";
 
-import {
-  transactions,
-  bookings,
-  attractions,
-  managerAttractionPermissions,
-} from "@/db/schema";
+import { transactions, bookings, attractions } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
+
+import {
+  requireModuleAccess,
+  requireAttractionAccess,
+  getAdminId,
+  getAccessibleAttractionIds,
+} from "@/lib/auth/authorization";
+
 import { success, failure } from "@/lib/api/response";
 
 // =====================================================
 // GET TRANSACTIONS
-// ADMIN + MANAGER
+// ADMIN + MANAGER + STAFF WITH MODULE/ATTRACTION ACCESS
 // =====================================================
 
 export async function GET(request: NextRequest) {
   try {
-    // ---------------------------------------------
-    // Authentication
-    // ---------------------------------------------
+    // =====================================================
+    // 1. AUTHENTICATION
+    // =====================================================
 
     const auth = await requireAuth(request);
 
-    const user = auth.user;
+    // =====================================================
+    // 2. MODULE AUTHORIZATION
+    // =====================================================
 
-    if (user.role !== "ADMIN" && user.role !== "MANAGER") {
-      return failure("Admin or Manager access required.", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "TRANSACTIONS");
 
-    // ---------------------------------------------
-    // Resolve tenant/admin ID
-    // ---------------------------------------------
+    // =====================================================
+    // 3. TENANT / ADMIN
+    // =====================================================
 
-    const adminId = user.role === "ADMIN" ? user.id : user.adminId;
+    const adminId = getAdminId(auth);
 
-    if (!adminId) {
-      return failure(
-        "Unable to determine account owner.",
-        403,
-        "TENANT_NOT_FOUND",
-      );
-    }
-
-    // ---------------------------------------------
-    // Query params
-    // ---------------------------------------------
+    // =====================================================
+    // 4. QUERY PARAMS
+    // =====================================================
 
     const { searchParams } = new URL(request.url);
 
@@ -75,7 +72,7 @@ export async function GET(request: NextRequest) {
 
     const paymentMode = searchParams.get("paymentMode")?.trim() || "";
 
-    const status = searchParams.get("status")?.trim() || "";
+    const status = searchParams.get("status")?.trim().toUpperCase() || "";
 
     const fromDate = searchParams.get("fromDate")?.trim() || "";
 
@@ -85,84 +82,101 @@ export async function GET(request: NextRequest) {
 
     const offset = (page - 1) * limit;
 
-    // =================================================
-    // MANAGER ATTRACTION ACCESS
-    // =================================================
+    // =====================================================
+    // 5. ACCESSIBLE ATTRACTIONS
+    // =====================================================
 
-    let allowedAttractionIds: string[] = [];
+    let accessibleAttractionIds: string[];
 
-    if (user.role === "MANAGER") {
-      const managerAttractions = await db
+    if (auth.user.role === "ADMIN") {
+      // Admin can access all attractions belonging
+      // to their own tenant.
+      const adminAttractions = await db
         .select({
-          attractionId: managerAttractionPermissions.attractionId,
+          id: attractions.id,
+          name: attractions.name,
         })
-        .from(managerAttractionPermissions)
-        .innerJoin(
-          attractions,
-          eq(managerAttractionPermissions.attractionId, attractions.id),
-        )
+        .from(attractions)
         .where(
           and(
-            eq(managerAttractionPermissions.managerId, user.id),
-
-            // Important tenant boundary
             eq(attractions.adminId, adminId),
-
-            // Only active attractions
             eq(attractions.status, "ACTIVE"),
           ),
         );
 
-      allowedAttractionIds = managerAttractions.map(
-        (item) => item.attractionId,
+      accessibleAttractionIds = adminAttractions.map(
+        (attraction) => attraction.id,
       );
-
-      // Manager has no attraction access
-      if (allowedAttractionIds.length === 0) {
-        return success({
-          items: [],
-
-          pagination: {
-            page,
-            limit,
-            total: 0,
-            totalPages: 0,
-          },
-        });
-      }
+    } else {
+      // Manager / Staff
+      accessibleAttractionIds = await getAccessibleAttractionIds(auth);
     }
 
-    // =================================================
-    // BASE CONDITIONS
-    // =================================================
+    // =====================================================
+    // 6. NO ATTRACTION ACCESS
+    // =====================================================
+
+    if (accessibleAttractionIds.length === 0) {
+      return success({
+        items: [],
+
+        attractions: [],
+
+        pagination: {
+          page,
+          limit,
+          total: 0,
+          totalPages: 0,
+        },
+      });
+    }
+
+    // =====================================================
+    // 7. ATTRACTIONS FOR FRONTEND DROPDOWN
+    // =====================================================
+
+    const attractionRows = await db
+      .select({
+        id: attractions.id,
+        name: attractions.name,
+      })
+      .from(attractions)
+      .where(
+        and(
+          eq(attractions.adminId, adminId),
+          eq(attractions.status, "ACTIVE"),
+          inArray(attractions.id, accessibleAttractionIds),
+        ),
+      )
+      .orderBy(attractions.name);
+
+    // =====================================================
+    // 8. BASE CONDITIONS
+    // =====================================================
 
     const conditions = [
       isNull(transactions.deletedAt),
+
       isNull(bookings.deletedAt),
 
       // Tenant boundary
       eq(attractions.adminId, adminId),
+
+      // User attraction access
+      inArray(attractions.id, accessibleAttractionIds),
     ];
 
-    // ---------------------------------------------
-    // Manager attraction restriction
-    // ---------------------------------------------
-
-    if (user.role === "MANAGER") {
-      conditions.push(inArray(attractions.id, allowedAttractionIds));
-    }
-
-    // ---------------------------------------------
-    // Attraction filter
-    // ---------------------------------------------
+    // =====================================================
+    // 9. ATTRACTION FILTER
+    // =====================================================
 
     if (attractionId) {
       conditions.push(eq(attractions.id, attractionId));
     }
 
-    // ---------------------------------------------
-    // Search
-    // ---------------------------------------------
+    // =====================================================
+    // 10. SEARCH
+    // =====================================================
 
     if (search) {
       conditions.push(
@@ -178,9 +192,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // ---------------------------------------------
-    // Payment mode
-    // ---------------------------------------------
+    // =====================================================
+    // 11. PAYMENT MODE
+    // =====================================================
 
     if (paymentMode && paymentMode !== "ALL") {
       conditions.push(
@@ -191,9 +205,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // ---------------------------------------------
-    // Transaction status
-    // ---------------------------------------------
+    // =====================================================
+    // 12. TRANSACTION STATUS
+    // =====================================================
 
     if (status && status !== "ALL") {
       conditions.push(
@@ -204,9 +218,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // ---------------------------------------------
-    // From date
-    // ---------------------------------------------
+    // =====================================================
+    // 13. FROM DATE
+    // =====================================================
 
     if (fromDate) {
       const startDate = new Date(`${fromDate}T00:00:00.000Z`);
@@ -218,9 +232,9 @@ export async function GET(request: NextRequest) {
       conditions.push(gte(transactions.createdAt, startDate));
     }
 
-    // ---------------------------------------------
-    // To date
-    // ---------------------------------------------
+    // =====================================================
+    // 14. TO DATE
+    // =====================================================
 
     if (toDate) {
       const endDate = new Date(`${toDate}T23:59:59.999Z`);
@@ -234,9 +248,9 @@ export async function GET(request: NextRequest) {
 
     const whereClause = and(...conditions);
 
-    // =================================================
-    // TOTAL COUNT
-    // =================================================
+    // =====================================================
+    // 15. TOTAL COUNT
+    // =====================================================
 
     const [{ count }] = await db
       .select({
@@ -249,9 +263,9 @@ export async function GET(request: NextRequest) {
 
     const total = Number(count);
 
-    // =================================================
-    // TRANSACTIONS
-    // =================================================
+    // =====================================================
+    // 16. TRANSACTIONS
+    // =====================================================
 
     const transactionRows = await db
       .select({
@@ -283,9 +297,9 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
-    // =================================================
-    // RESPONSE
-    // =================================================
+    // =====================================================
+    // 17. RESPONSE ITEMS
+    // =====================================================
 
     const items = transactionRows.map((transaction) => ({
       id: transaction.id,
@@ -310,18 +324,53 @@ export async function GET(request: NextRequest) {
       status: transaction.status,
     }));
 
+    // =====================================================
+    // 18. RESPONSE
+    // =====================================================
+
     return success({
       items,
 
+      // Used by frontend:
+      // Attraction dropdown
+      attractions: attractionRows,
+
       pagination: {
         page,
+
         limit,
+
         total,
+
         totalPages: total === 0 ? 0 : Math.ceil(total / limit),
       },
     });
   } catch (error) {
     console.error("Get transactions error:", error);
+
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    }
+
+    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+    }
+
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return failure(
+        "You do not have permission to access transactions.",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+      return failure(
+        "User is not associated with an admin.",
+        403,
+        "USER_HAS_NO_ADMIN",
+      );
+    }
 
     return failure(
       "Unable to fetch transactions.",
@@ -331,10 +380,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/* =====================================================
-   POST TRANSACTION
-   ADMIN + MANAGER
-===================================================== */
+// =====================================================
+// POST TRANSACTION
+// ADMIN + MANAGER + STAFF WITH ACCESS
+// =====================================================
 
 const createTransactionSchema = z.object({
   bookingId: z.string().uuid("Invalid booking ID."),
@@ -351,35 +400,27 @@ const createTransactionSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    // ---------------------------------------------
-    // Authentication
-    // ---------------------------------------------
+    // =====================================================
+    // 1. AUTHENTICATION
+    // =====================================================
 
     const auth = await requireAuth(request);
 
-    const user = auth.user;
+    // =====================================================
+    // 2. MODULE AUTHORIZATION
+    // =====================================================
 
-    if (user.role !== "ADMIN" && user.role !== "MANAGER") {
-      return failure("Admin or Manager access required.", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "TRANSACTIONS");
 
-    // ---------------------------------------------
-    // Resolve tenant/admin
-    // ---------------------------------------------
+    // =====================================================
+    // 3. TENANT / ADMIN
+    // =====================================================
 
-    const adminId = user.role === "ADMIN" ? user.id : user.adminId;
+    const adminId = getAdminId(auth);
 
-    if (!adminId) {
-      return failure(
-        "Unable to determine account owner.",
-        403,
-        "TENANT_NOT_FOUND",
-      );
-    }
-
-    // ---------------------------------------------
-    // Parse request body
-    // ---------------------------------------------
+    // =====================================================
+    // 4. REQUEST BODY
+    // =====================================================
 
     const body = await request.json();
 
@@ -395,16 +436,20 @@ export async function POST(request: NextRequest) {
 
     const data = parsed.data;
 
-    // ---------------------------------------------
-    // Find booking
-    // ---------------------------------------------
+    // =====================================================
+    // 5. FIND BOOKING
+    // =====================================================
 
     const [booking] = await db
       .select({
         id: bookings.id,
+
         bookingNumber: bookings.bookingNumber,
+
         customerName: bookings.customerName,
+
         attractionId: bookings.attractionId,
+
         attractionName: attractions.name,
       })
       .from(bookings)
@@ -412,7 +457,9 @@ export async function POST(request: NextRequest) {
       .where(
         and(
           eq(bookings.id, data.bookingId),
+
           isNull(bookings.deletedAt),
+
           eq(attractions.adminId, adminId),
         ),
       )
@@ -422,36 +469,27 @@ export async function POST(request: NextRequest) {
       return failure("Booking not found.", 404, "BOOKING_NOT_FOUND");
     }
 
-    // ---------------------------------------------
-    // Manager attraction permission
-    // ---------------------------------------------
+    // =====================================================
+    // 6. ATTRACTION AUTHORIZATION
+    // =====================================================
 
-    if (user.role === "MANAGER") {
-      const [permission] = await db
-        .select({
-          id: managerAttractionPermissions.id,
-        })
-        .from(managerAttractionPermissions)
-        .where(
-          and(
-            eq(managerAttractionPermissions.managerId, user.id),
-            eq(managerAttractionPermissions.attractionId, booking.attractionId),
-          ),
-        )
-        .limit(1);
-
-      if (!permission) {
+    try {
+      await requireAttractionAccess(auth, booking.attractionId);
+    } catch (error) {
+      if (error instanceof Error && error.message === "FORBIDDEN") {
         return failure(
           "You do not have access to this attraction.",
           403,
           "ATTRACTION_ACCESS_DENIED",
         );
       }
+
+      throw error;
     }
 
-    // ---------------------------------------------
-    // Generate transaction number
-    // ---------------------------------------------
+    // =====================================================
+    // 7. GENERATE TRANSACTION NUMBER
+    // =====================================================
 
     const transactionNumber = `TXN-${new Date().getFullYear()}-${crypto
       .randomUUID()
@@ -459,9 +497,9 @@ export async function POST(request: NextRequest) {
       .slice(0, 8)
       .toUpperCase()}`;
 
-    // ---------------------------------------------
-    // Create transaction
-    // ---------------------------------------------
+    // =====================================================
+    // 8. CREATE TRANSACTION
+    // =====================================================
 
     const [transaction] = await db
       .insert(transactions)
@@ -490,9 +528,9 @@ export async function POST(request: NextRequest) {
         createdAt: transactions.createdAt,
       });
 
-    // ---------------------------------------------
-    // Response
-    // ---------------------------------------------
+    // =====================================================
+    // 9. RESPONSE
+    // =====================================================
 
     return success(
       {
@@ -504,6 +542,11 @@ export async function POST(request: NextRequest) {
 
         bookingId: booking.bookingNumber,
 
+        attraction: {
+          id: booking.attractionId,
+          name: booking.attractionName,
+        },
+
         amount: Number(transaction.amount),
 
         paymentMode: transaction.paymentMode,
@@ -514,6 +557,30 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("Create transaction error:", error);
+
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    }
+
+    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+    }
+
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return failure(
+        "You do not have permission to create transactions.",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+      return failure(
+        "User is not associated with an admin.",
+        403,
+        "USER_HAS_NO_ADMIN",
+      );
+    }
 
     return failure(
       "Unable to create transaction.",

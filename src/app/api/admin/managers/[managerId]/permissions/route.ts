@@ -15,6 +15,7 @@ import {
 
 import { success, failure } from "@/lib/api/response";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 const permissionsSchema = z.object({
   systemModuleIds: z.array(z.string().uuid()).default([]),
@@ -39,6 +40,7 @@ export async function GET(
 ) {
   try {
     const auth = await requireAdmin(request);
+    await requireModuleAccess(auth, "MANAGER_MANAGEMENT");
 
     const { managerId } = await params;
 
@@ -160,24 +162,45 @@ export async function GET(
       attractions: attractionsWithModules,
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    if (error instanceof Error) {
+      // Authentication
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication is required.", 401, "UNAUTHORIZED");
+      }
+
+      // Account status
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure(
+          "Your account is inactive. Please contact the administrator.",
+          403,
+          "ACCOUNT_NOT_ACTIVE",
+        );
+      }
+
+      // Authorization
+      if (error.message === "FORBIDDEN") {
+        return failure(
+          "You do not have permission to manage manager permissions.",
+          403,
+          "MANAGER_PERMISSION_ACCESS_FORBIDDEN",
+        );
+      }
+
+      // Manager
+      if (error.message === "MANAGER_NOT_FOUND") {
+        return failure("Manager not found.", 404, "MANAGER_NOT_FOUND");
+      }
     }
 
-    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
-      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
-    }
-
-    if (error instanceof Error && error.message === "FORBIDDEN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
-
-    console.error("Get manager permissions error:", error);
+    console.error(
+      "GET /api/admin/managers/[managerId]/permissions error:",
+      error,
+    );
 
     return failure(
-      "Unable to fetch manager permissions.",
+      "Unable to fetch manager permissions. Please try again later.",
       500,
-      "INTERNAL_SERVER_ERROR",
+      "MANAGER_PERMISSIONS_FETCH_FAILED",
     );
   }
 }
@@ -192,7 +215,7 @@ export async function PUT(
 ) {
   try {
     const auth = await requireAdmin(request);
-
+    await requireModuleAccess(auth, "MANAGER_MANAGEMENT");
     const { managerId } = await params;
 
     // --------------------------------------------------
@@ -429,24 +452,81 @@ export async function PUT(
       message: "Manager permissions updated successfully.",
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    if (error instanceof Error) {
+      // Authentication
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication is required.", 401, "UNAUTHORIZED");
+      }
+
+      // Account status
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure(
+          "Your account is inactive. Please contact the administrator.",
+          403,
+          "ACCOUNT_NOT_ACTIVE",
+        );
+      }
+
+      // Authorization
+      if (error.message === "FORBIDDEN") {
+        return failure(
+          "You do not have permission to manage manager permissions.",
+          403,
+          "MANAGER_PERMISSION_ACCESS_FORBIDDEN",
+        );
+      }
+
+      // Manager
+      if (error.message === "MANAGER_NOT_FOUND") {
+        return failure("Manager not found.", 404, "MANAGER_NOT_FOUND");
+      }
+
+      // System module
+      if (error.message === "INVALID_SYSTEM_MODULE") {
+        return failure(
+          "One or more selected system modules are invalid.",
+          400,
+          "INVALID_SYSTEM_MODULE",
+        );
+      }
+
+      // Attraction
+      if (error.message === "INVALID_ATTRACTION") {
+        return failure(
+          "One or more selected attractions are invalid.",
+          400,
+          "INVALID_ATTRACTION",
+        );
+      }
+
+      // Attraction module
+      if (error.message === "INVALID_ATTRACTION_MODULE") {
+        return failure(
+          "One or more selected attraction modules are invalid or inactive.",
+          400,
+          "INVALID_ATTRACTION_MODULE",
+        );
+      }
+
+      // Attraction/module mapping
+      if (error.message === "INVALID_ATTRACTION_MODULE_MAPPING") {
+        return failure(
+          "One or more attraction modules do not belong to their selected attraction.",
+          400,
+          "INVALID_ATTRACTION_MODULE_MAPPING",
+        );
+      }
     }
 
-    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
-      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
-    }
-
-    if (error instanceof Error && error.message === "FORBIDDEN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
-
-    console.error("Update manager permissions error:", error);
+    console.error(
+      "PUT /api/admin/managers/[managerId]/permissions error:",
+      error,
+    );
 
     return failure(
-      "Unable to update manager permissions.",
+      "Unable to update manager permissions. Please try again later.",
       500,
-      "INTERNAL_SERVER_ERROR",
+      "MANAGER_PERMISSIONS_UPDATE_FAILED",
     );
   }
 }

@@ -6,6 +6,7 @@ import { eq, and } from "drizzle-orm";
 import { bookings, bookingSeats } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
+
 import {
   requireModuleAccess,
   requireAttractionAccess,
