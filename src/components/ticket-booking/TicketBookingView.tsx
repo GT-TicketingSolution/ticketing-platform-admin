@@ -10,7 +10,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useTicketingAttractions, TicketingAttraction } from "@/hooks/useTicketingBookingQueries";
+import { useTicketingAttractions, useTicketingSlots, useTicketingSeats, TicketingAttraction } from "@/hooks/useTicketingBookingQueries";
 import CustomerInfoView from "./CustomerInfoView";
 
 export const SIDEBAR_COLLAPSE_EVENT = "tbv:sidebar-collapse";
@@ -114,44 +114,37 @@ function calcEntry(entry: CartEntry) {
   return { subtotal, gst, gstAdj, roundOff, total: rounded };
 }
 
-function getAttractionBaseMetaDetails(attraction: Attraction) {
+function getAttractionBaseRate(attraction: Attraction) {
   const prices = Object.values(attraction.pricing).filter((p) => p > 0);
-  const minP = Math.min(...prices);
-  const adultP = attraction.pricing.adult || Math.max(...prices);
+  const minP = prices.length > 0 ? Math.min(...prices) : 0;
+  const adultP = attraction.pricing.adult || (prices.length > 0 ? Math.max(...prices) : 0);
+  return `₹${minP}–₹${adultP} / person`;
+}
 
-  let duration = "20min / trip";
-  let seats = "24";
-  let trips = 8;
-
-  const lowerName = attraction.name.toLowerCase();
-  if (lowerName.includes("ropeway")) {
-    duration = "15min / trip";
-    seats = "6";
-    trips = 12;
-  } else if (lowerName.includes("museum")) {
-    duration = "45min / tour";
-    seats = "50";
-    trips = 6;
-  } else if (lowerName.includes("park")) {
-    duration = "60min / tour";
-    seats = "100";
-    trips = 4;
-  } else if (lowerName.includes("mahal")) {
-    duration = "30min / visit";
-    seats = "40";
-    trips = 8;
-  } else if (lowerName.includes("fort")) {
-    duration = "45min / tour";
-    seats = "80";
-    trips = 6;
+/** Parse duration in minutes from a displayTime like "10:00 AM – 10:20 AM" */
+function parseDurationFromDisplayTime(displayTime: string): string | null {
+  try {
+    const parts = displayTime.split("–").map((s) => s.trim());
+    if (parts.length < 2) return null;
+    const parse = (t: string) => {
+      const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+      if (!m) return null;
+      let h = parseInt(m[1], 10);
+      const min = parseInt(m[2], 10);
+      const period = m[3].toUpperCase();
+      if (period === "PM" && h !== 12) h += 12;
+      if (period === "AM" && h === 12) h = 0;
+      return h * 60 + min;
+    };
+    const start = parse(parts[0]);
+    const end = parse(parts[1]);
+    if (start === null || end === null) return null;
+    const diff = end - start;
+    if (diff <= 0) return null;
+    return `${diff}min / trip`;
+  } catch {
+    return null;
   }
-
-  return {
-    baseRate: `₹${minP}–₹${adultP} / person`,
-    duration,
-    seats,
-    defaultTrips: trips,
-  };
 }
 
 // ── Castle Sketch Illustration Component ──────────────────────────────────────
@@ -737,23 +730,16 @@ export default function TicketBookingView() {
   // Cart state
   const [cart, setCart] = useState<CartEntry[]>([]);
 
-  // Available trips counter per attraction (decrements on booking)
+  // Available trips counter per attraction (editable by staff, decrements on booking)
   const [availableTripsMap, setAvailableTripsMap] = useState<Record<string, number>>({});
+  // Tracks which attraction's trips field is being edited inline
+  const [editingTripsId, setEditingTripsId] = useState<string | null>(null);
+  const [editingTripsValue, setEditingTripsValue] = useState<string>("");
 
   useEffect(() => {
     document.title = "Ticket Booking | Ticketing Solution";
   }, []);
 
-  // Update trips map whenever attractions data changes
-  useEffect(() => {
-    if (allAttractions.length > 0) {
-      const tripsInit: Record<string, number> = {};
-      allAttractions.forEach((a) => {
-        tripsInit[a.id] = getAttractionBaseMetaDetails(a).defaultTrips;
-      });
-      setAvailableTripsMap(tripsInit);
-    }
-  }, [allAttractions]);
 
   // Sync sidebar collapse state
   useEffect(() => {
@@ -792,6 +778,50 @@ export default function TicketBookingView() {
       null,
     [allAttractions, activeAttractionId, selectedAttractionIds]
   );
+
+  // Today's date string for slot/seats API
+  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+
+  // Fetch slots for the active attraction
+  const { data: activeSlots } = useTicketingSlots(
+    activeAttractionId ?? "",
+    todayStr,
+    !!activeAttractionId
+  );
+
+  // Use first slot to get seat info
+  const firstSlotId = activeSlots?.[0]?.id ?? "";
+  const { data: activeSeatsData } = useTicketingSeats(
+    activeAttractionId ?? "",
+    firstSlotId,
+    todayStr,
+    !!activeAttractionId && !!firstSlotId
+  );
+
+  // Derive duration from first slot's displayTime
+  const derivedDuration = useMemo(() => {
+    if (!activeSlots || activeSlots.length === 0) return null;
+    const displayTime = (activeSlots[0] as any).slotTime ?? "";
+    return parseDurationFromDisplayTime(displayTime);
+  }, [activeSlots]);
+
+  // Derived seats from seats API
+  const derivedSeats = useMemo(() => {
+    if (activeSeatsData?.totalSeats != null) return String(activeSeatsData.totalSeats);
+    return null;
+  }, [activeSeatsData]);
+
+  // Initialize availableTripsMap from slots API (slot count = available trips today)
+  useEffect(() => {
+    if (activeAttractionId && activeSlots && activeSlots.length > 0) {
+      setAvailableTripsMap((prev) => {
+        // Only set from API if not already manually edited by staff
+        if (prev[activeAttractionId] !== undefined) return prev;
+        return { ...prev, [activeAttractionId]: activeSlots.length };
+      });
+    }
+  }, [activeAttractionId, activeSlots]);
+
 
   const selectedAttractionsList = useMemo(
     () => allAttractions.filter((a) => selectedAttractionIds.has(a.id)),
@@ -1182,7 +1212,7 @@ export default function TicketBookingView() {
           }}
         >
           {activeAttraction && (() => {
-            const meta = getAttractionBaseMetaDetails(activeAttraction);
+            const meta = { baseRate: getAttractionBaseRate(activeAttraction) };
             return (
               <div
                 style={{
@@ -1249,7 +1279,9 @@ export default function TicketBookingView() {
                         </div>
                         <div>
                           <span>Duration: </span>
-                          <span style={{ color: "#0E4E7A", fontWeight: 700 }}>{meta.duration}</span>
+                          <span style={{ color: "#0E4E7A", fontWeight: 700 }}>
+                            {derivedDuration ?? "—"}
+                          </span>
                         </div>
                       </div>
 
@@ -1265,13 +1297,68 @@ export default function TicketBookingView() {
                       >
                         <div>
                           <span>Seats per trip: </span>
-                          <span style={{ color: "#0E4E7A", fontWeight: 700 }}>{meta.seats}</span>
-                        </div>
-                        <div>
-                          <span>Available trips today: </span>
-                          <span style={{ color: availableTripsMap[activeAttraction.id] === 0 ? "#EF4444" : "#0E4E7A", fontWeight: 700 }}>
-                            {availableTripsMap[activeAttraction.id] ?? meta.defaultTrips}
+                          <span style={{ color: "#0E4E7A", fontWeight: 700 }}>
+                            {derivedSeats ?? "—"}
                           </span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                          <span>Available trips today: </span>
+                          {editingTripsId === activeAttraction.id ? (
+                            <input
+                              autoFocus
+                              type="number"
+                              min="0"
+                              value={editingTripsValue}
+                              onChange={(e) => setEditingTripsValue(e.target.value)}
+                              onBlur={() => {
+                                const parsed = parseInt(editingTripsValue, 10);
+                                if (!isNaN(parsed) && parsed >= 0) {
+                                  setAvailableTripsMap((prev) => ({ ...prev, [activeAttraction.id]: parsed }));
+                                }
+                                setEditingTripsId(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  const parsed = parseInt(editingTripsValue, 10);
+                                  if (!isNaN(parsed) && parsed >= 0) {
+                                    setAvailableTripsMap((prev) => ({ ...prev, [activeAttraction.id]: parsed }));
+                                  }
+                                  setEditingTripsId(null);
+                                } else if (e.key === "Escape") {
+                                  setEditingTripsId(null);
+                                }
+                              }}
+                              style={{
+                                width: "44px",
+                                fontSize: "11.5px",
+                                fontWeight: 700,
+                                color: "#0E4E7A",
+                                border: "1px solid #CBD5E1",
+                                borderRadius: "4px",
+                                padding: "1px 4px",
+                                outline: "none",
+                                background: "#F8FAFC",
+                              }}
+                            />
+                          ) : (
+                            <span
+                              title="Click to edit"
+                              onClick={() => {
+                                const cur = availableTripsMap[activeAttraction.id] ?? (activeSlots?.length ?? 0);
+                                setEditingTripsValue(String(cur));
+                                setEditingTripsId(activeAttraction.id);
+                              }}
+                              style={{
+                                color: (availableTripsMap[activeAttraction.id] ?? (activeSlots?.length ?? 1)) === 0 ? "#EF4444" : "#0E4E7A",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                borderBottom: "1px dashed #94A3B8",
+                                paddingBottom: "1px",
+                              }}
+                            >
+                              {availableTripsMap[activeAttraction.id] ?? (activeSlots?.length ?? "—")}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
