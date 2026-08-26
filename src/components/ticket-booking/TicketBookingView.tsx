@@ -475,19 +475,21 @@ function VerticalAttractionCard({
 function VisitorCategoryCard({
   category,
   isSelected,
-  onToggle,
+  count,
+  onCardClick,
   price,
 }: {
   category: VisitorCategoryMeta;
   isSelected: boolean;
-  onToggle: () => void;
+  count: number;
+  onCardClick: () => void;
   price?: number;
 }) {
   const [imgErr, setImgErr] = useState(false);
 
   return (
     <div
-      onClick={onToggle}
+      onClick={onCardClick}
       className="visitor-category-card"
       style={{
         width: "100%",
@@ -580,23 +582,28 @@ function VisitorCategoryCard({
         )}
       </div>
 
-      {/* Checkmark indicator */}
-      {isSelected && (
+      {/* Count badge indicator */}
+      {count > 0 && (
         <div
           style={{
             position: "absolute",
             top: "6px",
             right: "6px",
-            width: "16px",
-            height: "16px",
-            borderRadius: "50%",
+            minWidth: "18px",
+            height: "18px",
+            padding: "0 4px",
+            borderRadius: "10px",
             background: "#F4BC43",
+            color: "#002A45",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            fontSize: "11px",
+            fontWeight: 800,
+            boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
           }}
         >
-          <Check size={10} color="#002A45" strokeWidth={3} />
+          {count}
         </div>
       )}
     </div>
@@ -768,9 +775,22 @@ export default function TicketBookingView() {
     };
   }, []);
 
+  // Ensure active attraction is always set when in booking mode
+  useEffect(() => {
+    if (mode === "booking" && !activeAttractionId && allAttractions.length > 0) {
+      const firstId = allAttractions[0].id;
+      setSelectedAttractionIds((prev) => (prev.size > 0 ? prev : new Set([firstId])));
+      setActiveAttractionId(firstId);
+    }
+  }, [mode, activeAttractionId, allAttractions]);
+
   const activeAttraction = useMemo(
-    () => allAttractions.find((a) => a.id === activeAttractionId) || null,
-    [allAttractions, activeAttractionId]
+    () =>
+      allAttractions.find((a) => a.id === activeAttractionId) ||
+      allAttractions.find((a) => selectedAttractionIds.has(a.id)) ||
+      allAttractions[0] ||
+      null,
+    [allAttractions, activeAttractionId, selectedAttractionIds]
   );
 
   const selectedAttractionsList = useMemo(
@@ -802,72 +822,39 @@ export default function TicketBookingView() {
     setMode("booking");
   }
 
-  // Toggle category selection for active attraction
-  function handleToggleCategory(key: CategoryKey) {
+  // Clicking a category card in the middle column increments quantity (+1) and never unselects on card click
+  function handleCategoryCardClick(key: CategoryKey) {
     if (!activeAttractionId || !activeAttraction) return;
 
     setAttractionCategories((prev) => {
       const next = new Map(prev);
       const current = new Set(next.get(activeAttractionId) || []);
-
-      if (current.has(key)) {
-        // Deselect -> remove from cart
-        current.delete(key);
-        setCart((prevCart) => {
-          const idx = prevCart.findIndex((e) => e.attraction.id === activeAttractionId);
-          if (idx < 0) return prevCart;
-          const baseQty = { ...prevCart[idx].quantities };
-          baseQty[key] = 0;
-          const hasAny = Object.values(baseQty).some((v) => v > 0);
-          if (!hasAny) return prevCart.filter((_, i) => i !== idx);
-          return prevCart.map((e, i) => (i === idx ? { ...e, quantities: baseQty } : e));
-        });
-      } else {
-        // Select -> add with quantity 1
-        current.add(key);
-        setCart((prevCart) => {
-          const idx = prevCart.findIndex((e) => e.attraction.id === activeAttractionId);
-          const baseQty: Record<CategoryKey, number> =
-            idx >= 0 ? { ...prevCart[idx].quantities } : { ...EMPTY_QTY };
-          if (!baseQty[key] || baseQty[key] === 0) {
-            baseQty[key] = 1;
-          }
-          const newEntry: CartEntry = { attraction: activeAttraction, quantities: baseQty };
-          if (idx >= 0) {
-            return prevCart.map((e, i) => (i === idx ? newEntry : e));
-          }
-          return [...prevCart, newEntry];
-        });
-      }
-
+      current.add(key);
       next.set(activeAttractionId, current);
       return next;
     });
+
+    setCart((prevCart) => {
+      const idx = prevCart.findIndex((e) => e.attraction.id === activeAttractionId);
+      const baseQty: Record<CategoryKey, number> =
+        idx >= 0 ? { ...prevCart[idx].quantities } : { ...EMPTY_QTY };
+      const currentVal = baseQty[key] || 0;
+      baseQty[key] = currentVal + 1;
+
+      const newEntry: CartEntry = { attraction: activeAttraction, quantities: baseQty };
+      if (idx >= 0) {
+        return prevCart.map((e, i) => (i === idx ? newEntry : e));
+      }
+      return [...prevCart, newEntry];
+    });
+
+    setSelectedAttractionIds((prev) => new Set([...prev, activeAttractionId]));
   }
 
-  // Toggle attraction selection in booking column 1
-  function handleToggleAttractionSelect(id: string, e?: React.MouseEvent) {
-    if (e) e.stopPropagation();
-    setSelectedAttractionIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-        if (activeAttractionId === id) {
-          const remaining = Array.from(next);
-          setActiveAttractionId(remaining[0] || null);
-        }
-        setAttractionCategories((prevCats) => {
-          const nm = new Map(prevCats);
-          nm.delete(id);
-          return nm;
-        });
-        setCart((prevCart) => prevCart.filter((e) => e.attraction.id !== id));
-      } else {
-        next.add(id);
-        setActiveAttractionId(id);
-      }
-      return next;
-    });
+  // Select attraction in booking column 1 (never deselects when clicked)
+  function handleSelectAttraction(id: string) {
+    setSelectedAttractionIds((prev) => new Set([...prev, id]));
+    setActiveAttractionId(id);
   }
 
   // Set explicit quantity (typed in or from stepper buttons)
@@ -1170,18 +1157,7 @@ export default function TicketBookingView() {
                     attraction={attraction}
                     isSelected={isSelected}
                     isActive={isActive}
-                    onSetActive={() => {
-                      if (isActive && isSelected) {
-                        // Clicking active+selected => deselect it
-                        handleToggleAttractionSelect(attraction.id);
-                      } else if (!isSelected) {
-                        setSelectedAttractionIds((prev) => new Set([...prev, attraction.id]));
-                        setActiveAttractionId(attraction.id);
-                      } else {
-                        // Already selected but not active – just switch active
-                        setActiveAttractionId(attraction.id);
-                      }
-                    }}
+                    onSetActive={() => handleSelectAttraction(attraction.id)}
                   />
                 );
               })
@@ -1342,9 +1318,7 @@ export default function TicketBookingView() {
                 Visitor Categories {activeAttraction ? `(${activeAttraction.name})` : ""}
               </h3>
               <p style={{ margin: 0, fontSize: "11px", fontWeight: 600, color: "#64748B" }}>
-                {activeAttraction
-                  ? "Click cards to select visitor categories for this attraction"
-                  : "Select an attraction from the left list"}
+                Click cards to select visitor categories for this attraction
               </p>
             </div>
 
@@ -1353,8 +1327,10 @@ export default function TicketBookingView() {
                 <button
                   onClick={() => {
                     VISITOR_CATEGORIES.forEach((c) => {
-                      if (!selectedCategoryKeysForActive.has(c.key)) {
-                        handleToggleCategory(c.key);
+                      const cartEntry = cart.find((e) => e.attraction.id === activeAttraction.id);
+                      const curQty = cartEntry?.quantities[c.key] || 0;
+                      if (curQty === 0) {
+                        setQuantity(c.key, 1, activeAttraction);
                       }
                     });
                   }}
@@ -1374,7 +1350,9 @@ export default function TicketBookingView() {
                 {selectedCategoryKeysForActive.size > 0 && (
                   <button
                     onClick={() => {
-                      selectedCategoryKeysForActive.forEach((k) => handleToggleCategory(k));
+                      VISITOR_CATEGORIES.forEach((c) => {
+                        setQuantity(c.key, 0, activeAttraction);
+                      });
                     }}
                     style={{
                       background: "transparent",
@@ -1394,72 +1372,37 @@ export default function TicketBookingView() {
             )}
           </div>
 
-          {!activeAttraction ? (
-            <div
-              style={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                textAlign: "center",
-                gap: "10px",
-                background: "rgba(248,250,252,0.6)",
-                borderRadius: "10px",
-                border: "1.5px dashed #CBD5E1",
-                padding: "20px",
-              }}
-            >
-              <div
-                style={{
-                  width: "44px",
-                  height: "44px",
-                  borderRadius: "50%",
-                  background: "rgba(244,188,67,0.12)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Users size={22} color="#F4BC43" />
-              </div>
-              <h4 style={{ margin: 0, fontSize: "13.5px", fontWeight: 700, color: "#173F63" }}>
-                No Attraction Selected
-              </h4>
-              <p style={{ margin: 0, fontSize: "11px", fontWeight: 500, color: "#64748B" }}>
-                Please select an attraction from the left list to view categories
-              </p>
-            </div>
-          ) : (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: showBillingColumn
-                  ? "repeat(auto-fill, minmax(125px, 1fr))"
-                  : "repeat(auto-fill, minmax(150px, 1fr))",
-                gap: "12px",
-                flex: 1,
-                overflowY: "auto",
-                padding: "4px 2px 8px 2px",
-                alignContent: "start",
-              }}
-              className="tbv-scroll-col"
-            >
-              {VISITOR_CATEGORIES.map((category) => {
-                const isSelected = selectedCategoryKeysForActive.has(category.key);
-                const price = activeAttraction.pricing[category.key] ?? category.defaultPrice;
-                return (
-                  <VisitorCategoryCard
-                    key={category.key}
-                    category={category}
-                    isSelected={isSelected}
-                    price={price}
-                    onToggle={() => handleToggleCategory(category.key)}
-                  />
-                );
-              })}
-            </div>
-          )}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: showBillingColumn
+                ? "repeat(auto-fill, minmax(125px, 1fr))"
+                : "repeat(auto-fill, minmax(150px, 1fr))",
+              gap: "12px",
+              flex: 1,
+              overflowY: "auto",
+              padding: "4px 2px 8px 2px",
+              alignContent: "start",
+            }}
+            className="tbv-scroll-col"
+          >
+            {VISITOR_CATEGORIES.map((category) => {
+              const isSelected = selectedCategoryKeysForActive.has(category.key);
+              const cartEntry = cart.find((e) => e.attraction.id === activeAttraction?.id);
+              const count = cartEntry?.quantities[category.key] || 0;
+              const price = activeAttraction?.pricing[category.key] ?? category.defaultPrice;
+              return (
+                <VisitorCategoryCard
+                  key={category.key}
+                  category={category}
+                  isSelected={isSelected && count > 0}
+                  count={count}
+                  price={price}
+                  onCardClick={() => handleCategoryCardClick(category.key)}
+                />
+              );
+            })}
+          </div>
         </div>
 
         {/* ── COLUMN 3: CATEGORIES & QUANTITY + CART & BILLING ── */}

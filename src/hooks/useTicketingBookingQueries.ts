@@ -44,7 +44,9 @@ export interface TicketingSlot {
 
 export interface TicketingSeat {
   id: string;
-  bogie: string | null;
+  row?: number;
+  column?: number;
+  bogie?: string | null;
   seatNumber: string;
   status: "available" | "occupied";
 }
@@ -276,12 +278,17 @@ export interface TicketingSeatsResponse {
     hasAisle?: boolean;
     aisleAfterCol?: number;
   } | null;
+  totalSeats?: number;
+  occupiedCount?: number;
+  availableSeats?: number;
+  occupiedSeats?: any[];
   sections: Array<{
     name: string;
     bogie: string | null;
     totalSeats: number;
-    occupiedSeats: number[];
+    occupiedSeats: any[];
     availableSeats: number;
+    seats?: TicketingSeat[];
   }>;
   seats: TicketingSeat[];
 }
@@ -305,15 +312,32 @@ export function useTicketingSeats(attractionId: string, slotId: string, date: st
         date: payload?.date ?? date,
         hasSeating: payload?.hasSeating ?? true,
         layout: payload?.layout ?? null,
+        totalSeats: payload?.totalSeats ?? seatsItems.length,
+        occupiedCount: payload?.occupiedCount ?? 0,
+        availableSeats: payload?.availableSeats ?? (payload?.totalSeats ? payload.totalSeats - (payload.occupiedCount || 0) : seatsItems.length),
+        occupiedSeats: payload?.occupiedSeats ?? [],
         sections: sectionsItems.map((sec: any) => ({
-          name: sec.name,
+          name: sec.name || "Section",
           bogie: sec.bogie ?? null,
-          totalSeats: Number(sec.totalSeats ?? 24),
-          occupiedSeats: (sec.occupiedSeats ?? []).map((s: any) => parseInt(String(s), 10)),
-          availableSeats: Number(sec.availableSeats ?? 0),
+          totalSeats: Number(sec.totalSeats ?? (sec.seats ? sec.seats.length : 24)),
+          occupiedSeats: sec.occupiedSeats ?? [],
+          availableSeats: Number(
+            sec.availableSeats ??
+            (sec.totalSeats ? sec.totalSeats - (sec.occupiedSeats?.length || 0) : (sec.seats ? sec.seats.filter((s: any) => s.status !== "occupied").length : 0))
+          ),
+          seats: (sec.seats ?? []).map((s: any): TicketingSeat => ({
+            id: s.id,
+            row: s.row,
+            column: s.column,
+            bogie: s.bogie ?? null,
+            seatNumber: s.seatNumber,
+            status: s.status === "occupied" ? "occupied" : "available",
+          })),
         })),
         seats: seatsItems.map((s: any): TicketingSeat => ({
           id: s.id,
+          row: s.row,
+          column: s.column,
           bogie: s.bogie ?? null,
           seatNumber: s.seatNumber,
           status: s.status === "occupied" ? "occupied" : "available",
@@ -325,7 +349,7 @@ export function useTicketingSeats(attractionId: string, slotId: string, date: st
   });
 }
 
-// ── Mutations ─────────────────────────────────────────────────────────────────
+// ── Mutations 
 
 /**
  * Create a new customer (inline, from ticket booking flow).
