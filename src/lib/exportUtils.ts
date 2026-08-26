@@ -303,30 +303,29 @@ export interface ScopedExportConfig<T> {
 }
 
 /**
- * Generic lifecycle runner for scoped PDF / Excel exports
+ * Helper to fetch all pages from a paginated API endpoint for exports
  */
-export async function executeScopedExport<T>(config: ScopedExportConfig<T>): Promise<void> {
-  const { scope, exportType, entityName, fetchData, onExport, setIsLoading, showToast } = config;
+export async function fetchAllPages<T>(
+  fetchPage: (page: number, limit: number) => Promise<{ items: T[]; pagination?: { totalPages?: number; total?: number } }>,
+  pageSize = 100
+): Promise<T[]> {
+  const firstPage = await fetchPage(1, pageSize);
+  const totalPages = firstPage.pagination?.totalPages ?? 1;
+  let allItems: T[] = Array.isArray(firstPage.items) ? [...firstPage.items] : [];
 
-  setIsLoading(true);
-  try {
-    const data = await fetchData(scope);
-
-    if (!data || data.length === 0) {
-      showToast(`No ${entityName} data to export.`, "info");
-      return;
+  if (totalPages > 1) {
+    const pagePromises: Promise<{ items: T[]; pagination?: { totalPages?: number; total?: number } }>[] = [];
+    for (let p = 2; p <= totalPages; p++) {
+      pagePromises.push(fetchPage(p, pageSize));
     }
-
-    await onExport(data, scope);
-    const formatName = exportType === "pdf" ? "PDF report" : "Excel (CSV) file";
-    showToast(
-      `${formatName} downloaded successfully (${data.length} record${data.length === 1 ? "" : "s"}).`,
-      "success"
-    );
-  } catch (err) {
-    console.error(`Export ${entityName} (${exportType}) error:`, err);
-    showToast(`Failed to export ${entityName}. Please try again.`, "error");
-  } finally {
-    setIsLoading(false);
+    const otherPages = await Promise.all(pagePromises);
+    for (const pageRes of otherPages) {
+      if (pageRes?.items && Array.isArray(pageRes.items)) {
+        allItems = allItems.concat(pageRes.items);
+      }
+    }
   }
+
+  return allItems;
 }
+

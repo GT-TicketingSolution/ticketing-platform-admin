@@ -41,6 +41,7 @@ import {
   exportTableToPDF,
   exportToCSV,
   renderStatusBadgeHTML,
+  fetchAllPages,
 } from "@/lib/exportUtils";
 import type {
   ComplimentaryPass,
@@ -295,7 +296,7 @@ export default function ComplimentaryPassesPage() {
     return parts.length > 0 ? parts.join(" | ") : undefined;
   };
 
-  const getPassesExportParams = (scope: ExportScope): ComplimentaryPassListParams => {
+  const getPassesExportData = async (scope: ExportScope): Promise<ComplimentaryPass[]> => {
     const base: ComplimentaryPassListParams = {
       search: debouncedPassSearch || undefined,
       attractionId: selectedAttraction !== "ALL" ? selectedAttraction : undefined,
@@ -303,14 +304,21 @@ export default function ComplimentaryPassesPage() {
       toDate: toDate || undefined,
       status: selectedPassStatus !== "ALL" ? selectedPassStatus : undefined,
     };
-    return scope === "all" ? { ...base, page: 1, limit: 0 } : { ...base, page: passPage, limit: PAGE_SIZE };
+
+    if (scope === "current") {
+      const res = await fetchComplimentaryPassList({ ...base, page: passPage, limit: PAGE_SIZE });
+      return res.items;
+    } else {
+      return await fetchAllPages<ComplimentaryPass>((page, limit) =>
+        fetchComplimentaryPassList({ ...base, page, limit })
+      );
+    }
   };
 
   const handleExportPassesPDF = async (scope: ExportScope) => {
     setIsExportingPassesPDF(true);
     try {
-      const result = await fetchComplimentaryPassList(getPassesExportParams(scope));
-      const items = result.items;
+      const items = await getPassesExportData(scope);
       if (!items.length) {
         showToast("No complimentary passes to export", "info");
         return;
@@ -353,8 +361,7 @@ export default function ComplimentaryPassesPage() {
   const handleExportPassesExcel = async (scope: ExportScope) => {
     setIsExportingPassesExcel(true);
     try {
-      const result = await fetchComplimentaryPassList(getPassesExportParams(scope));
-      const items = result.items;
+      const items = await getPassesExportData(scope);
       if (!items.length) {
         showToast("No complimentary passes to export", "info");
         return;
@@ -388,18 +395,25 @@ export default function ComplimentaryPassesPage() {
     return isRefFiltered ? `Search: "${debouncedRefSearch}"` : undefined;
   };
 
-  const getRefsExportParams = (scope: ExportScope): ReferenceListParams => {
+  const getRefsExportData = async (scope: ExportScope): Promise<Reference[]> => {
     const base: ReferenceListParams = {
       search: debouncedRefSearch || undefined,
     };
-    return scope === "all" ? { ...base, page: 1, limit: 0 } : { ...base, page: refPage, limit: PAGE_SIZE };
+
+    if (scope === "current") {
+      const res = await fetchReferenceList({ ...base, page: refPage, limit: PAGE_SIZE });
+      return res.items;
+    } else {
+      return await fetchAllPages<Reference>((page, limit) =>
+        fetchReferenceList({ ...base, page, limit })
+      );
+    }
   };
 
   const handleExportRefsPDF = async (scope: ExportScope) => {
     setIsExportingRefsPDF(true);
     try {
-      const result = await fetchReferenceList(getRefsExportParams(scope));
-      const items = result.items;
+      const items = await getRefsExportData(scope);
       if (!items.length) {
         showToast("No references to export", "info");
         return;
@@ -439,8 +453,7 @@ export default function ComplimentaryPassesPage() {
   const handleExportRefsExcel = async (scope: ExportScope) => {
     setIsExportingRefsExcel(true);
     try {
-      const result = await fetchReferenceList(getRefsExportParams(scope));
-      const items = result.items;
+      const items = await getRefsExportData(scope);
       if (!items.length) {
         showToast("No references to export", "info");
         return;

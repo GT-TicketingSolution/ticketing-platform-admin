@@ -51,12 +51,14 @@ import {
   useManagerPermissions,
   useAttractions,
   type AttractionItem,
+  ManagerQueryParams,
 } from "@/hooks/useManagerQueries";
 import {
   ExportScope,
   exportTableToPDF,
   exportToCSV,
   renderStatusBadgeHTML,
+  fetchAllPages,
 } from "@/lib/exportUtils";
 import { useSystemModules, SystemModule } from "@/hooks/useSystemModuleQueries";
 
@@ -730,12 +732,12 @@ function ManagerManagementInner() {
       setSelectedManager((prev) =>
         prev && prev.id === selectedManager.id
           ? {
-              ...prev,
-              allowedModules: sysMods,
-              attractionManagementEnabled: attrPerms.length > 0,
-              attractionPermissions: attrPerms,
-              attraction: computedAttraction,
-            }
+            ...prev,
+            allowedModules: sysMods,
+            attractionManagementEnabled: attrPerms.length > 0,
+            attractionPermissions: attrPerms,
+            attraction: computedAttraction,
+          }
           : prev
       );
     }
@@ -835,12 +837,12 @@ function ManagerManagementInner() {
         systemModuleIds: data.allowedModules || [],
         attractionPermissions: data.attractionManagementEnabled
           ? (data.attractionPermissions || []).map((p) => ({
-              attractionId: p.attractionId,
-              moduleIds: (p.modules || [])
-                .filter((m) => !isRemovedSubModule(m))
-                .map(resolveModuleId)
-                .filter(Boolean),
-            }))
+            attractionId: p.attractionId,
+            moduleIds: (p.modules || [])
+              .filter((m) => !isRemovedSubModule(m))
+              .map(resolveModuleId)
+              .filter(Boolean),
+          }))
           : [],
       });
 
@@ -906,29 +908,36 @@ function ManagerManagementInner() {
     return parts.length > 0 ? parts.join(" | ") : undefined;
   };
 
-  const getExportParams = (scope: ExportScope) => {
+  const getExportData = async (scope: ExportScope) => {
     const statusParam =
       selectedStatusFilter === "Active"
         ? ("ACTIVE" as const)
         : selectedStatusFilter === "Inactive"
-        ? ("DISABLED" as const)
-        : selectedStatusFilter !== "All"
-        ? (selectedStatusFilter as any)
-        : undefined;
+          ? ("DISABLED" as const)
+          : selectedStatusFilter !== "All"
+            ? (selectedStatusFilter as any)
+            : undefined;
 
-    return {
+    const base: ManagerQueryParams = {
       search: searchQuery.trim() || undefined,
       status: statusParam,
-      page: 1,
-      limit: scope === "all" ? 0 : 10,
     };
+
+    if (scope === "current") {
+      const res = await fetchManagers({ ...base, page: 1, limit: 10 });
+      return res.managers;
+    } else {
+      return await fetchAllPages(async (page, limit) => {
+        const res = await fetchManagers({ ...base, page, limit });
+        return { items: res.managers, pagination: res.pagination };
+      });
+    }
   };
 
   const handleExportPDF = async (scope: ExportScope) => {
     setIsExportingPDF(true);
     try {
-      const result = await fetchManagers(getExportParams(scope));
-      const items = result.managers;
+      const items = await getExportData(scope);
       if (!items.length) {
         showToast("No manager data matches current filters", "info");
         return;
@@ -980,8 +989,7 @@ function ManagerManagementInner() {
   const handleExportExcel = async (scope: ExportScope) => {
     setIsExportingExcel(true);
     try {
-      const result = await fetchManagers(getExportParams(scope));
-      const items = result.managers;
+      const items = await getExportData(scope);
       if (!items.length) {
         showToast("No manager data matches current filters", "info");
         return;
@@ -1100,8 +1108,8 @@ function ManagerManagementInner() {
           manager.attractions && manager.attractions.length > 0
             ? manager.attractions
             : manager.attraction && manager.attraction !== "—"
-            ? [{ id: manager.id, name: manager.attraction }]
-            : [];
+              ? [{ id: manager.id, name: manager.attraction }]
+              : [];
 
         if (attractions.length === 0) {
           return (
@@ -1347,10 +1355,10 @@ function ManagerManagementInner() {
                     <strong style={{ fontSize: "14px", marginTop: "2px", display: "block", color: colors.text.primary }}>
                       {selectedManager.createdAt
                         ? new Date(selectedManager.createdAt).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })
                         : "—"}
                     </strong>
                   </div>
@@ -1385,12 +1393,12 @@ function ManagerManagementInner() {
                     <strong style={{ fontSize: "14px", color: selectedManager.lastLoginAt ? colors.status.success : colors.text.muted, marginTop: "2px", display: "block" }}>
                       {selectedManager.lastLoginAt
                         ? new Date(selectedManager.lastLoginAt).toLocaleString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
                         : "Never logged in"}
                     </strong>
                   </div>

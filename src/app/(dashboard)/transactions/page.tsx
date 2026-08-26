@@ -30,6 +30,7 @@ import {
   exportTableToPDF,
   exportToCSV,
   renderStatusBadgeHTML,
+  fetchAllPages,
 } from "@/lib/exportUtils";
 import { useAttractions } from "@/hooks/useManagerQueries";
 
@@ -200,7 +201,7 @@ export default function TransactionsPage() {
     return parts.length > 0 ? parts.join(" | ") : undefined;
   };
 
-  const getExportParams = (scope: ExportScope): TransactionListParams => {
+  const getExportData = async (scope: ExportScope): Promise<TransactionListItem[]> => {
     const base: TransactionListParams = {
       search: debouncedSearch || undefined,
       attractionId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
@@ -209,14 +210,21 @@ export default function TransactionsPage() {
       fromDate: fromDate || undefined,
       toDate: toDate || undefined,
     };
-    return scope === "all" ? { ...base, page: 1, limit: 0 } : { ...base, page: currentPage, limit: ITEMS_PER_PAGE };
+
+    if (scope === "current") {
+      const res = await fetchTransactionList({ ...base, page: currentPage, limit: ITEMS_PER_PAGE });
+      return res.items;
+    } else {
+      return await fetchAllPages<TransactionListItem>((page, limit) =>
+        fetchTransactionList({ ...base, page, limit })
+      );
+    }
   };
 
   const handleExportPDF = async (scope: ExportScope) => {
     setIsExportingPDF(true);
     try {
-      const result = await fetchTransactionList(getExportParams(scope));
-      const items = result.items;
+      const items = await getExportData(scope);
       if (!items.length) { showToast("No transaction data to export.", "info"); return; }
       const dateKey = new Date().toISOString().slice(0, 10);
       const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
@@ -256,8 +264,7 @@ export default function TransactionsPage() {
   const handleExportExcel = async (scope: ExportScope) => {
     setIsExportingExcel(true);
     try {
-      const result = await fetchTransactionList(getExportParams(scope));
-      const items = result.items;
+      const items = await getExportData(scope);
       if (!items.length) { showToast("No transaction data to export.", "info"); return; }
       const dateKey = new Date().toISOString().slice(0, 10);
       const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;

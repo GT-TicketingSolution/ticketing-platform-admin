@@ -129,6 +129,28 @@ export const AppUrl = {
     payment: "/admin/reports/payment",
     tickets: "/admin/reports/tickets",
   },
+
+  // Ticketing Booking 
+  ticketingBooking: {
+    attractions: "/admin/ticketing-booking/attractions",
+    customers: "/admin/ticketing-booking/customers",
+    slots: "/admin/ticketing-booking/slots",
+    seats: "/admin/ticketing-booking/seats",
+    references: "/admin/ticketing-booking/references",
+    create: "/admin/ticketing-booking",
+    payment: (bookingId: string) => `/admin/ticketing-booking/${bookingId}/payment`,
+    confirm: (bookingId: string) => `/admin/ticketing-booking/${bookingId}/confirm`,
+    cancel: (bookingId: string) => `/admin/ticketing-booking/${bookingId}/cancel`,
+    get: (bookingId: string) => `/admin/ticketing-booking/${bookingId}`,
+  },
+
+  // Ticket Scanner
+  scanner: {
+    scans: (limit = 20) => `/admin/ticketing-scanner/scans?limit=${limit}`,
+    getTicket: (ticketId: string) => `/admin/ticketing-scanner/tickets/${encodeURIComponent(ticketId)}`,
+    admit: (ticketId: string) => `/admin/ticketing-scanner/tickets/${encodeURIComponent(ticketId)}/admit`,
+    reject: (ticketId: string) => `/admin/ticketing-scanner/tickets/${encodeURIComponent(ticketId)}/reject`,
+  },
 } as const;
 
 export default AppUrl;

@@ -30,6 +30,7 @@ import {
   exportTableToPDF,
   exportToCSV,
   renderStatusBadgeHTML,
+  fetchAllPages,
 } from "@/lib/exportUtils";
 
 const PAGE_SIZE = 10;
@@ -186,21 +187,28 @@ export default function InvoicesPage() {
     return parts.length > 0 ? parts.join(" | ") : undefined;
   };
 
-  const getExportParams = (scope: ExportScope): InvoiceListParams => {
+  const getExportData = async (scope: ExportScope): Promise<InvoiceListItem[]> => {
     const base: InvoiceListParams = {
       search: debouncedSearch || undefined,
       paymentMode: selectedPaymentMode !== "All" ? selectedPaymentMode : undefined,
       dateFrom: fromDate || undefined,
       dateTo: toDate || undefined,
     };
-    return scope === "all" ? { ...base, page: 1, limit: 0 } : { ...base, page: currentPage, limit: PAGE_SIZE };
+
+    if (scope === "current") {
+      const res = await fetchInvoiceList({ ...base, page: currentPage, limit: PAGE_SIZE });
+      return res.items;
+    } else {
+      return await fetchAllPages<InvoiceListItem>((page, limit) =>
+        fetchInvoiceList({ ...base, page, limit })
+      );
+    }
   };
 
   const handleExportPDF = async (scope: ExportScope) => {
     setIsExportingPDF(true);
     try {
-      const result = await fetchInvoiceList(getExportParams(scope));
-      const items = result.items;
+      const items = await getExportData(scope);
       if (!items.length) {
         showToast("No invoice data to export.", "info");
         return;
@@ -244,8 +252,7 @@ export default function InvoicesPage() {
   const handleExportExcel = async (scope: ExportScope) => {
     setIsExportingExcel(true);
     try {
-      const result = await fetchInvoiceList(getExportParams(scope));
-      const items = result.items;
+      const items = await getExportData(scope);
       if (!items.length) {
         showToast("No invoice data to export.", "info");
         return;
