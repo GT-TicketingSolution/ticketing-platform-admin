@@ -9,6 +9,7 @@ import {
 
 import { failure, success } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 const updateSeatSchema = z.object({
   name: z
@@ -47,9 +48,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const auth = await requireAuth(request);
 
-    if (auth.user.role !== "ADMIN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "SEAT_MANAGEMENT");
 
     // ---------------------------------------------
     // PARAMS
@@ -109,10 +108,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const auth = await requireAuth(request);
 
-    if (auth.user.role !== "ADMIN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
-
+    await requireModuleAccess(auth, "SEAT_MANAGEMENT");
     // ---------------------------------------------
     // PARAMS
     // ---------------------------------------------
@@ -186,9 +182,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
     const auth = await requireAuth(request);
 
-    if (auth.user.role !== "ADMIN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "SEAT_MANAGEMENT");
 
     // ---------------------------------------------
     // PARAMS

@@ -10,7 +10,10 @@ import {
 
 import { success, failure } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
-import { getAccessibleAttractionIds } from "@/lib/auth/authorization";
+import {
+  requireModuleAccess,
+  getAccessibleAttractionIds,
+} from "@/lib/auth/authorization";
 
 // =====================================================
 // GET ALL ATTRACTIONS
@@ -21,6 +24,8 @@ export async function GET(request: Request) {
     const auth = await requireAuth(request);
 
     let managementData;
+
+    await requireModuleAccess(auth, "ATTRACTION_MANAGEMENT");
 
     // =====================================================
     // ADMIN
@@ -194,11 +199,32 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("Get attraction management error:", error);
 
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return failure("Unauthorized", 401, "UNAUTHORIZED");
+    if (error instanceof Error) {
+      // Authentication
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      // Account disabled/inactive
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      // Module permission / authorization
+      if (error.message === "FORBIDDEN") {
+        return failure(
+          "You are not authorized to access attraction management.",
+          403,
+          "FORBIDDEN",
+        );
+      }
     }
 
-    return failure("Unable to fetch attractions", 500, "INTERNAL_SERVER_ERROR");
+    return failure(
+      "Unable to fetch attractions.",
+      500,
+      "INTERNAL_SERVER_ERROR",
+    );
   }
 }
 
@@ -206,73 +232,11 @@ export async function GET(request: Request) {
 // CREATE ATTRACTION
 // =====================================================
 
-// export async function POST(request: Request) {
-//   try {
-//     const auth = await requireAuth(request);
-
-//     if (auth.user.role !== "ADMIN") {
-//       return failure("Only admin can create attraction", 403, "FORBIDDEN");
-//     }
-
-//     const body = await request.json();
-
-//     const {
-//       attractionId,
-//       image,
-//       description,
-//       timing,
-
-//       adultPrice,
-//       childPrice,
-//       studentPrice,
-//       seniorPrice,
-//       foreignerPrice,
-
-//       hasSeating = false,
-//     } = body;
-
-//     if (!attractionId) {
-//       return failure("Attraction id required", 400, "VALIDATION_ERROR");
-//     }
-
-//     const created = await db
-//       .insert(attractionManagement)
-//       .values({
-//         adminId: auth.user.id,
-
-//         attractionId,
-
-//         image,
-
-//         description,
-
-//         timing,
-
-//         adultPrice: adultPrice ?? 0,
-
-//         childPrice: childPrice ?? 0,
-
-//         studentPrice: studentPrice ?? 0,
-
-//         seniorPrice: seniorPrice ?? 0,
-
-//         foreignerPrice: foreignerPrice ?? 0,
-
-//         hasSeating,
-//       })
-//       .returning();
-
-//     return success(created[0]);
-//   } catch (error) {
-//     console.error("Create attraction error:", error);
-
-//     return failure("Unable to create attraction", 500, "INTERNAL_SERVER_ERROR");
-//   }
-// }
-
 export async function POST(request: Request) {
   try {
     const auth = await requireAuth(request);
+
+    await requireModuleAccess(auth, "ATTRACTION_MANAGEMENT");
 
     if (auth.user.role !== "ADMIN") {
       return failure("Only admin can create attraction", 403, "FORBIDDEN");
@@ -444,12 +408,29 @@ export async function POST(request: Request) {
 
     return success(result);
   } catch (error) {
-    console.error("========== CREATE ATTRACTION ERROR ==========");
-    console.error(error);
-    console.error("==============================================");
+    if (error instanceof Error) {
+      // Authentication
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      // Account inactive
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      // Module permission / role authorization
+      if (error.message === "FORBIDDEN") {
+        return failure(
+          "You are not authorized to access attraction management.",
+          403,
+          "FORBIDDEN",
+        );
+      }
+    }
 
     return failure(
-      error instanceof Error ? error.message : "Unable to create attraction",
+      "Unable to create attraction.",
       500,
       "INTERNAL_SERVER_ERROR",
     );

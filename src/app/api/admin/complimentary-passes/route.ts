@@ -8,6 +8,7 @@ import {
 import { success, failure } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { getAdminId } from "@/lib/auth/get-admin-id";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 const schema = z.object({
   visitorName: z.string().trim().min(1, "Visitor name is required"),
@@ -31,16 +32,26 @@ const schema = z.object({
   status: z.enum(["ACTIVE", "USED", "EXPIRED"]).default("ACTIVE"),
 });
 
-const allowedRoles = ["ADMIN", "MANAGER", "STAFF"];
+// =====================================================
+// GET COMPLIMENTARY PASSES
+// MODULE: COMPLIMENTARY_PASSES
+// =====================================================
 
 export async function GET(req: Request) {
   try {
+    // ---------------------------------------------
+    // Authentication
+    // ---------------------------------------------
     const auth = await requireAuth(req);
 
-    if (!allowedRoles.includes(auth.user.role)) {
-      return failure("Forbidden", 403, "FORBIDDEN");
-    }
+    // ---------------------------------------------
+    // Module Authorization
+    // ---------------------------------------------
+    await requireModuleAccess(auth, "COMPLIMENTARY_PASSES");
 
+    // ---------------------------------------------
+    // Query Params
+    // ---------------------------------------------
     const params = new URL(req.url).searchParams;
 
     const page = Math.max(Number(params.get("page") || 1), 1);
@@ -56,11 +67,13 @@ export async function GET(req: Request) {
         ? statusParam
         : undefined;
 
+    // ---------------------------------------------
+    // Get Complimentary Passes
+    // ---------------------------------------------
     const data = await getComplimentaryPasses({
       adminId: getAdminId(auth),
 
       search: params.get("search") ?? undefined,
-
       attractionId: params.get("attractionId") ?? undefined,
 
       fromDate: params.get("fromDate") ?? undefined,
@@ -69,26 +82,64 @@ export async function GET(req: Request) {
 
       status,
 
-      page: Number(params.get("page") || 1),
-
-      limit: Number(params.get("limit") || 10),
+      page,
+      limit,
     });
 
     return success(data);
   } catch (error) {
     console.error("Get complimentary passes error:", error);
 
-    return failure("Unable to fetch passes", 500, "INTERNAL_SERVER_ERROR");
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    }
+
+    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+    }
+
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return failure(
+        "You do not have permission to access complimentary passes.",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+      return failure(
+        "User is not associated with an admin.",
+        403,
+        "USER_HAS_NO_ADMIN",
+      );
+    }
+
+    return failure("Unable to fetch passes.", 500, "INTERNAL_SERVER_ERROR");
   }
 }
 
+// =====================================================
+// POST COMPLIMENTARY PASS
+// MODULE: COMPLIMENTARY_PASSES
+// =====================================================
+
 export async function POST(req: Request) {
   try {
+    // ---------------------------------------------
+    // Authentication
+    // ---------------------------------------------
+
     const auth = await requireAuth(req);
 
-    if (!allowedRoles.includes(auth.user.role)) {
-      return failure("Forbidden", 403, "FORBIDDEN");
-    }
+    // ---------------------------------------------
+    // Module Authorization
+    // ---------------------------------------------
+
+    await requireModuleAccess(auth, "COMPLIMENTARY_PASSES");
+
+    // ---------------------------------------------
+    // Request Body
+    // ---------------------------------------------
 
     const body = await req.json();
 
@@ -96,11 +147,15 @@ export async function POST(req: Request) {
 
     if (!parsed.success) {
       return failure(
-        parsed.error.issues[0]?.message || "Invalid data",
+        parsed.error.issues[0]?.message || "Invalid data.",
         400,
         "VALIDATION_ERROR",
       );
     }
+
+    // ---------------------------------------------
+    // Create Complimentary Pass
+    // ---------------------------------------------
 
     const pass = await createComplimentaryPass(getAdminId(auth), parsed.data);
 
@@ -108,6 +163,34 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("Create complimentary pass error:", error);
 
-    return failure("Unable to create pass", 500, "INTERNAL_SERVER_ERROR");
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    }
+
+    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+    }
+
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return failure(
+        "You do not have permission to access complimentary passes.",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+      return failure(
+        "User is not associated with an admin.",
+        403,
+        "USER_HAS_NO_ADMIN",
+      );
+    }
+
+    return failure(
+      "Unable to create complimentary pass.",
+      500,
+      "INTERNAL_SERVER_ERROR",
+    );
   }
 }

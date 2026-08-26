@@ -8,7 +8,7 @@ import { success, failure } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { getAdminId } from "@/lib/auth/get-admin-id";
 
-const allowedRoles = ["ADMIN", "MANAGER", "STAFF"];
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 const createSchema = z.object({
   referenceName: z.string().trim().min(1, "Reference name is required"),
@@ -34,10 +34,7 @@ const createSchema = z.object({
 export async function GET(req: Request) {
   try {
     const auth = await requireAuth(req);
-
-    if (!allowedRoles.includes(auth.user.role)) {
-      return failure("Forbidden", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "COMPLIMENTARY_PASSES");
 
     const params = new URL(req.url).searchParams;
 
@@ -89,6 +86,30 @@ export async function GET(req: Request) {
   } catch (error) {
     console.error("Get references error:", error);
 
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    }
+
+    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+    }
+
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return failure(
+        "You do not have permission to access references.",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+      return failure(
+        "User is not associated with an admin.",
+        403,
+        "USER_HAS_NO_ADMIN",
+      );
+    }
+
     return failure("Unable to fetch references", 500, "INTERNAL_SERVER_ERROR");
   }
 }
@@ -101,9 +122,7 @@ export async function POST(req: Request) {
   try {
     const auth = await requireAuth(req);
 
-    if (!allowedRoles.includes(auth.user.role)) {
-      return failure("Forbidden", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "COMPLIMENTARY_PASSES");
 
     const body = await req.json();
 
@@ -140,8 +159,32 @@ export async function POST(req: Request) {
 
     return success(created[0], 201);
   } catch (error) {
-    console.error("Create reference error:", error);
+    console.error("Get references error:", error);
 
-    return failure("Unable to create reference", 500, "INTERNAL_SERVER_ERROR");
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    }
+
+    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+    }
+
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return failure(
+        "You do not have permission to access references.",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+      return failure(
+        "User is not associated with an admin.",
+        403,
+        "USER_HAS_NO_ADMIN",
+      );
+    }
+
+    return failure("Unable to fetch references", 500, "INTERNAL_SERVER_ERROR");
   }
 }

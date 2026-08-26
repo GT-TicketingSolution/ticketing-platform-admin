@@ -7,6 +7,7 @@ import {
 
 import { failure, success } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,9 +17,7 @@ export async function GET(request: NextRequest) {
 
     const auth = await requireAuth(request);
 
-    if (auth.user.role !== "ADMIN" && auth.user.role !== "MANAGER") {
-      return failure("Admin or manager access required.", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "INVENTORY_CAPACITY");
 
     // =====================================================
     // TENANT
@@ -68,6 +67,35 @@ export async function GET(request: NextRequest) {
 
     return success(data);
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      if (
+        error.message === "MODULE_ACCESS_DENIED" ||
+        error.message === "FORBIDDEN"
+      ) {
+        return failure(
+          "You do not have permission to access the inventory capacity module.",
+          403,
+          "MODULE_ACCESS_DENIED",
+        );
+      }
+
+      if (error.message === "ADMIN_CONTEXT_REQUIRED") {
+        return failure(
+          "Admin context not found.",
+          403,
+          "ADMIN_CONTEXT_REQUIRED",
+        );
+      }
+    }
+
     console.error("Get inventory error:", error);
 
     return failure("Unable to fetch inventory.", 500, "INTERNAL_SERVER_ERROR");
@@ -82,9 +110,7 @@ export async function POST(request: NextRequest) {
 
     const auth = await requireAuth(request);
 
-    if (auth.user.role !== "ADMIN" && auth.user.role !== "MANAGER") {
-      return failure("Admin or manager access required.", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "INVENTORY_CAPACITY");
 
     // =====================================================
     // TENANT
@@ -148,6 +174,35 @@ export async function POST(request: NextRequest) {
 
     return success(data);
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      if (
+        error.message === "MODULE_ACCESS_DENIED" ||
+        error.message === "FORBIDDEN"
+      ) {
+        return failure(
+          "You do not have permission to access the inventory capacity module.",
+          403,
+          "MODULE_ACCESS_DENIED",
+        );
+      }
+
+      if (error.message === "ADMIN_CONTEXT_REQUIRED") {
+        return failure(
+          "Admin context not found.",
+          403,
+          "ADMIN_CONTEXT_REQUIRED",
+        );
+      }
+    }
+
     console.error("Create/update inventory error:", error);
 
     const message =

@@ -5,7 +5,10 @@ import { attractionManagement, attractions } from "@/db/schema";
 
 import { success, failure } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
-import { getAccessibleAttractionIds } from "@/lib/auth/authorization";
+import {
+  requireModuleAccess,
+  getAccessibleAttractionIds,
+} from "@/lib/auth/authorization";
 
 // =====================================================
 // UPDATE ATTRACTION
@@ -19,6 +22,8 @@ export async function PATCH(
 ) {
   try {
     const auth = await requireAuth(request);
+
+    await requireModuleAccess(auth, "ATTRACTION_MANAGEMENT");
 
     const { id } = await context.params;
 
@@ -99,9 +104,32 @@ export async function PATCH(
 
     return success(updated[0]);
   } catch (error) {
-    console.error("Update attraction error:", error);
+    if (error instanceof Error) {
+      // Authentication
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
 
-    return failure("Unable to update attraction", 500, "INTERNAL_SERVER_ERROR");
+      // Account inactive
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      // Module authorization
+      if (error.message === "FORBIDDEN") {
+        return failure(
+          "You are not authorized to access attraction management.",
+          403,
+          "FORBIDDEN",
+        );
+      }
+    }
+
+    return failure(
+      "Unable to update attraction.",
+      500,
+      "INTERNAL_SERVER_ERROR",
+    );
   }
 }
 
@@ -117,6 +145,8 @@ export async function DELETE(
 ) {
   try {
     const auth = await requireAuth(request);
+
+    await requireModuleAccess(auth, "ATTRACTION_MANAGEMENT");
 
     const { id } = await context.params;
 
@@ -181,12 +211,31 @@ export async function DELETE(
       message: "Attraction deleted successfully",
     });
   } catch (error) {
-    console.error("Delete attraction error:", error);
+    if (error instanceof Error) {
+      // Authentication
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
 
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return failure("Unauthorized", 401, "UNAUTHORIZED");
+      // Account inactive
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      // Module authorization
+      if (error.message === "FORBIDDEN") {
+        return failure(
+          "You are not authorized to access attraction management.",
+          403,
+          "FORBIDDEN",
+        );
+      }
     }
 
-    return failure("Unable to delete attraction", 500, "INTERNAL_SERVER_ERROR");
+    return failure(
+      "Unable to delete attraction.",
+      500,
+      "INTERNAL_SERVER_ERROR",
+    );
   }
 }

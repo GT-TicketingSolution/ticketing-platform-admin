@@ -13,6 +13,7 @@ import {
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 import { hashPassword } from "@/lib/auth/password";
 
 import { success, failure } from "@/lib/api/response";
@@ -72,6 +73,8 @@ export async function GET(request: NextRequest) {
     // -----------------------------------------------------
 
     const auth = await requireAuth(request);
+
+    await requireModuleAccess(auth, "STAFF_MANAGEMENT");
 
     // -----------------------------------------------------
     // Authorization
@@ -327,7 +330,7 @@ export async function GET(request: NextRequest) {
         totalPages: Math.ceil(total / limit),
       },
     });
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof Error) {
       if (error.message === "UNAUTHORIZED") {
         return failure("Authentication required.", 401, "UNAUTHORIZED");
@@ -335,6 +338,14 @@ export async function GET(request: NextRequest) {
 
       if (error.message === "ACCOUNT_NOT_ACTIVE") {
         return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      if (error.message === "FORBIDDEN") {
+        return failure(
+          "You are not authorized to access this module.",
+          403,
+          "FORBIDDEN",
+        );
       }
     }
 
@@ -355,6 +366,7 @@ export async function POST(request: Request) {
     // -----------------------------------------------------
 
     const auth = await requireAuth(request);
+    await requireModuleAccess(auth, "STAFF_MANAGEMENT");
 
     // -----------------------------------------------------
     // Authorization
@@ -583,7 +595,7 @@ export async function POST(request: Request) {
       },
       201,
     );
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof Error) {
       if (error.message === "UNAUTHORIZED") {
         return failure("Authentication required.", 401, "UNAUTHORIZED");
@@ -592,10 +604,18 @@ export async function POST(request: Request) {
       if (error.message === "ACCOUNT_NOT_ACTIVE") {
         return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
       }
+
+      if (error.message === "FORBIDDEN") {
+        return failure(
+          "You are not authorized to access this module.",
+          403,
+          "FORBIDDEN",
+        );
+      }
     }
 
-    console.error("Create staff error:", error);
+    console.error("Get staff error:", error);
 
-    return failure("Unable to create staff.", 500, "INTERNAL_SERVER_ERROR");
+    return failure("Unable to fetch staff.", 500, "INTERNAL_SERVER_ERROR");
   }
 }

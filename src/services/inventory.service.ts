@@ -168,6 +168,29 @@ export async function getInventory(filters: InventoryFilters) {
 
   const whereClause = and(...conditions);
 
+  // =======================================================
+  // ATTRACTIONS
+  // =======================================================
+
+  const attractionRows = await db
+    .select({
+      id: attractions.id,
+      name: attractions.name,
+    })
+    .from(attractions)
+    .where(
+      and(
+        eq(attractions.adminId, filters.adminId),
+        eq(attractions.status, "ACTIVE"),
+      ),
+    )
+    .orderBy(asc(attractions.name));
+
+  const attractionList = attractionRows.map((attraction) => ({
+    id: attraction.id,
+    name: attraction.name,
+  }));
+
   /* =======================================================
      TOTAL COUNT
   ======================================================= */
@@ -226,6 +249,8 @@ export async function getInventory(filters: InventoryFilters) {
       },
 
       alerts: [],
+
+      attractions: attractionList,
 
       items: [],
 
@@ -686,6 +711,8 @@ export async function getInventory(filters: InventoryFilters) {
     },
 
     alerts,
+
+    attractions: attractionList,
 
     items,
 

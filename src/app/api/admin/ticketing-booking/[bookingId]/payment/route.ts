@@ -132,14 +132,6 @@ export async function POST(
       );
     }
 
-    // if (booking.paymentExpiresAt && new Date() > booking.paymentExpiresAt) {
-    //   return failure(
-    //     "Payment session has expired. Please create a new booking.",
-    //     400,
-    //     "PAYMENT_EXPIRED",
-    //   );
-    // }
-
     // ---------------------------------------------
     // AMOUNT VALIDATION
     // ---------------------------------------------
@@ -206,6 +198,14 @@ export async function POST(
       // -------------------------------------------
       // CHECK PAYMENT EXPIRY
       // -------------------------------------------
+
+      console.log("========== LOCKED BOOKING DEBUG ==========");
+      console.log("lockedBooking.id:", lockedBooking.id);
+      console.log(
+        "lockedBooking.paymentExpiresAt:",
+        lockedBooking.paymentExpiresAt,
+      );
+      console.log("current time:", new Date());
 
       if (
         lockedBooking.paymentExpiresAt &&

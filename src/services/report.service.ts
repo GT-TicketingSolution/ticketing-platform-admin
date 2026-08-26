@@ -1,4 +1,4 @@
-import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { and, eq, gte, lte, sql, type SQL } from "drizzle-orm";
 
 import { db } from "@/db";
 
@@ -21,13 +21,13 @@ export interface ReportFilter {
    DATE HELPERS
 ========================================================= */
 
-function getStartDate(fromDate?: string) {
+function getStartDate(fromDate?: string): Date | undefined {
   if (!fromDate) return undefined;
 
   return new Date(`${fromDate}T00:00:00`);
 }
 
-function getEndDate(toDate?: string) {
+function getEndDate(toDate?: string): Date | undefined {
   if (!toDate) return undefined;
 
   return new Date(`${toDate}T23:59:59.999`);
@@ -37,12 +37,10 @@ function getEndDate(toDate?: string) {
    COMMON BOOKING CONDITIONS
 ========================================================= */
 
-function getBookingConditions(filter: ReportFilter) {
-  const conditions = [
+function getBookingConditions(filter: ReportFilter): SQL[] {
+  const conditions: SQL[] = [
     eq(attractions.adminId, filter.adminId),
-
     eq(bookings.status, "CONFIRMED"),
-
     eq(bookings.isDeleted, false),
   ];
 
@@ -69,25 +67,13 @@ function getBookingConditions(filter: ReportFilter) {
 ========================================================= */
 
 export async function getReportSummary(filter: ReportFilter) {
-  /*
-   * IMPORTANT:
-   *
-   * Do NOT join bookingItems while calculating booking revenue.
-   *
-   * Otherwise:
-   *
-   * Booking ₹500
-   *   ├── Adult
-   *   ├── Child
-   *   └── Student
-   *
-   * would make SUM(amountPaid) = ₹1,500.
-   */
-
   const bookingConditions = getBookingConditions(filter);
 
   /* -------------------------------------------------------
      Revenue + Bookings
+
+     Do NOT join bookingItems here because that would
+     duplicate booking revenue for every booking item.
   ------------------------------------------------------- */
 
   const bookingSummary = await db
@@ -131,6 +117,21 @@ export async function getReportSummary(filter: ReportFilter) {
 
   const topAttraction = await getTopAttraction(filter);
 
+  /* -------------------------------------------------------
+     Attraction-wise Reports
+
+     IMPORTANT:
+     Do NOT name this variable `attractions`
+     because `attractions` is already the imported
+     Drizzle table.
+  ------------------------------------------------------- */
+
+  const attractionReports = await getAttractionReports(filter);
+
+  /* -------------------------------------------------------
+     FINAL RESPONSE
+  ------------------------------------------------------- */
+
   return {
     totalRevenue: Number(bookingSummary[0]?.revenue ?? 0),
 
@@ -141,12 +142,12 @@ export async function getReportSummary(filter: ReportFilter) {
     topAttraction: topAttraction
       ? {
           id: topAttraction.id,
-
           name: topAttraction.name,
-
           revenue: Number(topAttraction.revenue ?? 0),
         }
       : null,
+
+    attractions: attractionReports,
   };
 }
 
@@ -196,7 +197,7 @@ export async function getAttractionReports(filter: ReportFilter) {
      Attraction Conditions
   ------------------------------------------------------- */
 
-  const attractionConditions = [eq(attractions.adminId, filter.adminId)];
+  const attractionConditions: SQL[] = [eq(attractions.adminId, filter.adminId)];
 
   if (filter.attractionId) {
     attractionConditions.push(eq(attractions.id, filter.attractionId));
@@ -204,9 +205,8 @@ export async function getAttractionReports(filter: ReportFilter) {
 
   /* -------------------------------------------------------
      Attraction Master Data
-     
-     timing + prices come from attractionManagement,
-     NOT attractions.
+
+     Timing + prices come from attractionManagement.
   ------------------------------------------------------- */
 
   const attractionRows = await db
@@ -246,9 +246,8 @@ export async function getAttractionReports(filter: ReportFilter) {
 
   /* -------------------------------------------------------
      Revenue + Booking Count
-     
-     NO bookingItems join here.
-     This prevents revenue duplication.
+
+     Do NOT join bookingItems here.
   ------------------------------------------------------- */
 
   const bookingConditions = getBookingConditions(filter);
@@ -304,28 +303,23 @@ export async function getAttractionReports(filter: ReportFilter) {
 
       category: bookingItems.category,
 
-      /*
-       * Used by frontend for:
-       *
-       * Adult (₹100/tkt)
-       */
       rate: sql<number>`
-          MIN(${bookingItems.unitPrice})
-        `,
+        MIN(${bookingItems.unitPrice})
+      `,
 
       quantity: sql<number>`
-          COALESCE(
-            SUM(${bookingItems.quantity}),
-            0
-          )
-        `,
+        COALESCE(
+          SUM(${bookingItems.quantity}),
+          0
+        )
+      `,
 
       revenue: sql<number>`
-          COALESCE(
-            SUM(${bookingItems.totalPrice}),
-            0
-          )
-        `,
+        COALESCE(
+          SUM(${bookingItems.totalPrice}),
+          0
+        )
+      `,
     })
     .from(bookingItems)
     .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
@@ -335,17 +329,11 @@ export async function getAttractionReports(filter: ReportFilter) {
 
   /* -------------------------------------------------------
      Payment Distribution
-     
-     Only successful transactions are counted here.
-     
-     Example:
-     
-     Cash         4 txns   ₹1,100
-     Net Banking  1 txn    ₹250
-     UPI          1 txn    ₹280
+
+     Only successful transactions.
   ------------------------------------------------------- */
 
-  const paymentConditions = [
+  const paymentConditions: SQL[] = [
     ...bookingConditions,
 
     eq(transactions.status, "SUCCESSFUL"),
@@ -378,18 +366,17 @@ export async function getAttractionReports(filter: ReportFilter) {
 
   /* -------------------------------------------------------
      Recent Transactions
-     
-     Includes all transaction statuses:
-     
+
+     Includes:
      SUCCESSFUL
      PENDING
      CANCELLED
      FAILED
-     
-     This is required by the screenshot.
+
+     Latest 6 per attraction are returned below.
   ------------------------------------------------------- */
 
-  const transactionConditions = [
+  const transactionConditions: SQL[] = [
     ...bookingConditions,
 
     eq(transactions.isDeleted, false),
@@ -437,11 +424,19 @@ export async function getAttractionReports(filter: ReportFilter) {
     });
   }
 
+  /* -------------------------------------------------------
+     Ticket Map
+  ------------------------------------------------------- */
+
   const ticketMap = new Map<string, number>();
 
   for (const row of ticketRows) {
     ticketMap.set(row.attractionId, Number(row.tickets ?? 0));
   }
+
+  /* -------------------------------------------------------
+     Category Map
+  ------------------------------------------------------- */
 
   const categoryMap = new Map<
     string,
@@ -469,6 +464,10 @@ export async function getAttractionReports(filter: ReportFilter) {
     categoryMap.set(row.attractionId, existing);
   }
 
+  /* -------------------------------------------------------
+     Payment Map
+  ------------------------------------------------------- */
+
   const paymentMap = new Map<
     string,
     Array<{
@@ -492,11 +491,15 @@ export async function getAttractionReports(filter: ReportFilter) {
     paymentMap.set(row.attractionId, existing);
   }
 
+  /* -------------------------------------------------------
+     Transaction Map
+  ------------------------------------------------------- */
+
   const transactionMap = new Map<
     string,
     Array<{
       transactionId: string;
-      customerName: string;
+      customerName: string | null;
       dateTime: Date;
       paymentMode: string;
       amount: number;
@@ -534,7 +537,7 @@ export async function getAttractionReports(filter: ReportFilter) {
   }
 
   /* =======================================================
-     FINAL RESPONSE
+     FINAL ATTRACTION RESPONSE
   ======================================================= */
 
   return attractionRows.map((attraction) => {
@@ -550,16 +553,8 @@ export async function getAttractionReports(filter: ReportFilter) {
 
         status: attraction.status,
 
-        /*
-         * Example:
-         * "09:00 AM - 06:00 PM"
-         */
         timing: attraction.timing,
 
-        /*
-         * Example:
-         * ₹100
-         */
         adultRate: Number(attraction.adultPrice ?? 0),
 
         childRate: Number(attraction.childPrice ?? 0),
@@ -595,7 +590,7 @@ export async function getAttractionReports(filter: ReportFilter) {
 export async function getPaymentDistribution(filter: ReportFilter) {
   const bookingConditions = getBookingConditions(filter);
 
-  const conditions = [
+  const conditions: SQL[] = [
     ...bookingConditions,
 
     eq(transactions.status, "SUCCESSFUL"),

@@ -13,6 +13,7 @@ import {
 
 import { requireAuth } from "@/lib/auth/require-auth";
 import { success, failure } from "@/lib/api/response";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 type AddCapacityBody = {
   attractionId: string;
@@ -24,20 +25,23 @@ type AddCapacityBody = {
 export async function POST(request: NextRequest) {
   try {
     // =====================================================
-    // AUTH
+    // AUTHENTICATION
     // =====================================================
 
     const auth = await requireAuth(request);
 
-    if (auth.user.role !== "ADMIN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
+    // =====================================================
+    // MODULE ACCESS
+    // =====================================================
+
+    await requireModuleAccess(auth, "INVENTORY_CAPACITY");
 
     // =====================================================
     // TENANT
     // =====================================================
 
-    const adminId = auth.user.id;
+    const adminId =
+      auth.user.role === "ADMIN" ? auth.user.id : auth.user.adminId;
 
     if (!adminId) {
       return failure("Admin context not found.", 403, "ADMIN_CONTEXT_REQUIRED");
@@ -47,7 +51,13 @@ export async function POST(request: NextRequest) {
     // BODY
     // =====================================================
 
-    const body = (await request.json()) as AddCapacityBody;
+    let body: AddCapacityBody;
+
+    try {
+      body = (await request.json()) as AddCapacityBody;
+    } catch {
+      return failure("Invalid JSON request body.", 400, "INVALID_REQUEST_BODY");
+    }
 
     const { attractionId, date, slot, additionalSeats } = body;
 
@@ -55,7 +65,7 @@ export async function POST(request: NextRequest) {
     // VALIDATION
     // =====================================================
 
-    if (!attractionId) {
+    if (!attractionId || typeof attractionId !== "string") {
       return failure(
         "Attraction ID is required.",
         400,
@@ -63,11 +73,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!date) {
+    if (!date || typeof date !== "string") {
       return failure("Date is required.", 400, "DATE_REQUIRED");
     }
 
-    if (!Number.isInteger(additionalSeats) || additionalSeats <= 0) {
+    // YYYY-MM-DD validation
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return failure("Date must be in YYYY-MM-DD format.", 400, "INVALID_DATE");
+    }
+
+    const parsedAdditionalSeats = Number(additionalSeats);
+
+    if (
+      !Number.isInteger(parsedAdditionalSeats) ||
+      parsedAdditionalSeats <= 0
+    ) {
       return failure(
         "Additional seats must be a positive integer.",
         400,
@@ -96,7 +116,11 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (!attraction) {
-      return failure("Attraction not found.", 404, "ATTRACTION_NOT_FOUND");
+      return failure(
+        "Attraction not found or is not active.",
+        404,
+        "ATTRACTION_NOT_FOUND",
+      );
     }
 
     // =====================================================
@@ -119,7 +143,6 @@ export async function POST(request: NextRequest) {
         .where(
           and(
             eq(attractionDailyCapacities.attractionId, attractionId),
-
             eq(attractionDailyCapacities.capacityDate, date),
           ),
         )
@@ -134,26 +157,19 @@ export async function POST(request: NextRequest) {
           .insert(attractionDailyCapacities)
           .values({
             attractionId,
-
             capacityDate: date,
-
-            totalCapacity: additionalSeats,
+            totalCapacity: parsedAdditionalSeats,
           })
           .returning({
             id: attractionDailyCapacities.id,
-
             attractionId: attractionDailyCapacities.attractionId,
-
             capacityDate: attractionDailyCapacities.capacityDate,
-
             totalCapacity: attractionDailyCapacities.totalCapacity,
           });
 
         return {
           dailyCapacity: created,
-
           allocation: "DAILY",
-
           slotsUpdated: 0,
         };
       }
@@ -163,36 +179,30 @@ export async function POST(request: NextRequest) {
       // ===================================================
 
       const newDailyCapacity =
-        Number(dailyCapacity.totalCapacity) + additionalSeats;
+        Number(dailyCapacity.totalCapacity) + parsedAdditionalSeats;
 
       const [updatedDailyCapacity] = await tx
         .update(attractionDailyCapacities)
         .set({
           totalCapacity: newDailyCapacity,
-
           updatedAt: new Date(),
         })
         .where(eq(attractionDailyCapacities.id, dailyCapacity.id))
         .returning({
           id: attractionDailyCapacities.id,
-
           attractionId: attractionDailyCapacities.attractionId,
-
           capacityDate: attractionDailyCapacities.capacityDate,
-
           totalCapacity: attractionDailyCapacities.totalCapacity,
         });
 
       // ===================================================
-      // IF NO SLOT WAS PROVIDED
+      // DAILY CAPACITY ONLY
       // ===================================================
 
       if (!slot || slot === "ALL") {
         return {
           dailyCapacity: updatedDailyCapacity,
-
           allocation: "DAILY",
-
           slotsUpdated: 0,
         };
       }
@@ -204,27 +214,22 @@ export async function POST(request: NextRequest) {
       const [timeSlot] = await tx
         .select({
           id: attractionTimeSlots.id,
-
           slotTime: attractionTimeSlots.slotTime,
-
           attractionId: attractionTimeSlots.attractionId,
-
           isActive: attractionTimeSlots.isActive,
         })
         .from(attractionTimeSlots)
         .where(
           and(
             eq(attractionTimeSlots.id, slot),
-
             eq(attractionTimeSlots.attractionId, attractionId),
-
             eq(attractionTimeSlots.isActive, true),
           ),
         )
         .limit(1);
 
       if (!timeSlot) {
-        throw new Error("Selected slot not found.");
+        throw new Error("SLOT_NOT_FOUND");
       }
 
       // ===================================================
@@ -234,14 +239,12 @@ export async function POST(request: NextRequest) {
       const [slotCapacity] = await tx
         .select({
           id: attractionSlotCapacities.id,
-
           capacity: attractionSlotCapacities.capacity,
         })
         .from(attractionSlotCapacities)
         .where(
           and(
             eq(attractionSlotCapacities.timeSlotId, timeSlot.id),
-
             eq(attractionSlotCapacities.capacityDate, date),
           ),
         )
@@ -256,28 +259,20 @@ export async function POST(request: NextRequest) {
           .insert(attractionSlotCapacities)
           .values({
             timeSlotId: timeSlot.id,
-
             capacityDate: date,
-
-            capacity: additionalSeats,
+            capacity: parsedAdditionalSeats,
           })
           .returning({
             id: attractionSlotCapacities.id,
-
             timeSlotId: attractionSlotCapacities.timeSlotId,
-
             capacityDate: attractionSlotCapacities.capacityDate,
-
             capacity: attractionSlotCapacities.capacity,
           });
 
         return {
           dailyCapacity: updatedDailyCapacity,
-
           slot: createdSlot,
-
           allocation: timeSlot.slotTime,
-
           slotsUpdated: 1,
         };
       }
@@ -286,33 +281,27 @@ export async function POST(request: NextRequest) {
       // UPDATE SLOT CAPACITY
       // ===================================================
 
-      const newSlotCapacity = Number(slotCapacity.capacity) + additionalSeats;
+      const newSlotCapacity =
+        Number(slotCapacity.capacity) + parsedAdditionalSeats;
 
       const [updatedSlot] = await tx
         .update(attractionSlotCapacities)
         .set({
           capacity: newSlotCapacity,
-
           updatedAt: new Date(),
         })
         .where(eq(attractionSlotCapacities.id, slotCapacity.id))
         .returning({
           id: attractionSlotCapacities.id,
-
           timeSlotId: attractionSlotCapacities.timeSlotId,
-
           capacityDate: attractionSlotCapacities.capacityDate,
-
           capacity: attractionSlotCapacities.capacity,
         });
 
       return {
         dailyCapacity: updatedDailyCapacity,
-
         slot: updatedSlot,
-
         allocation: timeSlot.slotTime,
-
         slotsUpdated: 1,
       };
     });
@@ -326,26 +315,105 @@ export async function POST(request: NextRequest) {
 
       attraction: {
         id: attraction.id,
-
         name: attraction.name,
       },
 
       date,
 
-      additionalSeats,
+      additionalSeats: parsedAdditionalSeats,
 
       allocation: slot || "DAILY",
 
       result,
     });
   } catch (error) {
+    // =====================================================
+    // AUTHENTICATION ERRORS
+    // =====================================================
+
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      // ===================================================
+      // ACCOUNT STATUS
+      // ===================================================
+
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      // ===================================================
+      // MODULE ACCESS
+      // ===================================================
+
+      if (
+        error.message === "MODULE_ACCESS_DENIED" ||
+        error.message === "FORBIDDEN"
+      ) {
+        return failure(
+          "You do not have permission to access the inventory capacity module.",
+          403,
+          "MODULE_ACCESS_DENIED",
+        );
+      }
+
+      // ===================================================
+      // ADMIN CONTEXT
+      // ===================================================
+
+      if (error.message === "ADMIN_CONTEXT_REQUIRED") {
+        return failure(
+          "Admin context not found.",
+          403,
+          "ADMIN_CONTEXT_REQUIRED",
+        );
+      }
+
+      // ===================================================
+      // ATTRACTION
+      // ===================================================
+
+      if (error.message === "ATTRACTION_NOT_FOUND") {
+        return failure("Attraction not found.", 404, "ATTRACTION_NOT_FOUND");
+      }
+
+      // ===================================================
+      // SLOT
+      // ===================================================
+
+      if (error.message === "SLOT_NOT_FOUND") {
+        return failure(
+          "Selected time slot was not found or is inactive for this attraction.",
+          404,
+          "SLOT_NOT_FOUND",
+        );
+      }
+
+      // ===================================================
+      // DATABASE CONSTRAINT / CONFLICT
+      // ===================================================
+
+      if (error.message.includes("duplicate key")) {
+        return failure(
+          "Capacity already exists for the selected attraction and date.",
+          409,
+          "CAPACITY_ALREADY_EXISTS",
+        );
+      }
+    }
+
+    // =====================================================
+    // UNKNOWN / DATABASE ERROR
+    // =====================================================
+
     console.error("POST /api/admin/inventory/capacity error:", error);
 
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Failed to add inventory capacity.";
-
-    return failure(message, 500, "CAPACITY_UPDATE_FAILED");
+    return failure(
+      "Unable to update inventory capacity.",
+      500,
+      "INTERNAL_SERVER_ERROR",
+    );
   }
 }

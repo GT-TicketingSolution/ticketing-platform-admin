@@ -136,12 +136,17 @@ export async function GET(request: NextRequest) {
         attractionId,
         slotId,
         date,
+
         hasSeating: false,
+
         layout: null,
+
         totalSeats: 0,
         occupiedCount: 0,
         availableSeats: 0,
+
         occupiedSeats: [],
+
         sections: [],
         seats: [],
       });
@@ -149,12 +154,6 @@ export async function GET(request: NextRequest) {
 
     // ---------------------------------------------
     // FETCH SEAT LAYOUT MAPPING
-    //
-    // attraction_management
-    //        ↓
-    // attraction_management_seat_layouts
-    //        ↓
-    // seat_layouts
     // ---------------------------------------------
 
     const [layoutMapping] = await db
@@ -209,22 +208,7 @@ export async function GET(request: NextRequest) {
     }
 
     // ---------------------------------------------
-    // GENERATE SEATS FROM LAYOUT
-    //
-    // There is NO seat_layout_seats table.
-    //
-    // Therefore:
-    //
-    // rows = number of rows
-    // cols = seats per row
-    //
-    // Example:
-    // rows = 3
-    // cols = 4
-    //
-    // A1 A2 A3 A4
-    // B1 B2 B3 B4
-    // C1 C2 C3 C4
+    // GENERATED SEAT TYPE
     // ---------------------------------------------
 
     type GeneratedSeat = {
@@ -236,16 +220,14 @@ export async function GET(request: NextRequest) {
       status: "available" | "occupied";
     };
 
+    // ---------------------------------------------
+    // GENERATE SEATS
+    // ---------------------------------------------
+
     const generatedSeats: GeneratedSeat[] = [];
 
     for (let row = 1; row <= layout.rows; row++) {
       for (let col = 1; col <= layout.cols; col++) {
-        // Convert row number to alphabet.
-        //
-        // 1 -> A
-        // 2 -> B
-        // 3 -> C
-        // ...
         const rowLabel = String.fromCharCode(64 + row);
 
         const seatNumber = `${rowLabel}${col}`;
@@ -262,52 +244,112 @@ export async function GET(request: NextRequest) {
     }
 
     // ---------------------------------------------
-    // FETCH OCCUPIED / HELD SEATS
+    // FETCH BOOKED SEATS
     //
     // IMPORTANT:
-    // booking_seats uses time_slot_id,
-    // NOT slot_id.
+    //
+    // booking_seats has a UNIQUE constraint:
+    //
+    // (slot_id, visit_date, bogie, seat_number)
+    //
+    // Therefore, if a booking_seats row exists,
+    // that seat cannot be booked again.
+    //
+    // We therefore use booking_seats itself as the
+    // source of truth for seat availability.
+    //
+    // Existing booking_seats row -> OCCUPIED
+    // No booking_seats row        -> AVAILABLE
+    //
+    // This also handles PENDING bookings correctly.
     // ---------------------------------------------
 
-    // ---------------------------------------------
-    // FETCH OCCUPIED SEATS
-    // ---------------------------------------------
-
-    const occupiedRows = await db
+    const bookingSeatRows = await db
       .select({
+        slotId: bookingSeats.slotId,
+        visitDate: bookingSeats.visitDate,
         bogie: bookingSeats.bogie,
         seatNumber: bookingSeats.seatNumber,
+        bookingId: bookingSeats.bookingId,
+        bookingStatus: bookings.status,
+        paymentExpiresAt: bookings.paymentExpiresAt,
       })
       .from(bookingSeats)
       .innerJoin(bookings, eq(bookingSeats.bookingId, bookings.id))
       .where(
-        and(
-          eq(bookingSeats.slotId, slotId),
-          eq(bookingSeats.visitDate, date),
-          eq(bookings.status, "CONFIRMED"),
-        ),
+        and(eq(bookingSeats.slotId, slotId), eq(bookingSeats.visitDate, date)),
       );
 
     // ---------------------------------------------
     // OCCUPIED SET
     // ---------------------------------------------
 
-    const occupiedSet = new Set(
-      occupiedRows.map((seat) => `${seat.bogie ?? ""}-${seat.seatNumber}`),
-    );
+    const occupiedSet = new Set<string>();
+
+    const now = new Date();
+
+    for (const bookingSeat of bookingSeatRows) {
+      const status = String(bookingSeat.bookingStatus).toUpperCase();
+
+      // CONFIRMED booking = occupied
+      if (
+        status === "CONFIRMED" ||
+        status === "COMPLETED" ||
+        status === "PAID"
+      ) {
+        occupiedSet.add(bookingSeat.seatNumber);
+        continue;
+      }
+
+      // PENDING booking:
+      // only occupy/lock the seat while payment window is active.
+      if (status === "PENDING") {
+        if (
+          bookingSeat.paymentExpiresAt &&
+          new Date(bookingSeat.paymentExpiresAt) > now
+        ) {
+          occupiedSet.add(bookingSeat.seatNumber);
+        }
+
+        // If paymentExpiresAt has passed,
+        // do NOT add the seat.
+        // It becomes available.
+        continue;
+      }
+
+      // CANCELLED / EXPIRED / FAILED
+      // Do nothing -> seat remains available.
+    }
 
     // ---------------------------------------------
-    // APPLY OCCUPIED STATUS
+    // DEBUG
+    // ---------------------------------------------
+
+    // ---------------------------------------------
+    // APPLY STATUS TO GENERATED SEATS
     // ---------------------------------------------
 
     const seats = generatedSeats.map((seat) => {
-      const key = `${seat.bogie ?? ""}-${seat.seatNumber}`;
+      const seatNumber = seat.seatNumber;
 
-      const occupied = occupiedSet.has(key);
+      // -------------------------------------------
+      // OCCUPIED
+      // -------------------------------------------
+
+      if (occupiedSet.has(seatNumber)) {
+        return {
+          ...seat,
+          status: "occupied" as const,
+        };
+      }
+
+      // -------------------------------------------
+      // AVAILABLE
+      // -------------------------------------------
 
       return {
         ...seat,
-        status: occupied ? "occupied" : "available",
+        status: "available" as const,
       };
     });
 
@@ -333,20 +375,21 @@ export async function GET(request: NextRequest) {
     const availableSeats = Math.max(0, totalSeats - occupiedCount);
 
     // ---------------------------------------------
-    // GROUP BY SECTION
-    //
-    // Since current seat_layouts does not contain
-    // bogie/section definitions, all generated seats
-    // belong to one section.
+    // SECTION
     // ---------------------------------------------
 
     const sections = [
       {
         name: "Section A",
+
         bogie: null,
+
         totalSeats,
+
         occupiedSeats: occupiedSeats.map((seat) => seat.seatNumber),
+
         availableSeats,
+
         seats,
       },
     ];
@@ -357,7 +400,9 @@ export async function GET(request: NextRequest) {
 
     return success({
       attractionId,
+
       slotId,
+
       date,
 
       hasSeating: true,
@@ -372,7 +417,9 @@ export async function GET(request: NextRequest) {
       },
 
       totalSeats,
+
       occupiedCount,
+
       availableSeats,
 
       occupiedSeats,

@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 import { success, failure } from "@/lib/api/response";
 
 export async function PATCH(
@@ -21,6 +22,8 @@ export async function PATCH(
     // Authentication
     // ---------------------------------------------
     const auth = await requireAuth(request);
+
+    await requireModuleAccess(auth, "STAFF_MANAGEMENT");
 
     // Staff management is allowed for ADMIN and MANAGER.
     if (!["ADMIN", "MANAGER"].includes(auth.user.role)) {
@@ -110,22 +113,26 @@ export async function PATCH(
       message: "Staff disabled successfully.",
       staff,
     });
-  } catch (error) {
-    // ---------------------------------------------
-    // Authentication errors
-    // ---------------------------------------------
+  } catch (error: unknown) {
     if (error instanceof Error) {
-      if (error.message === "UNAUTHORIZED") {
-        return failure("Authentication required.", 401, "UNAUTHORIZED");
-      }
+      switch (error.message) {
+        case "UNAUTHORIZED":
+          return failure("Authentication required.", 401, "UNAUTHORIZED");
 
-      if (error.message === "ACCOUNT_NOT_ACTIVE") {
-        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+        case "ACCOUNT_NOT_ACTIVE":
+          return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+
+        case "FORBIDDEN":
+          return failure(
+            "You are not authorized to access this module.",
+            403,
+            "FORBIDDEN",
+          );
       }
     }
 
-    console.error("Disable staff error:", error);
+    console.error("Get staff error:", error);
 
-    return failure("Unable to disable staff.", 500, "INTERNAL_SERVER_ERROR");
+    return failure("Unable to fetch staff.", 500, "INTERNAL_SERVER_ERROR");
   }
 }

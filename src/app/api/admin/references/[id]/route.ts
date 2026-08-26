@@ -8,7 +8,7 @@ import { success, failure } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { getAdminId } from "@/lib/auth/get-admin-id";
 
-const allowedRoles = ["ADMIN", "MANAGER", "STAFF"];
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 const updateSchema = z.object({
   referenceName: z.string().trim().min(1, "Reference name is required"),
@@ -40,9 +40,7 @@ export async function PATCH(
   try {
     const auth = await requireAuth(req);
 
-    if (!allowedRoles.includes(auth.user.role)) {
-      return failure("Forbidden", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "COMPLIMENTARY_PASSES");
 
     const { id } = await context.params;
 
@@ -102,9 +100,35 @@ export async function PATCH(
 
     return success(updated[0]);
   } catch (error) {
+    // ==================================================
+    // AUTH ERRORS
+    // ==================================================
+
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      if (error.message === "FORBIDDEN") {
+        return failure(
+          "You are not authorized to update references.",
+          403,
+          "FORBIDDEN",
+        );
+      }
+    }
+
+    // ==================================================
+    // SERVER ERROR
+    // ==================================================
+
     console.error("Update reference error:", error);
 
-    return failure("Unable to update reference", 500, "INTERNAL_SERVER_ERROR");
+    return failure("Unable to update reference.", 500, "INTERNAL_SERVER_ERROR");
   }
 }
 
@@ -121,10 +145,7 @@ export async function DELETE(
   try {
     const auth = await requireAuth(req);
 
-    if (!allowedRoles.includes(auth.user.role)) {
-      return failure("Forbidden", 403, "FORBIDDEN");
-    }
-
+    await requireModuleAccess(auth, "COMPLIMENTARY_PASSES");
     const { id } = await context.params;
 
     const adminId = getAdminId(auth);
@@ -166,8 +187,34 @@ export async function DELETE(
       message: "Reference deleted successfully",
     });
   } catch (error) {
+    // ==================================================
+    // AUTH ERRORS
+    // ==================================================
+
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      if (error.message === "FORBIDDEN") {
+        return failure(
+          "You are not authorized to delete references.",
+          403,
+          "FORBIDDEN",
+        );
+      }
+    }
+
+    // ==================================================
+    // SERVER ERROR
+    // ==================================================
+
     console.error("Delete reference error:", error);
 
-    return failure("Unable to delete reference", 500, "INTERNAL_SERVER_ERROR");
+    return failure("Unable to delete reference.", 500, "INTERNAL_SERVER_ERROR");
   }
 }

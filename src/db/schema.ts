@@ -388,11 +388,11 @@ export const bookings = pgTable(
 
     customerName: varchar("customer_name", {
       length: 150,
-    }).notNull(),
+    }),
 
     mobileNumber: varchar("mobile_number", {
       length: 20,
-    }).notNull(),
+    }),
 
     gstNumber: varchar("gst_number", {
       length: 20,

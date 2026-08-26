@@ -7,6 +7,7 @@ import { transactions } from "@/db/schema";
 import { getInvoiceById } from "@/services/invoice.service";
 import { failure, success } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 export async function GET(
   request: NextRequest,
@@ -25,9 +26,7 @@ export async function GET(
 
     const auth = await requireAuth(request);
 
-    if (auth.user.role !== "ADMIN" && auth.user.role !== "MANAGER") {
-      return failure("Admin or manager access required.", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "INVOICES");
 
     // --------------------------------------------------
     // TENANT
@@ -67,6 +66,51 @@ export async function GET(
       invoice,
     });
   } catch (error) {
+    if (error instanceof Error) {
+      // ===================================================
+      // AUTHENTICATION
+      // ===================================================
+
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      // ===================================================
+      // ACCOUNT STATUS
+      // ===================================================
+
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      // ===================================================
+      // MODULE ACCESS
+      // ===================================================
+
+      if (
+        error.message === "MODULE_ACCESS_DENIED" ||
+        error.message === "FORBIDDEN"
+      ) {
+        return failure(
+          "You do not have permission to access the invoices module.",
+          403,
+          "MODULE_ACCESS_DENIED",
+        );
+      }
+
+      // ===================================================
+      // ADMIN CONTEXT
+      // ===================================================
+
+      if (error.message === "ADMIN_CONTEXT_REQUIRED") {
+        return failure(
+          "Admin context not found.",
+          403,
+          "ADMIN_CONTEXT_REQUIRED",
+        );
+      }
+    }
+
     console.error("Get invoice details error:", error);
 
     return failure("Unable to fetch invoice.", 500, "INTERNAL_SERVER_ERROR");
@@ -90,10 +134,7 @@ export async function DELETE(
 
     const auth = await requireAuth(request);
 
-    // Only ADMIN can delete.
-    if (auth.user.role !== "ADMIN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "INVOICES");
 
     // --------------------------------------------------
     // TENANT
@@ -169,6 +210,62 @@ export async function DELETE(
       invoice: deletedInvoice,
     });
   } catch (error) {
+    if (error instanceof Error) {
+      // ===================================================
+      // AUTHENTICATION
+      // ===================================================
+
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      // ===================================================
+      // ACCOUNT STATUS
+      // ===================================================
+
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      // ===================================================
+      // AUTHORIZATION
+      // ===================================================
+
+      if (
+        error.message === "MODULE_ACCESS_DENIED" ||
+        error.message === "FORBIDDEN"
+      ) {
+        return failure(
+          "You do not have permission to access the invoices module.",
+          403,
+          "MODULE_ACCESS_DENIED",
+        );
+      }
+
+      // ===================================================
+      // ADMIN CONTEXT
+      // ===================================================
+
+      if (error.message === "ADMIN_CONTEXT_REQUIRED") {
+        return failure(
+          "Admin context not found.",
+          403,
+          "ADMIN_CONTEXT_REQUIRED",
+        );
+      }
+
+      // ===================================================
+      // INVOICE NOT FOUND
+      // ===================================================
+
+      if (
+        error.message === "INVOICE_NOT_FOUND" ||
+        error.message === "NOT_FOUND"
+      ) {
+        return failure("Invoice not found.", 404, "INVOICE_NOT_FOUND");
+      }
+    }
+
     console.error("Delete invoice error:", error);
 
     return failure("Unable to delete invoice.", 500, "INTERNAL_SERVER_ERROR");

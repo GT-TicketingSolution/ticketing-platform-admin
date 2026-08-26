@@ -30,59 +30,49 @@ export async function getComplimentaryPasses(params: {
 
   const offset = (page - 1) * limit;
 
+  // ======================================================
+  // GET COMPLIMENTARY PASSES
+  // ======================================================
+
   const items = await db
     .select({
       id: complimentaryPasses.id,
       passId: complimentaryPasses.passId,
-
       adminId: complimentaryPasses.adminId,
 
       visitorName: complimentaryPasses.visitorName,
-
       mobile: complimentaryPasses.mobile,
 
       attractionId: complimentaryPasses.attractionId,
-
       attractionName: attractions.name,
 
       visitors: complimentaryPasses.visitors,
 
       referenceId: complimentaryPasses.referenceId,
-
       referenceName: references.referenceName,
 
       status: complimentaryPasses.status,
-
       visitDate: complimentaryPasses.visitDate,
 
       deletedAt: complimentaryPasses.deletedAt,
-
       deletedBy: complimentaryPasses.deletedBy,
-
       isDeleted: complimentaryPasses.isDeleted,
 
       createdAt: complimentaryPasses.createdAt,
-
       updatedAt: complimentaryPasses.updatedAt,
     })
     .from(complimentaryPasses)
-
     .leftJoin(attractions, eq(complimentaryPasses.attractionId, attractions.id))
-
     .leftJoin(references, eq(complimentaryPasses.referenceId, references.id))
-
     .where(
       and(
         eq(complimentaryPasses.adminId, adminId),
-
         eq(complimentaryPasses.isDeleted, false),
 
         search
           ? or(
               ilike(complimentaryPasses.visitorName, `%${search}%`),
-
               ilike(complimentaryPasses.mobile, `%${search}%`),
-
               ilike(references.referenceName, `%${search}%`),
             )
           : undefined,
@@ -98,15 +88,68 @@ export async function getComplimentaryPasses(params: {
         status ? eq(complimentaryPasses.status, status) : undefined,
       ),
     )
-
     .orderBy(desc(complimentaryPasses.createdAt))
-
     .limit(limit)
-
     .offset(offset);
 
+  // ======================================================
+  // GET ACTIVE ATTRACTIONS
+  // For Attraction dropdown/filter
+  // ======================================================
+
+  const attractionList = await db
+    .select({
+      id: attractions.id,
+      name: attractions.name,
+    })
+    .from(attractions)
+    .where(
+      and(eq(attractions.adminId, adminId), eq(attractions.status, "ACTIVE")),
+    )
+    .orderBy(attractions.name);
+
+  // ======================================================
+  // FORMAT ITEMS
+  // Same pattern as Booking
+  // ======================================================
+
+  const formattedItems = items.map((item) => ({
+    id: item.id,
+    passId: item.passId,
+
+    visitorName: item.visitorName,
+    mobile: item.mobile,
+
+    visitors: item.visitors,
+    visitDate: item.visitDate,
+    status: item.status,
+
+    reference: item.referenceId
+      ? {
+          id: item.referenceId,
+          name: item.referenceName,
+        }
+      : null,
+
+    attraction: item.attractionId
+      ? {
+          id: item.attractionId,
+          name: item.attractionName,
+        }
+      : null,
+
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  }));
+
+  // ======================================================
+  // RESPONSE
+  // ======================================================
+
   return {
-    items,
+    items: formattedItems,
+
+    attractions: attractionList,
 
     pagination: {
       page,
@@ -140,21 +183,13 @@ export async function createComplimentaryPass(
     .insert(complimentaryPasses)
     .values({
       adminId,
-
       passId,
-
       visitorName: data.visitorName,
-
       mobile: data.mobile,
-
       attractionId: data.attractionId,
-
       visitors: data.visitors,
-
       referenceId: data.referenceId,
-
       visitDate: data.visitDate,
-
       status: data.status,
     })
     .returning();
@@ -182,19 +217,12 @@ export async function updateComplimentaryPass(
     .update(complimentaryPasses)
     .set({
       visitorName: data.visitorName,
-
       mobile: data.mobile,
-
       attractionId: data.attractionId,
-
       visitors: data.visitors,
-
       referenceId: data.referenceId,
-
       visitDate: data.visitDate,
-
       status: data.status,
-
       updatedAt: new Date(),
     })
     .where(eq(complimentaryPasses.id, id))
@@ -212,11 +240,8 @@ export async function deleteComplimentaryPass(id: string, userId: string) {
     .update(complimentaryPasses)
     .set({
       deletedAt: new Date(),
-
       deletedBy: userId,
-
       isDeleted: true,
-
       updatedAt: new Date(),
     })
     .where(eq(complimentaryPasses.id, id));

@@ -11,7 +11,7 @@ import { requireAuth } from "@/lib/auth/require-auth";
 
 import { getAdminId } from "@/lib/auth/get-admin-id";
 
-const allowedRoles = ["ADMIN", "MANAGER", "STAFF"];
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 const updateSchema = z.object({
   visitorName: z.string().trim().min(1, "Visitor name is required"),
@@ -45,9 +45,7 @@ export async function PATCH(
   try {
     const auth = await requireAuth(req);
 
-    if (!allowedRoles.includes(auth.user.role)) {
-      return failure("Forbidden", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "COMPLIMENTARY_PASSES");
 
     const { id } = await context.params;
 
@@ -109,7 +107,29 @@ export async function PATCH(
 
     return success(updated[0]);
   } catch (error) {
-    console.error("Update complimentary pass error:", error);
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    }
+
+    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+    }
+
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return failure(
+        "You do not have permission to manage complimentary passes.",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+      return failure(
+        "User is not associated with an admin.",
+        403,
+        "USER_HAS_NO_ADMIN",
+      );
+    }
 
     return failure("Unable to update pass", 500, "INTERNAL_SERVER_ERROR");
   }
@@ -128,9 +148,7 @@ export async function DELETE(
   try {
     const auth = await requireAuth(req);
 
-    if (!allowedRoles.includes(auth.user.role)) {
-      return failure("Forbidden", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "COMPLIMENTARY_PASSES");
 
     const { id } = await context.params;
 
@@ -173,8 +191,30 @@ export async function DELETE(
       message: "Complimentary pass deleted successfully",
     });
   } catch (error) {
-    console.error("Delete complimentary pass error:", error);
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    }
 
-    return failure("Unable to delete pass", 500, "INTERNAL_SERVER_ERROR");
+    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+    }
+
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return failure(
+        "You do not have permission to manage complimentary passes.",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+      return failure(
+        "User is not associated with an admin.",
+        403,
+        "USER_HAS_NO_ADMIN",
+      );
+    }
+
+    return failure("Unable to update pass", 500, "INTERNAL_SERVER_ERROR");
   }
 }

@@ -9,6 +9,7 @@ import {
 
 import { failure, success } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 const createSeatSchema = z.object({
   name: z.string().trim().min(1, "Seat layout name is required.").max(150),
@@ -32,9 +33,7 @@ export async function GET(request: NextRequest) {
 
     const auth = await requireAuth(request);
 
-    if (auth.user.role !== "ADMIN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "SEAT_MANAGEMENT");
 
     // ---------------------------------------------
     // QUERY PARAMS
@@ -72,7 +71,39 @@ export async function GET(request: NextRequest) {
 
     return success(data);
   } catch (error) {
-    console.error("Get seat layouts error:", error);
+    // =====================================================
+    // AUTHENTICATION / AUTHORIZATION ERRORS
+    // =====================================================
+
+    if (error instanceof Error) {
+      switch (error.message) {
+        case "UNAUTHORIZED":
+          return failure("Authentication required.", 401, "UNAUTHORIZED");
+
+        case "ACCOUNT_NOT_ACTIVE":
+          return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+
+        case "FORBIDDEN":
+          return failure(
+            "You do not have permission to access seat management.",
+            403,
+            "FORBIDDEN",
+          );
+
+        case "MODULE_ACCESS_DENIED":
+          return failure(
+            "You do not have access to the seat management module.",
+            403,
+            "MODULE_ACCESS_DENIED",
+          );
+      }
+    }
+
+    // =====================================================
+    // SERVER ERROR
+    // =====================================================
+
+    console.error("GET /api/admin/seat-layouts error:", error);
 
     return failure(
       "Unable to fetch seat layouts.",
@@ -90,9 +121,7 @@ export async function POST(request: NextRequest) {
 
     const auth = await requireAuth(request);
 
-    if (auth.user.role !== "ADMIN") {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "SEAT_MANAGEMENT");
 
     // ---------------------------------------------
     // BODY
@@ -124,11 +153,58 @@ export async function POST(request: NextRequest) {
 
     return success(data, 201);
   } catch (error) {
-    console.error("Create seat layout error:", error);
+    // =====================================================
+    // AUTHENTICATION / AUTHORIZATION ERRORS
+    // =====================================================
 
-    const message =
-      error instanceof Error ? error.message : "Unable to create seat layout.";
+    if (error instanceof Error) {
+      switch (error.message) {
+        case "UNAUTHORIZED":
+          return failure("Authentication required.", 401, "UNAUTHORIZED");
 
-    return failure(message, 500, "INTERNAL_SERVER_ERROR");
+        case "ACCOUNT_NOT_ACTIVE":
+          return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+
+        case "FORBIDDEN":
+          return failure(
+            "You do not have permission to create seat layouts.",
+            403,
+            "FORBIDDEN",
+          );
+
+        case "MODULE_ACCESS_DENIED":
+          return failure(
+            "You do not have access to the seat management module.",
+            403,
+            "MODULE_ACCESS_DENIED",
+          );
+
+        case "SEAT_LAYOUT_NOT_FOUND":
+          return failure(
+            "Seat layout not found.",
+            404,
+            "SEAT_LAYOUT_NOT_FOUND",
+          );
+
+        case "SEAT_LAYOUT_ALREADY_EXISTS":
+          return failure(
+            "A seat layout with this name already exists.",
+            409,
+            "SEAT_LAYOUT_ALREADY_EXISTS",
+          );
+      }
+    }
+
+    // =====================================================
+    // SERVER ERROR
+    // =====================================================
+
+    console.error("POST /api/admin/seat-layouts error:", error);
+
+    return failure(
+      "Unable to create seat layout.",
+      500,
+      "INTERNAL_SERVER_ERROR",
+    );
   }
 }

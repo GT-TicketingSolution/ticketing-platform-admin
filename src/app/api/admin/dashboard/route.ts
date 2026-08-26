@@ -24,6 +24,10 @@ import {
 
 import { requireAuth } from "@/lib/auth/require-auth";
 import { success, failure } from "@/lib/api/response";
+import {
+  requireModuleAccess,
+  requireAttractionAccess,
+} from "@/lib/auth/authorization";
 
 /* =========================================================
    DATE RANGE
@@ -126,10 +130,7 @@ export async function GET(request: Request) {
 
     const auth = await requireAuth(request);
 
-    // Dashboard is available to ADMIN and MANAGER only.
-    if (auth.user.role !== "ADMIN" && auth.user.role !== "MANAGER") {
-      return failure("Admin or manager access required.", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "DASHBOARD");
 
     /*
      * Tenant boundary
@@ -963,12 +964,35 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     if (error instanceof Error) {
+      // Authentication
       if (error.message === "UNAUTHORIZED") {
         return failure("Authentication required.", 401, "UNAUTHORIZED");
       }
 
+      // Account status
       if (error.message === "ACCOUNT_NOT_ACTIVE") {
         return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      // Module authorization
+      if (
+        error.message === "MODULE_ACCESS_DENIED" ||
+        error.message === "FORBIDDEN"
+      ) {
+        return failure(
+          "You do not have permission to access the dashboard module.",
+          403,
+          "MODULE_ACCESS_DENIED",
+        );
+      }
+
+      // Admin/tenant context
+      if (error.message === "ADMIN_CONTEXT_REQUIRED") {
+        return failure(
+          "Admin ownership could not be determined.",
+          403,
+          "ADMIN_CONTEXT_REQUIRED",
+        );
       }
     }
 

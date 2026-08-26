@@ -25,6 +25,7 @@ import {
 
 import { requireAuth } from "@/lib/auth/require-auth";
 import { success, failure } from "@/lib/api/response";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,9 +35,7 @@ export async function GET(request: NextRequest) {
 
     const auth = await requireAuth(request);
 
-    if (auth.user.role !== "ADMIN" && auth.user.role !== "MANAGER") {
-      return failure("Admin or manager access required.", 403, "FORBIDDEN");
-    }
+    await requireModuleAccess(auth, "INVOICES");
 
     // =====================================================
     // TENANT
@@ -432,6 +431,75 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof Error) {
+      // =====================================================
+      // AUTHENTICATION ERRORS
+      // =====================================================
+
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      // =====================================================
+      // MODULE AUTHORIZATION
+      // =====================================================
+
+      if (
+        error.message === "MODULE_ACCESS_DENIED" ||
+        error.message === "FORBIDDEN"
+      ) {
+        return failure(
+          "You do not have permission to access the invoices module.",
+          403,
+          "MODULE_ACCESS_DENIED",
+        );
+      }
+
+      // =====================================================
+      // ADMIN CONTEXT
+      // =====================================================
+
+      if (error.message === "ADMIN_CONTEXT_REQUIRED") {
+        return failure(
+          "Admin context not found.",
+          403,
+          "ADMIN_CONTEXT_REQUIRED",
+        );
+      }
+
+      // =====================================================
+      // DATABASE / KNOWN ERRORS
+      // =====================================================
+
+      if (error.message === "INVALID_PAYMENT_MODE") {
+        return failure("Invalid payment mode.", 400, "INVALID_PAYMENT_MODE");
+      }
+
+      if (error.message === "INVALID_DATE_FROM") {
+        return failure(
+          "Invalid dateFrom. Expected format: YYYY-MM-DD.",
+          400,
+          "INVALID_DATE_FROM",
+        );
+      }
+
+      if (error.message === "INVALID_DATE_TO") {
+        return failure(
+          "Invalid dateTo. Expected format: YYYY-MM-DD.",
+          400,
+          "INVALID_DATE_TO",
+        );
+      }
+    }
+
+    // =====================================================
+    // UNKNOWN / INTERNAL ERROR
+    // =====================================================
+
     console.error("Get invoices error:", error);
 
     return failure("Unable to fetch invoices.", 500, "INTERNAL_SERVER_ERROR");

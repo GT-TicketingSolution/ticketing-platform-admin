@@ -2,7 +2,10 @@ import { NextRequest } from "next/server";
 import { eq, and } from "drizzle-orm";
 
 import { db } from "@/db";
-import { bookings } from "@/db/schema";
+import QRCode from "qrcode";
+import crypto from "crypto";
+
+import { bookings, bookingItems } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
 import {
@@ -16,6 +19,54 @@ interface RouteParams {
   params: Promise<{
     bookingId: string;
   }>;
+}
+
+function createQrPayload(bookingId: string, attractionId: string) {
+  const secret = process.env.QR_SECRET;
+
+  if (!secret) {
+    throw new Error("QR_SECRET_NOT_CONFIGURED");
+  }
+
+  const data = `${bookingId}:${attractionId}`;
+
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(data)
+    .digest("hex");
+
+  return JSON.stringify({
+    bookingId,
+    attractionId,
+    signature,
+  });
+}
+
+async function generateBookingQRCodes(bookingId: string) {
+  const items = await db
+    .select({
+      attractionId: bookingItems.attractionId,
+    })
+    .from(bookingItems)
+    .where(eq(bookingItems.bookingId, bookingId));
+
+  // Remove duplicate attractions
+  const attractionIds = [...new Set(items.map((item) => item.attractionId))];
+
+  const qrCodes = await Promise.all(
+    attractionIds.map(async (attractionId) => {
+      const payload = createQrPayload(bookingId, attractionId);
+
+      const qrCode = await QRCode.toDataURL(payload);
+
+      return {
+        attractionId,
+        qrCode,
+      };
+    }),
+  );
+
+  return qrCodes;
 }
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
@@ -84,29 +135,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // ---------------------------------------------
-    // CHECK BOOKING STATUS
-    // ---------------------------------------------
-
-    // if (booking.status !== "PENDING") {
-    //   if (booking.status === "CONFIRMED") {
-    //     return success({
-    //       message: "Booking is already confirmed.",
-    //       booking,
-    //     });
-    //   }
-
-    //   return failure(
-    //     `Booking with status ${booking.status} cannot be confirmed.`,
-    //     409,
-    //     "INVALID_BOOKING_STATUS",
-    //   );
-    // }
-
-    // ---------------------------------------------
-    // CONFIRM BOOKING
-    // ---------------------------------------------
-
-    // ---------------------------------------------
     // CONFIRM BOOKING
     // ---------------------------------------------
 
@@ -127,6 +155,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           totalAmount: bookings.totalAmount,
           amountPaid: bookings.amountPaid,
           paymentMode: bookings.paymentMode,
+          paymentExpiresAt: bookings.paymentExpiresAt,
           createdAt: bookings.createdAt,
           updatedAt: bookings.updatedAt,
         })
@@ -151,6 +180,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
       if (lockedBooking.status !== "PENDING") {
         throw new Error("INVALID_BOOKING_STATUS");
+      }
+
+      if (
+        lockedBooking.paymentExpiresAt &&
+        new Date() > lockedBooking.paymentExpiresAt
+      ) {
+        throw new Error("PAYMENT_EXPIRED");
       }
 
       // -------------------------------------------
@@ -205,16 +241,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // ---------------------------------------------
 
     if (confirmedBooking.alreadyConfirmed) {
+      const qrCodes = await generateBookingQRCodes(bookingId);
+
       return success({
         message: "Booking is already confirmed.",
         booking: confirmedBooking.booking,
+        qrCodes,
       });
     }
+
+    const qrCodes = await generateBookingQRCodes(bookingId);
 
     return success(
       {
         message: "Booking confirmed successfully.",
         booking: confirmedBooking.booking,
+        qrCodes,
       },
       200,
     );

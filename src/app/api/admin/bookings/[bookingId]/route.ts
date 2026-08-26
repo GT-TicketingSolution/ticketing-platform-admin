@@ -218,8 +218,6 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error("Get booking details error:", error);
-
     // =====================================================
     // AUTHORIZATION ERRORS
     // =====================================================
@@ -396,8 +394,6 @@ export async function PATCH(
       booking: updatedBooking,
     });
   } catch (error) {
-    console.error("Update booking error:", error);
-
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
       return failure("Authentication required.", 401, "UNAUTHORIZED");
     }
@@ -540,8 +536,6 @@ export async function DELETE(
       booking: deletedBooking,
     });
   } catch (error) {
-    console.error("Delete booking error:", error);
-
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
       return failure("Authentication required.", 401, "UNAUTHORIZED");
     }

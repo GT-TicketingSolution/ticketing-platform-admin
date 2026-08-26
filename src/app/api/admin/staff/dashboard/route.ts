@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { requireAuth } from "@/lib/auth/require-auth";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 import { getStaffDashboardService } from "@/services/staff-dashboard.service";
 
 export async function GET(request: Request) {
   try {
     const auth = await requireAuth(request);
+    await requireModuleAccess(auth, "DASHBOARD");
 
     // Only STAFF can access this dashboard
     if (auth.user.role !== "STAFF") {
@@ -53,6 +55,19 @@ export async function GET(request: Request) {
           {
             success: false,
             message: "Account is not active",
+          },
+          {
+            status: 403,
+          },
+        );
+      }
+
+      // Module / role / attraction permission denied
+      if (error.message === "FORBIDDEN") {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Forbidden",
           },
           {
             status: 403,

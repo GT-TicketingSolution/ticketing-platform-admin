@@ -5,7 +5,10 @@ import { attractionManagement } from "@/db/schema";
 
 import { success, failure } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
-import { getAccessibleAttractionIds } from "@/lib/auth/authorization";
+import {
+  requireModuleAccess,
+  getAccessibleAttractionIds,
+} from "@/lib/auth/authorization";
 
 export async function PATCH(
   request: Request,
@@ -15,6 +18,8 @@ export async function PATCH(
 ) {
   try {
     const auth = await requireAuth(request);
+
+    await requireModuleAccess(auth, "ATTRACTION_MANAGEMENT");
 
     const { id } = await context.params;
 
@@ -74,8 +79,40 @@ export async function PATCH(
 
     return success(updated[0]);
   } catch (error) {
-    console.error("Seat allocation error:", error);
+    // =====================================
+    // AUTHENTICATION ERROR
+    // =====================================
 
-    return failure("Unable to allocate seat", 500, "INTERNAL_SERVER_ERROR");
+    if (error instanceof Error) {
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      }
+
+      // =====================================
+      // ACCOUNT STATUS ERROR
+      // =====================================
+
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      }
+
+      // =====================================
+      // MODULE / ATTRACTION AUTHORIZATION
+      // =====================================
+
+      if (error.message === "FORBIDDEN") {
+        return failure(
+          "You are not authorized to access this resource.",
+          403,
+          "FORBIDDEN",
+        );
+      }
+    }
+
+    // =====================================
+    // INTERNAL SERVER ERROR
+    // =====================================
+
+    return failure("Unable to allocate seat.", 500, "INTERNAL_SERVER_ERROR");
   }
 }

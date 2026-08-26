@@ -433,25 +433,59 @@ export async function GET(request: NextRequest) {
     });
 
     // =====================================================
+    // 18. GET ACCESSIBLE ATTRACTIONS FOR FILTER
+    // =====================================================
+
+    let attractionConditions = [eq(attractions.adminId, adminId)];
+
+    if (auth.user.role !== "ADMIN") {
+      const accessibleAttractionIds = await getAccessibleAttractionIds(auth);
+
+      if (accessibleAttractionIds.length === 0) {
+        return success({
+          items,
+
+          attractions: [],
+
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+          },
+        });
+      }
+
+      attractionConditions.push(
+        inArray(attractions.id, accessibleAttractionIds),
+      );
+    }
+
+    const availableAttractions = await db
+      .select({
+        id: attractions.id,
+        name: attractions.name,
+      })
+      .from(attractions)
+      .where(and(...attractionConditions));
+
+    // =====================================================
     // 18. RESPONSE
     // =====================================================
 
     return success({
       items,
 
+      attractions: availableAttractions,
+
       pagination: {
         page,
-
         limit,
-
         total,
-
         totalPages: total === 0 ? 0 : Math.ceil(total / limit),
       },
     });
   } catch (error) {
-    console.error("Get bookings error:", error);
-
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
       return failure("Authentication required.", 401, "UNAUTHORIZED");
     }
@@ -1017,8 +1051,6 @@ export async function POST(request: NextRequest) {
       201,
     );
   } catch (error) {
-    console.error("Create booking error:", error);
-
     // =====================================================
     // AUTHORIZATION ERRORS
     // =====================================================
