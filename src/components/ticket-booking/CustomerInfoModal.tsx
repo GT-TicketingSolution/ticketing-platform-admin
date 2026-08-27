@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { useProfileQuery } from "@/hooks/useAuthQueries";
 import {
   AlertCircle,
   ArrowLeft,
@@ -250,61 +251,71 @@ function ProcessPaymentModal({
                   </button>
                 )}
               </div>
-              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {[
-                  { label: "₹50", val: 50 },
-                  { label: "₹100", val: 100 },
-                  { label: "₹200", val: 200 },
-                  { label: "₹500", val: 500 },
-                ].map((item) => {
-                  const count = selectedNotes.filter((n) => n === item.val).length;
-                  const isActive = count > 0;
-                  return (
-                    <button
-                      key={item.label}
-                      type="button"
-                      onClick={() => handleQuickNoteClick(item.val)}
-                      style={{
-                        flex: 1,
-                        minWidth: "55px",
-                        height: "32px",
-                        background: isActive ? "#173F63" : "#F1F5F9",
-                        border: isActive ? "1.5px solid #173F63" : "1px solid rgba(179,175,175,0.6)",
-                        borderRadius: "8px",
-                        fontFamily: "'Plus Jakarta Sans',sans-serif",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        color: isActive ? "#FFFFFF" : "#173F63",
-                        cursor: "pointer",
-                        boxShadow: isActive ? "0 2px 6px rgba(23,63,99,0.25)" : "none",
-                        transition: "all 0.15s ease",
-                        position: "relative",
-                      }}
-                    >
-                      {item.label}
-                      {count > 1 && (
-                        <span style={{
-                          position: "absolute",
-                          top: "-6px",
-                          right: "-6px",
-                          background: "#F4BC43",
-                          color: "#173F63",
-                          borderRadius: "50%",
-                          width: "16px",
-                          height: "16px",
-                          fontSize: "9px",
-                          fontWeight: 800,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          lineHeight: 1,
-                        }}>
-                          {count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+                  [
+                    { label: "₹10", val: 10 },
+                    { label: "₹20", val: 20 },
+                    { label: "₹50", val: 50 },
+                  ],
+                  [
+                    { label: "₹100", val: 100 },
+                    { label: "₹200", val: 200 },
+                    { label: "₹500", val: 500 },
+                  ],
+                ].map((row, rowIdx) => (
+                  <div key={rowIdx} style={{ display: "flex", gap: "6px" }}>
+                    {row.map((item) => {
+                      const count = selectedNotes.filter((n) => n === item.val).length;
+                      const isActive = count > 0;
+                      return (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => handleQuickNoteClick(item.val)}
+                          style={{
+                            flex: 1,
+                            minWidth: "55px",
+                            height: "32px",
+                            background: isActive ? "#173F63" : "#F1F5F9",
+                            border: isActive ? "1.5px solid #173F63" : "1px solid rgba(179,175,175,0.6)",
+                            borderRadius: "8px",
+                            fontFamily: "'Plus Jakarta Sans',sans-serif",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            color: isActive ? "#FFFFFF" : "#173F63",
+                            cursor: "pointer",
+                            boxShadow: isActive ? "0 2px 6px rgba(23,63,99,0.25)" : "none",
+                            transition: "all 0.15s ease",
+                            position: "relative",
+                          }}
+                        >
+                          {item.label}
+                          {count > 1 && (
+                            <span style={{
+                              position: "absolute",
+                              top: "-6px",
+                              right: "-6px",
+                              background: "#F4BC43",
+                              color: "#173F63",
+                              borderRadius: "50%",
+                              width: "16px",
+                              height: "16px",
+                              fontSize: "9px",
+                              fontWeight: 800,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              lineHeight: 1,
+                            }}>
+                              {count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -405,6 +416,97 @@ function ProcessPaymentModal({
   );
 }
 
+// ── Isolated Iframe Receipt Printer (Clean 1-page thermal/ticket output) ──
+function printReceiptViaIframe(elementId: string) {
+  if (typeof window === "undefined") return;
+  const element = document.getElementById(elementId);
+  if (!element) {
+    window.print();
+    return;
+  }
+
+  // Remove existing print iframe if any
+  const oldIframe = document.getElementById("print-receipt-iframe");
+  if (oldIframe) {
+    oldIframe.remove();
+  }
+
+  const iframe = document.createElement("iframe");
+  iframe.id = "print-receipt-iframe";
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "none";
+  iframe.style.visibility = "hidden";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document || iframe.contentDocument;
+  if (!doc) {
+    window.print();
+    return;
+  }
+
+  doc.open();
+  doc.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Ticket Receipt</title>
+        <meta charset="utf-8" />
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800;900&display=swap" rel="stylesheet">
+        <style>
+          @page {
+            size: auto;
+            margin: 2mm 0mm;
+          }
+          * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+          }
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            color: #0F172A;
+            background: #FFFFFF;
+            width: 80mm;
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 4mm 3mm;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+          img {
+            max-width: 100%;
+            height: auto;
+          }
+        </style>
+      </head>
+      <body>
+        ${element.innerHTML}
+      </body>
+    </html>
+  `);
+  doc.close();
+
+  setTimeout(() => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch (err) {
+      console.error("Iframe print error:", err);
+      window.print();
+    }
+  }, 250);
+}
+
 // ── Ticket Generated Modal (Thermal Receipt Layout) ──
 function TicketGeneratedModal({
   isOpen,
@@ -419,12 +521,14 @@ function TicketGeneratedModal({
   subtotal = 0,
   gstAmount = 0,
   roundOff = 0,
+  businessName = "",
 }: {
   isOpen: boolean;
   onClose: () => void;
   attractionName: string;
   grandTotal: number;
   totalPax: number;
+  businessName?: string;
   confirmedData?: {
     booking?: {
       id?: string;
@@ -504,10 +608,18 @@ function TicketGeneratedModal({
   const seatText = selectedSeats && selectedSeats.length > 0 ? selectedSeats.join(", ") : "-";
 
   const handlePrint = () => {
-    if (typeof window !== "undefined") {
-      window.print();
-    }
+    printReceiptViaIframe("printable-ticket-receipt");
   };
+
+  // Auto-print when modal opens using isolated clean receipt iframe
+  useEffect(() => {
+    if (isOpen && typeof window !== "undefined") {
+      const t = setTimeout(() => {
+        printReceiptViaIframe("printable-ticket-receipt");
+      }, 400);
+      return () => clearTimeout(t);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -610,8 +722,13 @@ function TicketGeneratedModal({
               boxShadow: "0 4px 14px rgba(0,0,0,0.06)",
             }}
           >
-            {/* Attraction Header */}
+            {/* Business / Organization Name + Attraction */}
             <div style={{ textAlign: "center", borderBottom: "1px dashed #94A3B8", paddingBottom: "12px" }}>
+              {businessName && (
+                <p style={{ margin: "0 0 2px 0", fontSize: "11px", fontWeight: 700, color: "#475569", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                  {businessName}
+                </p>
+              )}
               <h3
                 style={{
                   margin: "0 0 3px 0",
@@ -935,6 +1052,13 @@ function TicketGeneratedModal({
   );
 }
 
+// ── Profile-aware wrapper — reads businessName from the auth cache and injects it
+function TicketGeneratedModalWithProfile(props: Parameters<typeof TicketGeneratedModal>[0]) {
+  const { data: profileData } = useProfileQuery();
+  const businessName = profileData?.profile?.businessName || "";
+  return <TicketGeneratedModal {...props} businessName={businessName} />;
+}
+
 // ── Bogie Seat Allocation Panel ────────────────────────────────────────────────
 function SeatAllocationPanel({ bookingSummary }: { bookingSummary: import("./CustomerInfoModal").BookingSummaryItem[] }) {
   const totalPax = bookingSummary.reduce((s, b) => s + b.passengers.reduce((x, p) => x + p.qty, 0), 0);
@@ -1131,7 +1255,7 @@ export default function CustomerInfoModal({
 
   if (!isOpen) return null;
 
-  const grandTotal = bookingSummary.reduce((s, b) => s + b.totalAmount, 0);
+  const grandTotal = Math.ceil(bookingSummary.reduce((s, b) => s + b.totalAmount, 0) / 10) * 10;
 
   function handleSelectCustomer(c: CustomerRecord) {
     setSelectedCustomer(c);
@@ -1945,7 +2069,7 @@ export default function CustomerInfoModal({
       />
 
       {/* Ticket Generated Modal */}
-      <TicketGeneratedModal
+      <TicketGeneratedModalWithProfile
         isOpen={showTicketModal}
         onClose={() => {
           setShowTicketModal(false);

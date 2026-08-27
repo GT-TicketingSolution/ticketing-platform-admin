@@ -130,6 +130,10 @@ export default function Header({
     ? "—"
     : profileData?.profile?.name || "—";
 
+  const displayBusinessName = isProfileError
+    ? null
+    : profileData?.profile?.businessName || null;
+
   /**
    * Derive the displayed role label from the authoritative profile API.
    * Falls back to '-' if error or no role (never defaults to Admin).
@@ -237,16 +241,18 @@ export default function Header({
           borderBottom: "1px solid #B3AFAF",
           display: "flex",
           alignItems: "center",
-          paddingLeft: isMobile ? "16px" : "32px",
-          paddingRight: "24px",
+          flexWrap: "nowrap",
+          overflow: "visible",
+          paddingLeft: isMobile ? "12px" : "32px",
+          paddingRight: isMobile ? "12px" : "24px",
           position: "fixed",
           top: 0,
           left: isMobile ? 0 : sidebarWidth,
           right: 0,
-          zIndex: 40,
+          zIndex: 50,
           boxShadow: colors.header.shadow,
           boxSizing: "border-box",
-          gap: "12px",
+          gap: isMobile ? "8px" : "12px",
           transition: "left 0.25s cubic-bezier(0.4,0,0.2,1)",
         }}
       >
@@ -273,14 +279,15 @@ export default function Header({
           </button>
         )}
 
-        {/* Page Icon + Title matching Figma spec */}
+        {/* Page Icon + Title — single row, no wrap */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "12px",
+            gap: isMobile ? "8px" : "12px",
             flex: 1,
             minWidth: 0,
+            overflow: "hidden",
           }}
         >
           {ActiveIcon && (
@@ -293,25 +300,53 @@ export default function Header({
                 flexShrink: 0,
               }}
             >
-              <ActiveIcon size={isMobile ? 22 : 26} strokeWidth={2} color="#0C2A42" />
+              <ActiveIcon size={isMobile ? 20 : 24} strokeWidth={2} color="#0C2A42" />
             </span>
           )}
-          <h1
+
+          {/* Business name + module title on ONE row */}
+          <div
             style={{
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontStyle: "normal",
-              fontWeight: 700,
-              fontSize: isMobile ? "16px" : "20px",
-              lineHeight: "25px",
-              color: "#0C2A42",
-              margin: 0,
-              whiteSpace: "nowrap",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              minWidth: 0,
               overflow: "hidden",
-              textOverflow: "ellipsis",
+              flexWrap: "nowrap",
             }}
           >
-            {activeTitle}
-          </h1>
+            {displayBusinessName && !isMobile && (
+              <span
+                style={{
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 700,
+                  fontSize: isMobile ? "16px" : "20px",
+                  lineHeight: "25px",
+                  color: "#0C2A42",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                {displayBusinessName}
+              </span>
+            )}
+            <h1
+              style={{
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                fontWeight: 700,
+                fontSize: isMobile ? "16px" : "20px",
+                lineHeight: "25px",
+                color: "#0C2A42",
+                margin: 0,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                minWidth: 0,
+              }}
+            >
+              {activeTitle}
+            </h1>
+          </div>
         </div>
 
         {/* Right-side actions */}

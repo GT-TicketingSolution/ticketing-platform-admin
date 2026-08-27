@@ -6,6 +6,7 @@ import {
   User,
   Mail,
   Phone,
+  Building2,
   Check,
   AlertCircle,
   Loader2,
@@ -156,7 +157,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
 
   const profile = profileData?.profile;
 
-  const [formData, setFormData] = useState({ name: "", email: "", phone: "" });
+  const [formData, setFormData] = useState({ name: "", email: "", phone: "", businessName: "" });
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   // Seed form whenever profile loads or modal re-opens
@@ -166,6 +167,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
         name: profile.name || "",
         email: profile.email || "",
         phone: profile.phone || "",
+        businessName: profile.businessName || "",
       });
       setErrors({});
     }
@@ -189,6 +191,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
     if (formData.phone && formData.phone.length > 0 && formData.phone.length < 10) {
       errs.phone = "Phone must be at least 10 digits";
     }
+    if (!formData.businessName.trim()) errs.businessName = "Business name is required";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -202,6 +205,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
         name: formData.name.trim(),
         email: formData.email.trim(),
         phone: formData.phone.trim() || undefined,
+        businessName: formData.businessName.trim(),
       });
       await refetch();
       setTimeout(onClose, 600);
@@ -441,6 +445,17 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                   })
                 }
                 error={errors.phone}
+                disabled={isSubmitting}
+              />
+
+              <InputField
+                id="ep-business-name"
+                label="Business Name"
+                icon={<Building2 size={16} />}
+                placeholder="e.g. Acme Corp"
+                value={formData.businessName}
+                onChange={(v) => setFormData({ ...formData, businessName: v })}
+                error={errors.businessName}
                 disabled={isSubmitting}
               />
 
