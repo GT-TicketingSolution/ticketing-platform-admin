@@ -93,6 +93,10 @@ export const users = pgTable(
       length: 150,
     }).notNull(),
 
+    businessName: varchar("business_name", {
+      length: 255,
+    }),
+
     email: varchar("email", {
       length: 255,
     })

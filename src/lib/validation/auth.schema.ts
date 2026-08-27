@@ -46,5 +46,13 @@ export const updateProfileSchema = z
       .max(20, "Phone number cannot exceed 20 characters")
       .optional()
       .or(z.literal("")),
+
+    businessName: z
+      .string()
+      .trim()
+      .min(1, "Business name is required")
+      .max(255, "Business name cannot exceed 255 characters")
+      .optional()
+      .or(z.literal("")),
   })
   .strict();
