@@ -12,6 +12,14 @@ export interface AttractionManagement {
     senior: number;
     foreigner: number;
   };
+  /** Per visitor-category seat counts (mirrors pricing keys) */
+  seating: {
+    adult: number;
+    child: number;
+    student: number;
+    senior: number;
+    foreigner: number;
+  };
   hasSeating: boolean;
   description: string | null;
   status: string;
@@ -28,9 +36,42 @@ export interface AttractionManagement {
     createdAt?: string;
     updatedAt?: string;
     totalSeats?: number;
+    /** How many times this layout is allocated (quantity semantics) */
+    quantity?: number;
   }>;
+  /**
+   * Expanded allocation list for UI chips.
+   * Same layout ID may appear multiple times (quantity).
+   */
   seatLayoutIds?: string[];
+  /**
+   * Optional bookable time slots (future FE).
+   * Current UI may ignore this key.
+   * Each slot has its own Active/Inactive via `isActive`.
+   */
+  timeSlots?: AttractionTimeSlot[];
 }
+
+/** Per-slot Active/Inactive — independent of attraction status */
+export interface AttractionTimeSlot {
+  id: string;
+  attractionId?: string;
+  /** 24h time, e.g. "10:00:00" */
+  slotTime: string;
+  isActive: boolean;
+}
+
+/**
+ * Optional create/update payload for future FE.
+ * - Omit `timeSlots` → no change to existing slots
+ * - Send `timeSlots` (incl. []) → sync slots for that attraction
+ * Item keys: `id?`, `slotTime`, `isActive`
+ */
+export type AttractionTimeSlotPayloadItem = {
+  id?: string;
+  slotTime: string;
+  isActive: boolean;
+};
 
 // ── Create payload ───────────────────────────────────────────────────────────
 export interface CreateAttractionPayload {
@@ -44,8 +85,15 @@ export interface CreateAttractionPayload {
   studentPrice?: number;
   seniorPrice?: number;
   foreignerPrice?: number;
+  adultSeats: number;
+  childSeats: number;
+  studentSeats: number;
+  seniorSeats: number;
+  foreignerSeats: number;
   hasSeating?: boolean;
   seatLayoutIds?: string[];
+  /** Optional — omit to leave slots untouched / empty on create */
+  timeSlots?: AttractionTimeSlotPayloadItem[];
 }
 
 // ── Update payload ───────────────────────────────────────────────────────────
@@ -60,8 +108,15 @@ export interface UpdateAttractionPayload {
   studentPrice?: number;
   seniorPrice?: number;
   foreignerPrice?: number;
+  adultSeats?: number;
+  childSeats?: number;
+  studentSeats?: number;
+  seniorSeats?: number;
+  foreignerSeats?: number;
   hasSeating?: boolean;
   seatLayoutIds?: string[];
+  /** Optional — omit to leave existing slots untouched */
+  timeSlots?: AttractionTimeSlotPayloadItem[];
 }
 
 // ── Bulk upload 
@@ -111,6 +166,7 @@ export const INITIAL_ATTRACTIONS: Attraction[] = [
     category: "Ride",
     timing: "09:00 AM - 06:00 PM",
     pricing: { adult: 100, child: 50, student: 60, senior: 75, foreigner: 500 },
+    seating: { adult: 0, child: 0, student: 0, senior: 0, foreigner: 0 },
     hasSeating: true,
     status: "Active",
     image: "/Assets/Attractions/Toy_Train.jpg",
@@ -123,6 +179,7 @@ export const INITIAL_ATTRACTIONS: Attraction[] = [
     category: "Ride",
     timing: "09:00 AM - 06:00 PM",
     pricing: { adult: 200, child: 100, student: 80, senior: 150, foreigner: 600 },
+    seating: { adult: 0, child: 0, student: 0, senior: 0, foreigner: 0 },
     hasSeating: true,
     status: "Active",
     image: "/Assets/Attractions/Rope.jpg",
@@ -135,6 +192,7 @@ export const INITIAL_ATTRACTIONS: Attraction[] = [
     category: "Museum",
     timing: "09:00 AM - 06:00 PM",
     pricing: { adult: 120, child: 60, student: 70, senior: 90, foreigner: 600 },
+    seating: { adult: 0, child: 0, student: 0, senior: 0, foreigner: 0 },
     hasSeating: false,
     status: "Active",
     image: "/Assets/Attractions/Wax.jpg",
@@ -147,6 +205,7 @@ export const INITIAL_ATTRACTIONS: Attraction[] = [
     category: "Park",
     timing: "09:00 AM - 06:00 PM",
     pricing: { adult: 100, child: 50, student: 60, senior: 75, foreigner: 500 },
+    seating: { adult: 0, child: 0, student: 0, senior: 0, foreigner: 0 },
     hasSeating: false,
     status: "Active",
     image: "/Assets/Attractions/Biological.jpg",
@@ -159,6 +218,7 @@ export const INITIAL_ATTRACTIONS: Attraction[] = [
     category: "Monument",
     timing: "09:00 AM - 06:00 PM",
     pricing: { adult: 80, child: 40, student: 50, senior: 60, foreigner: 400 },
+    seating: { adult: 0, child: 0, student: 0, senior: 0, foreigner: 0 },
     hasSeating: false,
     status: "Active",
     image: "/Assets/Attractions/Mahal.jpg",
@@ -171,6 +231,7 @@ export const INITIAL_ATTRACTIONS: Attraction[] = [
     category: "Fort",
     timing: "10:00 AM - 05:30 PM",
     pricing: { adult: 100, child: 50, student: 60, senior: 75, foreigner: 500 },
+    seating: { adult: 0, child: 0, student: 0, senior: 0, foreigner: 0 },
     hasSeating: false,
     status: "Active",
     image: "/Assets/Attractions/Mahal.jpg",

@@ -91,11 +91,9 @@ export async function PATCH(
         .returning();
 
       // Keep junction in sync for list + ticket-booking seats API
-      const seatLayouts = await replaceAttractionSeatLayouts(
-        tx,
-        id,
-        seatLayoutIds,
-      );
+      const seatLayouts = await replaceAttractionSeatLayouts(tx, id, [
+        { seatLayoutId, quantity: 1 },
+      ]);
 
       return {
         management: rows[0],

@@ -16,8 +16,13 @@ import {
 } from "@/lib/auth/authorization";
 import {
   getLegacySeatLayoutId,
+  expandSeatLayoutIds,
+  listTimeSlotsByAttractionIds,
+  parseCategorySeatCounts,
+  parseTimeSlotsPayload,
   replaceAttractionSeatLayouts,
   resolveSeatLayoutIds,
+  syncAttractionTimeSlots,
   validateSeatLayoutsForAdmin,
 } from "@/services/attraction-management.service";
 
@@ -62,6 +67,18 @@ export async function GET(request: Request) {
             senior: attractionManagement.seniorPrice,
 
             foreigner: attractionManagement.foreignerPrice,
+          },
+
+          seating: {
+            adult: attractionManagement.adultSeats,
+
+            child: attractionManagement.childSeats,
+
+            student: attractionManagement.studentSeats,
+
+            senior: attractionManagement.seniorSeats,
+
+            foreigner: attractionManagement.foreignerSeats,
           },
 
           hasSeating: attractionManagement.hasSeating,
@@ -117,6 +134,18 @@ export async function GET(request: Request) {
             foreigner: attractionManagement.foreignerPrice,
           },
 
+          seating: {
+            adult: attractionManagement.adultSeats,
+
+            child: attractionManagement.childSeats,
+
+            student: attractionManagement.studentSeats,
+
+            senior: attractionManagement.seniorSeats,
+
+            foreigner: attractionManagement.foreignerSeats,
+          },
+
           hasSeating: attractionManagement.hasSeating,
 
           description: attractionManagement.description,
@@ -147,6 +176,7 @@ export async function GET(request: Request) {
     // =====================================================
 
     const managementIds = managementData.map((item) => item.id);
+    const attractionIds = managementData.map((item) => item.attractionId);
 
     const seatLayoutMappings = await db
       .select({
@@ -154,6 +184,8 @@ export async function GET(request: Request) {
           attractionManagementSeatLayouts.attractionManagementId,
 
         seatLayoutId: attractionManagementSeatLayouts.seatLayoutId,
+
+        quantity: attractionManagementSeatLayouts.quantity,
 
         seatLayout: seatLayouts,
       })
@@ -188,16 +220,41 @@ export async function GET(request: Request) {
     }
 
     // =====================================================
+    // TIME SLOTS (per attraction; each has its own isActive)
+    // =====================================================
+
+    const timeSlotsByAttractionId = await listTimeSlotsByAttractionIds(
+      db,
+      attractionIds,
+    );
+
+    // =====================================================
     // FINAL RESPONSE
     // =====================================================
 
     const result = managementData.map((item) => {
       const mappings = seatLayoutsByManagementId.get(item.id) ?? [];
 
+      const seatLayoutIds = expandSeatLayoutIds(
+        mappings.map((mapping) => ({
+          seatLayoutId: mapping.seatLayoutId,
+          quantity: mapping.quantity ?? 1,
+        })),
+      );
+
       return {
         ...item,
 
-        seatLayouts: mappings.map((mapping) => mapping.seatLayout),
+        // Unique layouts with quantity (for APIs / future FE)
+        seatLayouts: mappings.map((mapping) => ({
+          ...mapping.seatLayout,
+          quantity: mapping.quantity ?? 1,
+        })),
+
+        // Expanded IDs for chip hydrate (same layout may appear N times)
+        seatLayoutIds,
+
+        timeSlots: timeSlotsByAttractionId.get(item.attractionId) ?? [],
       };
     });
 
@@ -277,24 +334,37 @@ export async function POST(request: Request) {
     }
 
     const resolvedSeatLayouts = resolveSeatLayoutIds({
-      hasSeating: Boolean(hasSeating),
+      hasSeating: true,
       seatLayoutIds,
     });
 
     if (!resolvedSeatLayouts.ok) {
       return failure(
-        resolvedSeatLayouts.message,
+        resolvedSeatLayouts.message ===
+          "At least one seat layout is required when seating is enabled"
+          ? "Seat allocation is required. Select at least one seat layout."
+          : resolvedSeatLayouts.message,
         400,
         "VALIDATION_ERROR",
       );
     }
 
-    const uniqueSeatLayoutIds = resolvedSeatLayouts.ids;
+    const seatCounts = parseCategorySeatCounts(body, { required: true });
+
+    if (!seatCounts.ok) {
+      return failure(seatCounts.message, 400, "VALIDATION_ERROR");
+    }
+
+    const timeSlotsParsed = parseTimeSlotsPayload(body);
+
+    if (!timeSlotsParsed.ok) {
+      return failure(timeSlotsParsed.message, 400, "VALIDATION_ERROR");
+    }
 
     const seatLayoutOwnership = await validateSeatLayoutsForAdmin(
       db,
       auth.user.id,
-      uniqueSeatLayoutIds,
+      resolvedSeatLayouts.uniqueIds,
     );
 
     if (!seatLayoutOwnership.ok) {
@@ -350,10 +420,14 @@ export async function POST(request: Request) {
 
           foreignerPrice,
 
-          hasSeating: Boolean(hasSeating),
+          ...seatCounts.seats,
+
+          hasSeating: true,
 
           // Legacy single-layout column (ticket-booking attractions still read this)
-          seatLayoutId: getLegacySeatLayoutId(uniqueSeatLayoutIds),
+          seatLayoutId: getLegacySeatLayoutId(
+            resolvedSeatLayouts.expandedIds,
+          ),
         })
         .returning();
 
@@ -364,13 +438,26 @@ export async function POST(request: Request) {
       const seatLayoutMappings = await replaceAttractionSeatLayouts(
         tx,
         management[0].id,
-        uniqueSeatLayoutIds,
+        resolvedSeatLayouts.assignments,
       );
+
+      let timeSlots:
+        | Awaited<ReturnType<typeof syncAttractionTimeSlots>>
+        | undefined;
+
+      if (timeSlotsParsed.sync) {
+        timeSlots = await syncAttractionTimeSlots(
+          tx,
+          attraction[0].id,
+          timeSlotsParsed.slots,
+        );
+      }
 
       return {
         attraction: attraction[0],
         management: management[0],
         seatLayouts: seatLayoutMappings,
+        timeSlots: timeSlots ?? [],
       };
     });
 
@@ -381,6 +468,14 @@ export async function POST(request: Request) {
     return success(result);
   } catch (error) {
     if (error instanceof Error) {
+      if (error.message.startsWith("TIME_SLOT_NOT_FOUND:")) {
+        return failure(
+          `Unknown timeSlots.id: ${error.message.replace("TIME_SLOT_NOT_FOUND:", "")}`,
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
       // Authentication
       if (error.message === "UNAUTHORIZED") {
         return failure("Authentication required.", 401, "UNAUTHORIZED");

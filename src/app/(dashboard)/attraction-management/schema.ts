@@ -23,6 +23,18 @@ export const visitorCategorySchema = z.object({
       message: "Future price must be a non-negative number",
     }),
   effectiveFrom: z.string().optional(),
+  numberOfSeats: z
+    .string()
+    .min(1, "No. of seats is required")
+    .refine(
+      (val) =>
+        !isNaN(Number(val)) &&
+        Number(val) >= 1 &&
+        Number.isInteger(Number(val)),
+      {
+        message: "No. of seats must be a whole number of at least 1",
+      },
+    ),
 });
 
 export type VisitorCategoryFormData = z.infer<typeof visitorCategorySchema>;
@@ -69,8 +81,18 @@ export type SeatingConfigFormData = z.infer<typeof seatingConfigSchema>;
 /**
  * Helper validation function for Visitor Category
  */
-export function validateVisitorCategory(data: { name: string; basePrice: string; image?: string | null; futurePrice?: string; effectiveFrom?: string }) {
-  const result = visitorCategorySchema.safeParse(data);
+export function validateVisitorCategory(data: {
+  name: string;
+  basePrice: string;
+  image?: string | null;
+  futurePrice?: string;
+  effectiveFrom?: string;
+  numberOfSeats?: string;
+}) {
+  const result = visitorCategorySchema.safeParse({
+    ...data,
+    numberOfSeats: data.numberOfSeats ?? "",
+  });
   if (!result.success) {
     const errors: Record<string, string> = {};
     for (const issue of result.error.issues) {

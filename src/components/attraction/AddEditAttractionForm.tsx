@@ -47,7 +47,7 @@ function AddVisitorCategoryModal({
 }) {
   const [catName, setCatName] = useState("");
   const [basePrice, setBasePrice] = useState("");
-  const [numberOfSeats, setNumberOfSeats] = useState("");
+  const [numberOfSeats, setNumberOfSeats] = useState("1");
   const [image, setImage] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [priceErrorMsg, setPriceErrorMsg] = useState("");
@@ -58,7 +58,7 @@ function AddVisitorCategoryModal({
     if (isOpen) {
       setCatName("");
       setBasePrice("");
-      setNumberOfSeats("");
+      setNumberOfSeats("1");
       setImage(null);
       setError("");
       setPriceErrorMsg("");
@@ -291,22 +291,23 @@ function AddVisitorCategoryModal({
 
 // ── Default categories using local /Assets/Visitors/ images 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
-  { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", basePrice: "100.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
-  { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", basePrice: "50.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
-  { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", basePrice: "60.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
-  { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.jpg", basePrice: "75.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
-  { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", basePrice: "500.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "" },
+  { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", basePrice: "100.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
+  { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", basePrice: "50.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
+  { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", basePrice: "60.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
+  { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.jpg", basePrice: "75.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
+  { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", basePrice: "500.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
 ];
 
 // ── Helper: derive category list from an existing Attraction's pricing ─────
 function pricingToCategories(attraction: Attraction): CategoryItem[] {
   const pricing = attraction?.pricing || ({} as any);
+  const seating = (attraction as any)?.seating || ({} as any);
   const base = [
-    { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", price: pricing.adult },
-    { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", price: pricing.child },
-    { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", price: pricing.student },
-    { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.jpg", price: pricing.senior },
-    { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", price: pricing.foreigner },
+    { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", price: pricing.adult, seats: seating.adult },
+    { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", price: pricing.child, seats: seating.child },
+    { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", price: pricing.student, seats: seating.student },
+    { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.jpg", price: pricing.senior, seats: seating.senior },
+    { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", price: pricing.foreigner, seats: seating.foreigner },
   ];
   return base.map((c) => ({
     id: c.id,
@@ -315,7 +316,8 @@ function pricingToCategories(attraction: Attraction): CategoryItem[] {
     basePrice: String(c.price != null ? c.price : "00.00"),
     futurePrice: "00.00",
     effectiveFrom: "",
-    numberOfSeats: "",
+    numberOfSeats:
+      c.seats != null && Number(c.seats) >= 1 ? String(Number(c.seats)) : "1",
   }));
 }
 
@@ -409,12 +411,22 @@ export default function AddEditAttractionForm({
       setCategory(attractionToEdit.category || "");
       setStatus(normalizeStatus(attractionToEdit.status));
       const assignedIds =
-        (attractionToEdit as any).assignedSeatIds ||
-        (attractionToEdit as any).seatLayoutIds ||
-        ((attractionToEdit as any).seatLayouts && Array.isArray((attractionToEdit as any).seatLayouts) && (attractionToEdit as any).seatLayouts.length > 0
-          ? (attractionToEdit as any).seatLayouts.map((l: any) => l.id)
+        (Array.isArray((attractionToEdit as any).seatLayoutIds) &&
+        (attractionToEdit as any).seatLayoutIds.length > 0
+          ? (attractionToEdit as any).seatLayoutIds
           : null) ||
-        ((attractionToEdit as any).seatLayoutId ? [(attractionToEdit as any).seatLayoutId] : []) ||
+        (attractionToEdit as any).assignedSeatIds ||
+        ((attractionToEdit as any).seatLayouts &&
+        Array.isArray((attractionToEdit as any).seatLayouts) &&
+        (attractionToEdit as any).seatLayouts.length > 0
+          ? (attractionToEdit as any).seatLayouts.flatMap((l: any) => {
+              const qty = Math.max(1, Number(l.quantity) || 1);
+              return Array.from({ length: qty }, () => l.id);
+            })
+          : null) ||
+        ((attractionToEdit as any).seatLayoutId
+          ? [(attractionToEdit as any).seatLayoutId]
+          : []) ||
         [];
       setSelectedSeatIds(assignedIds);
       setImagePreview(attractionToEdit.image || null);
@@ -490,7 +502,7 @@ export default function AddEditAttractionForm({
         basePrice: basePrice || "00.00",
         futurePrice: "00.00",
         effectiveFrom: "",
-        numberOfSeats: numberOfSeats || "",
+        numberOfSeats: numberOfSeats && Number(numberOfSeats) >= 1 ? numberOfSeats : "1",
       },
     ]);
   };
@@ -498,6 +510,12 @@ export default function AddEditAttractionForm({
   // Always append — same seat can be added multiple times
   const addSeatId = (id: string) => {
     setSelectedSeatIds((prev) => [...prev, id]);
+    setFormErrors((prev) => {
+      if (!prev.seatAllocation) return prev;
+      const next = { ...prev };
+      delete next.seatAllocation;
+      return next;
+    });
   };
 
   // Remove only one occurrence of the seat (by the first index found)
@@ -536,11 +554,29 @@ export default function AddEditAttractionForm({
       hasSeating: selectedSeatIds.length > 0,
     });
 
-    if (!validation.success) {
-      setFormErrors(validation.errors);
-      // Scroll to first error
-      const firstField = Object.keys(validation.errors)[0];
-      document.getElementById(`field-${firstField}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const seatErrors: Record<string, string> = {};
+
+    if (selectedSeatIds.length === 0) {
+      seatErrors.seatAllocation =
+        "Seat allocation is required. Select at least one seat layout.";
+    }
+
+    for (const cat of categories) {
+      const raw = (cat.numberOfSeats || "").trim();
+      if (!raw) {
+        seatErrors[`seats-${cat.id}`] = "No. of seats is required.";
+      } else if (isNaN(Number(raw)) || !Number.isInteger(Number(raw)) || Number(raw) < 1) {
+        seatErrors[`seats-${cat.id}`] = "Must be a whole number of at least 1.";
+      }
+    }
+
+    if (!validation.success || Object.keys(seatErrors).length > 0) {
+      setFormErrors({ ...validation.errors, ...seatErrors });
+      const firstField =
+        Object.keys(validation.errors)[0] || Object.keys(seatErrors)[0];
+      document
+        .getElementById(`field-${firstField}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
 
@@ -549,6 +585,12 @@ export default function AddEditAttractionForm({
     const getPriceByName = (n: string) => {
       const cat = categories.find((c) => c.name.toLowerCase() === n.toLowerCase());
       return cat ? parseFloat(cat.basePrice) || 0 : 0;
+    };
+
+    const getSeatsByName = (n: string) => {
+      const cat = categories.find((c) => c.name.toLowerCase() === n.toLowerCase());
+      const parsed = cat ? parseInt(cat.numberOfSeats, 10) : NaN;
+      return Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
     };
 
     const assignedSeatsList = availableSeats.filter((s) => selectedSeatIds.includes(s.id!));
@@ -570,7 +612,7 @@ export default function AddEditAttractionForm({
       name: name.trim(),
       description: description.trim(),
       status,
-      hasSeating: selectedSeatIds.length > 0,
+      hasSeating: true,
       category: category.trim(),
       timing: timingString,
       image: imagePreview || "",
@@ -581,6 +623,18 @@ export default function AddEditAttractionForm({
         senior: getPriceByName("senior"),
         foreigner: getPriceByName("foreigner"),
       },
+      seating: {
+        adult: getSeatsByName("adult"),
+        child: getSeatsByName("child"),
+        student: getSeatsByName("student"),
+        senior: getSeatsByName("senior"),
+        foreigner: getSeatsByName("foreigner"),
+      },
+      adultSeats: getSeatsByName("adult"),
+      childSeats: getSeatsByName("child"),
+      studentSeats: getSeatsByName("student"),
+      seniorSeats: getSeatsByName("senior"),
+      foreignerSeats: getSeatsByName("foreigner"),
       visitorCategories: categories,
       assignedSeatIds: selectedSeatIds,
       seatLayoutIds: selectedSeatIds,
@@ -1162,12 +1216,12 @@ export default function AddEditAttractionForm({
           </div>
 
           {/* Seat Allocation Section - Multi-select Dropdown */}
-          <div style={{ marginTop: "4px" }} ref={seatDropdownRef}>
+          <div style={{ marginTop: "4px" }} ref={seatDropdownRef} id="field-seatAllocation">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <Armchair size={18} color="#0C2A42" />
                 <h3 style={{ margin: 0, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "16px", color: "#0C2A42" }}>
-                  Seat Allocation
+                  Seat Allocation<span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>
                 </h3>
               </div>
               {selectedSeatIds.length > 0 && (
@@ -1188,7 +1242,7 @@ export default function AddEditAttractionForm({
             </div>
 
             <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "6px" }}>
-              Select Seat Layouts (Multiple)
+              Select Seat Layouts (Multiple)<span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>
             </label>
 
             {/* Custom Multi-Select Dropdown Container */}
@@ -1201,7 +1255,11 @@ export default function AddEditAttractionForm({
                   boxSizing: "border-box",
                   width: "100%",
                   background: "#FFFFFF",
-                  border: isSeatDropdownOpen ? "1.5px solid #0C2A42" : "1.5px solid rgba(179, 175, 175, 0.51)",
+                  border: formErrors.seatAllocation
+                    ? "1.5px solid #DC2626"
+                    : isSeatDropdownOpen
+                      ? "1.5px solid #0C2A42"
+                      : "1.5px solid rgba(179, 175, 175, 0.51)",
                   borderRadius: "8px",
                   padding: "6px 12px",
                   display: "flex",
@@ -1463,9 +1521,27 @@ export default function AddEditAttractionForm({
                     color: "#15803D",
                   }}
                 >
-                  {selectedSeatIds.length} seat layout{selectedSeatIds.length > 1 ? "s" : ""} allocated ({availableSeats.filter((s) => selectedSeatIds.includes(s.id!)).reduce((sum, s) => sum + s.rows * s.cols, 0)} total seats capacity)
+                  {selectedSeatIds.length} seat layout{selectedSeatIds.length > 1 ? "s" : ""} allocated ({selectedSeatIds.reduce((sum, id) => {
+                    const seat = availableSeats.find((s) => s.id === id);
+                    return sum + (seat ? seat.rows * seat.cols : 0);
+                  }, 0)} total seats capacity)
                 </span>
               </div>
+            )}
+
+            {formErrors.seatAllocation && (
+              <span
+                style={{
+                  display: "block",
+                  marginTop: "6px",
+                  fontSize: "11px",
+                  color: "#DC2626",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 500,
+                }}
+              >
+                {formErrors.seatAllocation}
+              </span>
             )}
           </div>
         </div>
@@ -1677,7 +1753,7 @@ export default function AddEditAttractionForm({
               </div>
 
               {/* Number of Seats (Required) */}
-              <div style={{ width: "100%", textAlign: "center" }}>
+              <div style={{ width: "100%", textAlign: "center" }} id={`field-seats-${cat.id}`}>
                 <span style={{ display: "block", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "10px", color: "#011B2F", marginBottom: "4px" }}>
                   No. of Seats<span style={{ color: "#DC2626" }}>*</span>
                 </span>
@@ -1686,15 +1762,29 @@ export default function AddEditAttractionForm({
                   inputMode="numeric"
                   placeholder="e.g. 10"
                   value={cat.numberOfSeats}
-                  onChange={(e) => handleCategoryChange(cat.id, "numberOfSeats", e.target.value.replace(/\D/g, ""))}
+                  onChange={(e) => {
+                    handleCategoryChange(cat.id, "numberOfSeats", e.target.value.replace(/\D/g, ""));
+                    setFormErrors((prev) => {
+                      if (!prev[`seats-${cat.id}`]) return prev;
+                      const next = { ...prev };
+                      delete next[`seats-${cat.id}`];
+                      return next;
+                    });
+                  }}
                   style={{
                     boxSizing: "border-box",
                     width: "144px",
                     height: "24px",
-                    background: cat.numberOfSeats ? "#F0FDF4" : "#FFF7ED",
-                    border: cat.numberOfSeats
-                      ? "1.5px solid #10B981"
-                      : "1.5px solid #FCA5A5",
+                    background: formErrors[`seats-${cat.id}`]
+                      ? "#FEF2F2"
+                      : cat.numberOfSeats
+                        ? "#F0FDF4"
+                        : "#FFF7ED",
+                    border: formErrors[`seats-${cat.id}`]
+                      ? "1.5px solid #DC2626"
+                      : cat.numberOfSeats
+                        ? "1.5px solid #10B981"
+                        : "1.5px solid #FCA5A5",
                     borderRadius: "4px",
                     textAlign: "center",
                     fontFamily: "'Plus Jakarta Sans', sans-serif",
@@ -1704,6 +1794,20 @@ export default function AddEditAttractionForm({
                     outline: "none",
                   }}
                 />
+                {formErrors[`seats-${cat.id}`] && (
+                  <span
+                    style={{
+                      display: "block",
+                      marginTop: "4px",
+                      fontSize: "9px",
+                      color: "#DC2626",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {formErrors[`seats-${cat.id}`]}
+                  </span>
+                )}
               </div>
 
               {/* Delete button */}

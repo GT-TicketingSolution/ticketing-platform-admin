@@ -42,6 +42,21 @@ export function useAttractionManagementList() {
           senior: Number(item?.pricing?.senior ?? 0),
           foreigner: Number(item?.pricing?.foreigner ?? 0),
         },
+        seating: {
+          adult: Number(item?.seating?.adult ?? item?.adultSeats ?? 0),
+          child: Number(item?.seating?.child ?? item?.childSeats ?? 0),
+          student: Number(item?.seating?.student ?? item?.studentSeats ?? 0),
+          senior: Number(item?.seating?.senior ?? item?.seniorSeats ?? 0),
+          foreigner: Number(item?.seating?.foreigner ?? item?.foreignerSeats ?? 0),
+        },
+        seatLayoutIds: Array.isArray(item?.seatLayoutIds)
+          ? item.seatLayoutIds
+          : Array.isArray(item?.seatLayouts)
+            ? item.seatLayouts.flatMap((l: any) => {
+                const qty = Math.max(1, Number(l?.quantity) || 1);
+                return Array.from({ length: qty }, () => l.id);
+              })
+            : [],
         seatLayoutId: item.seatLayoutId ?? (item.seatLayouts?.[0]?.id ?? null),
       })) as AttractionManagement[];
     },
