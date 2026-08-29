@@ -10,6 +10,8 @@ import {
   staffAttractionAssignments,
   managerAttractionPermissions,
   attractions,
+  staffSystemModulePermissions,
+  systemModules,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -60,6 +62,59 @@ function canViewStaff(role: string) {
  */
 function canCreateStaff(role: string) {
   return role === "ADMIN" || role === "MANAGER";
+}
+
+/**
+ * Grant staff default module permissions.
+ *
+ * STAFF role should have access to:
+ * - TICKET_BOOKING: Create and manage bookings
+ * - BOOKINGS_VIEW: View booking information
+ * - CUSTOMER_VIEW: View customer details
+ * - SCANNER_USE: Use QR scanner for admission
+ */
+async function grantStaffDefaultModulePermissions(staffId: string) {
+  const STAFF_ALLOWED_MODULES = [
+    "TICKET_BOOKING",
+    "BOOKINGS_VIEW",
+    "CUSTOMER_VIEW",
+    "SCANNER_USE",
+  ];
+
+  try {
+    const staffModules = await db
+      .select({
+        id: systemModules.id,
+      })
+      .from(systemModules)
+      .where(
+        and(
+          inArray(systemModules.key, STAFF_ALLOWED_MODULES),
+          eq(systemModules.isActive, "ACTIVE"),
+        ),
+      );
+
+    if (staffModules.length === 0) {
+      console.warn(
+        `No active modules found for STAFF role. Expected modules: ${STAFF_ALLOWED_MODULES.join(", ")}`,
+      );
+      return;
+    }
+
+    await db.insert(staffSystemModulePermissions).values(
+      staffModules.map((module) => ({
+        staffId,
+        moduleId: module.id,
+      })),
+    );
+
+    console.log(
+      `Granted ${staffModules.length} module permissions to staff ${staffId}`,
+    );
+  } catch (error) {
+    console.error("Error granting staff module permissions:", error);
+    throw new Error("STAFF_PERMISSIONS_GRANT_FAILED");
+  }
 }
 
 /* =========================================================
@@ -586,6 +641,12 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------------------------------
+    // Grant staff default module permissions
+    // -----------------------------------------------------
+
+    await grantStaffDefaultModulePermissions(staff.id);
+
+    // -----------------------------------------------------
     // Response
     // -----------------------------------------------------
 
@@ -612,10 +673,18 @@ export async function POST(request: Request) {
           "FORBIDDEN",
         );
       }
+
+      if (error.message === "STAFF_PERMISSIONS_GRANT_FAILED") {
+        return failure(
+          "Failed to grant staff permissions.",
+          500,
+          "PERMISSION_GRANT_FAILED",
+        );
+      }
     }
 
-    console.error("Get staff error:", error);
+    console.error("Create staff error:", error);
 
-    return failure("Unable to fetch staff.", 500, "INTERNAL_SERVER_ERROR");
+    return failure("Unable to create staff.", 500, "INTERNAL_SERVER_ERROR");
   }
 }
