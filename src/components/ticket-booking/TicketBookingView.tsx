@@ -981,10 +981,16 @@ export default function TicketBookingView() {
             });
             return next;
           });
+          // Clear cart & categories but keep the active attraction so staff can
+          // immediately book the next ticket for the same attraction
           setCart([]);
           setAttractionCategories(new Map());
-          setSelectedAttractionIds(new Set());
-          setMode("grid");
+          setSelectedAttractionIds(
+            activeAttractionId ? new Set([activeAttractionId]) : new Set()
+          );
+          // Go back to booking view (not grid) so staff can quickly select
+          // visitor categories for the next booking without re-picking the attraction
+          setMode("booking");
         }}
       />
     );
