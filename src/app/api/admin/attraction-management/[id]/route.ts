@@ -11,8 +11,12 @@ import {
 } from "@/lib/auth/authorization";
 import {
   getLegacySeatLayoutId,
+  listTimeSlotsByAttractionIds,
+  parseCategorySeatCounts,
+  parseTimeSlotsPayload,
   replaceAttractionSeatLayouts,
   resolveSeatLayoutIds,
+  syncAttractionTimeSlots,
   validateSeatLayoutsForAdmin,
 } from "@/services/attraction-management.service";
 
@@ -69,37 +73,43 @@ export async function PATCH(
     // - Otherwise leave existing seat mappings untouched
     // =====================================
 
+    // Seat layouts: required whenever the client sends allocation fields (create/edit form always does)
     const shouldSyncSeatLayouts =
-      body.seatLayoutIds !== undefined || body.hasSeating === false;
+      body.seatLayoutIds !== undefined || body.hasSeating !== undefined;
 
-    let uniqueSeatLayoutIds: string[] | null = null;
+    let seatLayoutAssignments: {
+      seatLayoutId: string;
+      quantity: number;
+    }[] | null = null;
+    let expandedSeatLayoutIds: string[] | null = null;
 
     if (shouldSyncSeatLayouts) {
-      const hasSeating = Boolean(
-        body.hasSeating ??
-          (Array.isArray(body.seatLayoutIds) &&
-            body.seatLayoutIds.length > 0),
-      );
+      // Seat allocation is mandatory — hasSeating false is rejected via empty layouts
+      const hasSeating = body.hasSeating === false ? false : true;
 
       const resolvedSeatLayouts = resolveSeatLayoutIds({
         hasSeating,
-        seatLayoutIds: body.seatLayoutIds,
+        seatLayoutIds: body.seatLayoutIds ?? [],
       });
 
       if (!resolvedSeatLayouts.ok) {
         return failure(
-          resolvedSeatLayouts.message,
+          resolvedSeatLayouts.message ===
+            "At least one seat layout is required when seating is enabled"
+            ? "Seat allocation is required. Select at least one seat layout."
+            : resolvedSeatLayouts.message,
           400,
           "VALIDATION_ERROR",
         );
       }
 
-      uniqueSeatLayoutIds = resolvedSeatLayouts.ids;
+      seatLayoutAssignments = resolvedSeatLayouts.assignments;
+      expandedSeatLayoutIds = resolvedSeatLayouts.expandedIds;
 
       const seatLayoutOwnership = await validateSeatLayoutsForAdmin(
         db,
         existing.adminId,
-        uniqueSeatLayoutIds,
+        resolvedSeatLayouts.uniqueIds,
       );
 
       if (!seatLayoutOwnership.ok) {
@@ -109,6 +119,36 @@ export async function PATCH(
           "VALIDATION_ERROR",
         );
       }
+    }
+
+    // Seat counts: required whenever any seat field is present (frontend always sends all)
+    const seatFieldProvided = [
+      "adultSeats",
+      "childSeats",
+      "studentSeats",
+      "seniorSeats",
+      "foreignerSeats",
+    ].some((key) => body[key] !== undefined);
+
+    let parsedSeatCounts: ReturnType<typeof parseCategorySeatCounts> | null =
+      null;
+
+    if (seatFieldProvided) {
+      parsedSeatCounts = parseCategorySeatCounts(body, { required: true });
+
+      if (!parsedSeatCounts.ok) {
+        return failure(
+          parsedSeatCounts.message,
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+    }
+
+    const timeSlotsParsed = parseTimeSlotsPayload(body);
+
+    if (!timeSlotsParsed.ok) {
+      return failure(timeSlotsParsed.message, 400, "VALIDATION_ERROR");
     }
 
     const result = await db.transaction(async (tx) => {
@@ -160,13 +200,15 @@ export async function PATCH(
         managementUpdate.hasSeating = Boolean(body.hasSeating);
       }
 
-      if (uniqueSeatLayoutIds !== null) {
-        managementUpdate.seatLayoutId =
-          getLegacySeatLayoutId(uniqueSeatLayoutIds);
-        // Seating off + empty IDs already resolved; keep hasSeating consistent
-        if (body.hasSeating === undefined) {
-          managementUpdate.hasSeating = uniqueSeatLayoutIds.length > 0;
-        }
+      if (parsedSeatCounts?.ok) {
+        Object.assign(managementUpdate, parsedSeatCounts.seats);
+      }
+
+      if (seatLayoutAssignments !== null && expandedSeatLayoutIds !== null) {
+        managementUpdate.seatLayoutId = getLegacySeatLayoutId(
+          expandedSeatLayoutIds,
+        );
+        managementUpdate.hasSeating = expandedSeatLayoutIds.length > 0;
       }
 
       const updated = await tx
@@ -179,17 +221,35 @@ export async function PATCH(
         | Awaited<ReturnType<typeof replaceAttractionSeatLayouts>>
         | undefined;
 
-      if (uniqueSeatLayoutIds !== null) {
+      if (seatLayoutAssignments !== null) {
         seatLayoutMappings = await replaceAttractionSeatLayouts(
           tx,
           id,
-          uniqueSeatLayoutIds,
+          seatLayoutAssignments,
         );
+      }
+
+      let timeSlots:
+        | Awaited<ReturnType<typeof syncAttractionTimeSlots>>
+        | undefined;
+
+      if (timeSlotsParsed.sync) {
+        timeSlots = await syncAttractionTimeSlots(
+          tx,
+          existing.attractionId,
+          timeSlotsParsed.slots,
+        );
+      } else {
+        const map = await listTimeSlotsByAttractionIds(tx, [
+          existing.attractionId,
+        ]);
+        timeSlots = map.get(existing.attractionId) ?? [];
       }
 
       return {
         management: updated[0],
         seatLayouts: seatLayoutMappings,
+        timeSlots,
       };
     });
 
@@ -199,9 +259,18 @@ export async function PATCH(
       ...(result.seatLayouts !== undefined
         ? { seatLayouts: result.seatLayouts }
         : {}),
+      timeSlots: result.timeSlots,
     });
   } catch (error) {
     if (error instanceof Error) {
+      if (error.message.startsWith("TIME_SLOT_NOT_FOUND:")) {
+        return failure(
+          `Unknown timeSlots.id: ${error.message.replace("TIME_SLOT_NOT_FOUND:", "")}`,
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
       // Authentication
       if (error.message === "UNAUTHORIZED") {
         return failure("Authentication required.", 401, "UNAUTHORIZED");

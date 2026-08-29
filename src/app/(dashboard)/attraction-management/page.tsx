@@ -245,6 +245,12 @@ export default function AttractionManagementPage() {
       const selectedSeats: string[] = data.assignedSeatIds ?? data.seatLayoutIds ?? [];
       const hasSeating = Boolean(data.hasSeating ?? (selectedSeats.length > 0));
 
+      const adultSeats = Number(data.seating?.adult ?? data.adultSeats ?? 0);
+      const childSeats = Number(data.seating?.child ?? data.childSeats ?? 0);
+      const studentSeats = Number(data.seating?.student ?? data.studentSeats ?? 0);
+      const seniorSeats = Number(data.seating?.senior ?? data.seniorSeats ?? 0);
+      const foreignerSeats = Number(data.seating?.foreigner ?? data.foreignerSeats ?? 0);
+
       if (viewMode === "edit" && attractionToEdit) {
         const payload: UpdateAttractionPayload = {
           name: data.name,
@@ -257,6 +263,11 @@ export default function AttractionManagementPage() {
           studentPrice: data.pricing?.student ?? data.studentPrice ?? 0,
           seniorPrice: data.pricing?.senior ?? data.seniorPrice ?? 0,
           foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice ?? 0,
+          adultSeats,
+          childSeats,
+          studentSeats,
+          seniorSeats,
+          foreignerSeats,
           hasSeating,
           seatLayoutIds: selectedSeats,
         };
@@ -273,6 +284,11 @@ export default function AttractionManagementPage() {
           studentPrice: data.pricing?.student ?? data.studentPrice ?? 0,
           seniorPrice: data.pricing?.senior ?? data.seniorPrice ?? 0,
           foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice ?? 0,
+          adultSeats,
+          childSeats,
+          studentSeats,
+          seniorSeats,
+          foreignerSeats,
           hasSeating,
           seatLayoutIds: selectedSeats,
         };
