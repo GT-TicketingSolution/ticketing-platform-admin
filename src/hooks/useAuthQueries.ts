@@ -13,6 +13,7 @@ export interface UserProfile {
   phone: string | null;
   role: string;
   status: string;
+  businessName: string | null;
 }
 
 export interface ProfileResponse {
@@ -23,6 +24,7 @@ export interface UpdateProfileRequest {
   name: string;
   email: string;
   phone?: string;
+  businessName: string;
 }
 
 

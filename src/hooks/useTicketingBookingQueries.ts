@@ -132,21 +132,28 @@ export interface TicketingPaymentResponse {
 }
 
 export interface TicketingConfirmResponse {
-  message: string;
+  message?: string;
   booking: {
     id: string;
     bookingNumber: string;
     attractionId?: string;
     status: string;
-    customerName?: string;
-    mobileNumber?: string;
+    customerName?: string | null;
+    mobileNumber?: string | null;
     visitAt?: string;
-    totalAmount?: string;
-    amountPaid?: string;
+    totalAmount?: string | number;
+    amountPaid?: string | number;
     paymentMode?: string;
+    paymentExpiresAt?: string;
     createdAt?: string;
     updatedAt?: string;
+    [key: string]: unknown;
   };
+  qrCodes?: Array<{
+    attractionId?: string;
+    qrCode: string;
+    [key: string]: unknown;
+  }>;
 }
 
 export interface TicketingCancelResponse {
@@ -414,9 +421,8 @@ export function useTicketingPayment() {
 export function useConfirmTicketingBooking() {
   return useMutation({
     mutationFn: (bookingId: string) =>
-      postData<TicketingConfirmResponse, {}>(
-        AppUrl.ticketingBooking.confirm(bookingId),
-        {}
+      postData<TicketingConfirmResponse>(
+        AppUrl.ticketingBooking.confirm(bookingId)
       ),
     onSuccess: () => {
       showSuccessNotify("Booking confirmed successfully.");
