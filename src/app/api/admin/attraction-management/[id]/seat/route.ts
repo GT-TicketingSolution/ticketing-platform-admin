@@ -9,6 +9,11 @@ import {
   requireModuleAccess,
   getAccessibleAttractionIds,
 } from "@/lib/auth/authorization";
+import {
+  getLegacySeatLayoutId,
+  replaceAttractionSeatLayouts,
+  validateSeatLayoutsForAdmin,
+} from "@/services/attraction-management.service";
 
 export async function PATCH(
   request: Request,
@@ -27,7 +32,7 @@ export async function PATCH(
 
     const { seatLayoutId } = body;
 
-    if (!seatLayoutId) {
+    if (!seatLayoutId || typeof seatLayoutId !== "string") {
       return failure("Seat layout id required", 400, "VALIDATION_ERROR");
     }
 
@@ -35,49 +40,73 @@ export async function PATCH(
     // ACCESS CHECK
     // ============================
 
-    let allowed = false;
+    let existing;
 
     if (auth.user.role === "ADMIN") {
-      const record = await db.query.attractionManagement.findFirst({
+      existing = await db.query.attractionManagement.findFirst({
         where: and(
           eq(attractionManagement.id, id),
 
           eq(attractionManagement.adminId, auth.user.id),
         ),
       });
-
-      allowed = !!record;
     } else {
       const ids = await getAccessibleAttractionIds(auth);
 
-      const record = await db.query.attractionManagement.findFirst({
+      existing = await db.query.attractionManagement.findFirst({
         where: and(
           eq(attractionManagement.id, id),
 
           inArray(attractionManagement.attractionId, ids),
         ),
       });
-
-      allowed = !!record;
     }
 
-    if (!allowed) {
+    if (!existing) {
       return failure("Access denied", 403, "FORBIDDEN");
     }
 
-    const updated = await db
-      .update(attractionManagement)
-      .set({
-        seatLayoutId,
+    const ownership = await validateSeatLayoutsForAdmin(
+      db,
+      existing.adminId,
+      [seatLayoutId],
+    );
 
-        hasSeating: true,
+    if (!ownership.ok) {
+      return failure(ownership.message, 400, "VALIDATION_ERROR");
+    }
 
-        updatedAt: new Date(),
-      })
-      .where(eq(attractionManagement.id, id))
-      .returning();
+    const seatLayoutIds = [seatLayoutId];
 
-    return success(updated[0]);
+    const updated = await db.transaction(async (tx) => {
+      // Keep legacy column + hasSeating for ticket-booking attractions API
+      const rows = await tx
+        .update(attractionManagement)
+        .set({
+          seatLayoutId: getLegacySeatLayoutId(seatLayoutIds),
+          hasSeating: true,
+          updatedAt: new Date(),
+        })
+        .where(eq(attractionManagement.id, id))
+        .returning();
+
+      // Keep junction in sync for list + ticket-booking seats API
+      const seatLayouts = await replaceAttractionSeatLayouts(
+        tx,
+        id,
+        seatLayoutIds,
+      );
+
+      return {
+        management: rows[0],
+        seatLayouts,
+      };
+    });
+
+    return success({
+      ...updated.management,
+      seatLayouts: updated.seatLayouts,
+    });
   } catch (error) {
     // =====================================
     // AUTHENTICATION ERROR
