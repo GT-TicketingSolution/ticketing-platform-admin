@@ -9,6 +9,12 @@ import {
   requireModuleAccess,
   getAccessibleAttractionIds,
 } from "@/lib/auth/authorization";
+import {
+  getLegacySeatLayoutId,
+  replaceAttractionSeatLayouts,
+  resolveSeatLayoutIds,
+  validateSeatLayoutsForAdmin,
+} from "@/services/attraction-management.service";
 
 // =====================================================
 // UPDATE ATTRACTION
@@ -58,51 +64,142 @@ export async function PATCH(
     }
 
     // =====================================
-    // UPDATE MAIN ATTRACTION
+    // Seat layouts (optional on PATCH)
+    // - If seatLayoutIds provided OR seating disabled → sync junction + legacy
+    // - Otherwise leave existing seat mappings untouched
     // =====================================
 
-    await db
-      .update(attractions)
-      .set({
-        name: body.name,
+    const shouldSyncSeatLayouts =
+      body.seatLayoutIds !== undefined || body.hasSeating === false;
 
-        type: body.category,
+    let uniqueSeatLayoutIds: string[] | null = null;
 
-        updatedAt: new Date(),
-      })
-      .where(eq(attractions.id, existing.attractionId));
+    if (shouldSyncSeatLayouts) {
+      const hasSeating = Boolean(
+        body.hasSeating ??
+          (Array.isArray(body.seatLayoutIds) &&
+            body.seatLayoutIds.length > 0),
+      );
 
-    // =====================================
-    // UPDATE MANAGEMENT DATA
-    // =====================================
+      const resolvedSeatLayouts = resolveSeatLayoutIds({
+        hasSeating,
+        seatLayoutIds: body.seatLayoutIds,
+      });
 
-    const updated = await db
-      .update(attractionManagement)
-      .set({
-        image: body.image,
+      if (!resolvedSeatLayouts.ok) {
+        return failure(
+          resolvedSeatLayouts.message,
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
 
-        description: body.description,
+      uniqueSeatLayoutIds = resolvedSeatLayouts.ids;
 
-        timing: body.timing,
+      const seatLayoutOwnership = await validateSeatLayoutsForAdmin(
+        db,
+        existing.adminId,
+        uniqueSeatLayoutIds,
+      );
 
-        adultPrice: body.adultPrice,
+      if (!seatLayoutOwnership.ok) {
+        return failure(
+          seatLayoutOwnership.message,
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+    }
 
-        childPrice: body.childPrice,
+    const result = await db.transaction(async (tx) => {
+      // =====================================
+      // UPDATE MAIN ATTRACTION
+      // =====================================
 
-        studentPrice: body.studentPrice,
+      if (body.name !== undefined || body.category !== undefined) {
+        await tx
+          .update(attractions)
+          .set({
+            ...(body.name !== undefined ? { name: body.name } : {}),
+            ...(body.category !== undefined ? { type: body.category } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(attractions.id, existing.attractionId));
+      }
 
-        seniorPrice: body.seniorPrice,
+      // =====================================
+      // UPDATE MANAGEMENT DATA
+      // =====================================
 
-        foreignerPrice: body.foreignerPrice,
+      const managementUpdate: Partial<typeof attractionManagement.$inferInsert> =
+        {
+          updatedAt: new Date(),
+        };
 
-        hasSeating: body.hasSeating,
+      if (body.image !== undefined) managementUpdate.image = body.image;
+      if (body.description !== undefined) {
+        managementUpdate.description = body.description;
+      }
+      if (body.timing !== undefined) managementUpdate.timing = body.timing;
+      if (body.adultPrice !== undefined) {
+        managementUpdate.adultPrice = body.adultPrice;
+      }
+      if (body.childPrice !== undefined) {
+        managementUpdate.childPrice = body.childPrice;
+      }
+      if (body.studentPrice !== undefined) {
+        managementUpdate.studentPrice = body.studentPrice;
+      }
+      if (body.seniorPrice !== undefined) {
+        managementUpdate.seniorPrice = body.seniorPrice;
+      }
+      if (body.foreignerPrice !== undefined) {
+        managementUpdate.foreignerPrice = body.foreignerPrice;
+      }
+      if (body.hasSeating !== undefined) {
+        managementUpdate.hasSeating = Boolean(body.hasSeating);
+      }
 
-        updatedAt: new Date(),
-      })
-      .where(eq(attractionManagement.id, id))
-      .returning();
+      if (uniqueSeatLayoutIds !== null) {
+        managementUpdate.seatLayoutId =
+          getLegacySeatLayoutId(uniqueSeatLayoutIds);
+        // Seating off + empty IDs already resolved; keep hasSeating consistent
+        if (body.hasSeating === undefined) {
+          managementUpdate.hasSeating = uniqueSeatLayoutIds.length > 0;
+        }
+      }
 
-    return success(updated[0]);
+      const updated = await tx
+        .update(attractionManagement)
+        .set(managementUpdate)
+        .where(eq(attractionManagement.id, id))
+        .returning();
+
+      let seatLayoutMappings:
+        | Awaited<ReturnType<typeof replaceAttractionSeatLayouts>>
+        | undefined;
+
+      if (uniqueSeatLayoutIds !== null) {
+        seatLayoutMappings = await replaceAttractionSeatLayouts(
+          tx,
+          id,
+          uniqueSeatLayoutIds,
+        );
+      }
+
+      return {
+        management: updated[0],
+        seatLayouts: seatLayoutMappings,
+      };
+    });
+
+    // Preserve prior response shape (management row) and add seatLayouts when synced
+    return success({
+      ...result.management,
+      ...(result.seatLayouts !== undefined
+        ? { seatLayouts: result.seatLayouts }
+        : {}),
+    });
   } catch (error) {
     if (error instanceof Error) {
       // Authentication
@@ -197,6 +294,7 @@ export async function DELETE(
 
     await db.transaction(async (tx) => {
       // Delete management details first
+      // (junction rows cascade via FK on attraction_management_id)
       await tx
         .delete(attractionManagement)
         .where(eq(attractionManagement.id, id));

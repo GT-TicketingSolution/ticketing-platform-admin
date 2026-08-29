@@ -14,6 +14,12 @@ import {
   requireModuleAccess,
   getAccessibleAttractionIds,
 } from "@/lib/auth/authorization";
+import {
+  getLegacySeatLayoutId,
+  replaceAttractionSeatLayouts,
+  resolveSeatLayoutIds,
+  validateSeatLayoutsForAdmin,
+} from "@/services/attraction-management.service";
 
 // =====================================================
 // GET ALL ATTRACTIONS
@@ -259,8 +265,7 @@ export async function POST(request: Request) {
 
       hasSeating = false,
 
-      // NEW
-      seatLayoutIds = [],
+      seatLayoutIds,
     } = body;
 
     // ======================================
@@ -271,55 +276,33 @@ export async function POST(request: Request) {
       return failure("Name and category are required", 400, "VALIDATION_ERROR");
     }
 
-    if (!Array.isArray(seatLayoutIds)) {
-      return failure("seatLayoutIds must be an array", 400, "VALIDATION_ERROR");
-    }
+    const resolvedSeatLayouts = resolveSeatLayoutIds({
+      hasSeating: Boolean(hasSeating),
+      seatLayoutIds,
+    });
 
-    // If seating is enabled, at least one seat layout is required
-    if (hasSeating && seatLayoutIds.length === 0) {
+    if (!resolvedSeatLayouts.ok) {
       return failure(
-        "At least one seat layout is required when seating is enabled",
+        resolvedSeatLayouts.message,
         400,
         "VALIDATION_ERROR",
       );
     }
 
-    // If seating is disabled, ignore seat layouts
-    const finalSeatLayoutIds = hasSeating ? seatLayoutIds : [];
+    const uniqueSeatLayoutIds = resolvedSeatLayouts.ids;
 
-    // ======================================
-    // REMOVE DUPLICATE SEAT LAYOUT IDS
-    // ======================================
+    const seatLayoutOwnership = await validateSeatLayoutsForAdmin(
+      db,
+      auth.user.id,
+      uniqueSeatLayoutIds,
+    );
 
-    const uniqueSeatLayoutIds = [...new Set(finalSeatLayoutIds)];
-
-    // ======================================
-    // VERIFY SEAT LAYOUTS EXIST
-    // ======================================
-
-    if (uniqueSeatLayoutIds.length > 0) {
-      const existingSeatLayouts = await db
-        .select({
-          id: seatLayouts.id,
-        })
-        .from(seatLayouts)
-        .where(inArray(seatLayouts.id, uniqueSeatLayoutIds));
-
-      const existingIds = new Set(
-        existingSeatLayouts.map((layout) => layout.id),
+    if (!seatLayoutOwnership.ok) {
+      return failure(
+        seatLayoutOwnership.message,
+        400,
+        "VALIDATION_ERROR",
       );
-
-      const invalidSeatLayoutIds = uniqueSeatLayoutIds.filter(
-        (id) => !existingIds.has(id),
-      );
-
-      if (invalidSeatLayoutIds.length > 0) {
-        return failure(
-          `Invalid seat layout IDs: ${invalidSeatLayoutIds.join(", ")}`,
-          400,
-          "VALIDATION_ERROR",
-        );
-      }
     }
 
     // ======================================
@@ -367,33 +350,22 @@ export async function POST(request: Request) {
 
           foreignerPrice,
 
-          hasSeating,
+          hasSeating: Boolean(hasSeating),
 
-          // Keep old column for now.
-          // If there is exactly one layout, store it here.
-          seatLayoutId:
-            uniqueSeatLayoutIds.length === 1 ? uniqueSeatLayoutIds[0] : null,
+          // Legacy single-layout column (ticket-booking attractions still read this)
+          seatLayoutId: getLegacySeatLayoutId(uniqueSeatLayoutIds),
         })
         .returning();
 
       // ======================================
-      // CREATE SEAT LAYOUT MAPPINGS
+      // CREATE SEAT LAYOUT MAPPINGS (junction)
       // ======================================
 
-      let seatLayoutMappings: (typeof attractionManagementSeatLayouts.$inferSelect)[] =
-        [];
-
-      if (uniqueSeatLayoutIds.length > 0) {
-        seatLayoutMappings = await tx
-          .insert(attractionManagementSeatLayouts)
-          .values(
-            uniqueSeatLayoutIds.map((seatLayoutId) => ({
-              attractionManagementId: management[0].id,
-              seatLayoutId,
-            })),
-          )
-          .returning();
-      }
+      const seatLayoutMappings = await replaceAttractionSeatLayouts(
+        tx,
+        management[0].id,
+        uniqueSeatLayoutIds,
+      );
 
       return {
         attraction: attraction[0],
