@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
@@ -12,8 +12,9 @@ import {
 } from "@/lib/managerAuth";
 import { useProfileQuery, useLogoutMutation } from "@/hooks/useAuthQueries";
 import { SIDEBAR_COLLAPSE_EVENT } from "@/components/ticket-booking/TicketBookingView";
-import { confirmLogout, showSuccessNotify } from "@/lib/notify";
+import { confirmLogout, showSuccessNotify, showAccessDeniedModal } from "@/lib/notify";
 import { USER_ROLE_EVENT } from "@/hooks/useUserRole";
+import { useSystemModules, SystemModule } from "@/hooks/useSystemModuleQueries";
 
 /** Maps route pathname → browser tab title */
 const PATH_TITLE_MAP: Record<string, string> = {
@@ -82,11 +83,135 @@ function resolveModuleTitle(pathname: string): string {
   return "Dashboard";
 }
 
+/** Route definitions: maps route path prefixes to their module label */
+const ROUTE_DEFINITIONS: { prefix: string; label: string }[] = [
+  { prefix: "/manager-management", label: "Manager Management" },
+  { prefix: "/staff-management", label: "Staff Management" },
+  { prefix: "/seat-management", label: "Seat Management" },
+  { prefix: "/attraction-management", label: "Attraction Management" },
+  { prefix: "/ticket-booking", label: "Ticket Booking" },
+  { prefix: "/bookings", label: "Bookings" },
+  { prefix: "/transactions", label: "Transactions" },
+  { prefix: "/invoices", label: "Invoices" },
+  { prefix: "/inventory", label: "Inventory & Capacity" },
+  { prefix: "/customer-management", label: "Customer Management" },
+  { prefix: "/complimentary-passes", label: "Complimentary Passes" },
+  { prefix: "/cctv-monitoring", label: "CCTV Monitoring" },
+  { prefix: "/reports", label: "Reports & Analytics" },
+  { prefix: "/scanner", label: "Ticket Scanner" },
+  { prefix: "/dashboard", label: "Dashboard" },
+];
+
+/**
+ * Inline route guard helper.
+ * Returns whether the given pathname is accessible based on the
+ * active system modules returned from the backend.
+ */
+function checkPathAllowed(
+  pathname: string,
+  systemModules?: SystemModule[] | null
+): { allowed: boolean; moduleLabel: string } {
+  const clean = (pathname || "").toLowerCase().replace(/\/$/, "");
+
+  // Find which module this path requires
+  let moduleLabel = "Dashboard";
+  let routeHref = "/dashboard";
+  for (const def of ROUTE_DEFINITIONS) {
+    if (clean === def.prefix || clean.startsWith(`${def.prefix}/`)) {
+      moduleLabel = def.label;
+      routeHref = def.prefix;
+      break;
+    }
+  }
+
+  // If no modules loaded yet, allow (loading state)
+  if (!systemModules || !Array.isArray(systemModules)) {
+    return { allowed: true, moduleLabel };
+  }
+
+  // Empty list = no access to anything
+  if (systemModules.length === 0) {
+    return { allowed: false, moduleLabel };
+  }
+
+  // Build allowed hrefs from active modules
+  const allowedHrefs = new Set<string>();
+  for (const mod of systemModules) {
+    const isActive =
+      String(mod.isActive).toUpperCase() === "ACTIVE" ||
+      (mod.isActive as unknown) === true;
+    if (!isActive) continue;
+
+    const rawKey = (mod.key || "").toLowerCase();
+    const rawName = (mod.name || "").toLowerCase();
+
+    for (const def of ROUTE_DEFINITIONS) {
+      const defSlug = def.prefix.replace("/", ""); // e.g. "dashboard"
+      const defClean = defSlug.replace(/-/g, "_"); // e.g. "manager_management"
+      if (
+        rawKey.includes(defSlug.replace(/-/g, "")) ||
+        rawKey.includes(defClean) ||
+        rawName.includes(defSlug.replace(/-/g, " ")) ||
+        rawName.replace(/[^a-z0-9]/g, "_").includes(defClean)
+      ) {
+        allowedHrefs.add(def.prefix);
+      }
+    }
+  }
+
+  return {
+    allowed: allowedHrefs.has(routeHref),
+    moduleLabel,
+  };
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isMobile, setIsMobile] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+
+  // Fetch active system modules for route guarding
+  const {
+    data: systemModules,
+    isSuccess: isModulesSuccess,
+  } = useSystemModules();
+
+
+  // Ref to prevent triggering the modal multiple times for the same denied path
+  const deniedPathRef = useRef<string | null>(null);
+
+  /**
+   * Route guard: fires whenever the user navigates to a new path.
+   * If systemModules has loaded and the path is not in the allowed list,
+   * show the persistent Access Denied modal → redirect to /login on OK.
+   */
+  useEffect(() => {
+    if (!isModulesSuccess) return; // wait until modules are loaded
+    if (deniedPathRef.current === pathname) return; // already handling this path
+
+    const { allowed, moduleLabel } = checkPathAllowed(pathname, systemModules);
+
+    if (!allowed) {
+      deniedPathRef.current = pathname;
+      showAccessDeniedModal(
+        `You do not have permission to access the ${moduleLabel} module.`
+      );
+    } else {
+      // Reset denied ref when navigating to an allowed path
+      if (deniedPathRef.current === pathname) {
+        deniedPathRef.current = null;
+      }
+    }
+  }, [pathname, isModulesSuccess, systemModules]);
+
+  // True when the current path is actively denied (block child rendering)
+  const isCurrentPathDenied = useMemo(() => {
+    if (!isModulesSuccess) return false;
+    const { allowed } = checkPathAllowed(pathname, systemModules);
+    return !allowed;
+  }, [pathname, isModulesSuccess, systemModules]);
 
   /** Update browser title dynamically based on active sidebar module */
   useEffect(() => {
@@ -249,7 +374,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             background: colors.bg.page,
           }}
         >
-          {children}
+          {/* Block page content when the route is not permitted —
+              the Access Denied modal handles the UX, this prevents
+              flashing the restricted page content behind it. */}
+          {isCurrentPathDenied ? (
+            <div
+              style={{
+                flex: 1,
+                minHeight: "100%",
+                background: colors.bg.page,
+                pointerEvents: "none",
+                userSelect: "none",
+                opacity: 0,
+              }}
+              aria-hidden="true"
+            />
+          ) : (
+            children
+          )}
+
         </main>
       </div>
     </div>
