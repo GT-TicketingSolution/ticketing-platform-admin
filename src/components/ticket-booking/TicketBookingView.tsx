@@ -16,7 +16,7 @@ import CustomerInfoView from "./CustomerInfoView";
 export const SIDEBAR_COLLAPSE_EVENT = "tbv:sidebar-collapse";
 
 function normalizeAttractionImage(img?: string | null): string {
-  if (!img) return "/Assets/Attractions/Toy_Train.jpg";
+  if (!img || !img.trim()) return "";
   return img.replace("/Assets/Attraction/", "/Assets/Attractions/");
 }
 
@@ -107,11 +107,8 @@ function calcEntry(entry: CartEntry) {
     (s, c) => s + (entry.quantities[c.key] || 0) * (entry.attraction.pricing[c.key] ?? c.defaultPrice), 0
   );
   const gst = parseFloat((subtotal * GST_RATE).toFixed(2));
-  const rawTotal = subtotal + gst;
-  const rounded = Math.round(rawTotal);
-  const roundOff = parseFloat((rounded - rawTotal).toFixed(2));
-  const gstAdj = -parseFloat((gst - Math.floor(gst)).toFixed(2));
-  return { subtotal, gst, gstAdj, roundOff, total: rounded };
+  const rawTotal = parseFloat((subtotal + gst).toFixed(2));
+  return { subtotal, gst, gstAdj: 0, roundOff: 0, total: rawTotal };
 }
 
 function getAttractionBaseRate(attraction: Attraction) {
@@ -148,11 +145,11 @@ function parseDurationFromDisplayTime(displayTime: string): string | null {
 }
 
 // ── Castle Sketch Illustration Component ──────────────────────────────────────
-function CastleIllustration() {
+function CastleIllustration({ width = 105, height = 64 }: { width?: number | string; height?: number | string }) {
   return (
     <svg
-      width="105"
-      height="64"
+      width={width}
+      height={height}
       viewBox="0 0 120 80"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -296,15 +293,18 @@ function GridAttractionCard({
         position: "relative",
       }}
     >
-      {/* Cover Image */}
+      {/* Cover Image or Castle Sketch Fallback */}
       <div
         style={{
           width: "100%",
           height: "145px",
-          background: "linear-gradient(135deg,#0C2A42 0%,#2372A5 100%)",
+          background: imageSrc && !imgErr ? "linear-gradient(135deg,#0C2A42 0%,#2372A5 100%)" : "#F8FAFC",
           position: "relative",
           flexShrink: 0,
           overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
         {imageSrc && !imgErr ? (
@@ -323,13 +323,12 @@ function GridAttractionCard({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#FFFFFF",
-              fontSize: "28px",
-              fontWeight: 800,
-              opacity: 0.6,
+              background: "#F8FAFC",
+              padding: "10px",
+              boxSizing: "border-box",
             }}
           >
-            {attraction.name.slice(0, 2).toUpperCase()}
+            <CastleIllustration width={120} height={76} />
           </div>
         )}
       </div>
@@ -388,8 +387,8 @@ function VerticalAttractionCard({
       className="attraction-vert-card"
       style={{
         width: "100%",
-        background: "#FFFFFF",
-        border: "1.5px solid rgba(179,175,175,0.35)",
+        background: isActive ? "rgba(244,188,67,0.08)" : "#FFFFFF",
+        border: isActive ? "2px solid #F4BC43" : "1.5px solid rgba(179,175,175,0.35)",
         borderRadius: "10px",
         padding: "8px 10px",
         cursor: "pointer",
@@ -409,9 +408,13 @@ function VerticalAttractionCard({
           height: "42px",
           borderRadius: "6px",
           overflow: "hidden",
-          background: "linear-gradient(135deg,#0C2A42 0%,#2372A5 100%)",
+          background: imageSrc && !imgErr ? "linear-gradient(135deg,#0C2A42 0%,#2372A5 100%)" : "#F8FAFC",
           position: "relative",
           flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          border: imageSrc && !imgErr ? "none" : "1px solid #E2E8F0",
         }}
       >
         {imageSrc && !imgErr ? (
@@ -430,12 +433,11 @@ function VerticalAttractionCard({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#fff",
-              fontSize: "10px",
-              fontWeight: 700,
+              transform: "scale(0.35)",
+              transformOrigin: "center",
             }}
           >
-            {attraction.name.slice(0, 3)}
+            <CastleIllustration width={105} height={64} />
           </div>
         )}
       </div>
@@ -1307,65 +1309,7 @@ export default function TicketBookingView() {
                             {derivedSeats ?? "—"}
                           </span>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                          <span>Available trips today: </span>
-                          {editingTripsId === activeAttraction.id ? (
-                            <input
-                              autoFocus
-                              type="number"
-                              min="0"
-                              value={editingTripsValue}
-                              onChange={(e) => setEditingTripsValue(e.target.value)}
-                              onBlur={() => {
-                                const parsed = parseInt(editingTripsValue, 10);
-                                if (!isNaN(parsed) && parsed >= 0) {
-                                  setAvailableTripsMap((prev) => ({ ...prev, [activeAttraction.id]: parsed }));
-                                }
-                                setEditingTripsId(null);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  const parsed = parseInt(editingTripsValue, 10);
-                                  if (!isNaN(parsed) && parsed >= 0) {
-                                    setAvailableTripsMap((prev) => ({ ...prev, [activeAttraction.id]: parsed }));
-                                  }
-                                  setEditingTripsId(null);
-                                } else if (e.key === "Escape") {
-                                  setEditingTripsId(null);
-                                }
-                              }}
-                              style={{
-                                width: "44px",
-                                fontSize: "11.5px",
-                                fontWeight: 700,
-                                color: "#0E4E7A",
-                                border: "1px solid #CBD5E1",
-                                borderRadius: "4px",
-                                padding: "1px 4px",
-                                outline: "none",
-                                background: "#F8FAFC",
-                              }}
-                            />
-                          ) : (
-                            <span
-                              title="Click to edit"
-                              onClick={() => {
-                                const cur = availableTripsMap[activeAttraction.id] ?? (activeSlots?.length ?? 0);
-                                setEditingTripsValue(String(cur));
-                                setEditingTripsId(activeAttraction.id);
-                              }}
-                              style={{
-                                color: (availableTripsMap[activeAttraction.id] ?? (activeSlots?.length ?? 1)) === 0 ? "#EF4444" : "#0E4E7A",
-                                fontWeight: 700,
-                                cursor: "pointer",
-                                borderBottom: "1px dashed #94A3B8",
-                                paddingBottom: "1px",
-                              }}
-                            >
-                              {availableTripsMap[activeAttraction.id] ?? (activeSlots?.length ?? "—")}
-                            </span>
-                          )}
-                        </div>
+
                       </div>
                     </div>
                   </div>

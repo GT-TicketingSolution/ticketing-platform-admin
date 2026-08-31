@@ -5,6 +5,8 @@ export interface AttractionManagement {
   category: string;
   image: string | null;
   timing: string | null;
+  duration?: string | null;
+  durationMins?: number | null;
   pricing: {
     adult: number;
     child: number;
@@ -80,6 +82,8 @@ export interface CreateAttractionPayload {
   image?: string | null;
   description?: string | null;
   timing?: string | null;
+  duration?: string | number | null;
+  durationUnit?: string | null;
   adultPrice?: number;
   childPrice?: number;
   studentPrice?: number;
@@ -103,6 +107,8 @@ export interface UpdateAttractionPayload {
   image?: string | null;
   description?: string | null;
   timing?: string | null;
+  duration?: string | number | null;
+  durationUnit?: string | null;
   adultPrice?: number;
   childPrice?: number;
   studentPrice?: number;

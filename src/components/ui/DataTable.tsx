@@ -17,6 +17,10 @@ interface DataTableProps<T> {
   data: T[];
   keyExtractor: (item: T, index: number) => string | number;
   pageSize?: number;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
+  totalItems?: number;
+  totalPages?: number;
   emptyMessage?: string | React.ReactNode;
   emptyIcon?: React.ReactNode;
   emptyTitle?: string;
@@ -32,6 +36,10 @@ export function DataTable<T>({
   data,
   keyExtractor,
   pageSize = 5,
+  currentPage: propCurrentPage,
+  onPageChange,
+  totalItems: propTotalItems,
+  totalPages: propTotalPages,
   emptyMessage = "No records found.",
   emptyIcon,
   emptyTitle,
@@ -41,22 +49,66 @@ export function DataTable<T>({
   showSNo = true,
   onRowClick,
 }: DataTableProps<T>) {
-  const [currentPage, setCurrentPage] = useState(1);
+  const [internalCurrentPage, setInternalCurrentPage] = useState(1);
 
-  // Total pages calculation
-  const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
-  const activePage = Math.min(currentPage, totalPages);
+  const isControlled = onPageChange !== undefined || propCurrentPage !== undefined;
+  const isServerPaged = propTotalItems !== undefined || propTotalPages !== undefined;
+  const totalItems = propTotalItems !== undefined ? propTotalItems : data.length;
+  const totalPages =
+    propTotalPages !== undefined
+      ? Math.max(1, propTotalPages)
+      : Math.max(1, Math.ceil(totalItems / pageSize));
+  const activePage = isControlled
+    ? (propCurrentPage ?? 1)
+    : Math.min(internalCurrentPage, totalPages);
 
   // Pagination slice
   const startIndex = (activePage - 1) * pageSize;
-  const currentData = data.slice(startIndex, startIndex + pageSize);
+  const currentData = isServerPaged ? data : data.slice(startIndex, startIndex + pageSize);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      if (isControlled && onPageChange) {
+        onPageChange(page);
+      } else {
+        setInternalCurrentPage(page);
+      }
+    }
+  };
 
   const handlePrev = () => {
-    if (activePage > 1) setCurrentPage(activePage - 1);
+    if (activePage > 1) {
+      handlePageChange(activePage - 1);
+    }
   };
 
   const handleNext = () => {
-    if (activePage < totalPages) setCurrentPage(activePage + 1);
+    if (activePage < totalPages) {
+      handlePageChange(activePage + 1);
+    }
+  };
+
+  const handlePageClick = (page: number) => {
+    handlePageChange(page);
+  };
+
+  const buildPages = () => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const pages: (number | "...")[] = [];
+    pages.push(1);
+    if (activePage > 3) pages.push("...");
+    for (
+      let i = Math.max(2, activePage - 1);
+      i <= Math.min(totalPages - 1, activePage + 1);
+      i++
+    ) {
+      pages.push(i);
+    }
+    if (activePage < totalPages - 2) pages.push("...");
+    pages.push(totalPages);
+    return pages;
   };
 
   return (
@@ -261,7 +313,7 @@ export function DataTable<T>({
         </table>
       </div>
 
-      {!isLoading && data.length > 0 && (
+      {!isLoading && totalItems > 0 && (
         <div
           style={{
             padding: "16px 20px",
@@ -283,13 +335,14 @@ export function DataTable<T>({
               color: "rgba(81, 82, 82, 0.69)",
             }}
           >
-            Showing {Math.min(startIndex + 1, data.length)}–{Math.min(startIndex + pageSize, data.length)} of {data.length}
+            Showing {totalItems === 0 ? 0 : startIndex + 1}–{Math.min(startIndex + (isServerPaged ? data.length : currentData.length), totalItems)} of {totalItems}
           </span>
 
           {/* Pagination Controls */}
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             {/* Previous Button */}
             <button
+              type="button"
               disabled={activePage <= 1}
               onClick={handlePrev}
               style={{
@@ -314,12 +367,31 @@ export function DataTable<T>({
             </button>
 
             {/* Page Number Buttons */}
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+            {buildPages().map((page, pIdx) => {
+              if (page === "...") {
+                return (
+                  <span
+                    key={`ellipsis-${pIdx}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: "28px",
+                      height: "30px",
+                      fontSize: "11px",
+                      color: "#6B7280",
+                    }}
+                  >
+                    ...
+                  </span>
+                );
+              }
               const isActive = page === activePage;
               return (
                 <button
+                  type="button"
                   key={page}
-                  onClick={() => setCurrentPage(page)}
+                  onClick={() => handlePageClick(page as number)}
                   style={{
                     width: "28px",
                     height: "30px",
@@ -344,6 +416,7 @@ export function DataTable<T>({
 
             {/* Next Button */}
             <button
+              type="button"
               disabled={activePage >= totalPages}
               onClick={handleNext}
               style={{

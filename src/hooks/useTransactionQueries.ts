@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { getData, deleteData } from "@/lib/api/apiService";
 import { AppUrl } from "@/lib/api/endpoints";
 import { showSuccessNotify } from "@/lib/notify";
@@ -145,6 +145,7 @@ export function useTransactionList(params?: TransactionListParams) {
   return useQuery<TransactionListResponse>({
     queryKey: transactionKeys.list({ ...params, page, limit }),
     queryFn: () => fetchTransactionList({ ...params, page, limit }),
+    placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });

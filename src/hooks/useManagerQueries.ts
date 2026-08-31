@@ -1,5 +1,7 @@
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+"use client";
+
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { getData, postData, patchData, putData, deleteData } from "@/lib/api/apiService";
 import { AppUrl } from "@/lib/api/endpoints";
 import { showSuccessNotify } from "@/lib/notify";
@@ -9,7 +11,8 @@ export interface ManagerQueryParams {
   page?: number;
   limit?: number;
   search?: string;
-  status?: "ACTIVE" | "SUSPENDED" | "DISABLED";
+  status?: "ACTIVE" | "INACTIVE" | string;
+  attractionId?: string;
 }
 
 export interface ManagerAttractionItem {
@@ -28,7 +31,7 @@ export interface ManagerListItem {
   email: string;
   phone?: string | null;
   role: string;
-  status: "ACTIVE" | "SUSPENDED" | "DISABLED";
+  status: "ACTIVE" | "INACTIVE" | string;
   createdAt: string;
   lastLoginAt?: string | null;
   attractions?: ManagerAttractionItem[];
@@ -49,8 +52,7 @@ export interface CreateManagerPayload {
   email: string;
   phone?: string;
   password: string;
-  status?: "ACTIVE" | "SUSPENDED" | "DISABLED";
-  systemModuleIds?: string[];
+  status?: "ACTIVE" | "INACTIVE";
   attractionPermissions?: {
     attractionId: string;
     moduleIds: string[];
@@ -62,7 +64,7 @@ export interface UpdateManagerPayload {
   email?: string;
   phone?: string;
   password?: string;
-  status?: "ACTIVE" | "SUSPENDED" | "DISABLED";
+  status?: "ACTIVE" | "INACTIVE";
 }
 
 export interface SystemModulePermission {
@@ -103,7 +105,7 @@ export interface ManagerPermissionsResponse {
 }
 
 export interface UpdateManagerPermissionsRequest {
-  systemModuleIds: string[];
+  systemModuleIds?: string[];
   attractionPermissions: {
     attractionId: string;
     moduleIds: string[];
@@ -134,7 +136,8 @@ export async function fetchManagers(params?: ManagerQueryParams): Promise<Manage
   searchParams.set("page", String(page));
   searchParams.set("limit", String(limit));
   if (params?.search?.trim()) searchParams.set("search", params.search.trim());
-  if (params?.status) searchParams.set("status", params.status);
+  if (params?.status && params.status !== "All") searchParams.set("status", params.status);
+  if (params?.attractionId && params.attractionId !== "All") searchParams.set("attractionId", params.attractionId);
 
   const queryString = searchParams.toString();
   const url = `${AppUrl.manager.list}?${queryString}`;
@@ -180,6 +183,7 @@ export function useManagers(params?: ManagerQueryParams) {
   return useQuery({
     queryKey: managerKeys.list({ ...params, page, limit }),
     queryFn: () => fetchManagers({ ...params, page, limit }),
+    placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });

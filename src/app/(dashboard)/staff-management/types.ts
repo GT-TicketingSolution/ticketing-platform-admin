@@ -2,11 +2,9 @@
 
 export type StaffStatus =
   | "ACTIVE"
-  | "DISABLED"
-  | "SUSPENDED"
+  | "INACTIVE"
   | "Active"
-  | "Inactive"
-  | "Disabled";
+  | "Inactive";
 
 export interface StaffAttraction {
   id: string;
@@ -45,7 +43,7 @@ export interface StaffQueryParams {
   page?: number;
   limit?: number;
   search?: string;
-  status?: "ACTIVE" | "DISABLED" | "SUSPENDED";
+  status?: "ACTIVE" | "INACTIVE" | string;
   attractionId?: string;
 }
 
@@ -56,7 +54,7 @@ export interface CreateStaffPayload {
   password?: string;
   roles: string[];
   attractionIds: string[];
-  status: "ACTIVE" | "DISABLED" | "SUSPENDED";
+  status: "ACTIVE" | "INACTIVE";
 }
 
 export interface UpdateStaffPayload {
@@ -66,6 +64,6 @@ export interface UpdateStaffPayload {
   password?: string;
   roles?: string[];
   attractionIds?: string[];
-  status?: "ACTIVE" | "DISABLED" | "SUSPENDED";
+  status?: "ACTIVE" | "INACTIVE";
 }
 

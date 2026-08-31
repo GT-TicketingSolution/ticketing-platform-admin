@@ -359,7 +359,7 @@ export default function BookingsPage() {
 
       const headers = ["#", "Booking ID", "Customer Name", "Mobile", "Date & Time", "Attraction", "Visitors", "Amount (₹)", "Paid (₹)", "Payment Mode", "Status"];
       const rows = dataToExport.map((b, i) => [
-        i + 1,
+        scope === "all" ? i + 1 : (currentPage - 1) * ITEMS_PER_PAGE + i + 1,
         b.bookingId,
         b.customerName,
         b.mobileNumber ?? "-",
@@ -717,6 +717,8 @@ export default function BookingsPage() {
         pageSize={ITEMS_PER_PAGE}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
+        totalItems={pagination?.total}
+        totalPages={totalPages}
         showSNo={true}
         sNoHeader="S.No"
         itemLabel="bookings"

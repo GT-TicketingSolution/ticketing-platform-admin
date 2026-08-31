@@ -4,6 +4,8 @@ import React from "react";
 import { Eye, Pencil, Trash2, Armchair, CheckCircle2, XCircle } from "lucide-react";
 import { SeatConfigData } from "../modals/CreateSeatModal";
 
+import { decodeAisle } from "@/app/(dashboard)/seat-management/types";
+
 interface SeatCardProps {
   seat: SeatConfigData;
   onView: (seat: SeatConfigData) => void;
@@ -12,11 +14,19 @@ interface SeatCardProps {
 }
 
 export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardProps) {
-  const totalSeats = seat.rows * seat.cols;
+  const rows = Math.max(1, seat.rows || 1);
+  const cols = Math.max(1, seat.cols || 1);
+  const totalSeats = rows * cols;
+  const isSingleSeat = rows === 1 && cols === 1;
+
+  const { hasAisle, aisleType, aislePosition } = decodeAisle(
+    seat.hasAisle,
+    seat.aisleAfterCol ?? 0
+  );
 
   // Mini preview calculation (cap rows/cols for the 150px thumbnail)
-  const previewRows = Math.min(seat.rows, 5);
-  const previewCols = Math.min(seat.cols, 6);
+  const previewRows = Math.min(rows, 5);
+  const previewCols = Math.min(cols, 6);
 
   return (
     <div
@@ -58,40 +68,94 @@ export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardPro
         >
           {/* Visual Mini Seat Grid */}
           <div style={{ display: "flex", flexDirection: "column", gap: "4px", margin: "auto" }}>
-            {Array.from({ length: previewRows }, (_, rIdx) => (
-              <div key={`mini-r-${rIdx}`} style={{ display: "flex", alignItems: "center", gap: "3px" }}>
-                {Array.from({ length: previewCols }, (_, cIdx) => {
-                  const colNum = cIdx + 1;
-                  const isAisle = seat.hasAisle && seat.aisleAfterCol === colNum;
+            {/* Horizontal Aisle at Start (Position 0) */}
+            {hasAisle && aisleType === "HORIZONTAL" && aislePosition === 0 && (
+              <div
+                style={{
+                  width: "100%",
+                  height: "4px",
+                  borderBottom: "1px dashed rgba(255,255,255,0.6)",
+                  margin: "1px 0",
+                }}
+              />
+            )}
 
-                  return (
-                    <React.Fragment key={`mini-c-${rIdx}-${cIdx}`}>
+            {Array.from({ length: previewRows }, (_, rIdx) => {
+              const rowNum = rIdx + 1;
+              const isHorizontalAisle =
+                hasAisle &&
+                aisleType === "HORIZONTAL" &&
+                aislePosition === rowNum;
+
+              return (
+                <React.Fragment key={`mini-r-${rIdx}`}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                    {/* Vertical Aisle at Start (Position 0) */}
+                    {hasAisle && aisleType === "VERTICAL" && aislePosition === 0 && (
                       <div
                         style={{
-                          width: "18px",
+                          width: "4px",
                           height: "14px",
-                          background: "#F4BC43",
-                          borderRadius: "2px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
+                          borderRight: "1px dashed rgba(255,255,255,0.6)",
+                          margin: "0 2px",
                         }}
                       />
-                      {isAisle && (
-                        <div
-                          style={{
-                            width: "8px",
-                            height: "14px",
-                            borderRight: "1px dashed rgba(255,255,255,0.4)",
-                            margin: "0 2px",
-                          }}
-                        />
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-            ))}
+                    )}
+
+                    {Array.from({ length: previewCols }, (_, cIdx) => {
+                      const colNum = cIdx + 1;
+                      const isVerticalAisle =
+                        hasAisle &&
+                        aisleType === "VERTICAL" &&
+                        aislePosition === colNum;
+
+                      return (
+                        <React.Fragment key={`mini-c-${rIdx}-${cIdx}`}>
+                          <div
+                            style={{
+                              width: isSingleSeat ? "32px" : "18px",
+                              height: isSingleSeat ? "24px" : "14px",
+                              background: "#F4BC43",
+                              borderRadius: "2px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: isSingleSeat ? "9px" : "7px",
+                              fontWeight: 800,
+                              color: "#011B2F",
+                            }}
+                          >
+                            {isSingleSeat ? "01" : ""}
+                          </div>
+                          {isVerticalAisle && (
+                            <div
+                              style={{
+                                width: "6px",
+                                height: "14px",
+                                borderRight: "1px dashed rgba(255,255,255,0.5)",
+                                margin: "0 2px",
+                              }}
+                            />
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+
+                  {/* Horizontal Aisle after this row */}
+                  {isHorizontalAisle && (
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "4px",
+                        borderBottom: "1px dashed rgba(255,255,255,0.5)",
+                        margin: "1px 0",
+                      }}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
           </div>
 
           {/* Subtitle tag */}
@@ -107,13 +171,13 @@ export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardPro
               fontSize: "9px",
               color: "#FFFFFF",
               fontWeight: 600,
-              background: "rgba(0,0,0,0.4)",
+              background: "rgba(0,0,0,0.5)",
               padding: "2px 6px",
               borderRadius: "4px",
             }}
           >
-            <span>{seat.rows}R × {seat.cols}C</span>
-            <span>{totalSeats} Seats</span>
+            <span>{isSingleSeat ? "Single Seat" : `${rows}R × ${cols}C`}</span>
+            <span>{totalSeats} {totalSeats === 1 ? "Seat" : "Seats"}</span>
           </div>
         </div>
 
@@ -177,12 +241,21 @@ export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardPro
 
           {/* Row & Column details */}
           <div style={{ marginTop: "8px", fontSize: "10px", color: "rgba(81,82,82,0.88)", lineHeight: "14px" }}>
-            <span style={{ fontWeight: 600 }}>Rows:</span> {seat.rows} &bull; <span style={{ fontWeight: 600 }}>Cols:</span> {seat.cols}
+            <span style={{ fontWeight: 600 }}>Rows:</span> {rows} &bull; <span style={{ fontWeight: 600 }}>Cols:</span> {cols}
           </div>
 
           {/* Aisle details */}
           <div style={{ marginTop: "4px", fontSize: "10px", color: "rgba(81,82,82,0.88)", lineHeight: "14px" }}>
-            <span style={{ fontWeight: 600 }}>Aisle:</span> {seat.hasAisle ? `Yes (After Col ${seat.aisleAfterCol})` : "No Aisle"}
+            <span style={{ fontWeight: 600 }}>Aisle:</span>{" "}
+            {hasAisle
+              ? `${aisleType === "VERTICAL" ? "Vertical" : "Horizontal"} (${
+                  aislePosition === 0
+                    ? "Start"
+                    : aisleType === "VERTICAL"
+                      ? `Col C${aislePosition}`
+                      : `Row R${aislePosition}`
+                })`
+              : "No Aisle"}
           </div>
         </div>
       </div>
