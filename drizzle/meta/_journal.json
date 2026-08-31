@@ -120,6 +120,13 @@
       "when": 1788033600000,
       "tag": "0016_seat_layout_quantity",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788185201962,
+      "tag": "0017_nasty_justin_hammer",
+      "breakpoints": true
     }
   ]
 }

@@ -1363,6 +1363,12 @@ export const attractionManagement = pgTable(
       length: 100,
     }),
 
+    duration: integer("duration"),
+
+    durationUnit: varchar("duration_unit", {
+      length: 20,
+    }),
+
     adultPrice: numeric("adult_price", {
       precision: 12,
       scale: 2,
@@ -1443,6 +1449,30 @@ export const attractionManagement = pgTable(
     ).on(table.adminId, table.attractionId),
   }),
 );
+
+export const attractionSeats = pgTable("attraction_seats", {
+  id: uuid("id").defaultRandom().primaryKey(),
+
+  attractionId: uuid("attraction_id")
+    .notNull()
+    .references(() => attractions.id, {
+      onDelete: "cascade",
+    }),
+
+  seatLayoutId: uuid("seat_layout_id")
+    .notNull()
+    .references(() => seatLayouts.id, {
+      onDelete: "cascade",
+    }),
+
+  name: varchar("name", {
+    length: 100,
+  }).notNull(),
+
+  seatOrder: integer("seat_order").notNull(),
+
+  isActive: boolean("is_active").notNull().default(true),
+});
 
 /* =========================================================
    CUSTOMERS
