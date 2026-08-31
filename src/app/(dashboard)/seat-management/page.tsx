@@ -85,6 +85,9 @@ export default function SeatManagementPage() {
     const finalCols = Math.max(1, data.cols || 1);
     const hasAisle = Boolean(data.hasAisle);
     const aisleAfterCol = hasAisle ? (data.aisleAfterCol ?? 0) : 0;
+    const aisleType = hasAisle ? (data.aisleType || "VERTICAL") : undefined;
+    const aisleDirection = aisleType;
+    const aislePosition = hasAisle ? (data.aislePosition ?? 0) : 0;
 
     try {
       if (data.id) {
@@ -97,6 +100,9 @@ export default function SeatManagementPage() {
             cols: finalCols,
             hasAisle,
             aisleAfterCol,
+            aisleType,
+            aisleDirection,
+            aislePosition,
             status: statusPayload,
           },
         });
@@ -108,6 +114,9 @@ export default function SeatManagementPage() {
           cols: finalCols,
           hasAisle,
           aisleAfterCol,
+          aisleType,
+          aisleDirection,
+          aislePosition,
           status: statusPayload,
         });
       }
