@@ -14,7 +14,7 @@ import {
   useUpdateSeatLayout,
   useDeleteSeatLayout,
 } from "@/hooks/useSeatQueries";
-import { SeatConfigData, decodeAisle } from "./types";
+import { SeatConfigData } from "./types";
 
 export default function SeatManagementPage() {
   // Query / Filter State
@@ -32,17 +32,24 @@ export default function SeatManagementPage() {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchTerm);
     }, 350);
+
     return () => clearTimeout(handler);
   }, [searchTerm]);
 
+  // Page title
   useEffect(() => {
     document.title = META_CONSTANTS.seatManagement.fullTitle;
   }, []);
 
-  // API Queries & Mutations
+  // API status filter
   const apiStatus =
-    statusFilter === "Active" ? "ACTIVE" : statusFilter === "Inactive" ? "INACTIVE" : undefined;
+    statusFilter === "Active"
+      ? "ACTIVE"
+      : statusFilter === "Inactive"
+        ? "INACTIVE"
+        : undefined;
 
+  // Queries
   const {
     data: seatData,
     isLoading,
@@ -52,107 +59,182 @@ export default function SeatManagementPage() {
     status: apiStatus,
   });
 
+  // Mutations
   const createMutation = useCreateSeatLayout();
   const updateMutation = useUpdateSeatLayout();
   const deleteMutation = useDeleteSeatLayout();
 
   const items = seatData?.items ?? [];
 
-  // Convert SeatLayoutItem to SeatConfigData for modals / cards
-  const seatConfigItems: SeatConfigData[] = items.map((s) => {
-    const decoded = decodeAisle(!!s.hasAisle, s.aisleAfterCol ?? 0);
-    return {
-      id: s.id,
-      name: s.name || "—",
-      rows: s.rows ?? 0,
-      cols: s.cols ?? 0,
-      hasAisle: !!s.hasAisle,
-      aisleAfterCol: s.aisleAfterCol ?? 0,
-      aisleType: decoded.aisleType,
-      aislePosition: decoded.aislePosition,
-      status: s.status,
-      totalSeats: s.totalSeats ?? (s.rows ?? 0) * (s.cols ?? 0),
-      createdAt: s.createdAt,
-    };
-  });
+  // Convert API SeatLayoutItem -> SeatConfigData
+  const seatConfigItems: SeatConfigData[] = items.map((s) => ({
+    id: s.id,
+    name: s.name || "—",
+    rows: s.rows ?? 0,
+    cols: s.cols ?? 0,
 
-  // Actions
+    hasAisle: !!s.hasAisle,
+
+    aisleType: s.aisleType,
+    aisleDirection: s.aisleDirection,
+    aislePosition: s.aislePosition,
+
+    aisleAfterCol: s.aisleAfterCol ?? null,
+    aisleAfterRow: s.aisleAfterRow ?? null,
+
+    status: s.status,
+
+    totalSeats: s.totalSeats ?? (s.rows ?? 0) * (s.cols ?? 0),
+
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  }));
+
+  // ============================================================
+  // SAVE / CREATE / UPDATE
+  // ============================================================
+
   const handleSaveSeat = async (data: SeatConfigData) => {
     const statusPayload =
       String(data.status).toUpperCase() === "ACTIVE" ? "ACTIVE" : "INACTIVE";
 
     const finalRows = Math.max(1, data.rows || 1);
     const finalCols = Math.max(1, data.cols || 1);
+
     const hasAisle = Boolean(data.hasAisle);
-    const aisleAfterCol = hasAisle ? (data.aisleAfterCol ?? 0) : 0;
-    const aisleType = hasAisle ? (data.aisleType || "VERTICAL") : undefined;
-    const aisleDirection = aisleType;
-    const aislePosition = hasAisle ? (data.aislePosition ?? 0) : 0;
+
+    /*
+     * When aisle is disabled, positions are explicitly sent as null.
+     *
+     * Vertical:
+     *   aisleAfterCol = selected column
+     *   aisleAfterRow = null
+     *
+     * Horizontal:
+     *   aisleAfterRow = selected row
+     *   aisleAfterCol = null
+     */
+    const aisleDirection = hasAisle
+      ? data.aisleDirection || "VERTICAL"
+      : "VERTICAL";
+
+    const aisleAfterCol =
+      hasAisle && aisleDirection === "VERTICAL"
+        ? (data.aisleAfterCol ?? null)
+        : null;
+
+    const aisleAfterRow =
+      hasAisle && aisleDirection === "HORIZONTAL"
+        ? (data.aisleAfterRow ?? null)
+        : null;
 
     try {
+      // ========================================================
+      // UPDATE EXISTING
+      // ========================================================
+
       if (data.id) {
-        // Edit existing
         await updateMutation.mutateAsync({
           seatId: data.id,
+
           data: {
             name: data.name.trim(),
+
             rows: finalRows,
+
             cols: finalCols,
+
             hasAisle,
-            aisleAfterCol,
-            aisleType,
+
             aisleDirection,
-            aislePosition,
+
+            aisleAfterCol,
+
+            aisleAfterRow,
+
             status: statusPayload,
           },
         });
-      } else {
-        // Create new
+      }
+
+      // ========================================================
+      // CREATE NEW
+      // ========================================================
+      else {
         await createMutation.mutateAsync({
           name: data.name.trim(),
+
           rows: finalRows,
+
           cols: finalCols,
+
           hasAisle,
-          aisleAfterCol,
-          aisleType,
+
           aisleDirection,
-          aislePosition,
+
+          aisleAfterCol,
+
+          aisleAfterRow,
+
           status: statusPayload,
         });
       }
+
       setSelectedSeat(null);
       setIsCreateModalOpen(false);
     } catch {
-      // Error handled by mutation onError
+      // Error is handled inside the mutation.
     }
   };
+
+  // ============================================================
+  // OPEN CREATE
+  // ============================================================
 
   const handleOpenCreate = () => {
     setSelectedSeat(null);
     setIsCreateModalOpen(true);
   };
 
+  // ============================================================
+  // VIEW
+  // ============================================================
+
   const handleView = (seat: SeatConfigData) => {
     setSelectedSeat(seat);
     setIsViewModalOpen(true);
   };
+
+  // ============================================================
+  // EDIT
+  // ============================================================
 
   const handleEdit = (seat: SeatConfigData) => {
     setSelectedSeat(seat);
     setIsCreateModalOpen(true);
   };
 
+  // ============================================================
+  // DELETE
+  // ============================================================
+
   const handleDelete = async (seat: SeatConfigData) => {
     if (!seat.id) return;
+
     const confirmed = await confirmDelete(`seat layout "${seat.name}"`);
+
     if (!confirmed) return;
 
     try {
       await deleteMutation.mutateAsync(seat.id);
     } catch {
-      // Error handled by mutation onError
+      // Error is handled inside the mutation.
     }
   };
+
+  // ============================================================
+  // RESET FILTERS
+  // ============================================================
 
   const handleResetFilters = () => {
     setSearchTerm("");
@@ -161,17 +243,29 @@ export default function SeatManagementPage() {
   };
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
+
   const isFiltering = Boolean(searchTerm.trim() || statusFilter !== "All");
 
   return (
     <div style={{ width: "100%" }}>
-      {/* ── Initial Empty State: If no seats exist in database and no search active ── */}
+      {/* ======================================================
+          INITIAL EMPTY STATE
+      ====================================================== */}
+
       {!isLoading && items.length === 0 && !isFiltering ? (
         <SeatEmptyState onCreateSeat={handleOpenCreate} />
       ) : (
-        /* ── Main Data View ── */
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          {/* Top Bar with Title & Actions */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "20px",
+          }}
+        >
+          {/* ==================================================
+              HEADER
+          ================================================== */}
+
           <div
             style={{
               display: "flex",
@@ -197,6 +291,7 @@ export default function SeatManagementPage() {
               >
                 Seat Management
               </h1>
+
               <p
                 style={{
                   margin: "4px 0 0 0",
@@ -206,12 +301,19 @@ export default function SeatManagementPage() {
                   color: "#6B7280",
                 }}
               >
-                Configure attraction coaches, rows &amp; columns, and movable aisles.
+                Configure attraction coaches, rows & columns, and movable
+                aisles.
               </p>
             </div>
 
-            {/* Top Right Buttons */}
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {/* Create Button */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+              }}
+            >
               <button
                 type="button"
                 onClick={handleOpenCreate}
@@ -242,12 +344,16 @@ export default function SeatManagementPage() {
                 }}
               >
                 <Plus size={18} color="#FFFFFF" strokeWidth={2.5} />
+
                 <span>Create Seat</span>
               </button>
             </div>
           </div>
 
-          {/* Filters Bar */}
+          {/* ==================================================
+              FILTER BAR
+          ================================================== */}
+
           <div
             style={{
               display: "flex",
@@ -261,7 +367,7 @@ export default function SeatManagementPage() {
               border: "1px solid rgba(179, 175, 175, 0.4)",
             }}
           >
-            {/* Search Input */}
+            {/* Search */}
             <div
               style={{
                 display: "flex",
@@ -279,6 +385,7 @@ export default function SeatManagementPage() {
               }}
             >
               <Search size={16} color="#B3AFAF" />
+
               <input
                 type="text"
                 placeholder="Search seat name..."
@@ -297,9 +404,22 @@ export default function SeatManagementPage() {
               />
             </div>
 
-            {/* Status Filter & Reset */}
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            {/* Status + Reset */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                flexWrap: "wrap",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
                 <span
                   style={{
                     fontFamily: "'Plus Jakarta Sans', sans-serif",
@@ -310,6 +430,7 @@ export default function SeatManagementPage() {
                 >
                   Status:
                 </span>
+
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
@@ -360,7 +481,10 @@ export default function SeatManagementPage() {
             </div>
           </div>
 
-          {/* Loading State */}
+          {/* ==================================================
+              LOADING STATE
+          ================================================== */}
+
           {isLoading && (
             <div
               style={{
@@ -383,7 +507,10 @@ export default function SeatManagementPage() {
             </div>
           )}
 
-          {/* Cards Grid */}
+          {/* ==================================================
+              CARDS
+          ================================================== */}
+
           {!isLoading && (
             <div
               style={{
@@ -404,7 +531,10 @@ export default function SeatManagementPage() {
             </div>
           )}
 
-          {/* Empty Filtered Results */}
+          {/* ==================================================
+              EMPTY FILTERED RESULTS
+          ================================================== */}
+
           {!isLoading && seatConfigItems.length === 0 && (
             <div
               style={{
@@ -423,7 +553,10 @@ export default function SeatManagementPage() {
         </div>
       )}
 
-      {/* ── Create / Edit Seat Dialog Box ── */}
+      {/* ========================================================
+          CREATE / EDIT MODAL
+      ======================================================== */}
+
       <CreateSeatModal
         isOpen={isCreateModalOpen}
         onClose={() => {
@@ -435,7 +568,10 @@ export default function SeatManagementPage() {
         isLoading={isSaving}
       />
 
-      {/* ── View Seat Dialog Box ── */}
+      {/* ========================================================
+          VIEW MODAL
+      ======================================================== */}
+
       <ViewSeatModal
         isOpen={isViewModalOpen}
         onClose={() => {
@@ -451,5 +587,3 @@ export default function SeatManagementPage() {
     </div>
   );
 }
-
-

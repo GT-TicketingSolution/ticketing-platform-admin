@@ -11,19 +11,93 @@ import { failure, success } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { requireModuleAccess } from "@/lib/auth/authorization";
 
-const createSeatSchema = z.object({
-  name: z.string().trim().min(1, "Seat layout name is required.").max(150),
+const createSeatSchema = z
+  .object({
+    name: z.string().trim().min(1, "Seat layout name is required.").max(150),
 
-  rows: z.number().int().positive(),
+    rows: z
+      .number()
+      .int()
+      .positive("Row count must be a positive integer.")
+      .max(200, "Row count cannot exceed 200."),
 
-  cols: z.number().int().positive(),
+    cols: z
+      .number()
+      .int()
+      .positive("Column count must be a positive integer.")
+      .max(200, "Column count cannot exceed 200."),
 
-  hasAisle: z.boolean(),
+    hasAisle: z.boolean(),
 
-  aisleAfterCol: z.number().int().nonnegative(),
+    aisleDirection: z.enum(["VERTICAL", "HORIZONTAL"]),
 
-  status: z.enum(["ACTIVE", "INACTIVE"]),
-});
+    aisleAfterCol: z
+      .number()
+      .int()
+      .nonnegative("Aisle column position cannot be negative.")
+      .nullable(),
+
+    aisleAfterRow: z
+      .number()
+      .int()
+      .nonnegative("Aisle row position cannot be negative.")
+      .nullable(),
+
+    status: z.enum(["ACTIVE", "INACTIVE"]),
+  })
+  .superRefine((data, ctx) => {
+    // ---------------------------------------------
+    // NO AISLE
+    // ---------------------------------------------
+
+    if (!data.hasAisle) {
+      return;
+    }
+
+    // ---------------------------------------------
+    // VERTICAL AISLE
+    // ---------------------------------------------
+
+    if (data.aisleDirection === "VERTICAL") {
+      if (data.cols <= 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["cols"],
+          message: "At least 2 columns are required for a vertical aisle.",
+        });
+      }
+
+      if (data.aisleAfterCol === null || data.aisleAfterCol >= data.cols) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["aisleAfterCol"],
+          message: "Vertical aisle position must be between 0 and columns - 1.",
+        });
+      }
+    }
+
+    // ---------------------------------------------
+    // HORIZONTAL AISLE
+    // ---------------------------------------------
+
+    if (data.aisleDirection === "HORIZONTAL") {
+      if (data.rows <= 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["rows"],
+          message: "At least 2 rows are required for a horizontal aisle.",
+        });
+      }
+
+      if (data.aisleAfterRow === null || data.aisleAfterRow >= data.rows) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["aisleAfterRow"],
+          message: "Horizontal aisle position must be between 0 and rows - 1.",
+        });
+      }
+    }
+  });
 
 export async function GET(request: NextRequest) {
   try {

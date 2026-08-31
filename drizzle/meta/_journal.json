@@ -120,6 +120,20 @@
       "when": 1788033600000,
       "tag": "0016_seat_layout_quantity",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788195746808,
+      "tag": "0017_minor_wallop",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788198161309,
+      "tag": "0018_graceful_miracleman",
+      "breakpoints": true
     }
   ]
 }

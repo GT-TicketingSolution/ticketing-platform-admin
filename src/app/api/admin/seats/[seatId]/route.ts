@@ -11,24 +11,120 @@ import { failure, success } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { requireModuleAccess } from "@/lib/auth/authorization";
 
-const updateSeatSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, "Seat layout name is required.")
-    .max(150)
-    .optional(),
+const updateSeatSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, "Seat layout name is required.")
+      .max(150)
+      .optional(),
 
-  rows: z.number().int().positive().optional(),
+    rows: z
+      .number()
+      .int()
+      .positive("Row count must be a positive integer.")
+      .max(200, "Row count cannot exceed 200.")
+      .optional(),
 
-  cols: z.number().int().positive().optional(),
+    cols: z
+      .number()
+      .int()
+      .positive("Column count must be a positive integer.")
+      .max(200, "Column count cannot exceed 200.")
+      .optional(),
 
-  hasAisle: z.boolean().optional(),
+    hasAisle: z.boolean().optional(),
 
-  aisleAfterCol: z.number().int().nonnegative().optional(),
+    aisleDirection: z.enum(["VERTICAL", "HORIZONTAL"]).optional(),
 
-  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
-});
+    aisleAfterCol: z
+      .number()
+      .int()
+      .nonnegative("Aisle column position cannot be negative.")
+      .nullable()
+      .optional(),
+
+    aisleAfterRow: z
+      .number()
+      .int()
+      .nonnegative("Aisle row position cannot be negative.")
+      .nullable()
+      .optional(),
+
+    status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+  })
+  .superRefine((data, ctx) => {
+    // ---------------------------------------------
+    // If aisle is explicitly disabled, no position
+    // validation is required.
+    // ---------------------------------------------
+
+    if (data.hasAisle === false) {
+      return;
+    }
+
+    // If the PATCH does not contain enough information
+    // to determine the final aisle configuration,
+    // repository validation will use the existing values.
+    if (!data.aisleDirection) {
+      return;
+    }
+
+    // ---------------------------------------------
+    // VERTICAL AISLE
+    // ---------------------------------------------
+
+    if (data.aisleDirection === "VERTICAL") {
+      if (data.cols !== undefined && data.cols <= 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["cols"],
+          message: "At least 2 columns are required for a vertical aisle.",
+        });
+      }
+
+      if (
+        data.aisleAfterCol !== undefined &&
+        data.aisleAfterCol !== null &&
+        data.cols !== undefined &&
+        data.aisleAfterCol >= data.cols
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["aisleAfterCol"],
+          message: "Vertical aisle position must be between 0 and columns - 1.",
+        });
+      }
+    }
+
+    // ---------------------------------------------
+    // HORIZONTAL AISLE
+    // ---------------------------------------------
+
+    if (data.aisleDirection === "HORIZONTAL") {
+      if (data.rows !== undefined && data.rows <= 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["rows"],
+          message: "At least 2 rows are required for a horizontal aisle.",
+        });
+      }
+
+      if (
+        data.aisleAfterRow !== undefined &&
+        data.aisleAfterRow !== null &&
+        data.rows !== undefined &&
+        data.aisleAfterRow >= data.rows
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["aisleAfterRow"],
+          message: "Horizontal aisle position must be between 0 and rows - 1.",
+        });
+      }
+    }
+  });
 
 type RouteContext = {
   params: Promise<{
@@ -82,7 +178,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     return success({
       ...seat,
-
       totalSeats: seat.rows * seat.cols,
     });
   } catch (error) {
@@ -109,6 +204,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const auth = await requireAuth(request);
 
     await requireModuleAccess(auth, "SEAT_MANAGEMENT");
+
     // ---------------------------------------------
     // PARAMS
     // ---------------------------------------------
@@ -212,7 +308,6 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
     return success({
       message: "Seat layout deleted successfully.",
-
       seat: deleted,
     });
   } catch (error) {
