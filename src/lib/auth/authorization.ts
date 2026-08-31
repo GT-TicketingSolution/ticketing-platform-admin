@@ -302,16 +302,15 @@ type AuthContext = {
  */
 export const DEFAULT_ADMIN_MODULES = [
   "DASHBOARD",
-  "MANAGER_MANAGEMENT",
+  "BOOKINGS",
   "STAFF_MANAGEMENT",
   "ATTRACTION_MANAGEMENT",
-  "SEAT_MANAGEMENT",
-  "BOOKINGS",
+  "REPORTS",
   "TRANSACTIONS",
   "INVENTORY_CAPACITY",
-  "REPORTS",
-  "CUSTOMER_MANAGEMENT",
-  "COMPLIMENTARY_PASSES",
+  "SEAT_MANAGEMENT",
+  "INVOICES",
+  "MANAGER_MANAGEMENT",
 ] as const;
 
 /* =========================================================
