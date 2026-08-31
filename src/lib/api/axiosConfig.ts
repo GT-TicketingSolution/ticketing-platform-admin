@@ -116,8 +116,8 @@ axiosInstance.interceptors.response.use(
             "Login Failed"
           );
         } else {
-          // Session expired while inside the dashboard —
-          // Persistent modal: outside click disabled, OK redirects to /login
+          // Unauthorized while inside the dashboard —
+          // Persistent blocking modal: outside click disabled, no close icon, OK redirects to /login
           showSessionExpiredModal(
             serverMessage || ERROR_MESSAGES.UNAUTHORIZED
           );
@@ -125,17 +125,11 @@ axiosInstance.interceptors.response.use(
         break;
       }
       case 403: {
-        const errorCode = error.response.data?.error?.code || "";
-        const isModuleDenied =
-          errorCode === "MODULE_ACCESS_DENIED" ||
-          serverMessage?.toLowerCase().includes("permission") ||
-          serverMessage?.toLowerCase().includes("access");
-        if (isModuleDenied) {
-          // Persistent modal — blocks outside click, redirects to /login on OK
-          showAccessDeniedModal(serverMessage);
-        } else {
-          showErrorOnce(serverMessage || ERROR_MESSAGES.FORBIDDEN, "Access Denied");
-        }
+        // All 403 Forbidden errors show the persistent blocking modal:
+        // outside click disabled, no close icon, OK redirects to /login
+        showAccessDeniedModal(
+          serverMessage || ERROR_MESSAGES.FORBIDDEN
+        );
         break;
       }
       case 404:
