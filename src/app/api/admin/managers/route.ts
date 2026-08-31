@@ -6,18 +6,35 @@ import { success, failure } from "@/lib/api/response";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { requireModuleAccess } from "@/lib/auth/authorization";
 
+// const createManagerSchema = z.object({
+//   name: z.string().min(2).max(150),
+
+//   email: z.string().email(),
+
+//   phone: z.string().max(20).optional(),
+
+//   password: z.string().min(8),
+
+//   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+
+//   systemModuleIds: z.array(z.string()).default([]),
+
+//   attractionPermissions: z
+//     .array(
+//       z.object({
+//         attractionId: z.string(),
+//         moduleIds: z.array(z.string()).default([]),
+//       }),
+//     )
+//     .default([]),
+// });
+
 const createManagerSchema = z.object({
   name: z.string().min(2).max(150),
-
   email: z.string().email(),
-
   phone: z.string().max(20).optional(),
-
   password: z.string().min(8),
-
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
-
-  systemModuleIds: z.array(z.string()).default([]),
 
   attractionPermissions: z
     .array(
