@@ -32,14 +32,53 @@ export default function CreateSeatModal({
 }: CreateSeatModalProps) {
   // Form State
   const [name, setName] = useState<string>("");
-  const [rows, setRows] = useState<number | "">("");
-  const [cols, setCols] = useState<number | "">("");
+  const [rows, setRows] = useState<number | "">(1);
+  const [cols, setCols] = useState<number | "">(1);
   const [hasAisle, setHasAisle] = useState<boolean | null>(null);
   const [aisleType, setAisleType] = useState<AisleOrientation>("VERTICAL");
   const [aislePosition, setAislePosition] = useState<number>(0);
   const [status, setStatus] = useState<"Active" | "Inactive" | "">("");
-
+  const [isDraggingAisle, setIsDraggingAisle] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
+  const gridInnerRef = useRef<HTMLDivElement>(null);
+
+  // ── Bulletproof Pointer-based Drag & Drop for Aisle ──
+  const startAislePointerDrag = (e: React.PointerEvent) => {
+    e.preventDefault();
+    setIsDraggingAisle(true);
+
+    const handlePointerMove = (moveEv: PointerEvent) => {
+      if (!gridInnerRef.current) return;
+      const rect = gridInnerRef.current.getBoundingClientRect();
+
+      if (aisleType === "VERTICAL") {
+        const relativeX = moveEv.clientX - rect.left - 42; // skip R label column width (36px + 6px)
+        const colWidth = 52; // 44px + 8px
+        const calculatedSlot = Math.max(
+          0,
+          Math.min(displayCols, Math.round(relativeX / colWidth))
+        );
+        setAislePosition(calculatedSlot);
+      } else {
+        const relativeY = moveEv.clientY - rect.top - 28; // skip col header height (20px + 8px)
+        const rowHeight = 46; // 38px + 8px
+        const calculatedSlot = Math.max(
+          0,
+          Math.min(displayRows, Math.round(relativeY / rowHeight))
+        );
+        setAislePosition(calculatedSlot);
+      }
+    };
+
+    const handlePointerUp = () => {
+      setIsDraggingAisle(false);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+  };
 
   // Errors
   const [errors, setErrors] = useState<{ [k: string]: string }>({});
@@ -66,8 +105,8 @@ export default function CreateSeatModal({
       setStatus(s === "ACTIVE" ? "Active" : s === "INACTIVE" ? "Inactive" : "");
     } else {
       setName("");
-      setRows("");
-      setCols("");
+      setRows(1);
+      setCols(1);
       setHasAisle(null);
       setAisleType("VERTICAL");
       setAislePosition(0);
@@ -111,7 +150,7 @@ export default function CreateSeatModal({
       setRows(MAX_SEAT_ROWS);
       setErrors((prev) => ({
         ...prev,
-        rows: `Maximum ${MAX_SEAT_ROWS} rows allowed (from .env)`,
+        rows: `Maximum ${MAX_SEAT_ROWS} rows allowed`,
       }));
     } else {
       setRows(num);
@@ -131,7 +170,7 @@ export default function CreateSeatModal({
       setCols(MAX_SEAT_COLS);
       setErrors((prev) => ({
         ...prev,
-        cols: `Maximum ${MAX_SEAT_COLS} columns allowed (from .env)`,
+        cols: `Maximum ${MAX_SEAT_COLS} columns allowed`,
       }));
     } else {
       setCols(num);
@@ -358,21 +397,12 @@ export default function CreateSeatModal({
                     marginBottom: "4px",
                   }}
                 >
-                  Row{" "}
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: 500,
-                      color: "#6B7280",
-                    }}
-                  >
-                    (Optional)
-                  </span>
+                  Row
                 </label>
                 <input
                   type="text"
                   inputMode="numeric"
-                  placeholder="1 (Default)"
+                  placeholder=""
                   value={rows === "" ? "" : rows}
                   onChange={(e) => handleRowChange(e.target.value)}
                   style={{
@@ -400,7 +430,7 @@ export default function CreateSeatModal({
                     display: "block",
                   }}
                 >
-                  Max: {MAX_SEAT_ROWS} (env)
+                  Max: {MAX_SEAT_ROWS}
                 </span>
                 {errors.rows && (
                   <span
@@ -428,21 +458,12 @@ export default function CreateSeatModal({
                     marginBottom: "4px",
                   }}
                 >
-                  Column{" "}
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: 500,
-                      color: "#6B7280",
-                    }}
-                  >
-                    (Optional)
-                  </span>
+                  Column
                 </label>
                 <input
                   type="text"
                   inputMode="numeric"
-                  placeholder="1 (Default)"
+                  placeholder=""
                   value={cols === "" ? "" : cols}
                   onChange={(e) => handleColChange(e.target.value)}
                   style={{
@@ -470,7 +491,7 @@ export default function CreateSeatModal({
                     display: "block",
                   }}
                 >
-                  Max: {MAX_SEAT_COLS} (env)
+                  Max: {MAX_SEAT_COLS}
                 </span>
                 {errors.cols && (
                   <span
@@ -503,11 +524,12 @@ export default function CreateSeatModal({
               </label>
 
               <div style={{ display: "flex", gap: "10px" }}>
-                {/* Yes */}
+                {/* YES Button */}
                 <button
                   type="button"
                   onClick={() => {
                     setHasAisle(true);
+                    setAislePosition(0);
                     if (errors.hasAisle)
                       setErrors((prev) => ({ ...prev, hasAisle: "" }));
                   }}
@@ -576,7 +598,7 @@ export default function CreateSeatModal({
                 </span>
               )}
 
-              {/* Aisle Direction & Position Controls (if Aisle is YES) */}
+              {/* Aisle Direction Controls (if Aisle is YES) */}
               {hasAisle === true && (
                 <div
                   style={{
@@ -609,7 +631,7 @@ export default function CreateSeatModal({
                         type="button"
                         onClick={() => {
                           setAisleType("VERTICAL");
-                          if (aislePosition > displayCols) setAislePosition(0);
+                          setAislePosition(0);
                         }}
                         style={{
                           flex: 1,
@@ -633,7 +655,7 @@ export default function CreateSeatModal({
                         }}
                       >
                         <Columns size={14} />
-                        <span>Vertical (Standing)</span>
+                        <span>Vertical</span>
                       </button>
 
                       {/* Horizontal / Sleeping line */}
@@ -641,7 +663,7 @@ export default function CreateSeatModal({
                         type="button"
                         onClick={() => {
                           setAisleType("HORIZONTAL");
-                          if (aislePosition > displayRows) setAislePosition(0);
+                          setAislePosition(0);
                         }}
                         style={{
                           flex: 1,
@@ -665,91 +687,9 @@ export default function CreateSeatModal({
                         }}
                       >
                         <Rows size={14} />
-                        <span>Horizontal (Sleeping)</span>
+                        <span>Horizontal</span>
                       </button>
                     </div>
-                  </div>
-
-                  {/* Aisle Placement Location / Stepper */}
-                  <div>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          color: "#0F172A",
-                        }}
-                      >
-                        Placement Position:
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          color: "#0284C7",
-                        }}
-                      >
-                        {aisleType === "VERTICAL"
-                          ? aislePosition === 0
-                            ? "Start (Before C1)"
-                            : `After Col C${aislePosition}`
-                          : aislePosition === 0
-                            ? "Start (Before R1)"
-                            : `After Row R${aislePosition}`}
-                      </span>
-                    </div>
-
-                    <select
-                      value={aislePosition}
-                      onChange={(e) =>
-                        setAislePosition(parseInt(e.target.value, 10))
-                      }
-                      style={{
-                        width: "100%",
-                        height: "36px",
-                        background: "#FFFFFF",
-                        border: "1px solid #CBD5E1",
-                        borderRadius: "6px",
-                        padding: "0 10px",
-                        fontFamily: "'Plus Jakarta Sans', sans-serif",
-                        fontWeight: 600,
-                        fontSize: "12px",
-                        color: "#0F172A",
-                        cursor: "pointer",
-                        outline: "none",
-                      }}
-                    >
-                      {aisleType === "VERTICAL" ? (
-                        <>
-                          <option value={0}>
-                            📍 Starting Point (Before C1)
-                          </option>
-                          {Array.from({ length: displayCols }, (_, i) => (
-                            <option key={`col-opt-${i + 1}`} value={i + 1}>
-                              After Column C{i + 1}
-                            </option>
-                          ))}
-                        </>
-                      ) : (
-                        <>
-                          <option value={0}>
-                            📍 Starting Point (Before R1)
-                          </option>
-                          {Array.from({ length: displayRows }, (_, i) => (
-                            <option key={`row-opt-${i + 1}`} value={i + 1}>
-                              After Row R{i + 1}
-                            </option>
-                          ))}
-                        </>
-                      )}
-                    </select>
                   </div>
                 </div>
               )}
@@ -910,9 +850,6 @@ export default function CreateSeatModal({
                 >
                   Seat Layout Preview
                 </h3>
-                <span style={{ fontSize: "11px", color: "#64748B" }}>
-                  Column (C1, C2...) and Row (R1, R2...) labeled layout
-                </span>
               </div>
 
               <span
@@ -949,6 +886,7 @@ export default function CreateSeatModal({
             >
               {/* Inner container with max-content for smooth scrollability to top & left */}
               <div
+                ref={gridInnerRef}
                 style={{
                   minWidth: "max-content",
                   minHeight: "max-content",
@@ -957,288 +895,491 @@ export default function CreateSeatModal({
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "flex-start",
+                  userSelect: isDraggingAisle ? "none" : "auto",
                 }}
               >
-                {/* ── Column Headers Row: Corner Spacer + [Start Aisle?] + C1, C2... ── */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    marginBottom: "8px",
-                  }}
-                >
-                  {/* Left row header spacer (width matches R1/R2 width) */}
-                  <div
-                    style={{
-                      width: "36px",
-                      marginRight: "6px",
-                      flexShrink: 0,
-                    }}
-                  />
-
-                  {/* If vertical aisle is at position 0 (Starting point before C1) */}
-                  {hasAisle && aisleType === "VERTICAL" && aislePosition === 0 && (
-                    <div
-                      style={{
-                        width: "56px",
-                        marginRight: "10px",
-                        textAlign: "center",
-                        fontSize: "10px",
-                        fontWeight: 800,
-                        color: "#0369A1",
-                        flexShrink: 0,
-                      }}
-                    >
-                      AISLE
-                    </div>
-                  )}
-
-                  {/* Column header tags (C1, C2, C3...) */}
-                  {Array.from({ length: displayCols }, (_, cIdx) => {
-                    const colNum = cIdx + 1;
-                    const isAisleAfterThis =
-                      hasAisle &&
-                      aisleType === "VERTICAL" &&
-                      aislePosition === colNum;
-
-                    return (
-                      <React.Fragment key={`col-header-${colNum}`}>
-                        <div
+                {/* ── VERTICAL AISLE LAYOUT ── */}
+                {hasAisle && aisleType === "VERTICAL" ? (
+                  <div style={{ display: "flex", flexDirection: "row", alignItems: "flex-start" }}>
+                    {/* R labels column */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginRight: "6px", flexShrink: 0 }}>
+                      <div style={{ height: "20px" }} />{/* spacer for col header row */}
+                      {Array.from({ length: displayRows }, (_, rIdx) => (
+                        <span
+                          key={`rl-${rIdx}`}
                           style={{
-                            width: "44px",
-                            textAlign: "center",
+                            width: "36px",
+                            height: "38px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                             fontSize: "11px",
                             fontWeight: 800,
                             color: "#64748B",
                             background: "#F1F5F9",
                             borderRadius: "4px",
-                            padding: "2px 0",
-                            marginRight: isAisleAfterThis ? "0px" : "8px",
                             flexShrink: 0,
                           }}
                         >
-                          C{colNum}
-                        </div>
+                          R{rIdx + 1}
+                        </span>
+                      ))}
+                    </div>
 
-                        {/* Space / Header for Vertical Aisle after this column */}
-                        {isAisleAfterThis && (
-                          <div
-                            style={{
-                              width: "56px",
-                              margin: "0 10px",
-                              textAlign: "center",
-                              fontSize: "10px",
-                              fontWeight: 800,
-                              color: "#0369A1",
-                              flexShrink: 0,
-                            }}
-                          >
-                            AISLE
-                          </div>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
+                    {/* Render columns + aisle bar + drop/click zones inline */}
+                    {Array.from({ length: displayCols + 1 }, (_, slotIdx) => {
+                      const isAisleHere = aislePosition === slotIdx;
+                      const isDropTarget = isDraggingAisle && !isAisleHere;
+                      const gridHeight = displayRows * 38 + (displayRows - 1) * 8;
 
-                {/* If horizontal aisle is at position 0 (Starting point before R1) */}
-                {hasAisle && aisleType === "HORIZONTAL" && aislePosition === 0 && (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      margin: "0 0 10px 42px",
-                      width: "calc(100% - 42px)",
-                      minWidth: `${displayCols * 52}px`,
-                      background: "rgba(224, 242, 254, 0.75)",
-                      border: "1.5px dashed #0284C7",
-                      borderRadius: "6px",
-                      padding: "6px 14px",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: 800,
-                        color: "#0369A1",
-                        letterSpacing: "2px",
-                      }}
-                    >
-                      ─── AISLE (STARTING POINT) ───
-                    </span>
+                      return (
+                        <React.Fragment key={`slot-${slotIdx}`}>
+                          {/* Seat column for slotIdx >= 1 */}
+                          {slotIdx > 0 && slotIdx <= displayCols && (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "8px",
+                                flexShrink: 0,
+                                marginRight:
+                                  slotIdx === displayCols || isAisleHere || isDropTarget
+                                    ? "0px"
+                                    : "8px",
+                              }}
+                            >
+                              {/* Col header */}
+                              <div
+                                style={{
+                                  width: "44px",
+                                  height: "20px",
+                                  textAlign: "center",
+                                  fontSize: "11px",
+                                  fontWeight: 800,
+                                  color: "#64748B",
+                                  background: "#F1F5F9",
+                                  borderRadius: "4px",
+                                  padding: "2px 0",
+                                  flexShrink: 0,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                C{slotIdx}
+                              </div>
+                              {/* Seat cells for this column */}
+                              {Array.from({ length: displayRows }, (_, rIdx) => {
+                                const seatNumber = rIdx * displayCols + slotIdx;
+                                return (
+                                  <div
+                                    key={`sc-${rIdx}-${slotIdx}`}
+                                    style={{
+                                      width: "44px",
+                                      height: "38px",
+                                      background: "#FFFFFF",
+                                      border: "1.5px solid #0C2A42",
+                                      borderRadius: "6px",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      fontSize: "11px",
+                                      fontWeight: 700,
+                                      color: "#0C2A42",
+                                      flexShrink: 0,
+                                      boxShadow: "0 1px 3px rgba(12, 42, 66, 0.08)",
+                                    }}
+                                    title={`Row ${rIdx + 1}, Column ${slotIdx} (Seat #${seatNumber})`}
+                                  >
+                                    <span>{seatNumber < 10 ? `0${seatNumber}` : seatNumber}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Interactive Gap Zone (Click to Place / Drop Target) */}
+                          {!isAisleHere && (
+                            <div
+                              onClick={() => setAislePosition(slotIdx)}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                setAislePosition(slotIdx);
+                                setIsDraggingAisle(false);
+                              }}
+                              title={`Click or drag to place Aisle ${slotIdx === 0 ? "at Start (before C1)" : `after Col C${slotIdx}`}`}
+                              style={{
+                                width: isDropTarget ? "14px" : "6px",
+                                height: `${gridHeight}px`,
+                                marginTop: "28px",
+                                border: isDropTarget
+                                  ? "2px dashed #0284C7"
+                                  : "1px dashed transparent",
+                                borderRadius: "4px",
+                                background: isDropTarget
+                                  ? "rgba(224,242,254,0.6)"
+                                  : "transparent",
+                                cursor: "pointer",
+                                flexShrink: 0,
+                                margin: isDropTarget ? "28px 4px 0 4px" : "28px 1px 0 1px",
+                                transition: "all 0.15s ease",
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isDraggingAisle) {
+                                  e.currentTarget.style.borderColor = "#93C5FD";
+                                  e.currentTarget.style.background = "rgba(239,246,255,0.7)";
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isDraggingAisle) {
+                                  e.currentTarget.style.borderColor = "transparent";
+                                  e.currentTarget.style.background = "transparent";
+                                }
+                              }}
+                            />
+                          )}
+
+                          {/* Aisle bar when placed at this slot */}
+                          {isAisleHere && (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                gap: "8px",
+                                flexShrink: 0,
+                                margin:
+                                  slotIdx === 0
+                                    ? "0 14px 0 0"
+                                    : slotIdx === displayCols
+                                    ? "0 0 0 14px"
+                                    : "0 14px",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize: "10px",
+                                  fontWeight: 800,
+                                  color: "#0369A1",
+                                  background: "rgba(224,242,254,0.6)",
+                                  borderRadius: "4px",
+                                  padding: "2px 6px",
+                                  whiteSpace: "nowrap",
+                                  height: "20px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => setAislePosition((p) => Math.max(0, p - 1))}
+                                  disabled={aislePosition === 0}
+                                  style={{
+                                    border: "none",
+                                    background: "transparent",
+                                    cursor: aislePosition === 0 ? "default" : "pointer",
+                                    padding: "0 2px",
+                                    fontSize: "9px",
+                                    fontWeight: 900,
+                                    color: aislePosition === 0 ? "#94A3B8" : "#0284C7",
+                                  }}
+                                  title="Move Aisle Left"
+                                >
+                                  ◀
+                                </button>
+                                <span>AISLE</span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setAislePosition((p) => Math.min(displayCols, p + 1))
+                                  }
+                                  disabled={aislePosition === displayCols}
+                                  style={{
+                                    border: "none",
+                                    background: "transparent",
+                                    cursor:
+                                      aislePosition === displayCols ? "default" : "pointer",
+                                    padding: "0 2px",
+                                    fontSize: "9px",
+                                    fontWeight: 900,
+                                    color:
+                                      aislePosition === displayCols ? "#94A3B8" : "#0284C7",
+                                  }}
+                                  title="Move Aisle Right"
+                                >
+                                  ▶
+                                </button>
+                              </div>
+                              <div
+                                onPointerDown={startAislePointerDrag}
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData("text/plain", "aisle");
+                                  e.dataTransfer.effectAllowed = "move";
+                                  setIsDraggingAisle(true);
+                                }}
+                                onDragEnd={() => setIsDraggingAisle(false)}
+                                style={{
+                                  width: "56px",
+                                  height: `${gridHeight}px`,
+                                  background: isDraggingAisle
+                                    ? "rgba(186, 230, 253, 0.95)"
+                                    : "rgba(224, 242, 254, 0.75)",
+                                  border: "2px dashed #0284C7",
+                                  borderRadius: "6px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  cursor: "grab",
+                                  userSelect: "none",
+                                  touchAction: "none",
+                                  writingMode: "vertical-lr",
+                                  fontSize: "11px",
+                                  fontWeight: 800,
+                                  color: "#0369A1",
+                                  letterSpacing: "3px",
+                                  boxShadow: isDraggingAisle
+                                    ? "0 4px 12px rgba(2,132,199,0.25)"
+                                    : "none",
+                                  transition: "background 0.15s ease",
+                                }}
+                                title="Grab & drag or click arrow buttons to reposition aisle"
+                              >
+                                ⠿ AISLE — GRAB TO MOVE
+                              </div>
+                            </div>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </div>
-                )}
-
-                {/* ── Main Grid of Rows ── */}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px",
-                  }}
-                >
-                  {Array.from({ length: displayRows }, (_, rIdx) => {
-                    const rowNum = rIdx + 1;
-                    const isHorizontalAisleAfterThis =
-                      hasAisle &&
-                      aisleType === "HORIZONTAL" &&
-                      aislePosition === rowNum;
-
-                    return (
-                      <React.Fragment key={`grid-row-${rowNum}`}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                          }}
-                        >
-                          {/* Row Label (R1, R2, R3...) */}
-                          <span
+                ) : (
+                  <>
+                    {/* ── HORIZONTAL AISLE or NO AISLE: row-based layout ── */}
+                    {/* Column headers row */}
+                    <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
+                      <div style={{ width: "36px", marginRight: "6px", flexShrink: 0 }} />
+                      {Array.from({ length: displayCols }, (_, cIdx) => {
+                        const colNum = cIdx + 1;
+                        return (
+                          <div
+                            key={`ch-${colNum}`}
                             style={{
-                              width: "36px",
-                              marginRight: "6px",
+                              width: "44px",
+                              textAlign: "center",
                               fontSize: "11px",
                               fontWeight: 800,
                               color: "#64748B",
                               background: "#F1F5F9",
                               borderRadius: "4px",
-                              padding: "4px 0",
-                              textAlign: "center",
+                              padding: "2px 0",
+                              marginRight: "8px",
                               flexShrink: 0,
                             }}
                           >
-                            R{rowNum}
-                          </span>
+                            C{colNum}
+                          </div>
+                        );
+                      })}
+                    </div>
 
-                          {/* If vertical aisle is at position 0 (before C1) */}
-                          {hasAisle &&
-                            aisleType === "VERTICAL" &&
-                            aislePosition === 0 && (
+                    {/* Main Grid of Rows with Horizontal Aisle & Gaps */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      {Array.from({ length: displayRows + 1 }, (_, slotIdx) => {
+                        const isAisleHere = hasAisle && aislePosition === slotIdx;
+                        const isDropTarget = isDraggingAisle && !isAisleHere;
+                        const totalRowWidth = displayCols * 44 + (displayCols - 1) * 8;
+
+                        return (
+                          <React.Fragment key={`h-slot-${slotIdx}`}>
+                            {/* Horizontal Aisle Bar at slotIdx */}
+                            {isAisleHere && (
                               <div
+                                onPointerDown={startAislePointerDrag}
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData("text/plain", "aisle");
+                                  e.dataTransfer.effectAllowed = "move";
+                                  setIsDraggingAisle(true);
+                                }}
+                                onDragEnd={() => setIsDraggingAisle(false)}
                                 style={{
-                                  width: "56px",
-                                  height: "38px",
-                                  marginRight: "10px",
-                                  background: "rgba(224, 242, 254, 0.65)",
-                                  border: "1.5px dashed #0284C7",
-                                  borderRadius: "6px",
                                   display: "flex",
                                   alignItems: "center",
-                                  justifyContent: "center",
-                                  fontSize: "9px",
-                                  fontWeight: 800,
-                                  color: "#0369A1",
-                                  letterSpacing: "1px",
-                                  flexShrink: 0,
+                                  justifyContent: "space-between",
+                                  margin: "4px 0 4px 42px",
+                                  width: `${totalRowWidth}px`,
+                                  height: "36px",
+                                  background: isDraggingAisle
+                                    ? "rgba(186, 230, 253, 0.95)"
+                                    : "rgba(224, 242, 254, 0.75)",
+                                  border: "2px dashed #0284C7",
+                                  borderRadius: "6px",
+                                  padding: "0 12px",
+                                  cursor: "grab",
+                                  userSelect: "none",
+                                  touchAction: "none",
+                                  boxShadow: isDraggingAisle
+                                    ? "0 4px 12px rgba(2,132,199,0.25)"
+                                    : "none",
+                                  transition: "background 0.15s ease",
                                 }}
+                                title="Grab & drag or click arrows to move horizontal aisle"
                               >
-                                AISLE
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAislePosition((p) => Math.max(0, p - 1));
+                                  }}
+                                  disabled={aislePosition === 0}
+                                  style={{
+                                    border: "none",
+                                    background: "transparent",
+                                    cursor: aislePosition === 0 ? "default" : "pointer",
+                                    fontSize: "10px",
+                                    fontWeight: 900,
+                                    color: aislePosition === 0 ? "#94A3B8" : "#0284C7",
+                                    padding: "2px 6px",
+                                  }}
+                                  title="Move Aisle Up"
+                                >
+                                  ▲ UP
+                                </button>
+                                <span
+                                  style={{
+                                    fontSize: "11px",
+                                    fontWeight: 800,
+                                    color: "#0369A1",
+                                    letterSpacing: "2px",
+                                  }}
+                                >
+                                  ⠿ AISLE {slotIdx === 0 ? "(START)" : `(AFTER ROW R${slotIdx})`}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAislePosition((p) => Math.min(displayRows, p + 1));
+                                  }}
+                                  disabled={aislePosition === displayRows}
+                                  style={{
+                                    border: "none",
+                                    background: "transparent",
+                                    cursor:
+                                      aislePosition === displayRows ? "default" : "pointer",
+                                    fontSize: "10px",
+                                    fontWeight: 900,
+                                    color:
+                                      aislePosition === displayRows ? "#94A3B8" : "#0284C7",
+                                    padding: "2px 6px",
+                                  }}
+                                  title="Move Aisle Down"
+                                >
+                                  ▼ DOWN
+                                </button>
                               </div>
                             )}
 
-                          {/* Seat Cells in this row */}
-                          {Array.from({ length: displayCols }, (_, cIdx) => {
-                            const colNum = cIdx + 1;
-                            const seatNumber = rIdx * displayCols + colNum;
-                            const isVerticalAisleAfterThis =
-                              hasAisle &&
-                              aisleType === "VERTICAL" &&
-                              aislePosition === colNum;
+                            {/* Gap Slot for Click-to-place & Drag target (when aisle is not here) */}
+                            {hasAisle && !isAisleHere && (
+                              <div
+                                onClick={() => setAislePosition(slotIdx)}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={(e) => {
+                                  e.preventDefault();
+                                  setAislePosition(slotIdx);
+                                  setIsDraggingAisle(false);
+                                }}
+                                title={`Click or drag to place Horizontal Aisle ${slotIdx === 0 ? "at Start (before R1)" : `after Row R${slotIdx}`}`}
+                                style={{
+                                  width: `${totalRowWidth}px`,
+                                  height: isDropTarget ? "14px" : "4px",
+                                  margin: "0 0 0 42px",
+                                  border: isDropTarget
+                                    ? "2px dashed #0284C7"
+                                    : "1px dashed transparent",
+                                  borderRadius: "4px",
+                                  background: isDropTarget
+                                    ? "rgba(224,242,254,0.6)"
+                                    : "transparent",
+                                  cursor: "pointer",
+                                  transition: "all 0.15s ease",
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!isDraggingAisle) {
+                                    e.currentTarget.style.borderColor = "#93C5FD";
+                                    e.currentTarget.style.background = "rgba(239,246,255,0.7)";
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isDraggingAisle) {
+                                    e.currentTarget.style.borderColor = "transparent";
+                                    e.currentTarget.style.background = "transparent";
+                                  }
+                                }}
+                              />
+                            )}
 
-                            return (
-                              <React.Fragment key={`seat-${rowNum}-${colNum}`}>
-                                <div
+                            {/* Seat Row for slotIdx >= 1 */}
+                            {slotIdx > 0 && slotIdx <= displayRows && (
+                              <div style={{ display: "flex", alignItems: "center" }}>
+                                <span
                                   style={{
-                                    width: "44px",
-                                    height: "38px",
-                                    background: "#FFFFFF",
-                                    border: "1.5px solid #0C2A42",
-                                    borderRadius: "6px",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    alignItems: "center",
-                                    justifyContent: "center",
+                                    width: "36px",
+                                    marginRight: "6px",
                                     fontSize: "11px",
-                                    fontWeight: 700,
-                                    color: "#0C2A42",
-                                    marginRight: isVerticalAisleAfterThis
-                                      ? "0px"
-                                      : "8px",
+                                    fontWeight: 800,
+                                    color: "#64748B",
+                                    background: "#F1F5F9",
+                                    borderRadius: "4px",
+                                    padding: "4px 0",
+                                    textAlign: "center",
                                     flexShrink: 0,
-                                    boxShadow:
-                                      "0 1px 3px rgba(12, 42, 66, 0.08)",
                                   }}
-                                  title={`Row ${rowNum}, Column ${colNum} (Seat #${seatNumber})`}
                                 >
-                                  <span>
-                                    {seatNumber < 10
-                                      ? `0${seatNumber}`
-                                      : seatNumber}
-                                  </span>
-                                </div>
-
-                                {/* Vertical Aisle Bar after this column */}
-                                {isVerticalAisleAfterThis && (
-                                  <div
-                                    style={{
-                                      width: "56px",
-                                      height: "38px",
-                                      margin: "0 10px",
-                                      background: "rgba(224, 242, 254, 0.65)",
-                                      border: "1.5px dashed #0284C7",
-                                      borderRadius: "6px",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      fontSize: "9px",
-                                      fontWeight: 800,
-                                      color: "#0369A1",
-                                      letterSpacing: "1px",
-                                      flexShrink: 0,
-                                    }}
-                                  >
-                                    AISLE
-                                  </div>
-                                )}
-                              </React.Fragment>
-                            );
-                          })}
-                        </div>
-
-                        {/* Horizontal Aisle Bar (Sleeping line) after this row */}
-                        {isHorizontalAisleAfterThis && (
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              margin: "2px 0 2px 42px",
-                              width: "calc(100% - 42px)",
-                              minWidth: `${displayCols * 52}px`,
-                              height: "34px",
-                              background: "rgba(224, 242, 254, 0.75)",
-                              border: "1.5px dashed #0284C7",
-                              borderRadius: "6px",
-                              padding: "0 14px",
-                              justifyContent: "center",
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: "11px",
-                                fontWeight: 800,
-                                color: "#0369A1",
-                                letterSpacing: "2px",
-                              }}
-                            >
-                              ─── AISLE (AFTER ROW R{rowNum}) ───
-                            </span>
-                          </div>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
+                                  R{slotIdx}
+                                </span>
+                                {Array.from({ length: displayCols }, (_, cIdx) => {
+                                  const colNum = cIdx + 1;
+                                  const seatNumber = (slotIdx - 1) * displayCols + colNum;
+                                  return (
+                                    <div
+                                      key={`seat-${slotIdx}-${colNum}`}
+                                      style={{
+                                        width: "44px",
+                                        height: "38px",
+                                        background: "#FFFFFF",
+                                        border: "1.5px solid #0C2A42",
+                                        borderRadius: "6px",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        fontSize: "11px",
+                                        fontWeight: 700,
+                                        color: "#0C2A42",
+                                        marginRight: "8px",
+                                        flexShrink: 0,
+                                        boxShadow: "0 1px 3px rgba(12, 42, 66, 0.08)",
+                                      }}
+                                      title={`Row ${slotIdx}, Column ${colNum} (Seat #${seatNumber})`}
+                                    >
+                                      <span>
+                                        {seatNumber < 10 ? `0${seatNumber}` : seatNumber}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -1255,13 +1396,8 @@ export default function CreateSeatModal({
                 gap: "8px",
               }}
             >
-              <span
-                style={{ fontSize: "12px", color: "#1E40AF", fontWeight: 500 }}
-              >
-                💡 <strong>Dynamic Layout:</strong> Rows (R1, R2...) and Columns
-                (C1, C2...) are labeled. You can assign single standalone seats
-                or grid layouts with vertical or horizontal aisles starting from
-                position 0.
+              <span style={{ fontSize: "12px", color: "#1E40AF", fontWeight: 500 }}>
+                <strong>Drag the AISLE bar</strong> in the preview to reposition it anywhere in the grid. It starts at the beginning by default.
               </span>
             </div>
           </div>

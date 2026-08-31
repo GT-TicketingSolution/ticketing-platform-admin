@@ -789,12 +789,9 @@ export default function AddEditAttractionForm({
 
     const seatErrors: Record<string, string> = {};
 
-    if (allocatedSeats.length === 0) {
+    if (allocatedSeats.length > 0 && activeAllocated.length === 0) {
       seatErrors.seatAllocation =
-        "Seat allocation is required. Select at least one seat layout.";
-    } else if (activeAllocated.length === 0) {
-      seatErrors.seatAllocation =
-        "All allocated seat layouts are disabled. Please enable at least one.";
+        "All allocated seat layouts are disabled. Please enable at least one or remove them.";
     }
 
     for (const cat of categories) {
@@ -848,7 +845,7 @@ export default function AddEditAttractionForm({
       name: name.trim(),
       description: description.trim(),
       status,
-      hasSeating: true,
+      hasSeating: activeAllocated.length > 0,
       category: category.trim(),
       timing: timingString,
       image: imagePreview || "",
@@ -1494,7 +1491,7 @@ export default function AddEditAttractionForm({
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <Armchair size={18} color="#0C2A42" />
                 <h3 style={{ margin: 0, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "16px", color: "#0C2A42" }}>
-                  Seat Allocation<Req />
+                  Seat Allocation <span style={{ fontWeight: 400, fontSize: "12px", color: "#6B7280" }}>(Optional)</span>
                 </h3>
               </div>
               {allocatedSeats.length > 0 && (
@@ -1534,7 +1531,7 @@ export default function AddEditAttractionForm({
             {/* 1. First Dropdown: Select Seat Layouts */}
             <div style={{ marginBottom: "12px" }} ref={seatDropdownRef}>
               <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "6px" }}>
-                Select Seat Layout (Dropdown)<Req />
+                Select Seat Layout (Dropdown)
               </label>
 
               <div style={{ position: "relative", width: "100%" }}>
@@ -1708,7 +1705,7 @@ export default function AddEditAttractionForm({
             <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
                 <label style={{ fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151" }}>
-                  Allocated Seats ({decoratedAllocatedSeats.length}) — Grab to Reorder<Req />
+                  Allocated Seats ({decoratedAllocatedSeats.length}) — Grab to Reorder
                 </label>
                 {allocatedSeats.length > 0 && (
                   <button
