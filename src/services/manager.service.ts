@@ -3,6 +3,8 @@ import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   users,
+  systemModules,
+  systemModuleRolePermissions,
   managerSystemModulePermissions,
   managerAttractionPermissions,
   managerAttractionModulePermissions,
@@ -39,6 +41,10 @@ export async function getManagers({
   status?: "ACTIVE" | "INACTIVE";
 }) {
   const offset = (page - 1) * limit;
+
+  /* ---------------------------------------------------------------------- */
+  /* Manager filters                                                        */
+  /* ---------------------------------------------------------------------- */
 
   const conditions = [eq(users.role, "MANAGER"), eq(users.adminId, adminId)];
 
@@ -107,6 +113,49 @@ export async function getManagers({
   }
 
   const managerIds = managers.map((manager) => manager.id);
+
+  /* ---------------------------------------------------------------------- */
+  /* Get manager → system module permissions                                */
+  /* ---------------------------------------------------------------------- */
+
+  const systemModulePermissions = await db
+    .select({
+      managerId: managerSystemModulePermissions.managerId,
+      moduleId: systemModules.id,
+      moduleKey: systemModules.key,
+      moduleName: systemModules.name,
+    })
+    .from(managerSystemModulePermissions)
+    .innerJoin(
+      systemModules,
+      eq(managerSystemModulePermissions.moduleId, systemModules.id),
+    )
+    .where(sql`${managerSystemModulePermissions.managerId} IN ${managerIds}`);
+
+  /* ---------------------------------------------------------------------- */
+  /* Group system modules by manager                                        */
+  /* ---------------------------------------------------------------------- */
+
+  const managerSystemModuleMap = new Map<
+    string,
+    {
+      id: string;
+      key: string;
+      name: string;
+    }[]
+  >();
+
+  for (const permission of systemModulePermissions) {
+    const existing = managerSystemModuleMap.get(permission.managerId) ?? [];
+
+    existing.push({
+      id: permission.moduleId,
+      key: permission.moduleKey,
+      name: permission.moduleName,
+    });
+
+    managerSystemModuleMap.set(permission.managerId, existing);
+  }
 
   /* ---------------------------------------------------------------------- */
   /* Get manager → attraction assignments                                   */
@@ -220,7 +269,9 @@ export async function getManagers({
       name: permission.attractionName,
       type: permission.attractionType,
       status: permission.attractionStatus,
+
       moduleIds: modules.map((module) => module.id),
+
       modules,
     });
 
@@ -228,13 +279,20 @@ export async function getManagers({
   }
 
   /* ---------------------------------------------------------------------- */
-  /* Attach attractions to managers                                         */
+  /* Attach permissions to managers                                         */
   /* ---------------------------------------------------------------------- */
 
   const managersWithPermissions = managers.map((manager) => ({
     ...manager,
+
+    systemModules: managerSystemModuleMap.get(manager.id) ?? [],
+
     attractions: managerAttractionMap.get(manager.id) ?? [],
   }));
+
+  /* ---------------------------------------------------------------------- */
+  /* Return                                                                */
+  /* ---------------------------------------------------------------------- */
 
   return {
     managers: managersWithPermissions,
@@ -247,7 +305,6 @@ export async function getManagers({
     },
   };
 }
-
 /* -------------------------------------------------------------------------- */
 /* CREATE MANAGER                                                             */
 /* -------------------------------------------------------------------------- */
@@ -260,17 +317,14 @@ export async function createManager(
     phone?: string;
     password: string;
     status?: "ACTIVE" | "INACTIVE";
-
-    systemModuleIds?: string[];
-
     attractionPermissions?: AttractionPermissionInput[];
   },
 ) {
   const email = data.email.trim().toLowerCase();
 
-  /* ---------------------------------------------------------------------- */
-  /* Prevent duplicate email                                                */
-  /* ---------------------------------------------------------------------- */
+  /* ------------------------------------------------------------------ */
+  /* Prevent duplicate email                                            */
+  /* ------------------------------------------------------------------ */
 
   const [existingUser] = await db
     .select({
@@ -287,9 +341,9 @@ export async function createManager(
   const passwordHash = await hashPassword(data.password);
 
   return db.transaction(async (tx) => {
-    /* -------------------------------------------------------------------- */
-    /* Create manager                                                       */
-    /* -------------------------------------------------------------------- */
+    /* ---------------------------------------------------------------- */
+    /* Create manager                                                   */
+    /* ---------------------------------------------------------------- */
 
     const [manager] = await tx
       .insert(users)
@@ -316,44 +370,60 @@ export async function createManager(
       throw new Error("MANAGER_CREATE_FAILED");
     }
 
-    /* -------------------------------------------------------------------- */
-    /* System module permissions                                            */
-    /* -------------------------------------------------------------------- */
+    /* ---------------------------------------------------------------- */
+    /* Default system modules                                           */
+    /* ---------------------------------------------------------------- */
 
-    if (data.systemModuleIds?.length) {
-      const uniqueSystemModuleIds = [...new Set(data.systemModuleIds)];
+    const defaultManagerModuleKeys = [
+      "DASHBOARD",
+      "BOOKINGS",
+      "INVOICES",
+      "REPORTS",
+      "TRANSACTIONS",
+      "SEAT_MANAGEMENT",
+    ] as const;
 
+    const defaultSystemModules = await tx
+      .select({
+        moduleId: systemModules.id,
+      })
+      .from(systemModules)
+      .where(
+        and(
+          eq(systemModules.isActive, "ACTIVE"),
+          sql`${systemModules.key} IN (${sql.join(
+            defaultManagerModuleKeys.map((key) => sql`${key}`),
+            sql`, `,
+          )})`,
+        ),
+      );
+
+    if (defaultSystemModules.length > 0) {
       await tx.insert(managerSystemModulePermissions).values(
-        uniqueSystemModuleIds.map((moduleId) => ({
+        defaultSystemModules.map(({ moduleId }) => ({
           managerId: manager.id,
           moduleId,
         })),
       );
     }
 
-    /* -------------------------------------------------------------------- */
-    /* Attraction permissions                                               */
-    /* -------------------------------------------------------------------- */
+    /* ---------------------------------------------------------------- */
+    /* Attraction permissions                                           */
+    /* ---------------------------------------------------------------- */
 
     if (data.attractionPermissions?.length) {
-      /*
-       * Remove duplicate attraction assignments.
-       */
       const attractionIds = [
         ...new Set(
           data.attractionPermissions.map(
-            (permission: AttractionPermissionInput) => permission.attractionId,
+            (permission) => permission.attractionId,
           ),
         ),
       ];
 
-      /* ------------------------------------------------------------------ */
-      /* Validate attractions                                               */
-      /* ------------------------------------------------------------------ */
+      /* -------------------------------------------------------------- */
+      /* Validate attractions                                           */
+      /* -------------------------------------------------------------- */
 
-      /*
-       * Only attractions belonging to this admin are allowed.
-       */
       const allowedAttractions = await tx
         .select({
           id: attractions.id,
@@ -362,7 +432,10 @@ export async function createManager(
         .where(
           and(
             eq(attractions.adminId, adminId),
-            sql`${attractions.id} IN ${attractionIds}`,
+            sql`${attractions.id} IN (${sql.join(
+              attractionIds.map((id) => sql`${id}`),
+              sql`, `,
+            )})`,
           ),
         );
 
@@ -370,13 +443,13 @@ export async function createManager(
         allowedAttractions.map((attraction) => attraction.id),
       );
 
+      /* -------------------------------------------------------------- */
+      /* Assign attractions to manager                                  */
+      /* -------------------------------------------------------------- */
+
       const validAttractionIds = attractionIds.filter((id) =>
         allowedAttractionIds.has(id),
       );
-
-      /* ------------------------------------------------------------------ */
-      /* Create attraction assignments                                      */
-      /* ------------------------------------------------------------------ */
 
       if (validAttractionIds.length) {
         await tx.insert(managerAttractionPermissions).values(
@@ -387,116 +460,191 @@ export async function createManager(
         );
       }
 
-      /* ------------------------------------------------------------------ */
-      /* Prepare requested module permissions                               */
-      /* ------------------------------------------------------------------ */
+      /* -------------------------------------------------------------- */
+      /* Get system module IDs from payload                             */
+      /* -------------------------------------------------------------- */
 
-      const requestedModulePermissions: {
-        attractionId: string;
-        attractionModuleId: string;
-      }[] = data.attractionPermissions.flatMap(
-        (permission: AttractionPermissionInput) =>
-          permission.moduleIds.map((attractionModuleId) => ({
-            attractionId: permission.attractionId,
-            attractionModuleId,
-          })),
-      );
-
-      if (requestedModulePermissions.length) {
-        /* ---------------------------------------------------------------- */
-        /* Get valid modules                                                */
-        /* ---------------------------------------------------------------- */
-
-        /*
-         * Fetch the actual attraction for every requested module.
-         *
-         * This is the important part.
-         *
-         * We don't trust the attractionId coming from the frontend.
-         */
-        const requestedModuleIds = [
-          ...new Set(
-            requestedModulePermissions.map(
-              (permission) => permission.attractionModuleId,
-            ),
+      const requestedSystemModuleIds = [
+        ...new Set(
+          data.attractionPermissions.flatMap(
+            (permission) => permission.moduleIds,
           ),
-        ];
+        ),
+      ];
 
-        const validModules = await tx
+      if (requestedSystemModuleIds.length) {
+        /* ------------------------------------------------------------ */
+        /* Get system modules                                            */
+        /* ------------------------------------------------------------ */
+
+        const requestedSystemModules = await tx
           .select({
-            moduleId: attractionModules.id,
-            attractionId: attractionModules.attractionId,
+            id: systemModules.id,
+            key: systemModules.key,
+            name: systemModules.name,
+            description: systemModules.description,
           })
-          .from(attractionModules)
-          .innerJoin(
-            attractions,
-            eq(attractionModules.attractionId, attractions.id),
-          )
+          .from(systemModules)
           .where(
             and(
-              eq(attractions.adminId, adminId),
-              sql`${attractionModules.id} IN ${requestedModuleIds}`,
+              eq(systemModules.isActive, "ACTIVE"),
+              sql`${systemModules.id} IN (${sql.join(
+                requestedSystemModuleIds.map((id) => sql`${id}`),
+                sql`, `,
+              )})`,
             ),
           );
 
-        /* ---------------------------------------------------------------- */
-        /* Map module → actual attraction                                  */
-        /* ---------------------------------------------------------------- */
+        /* ------------------------------------------------------------ */
+        /* Map system module ID → system module                         */
+        /* ------------------------------------------------------------ */
 
-        const moduleAttractionMap = new Map<string, string>();
+        const systemModuleMap = new Map<
+          string,
+          {
+            id: string;
+            key: string;
+            name: string;
+            description: string | null;
+          }
+        >();
 
-        for (const module of validModules) {
-          moduleAttractionMap.set(module.moduleId, module.attractionId);
+        for (const module of requestedSystemModules) {
+          systemModuleMap.set(module.id, module);
         }
 
-        /* ---------------------------------------------------------------- */
-        /* Validate module belongs to selected attraction                   */
-        /* ---------------------------------------------------------------- */
+        /* ------------------------------------------------------------ */
+        /* Create attraction modules                                    */
+        /* ------------------------------------------------------------ */
 
-        const validModulePermissions = requestedModulePermissions.filter(
-          (permission) => {
-            /*
-             * Attraction must belong to this admin.
-             */
-            if (!allowedAttractionIds.has(permission.attractionId)) {
-              return false;
+        const attractionModulesToCreate: Array<{
+          attractionId: string;
+          key: string;
+          name: string;
+          description: string | null;
+          isActive: "ACTIVE";
+        }> = [];
+
+        for (const permission of data.attractionPermissions) {
+          if (!allowedAttractionIds.has(permission.attractionId)) {
+            continue;
+          }
+
+          for (const systemModuleId of permission.moduleIds) {
+            const systemModule = systemModuleMap.get(systemModuleId);
+
+            if (!systemModule) {
+              continue;
             }
 
-            /*
-             * Module must exist and belong to the SAME attraction.
-             */
-            const actualAttractionId = moduleAttractionMap.get(
-              permission.attractionModuleId,
-            );
+            attractionModulesToCreate.push({
+              attractionId: permission.attractionId,
+              key: systemModule.key,
+              name: systemModule.name,
+              description: systemModule.description,
+              isActive: "ACTIVE",
+            });
+          }
+        }
 
-            return actualAttractionId === permission.attractionId;
-          },
+        /* ------------------------------------------------------------ */
+        /* Remove duplicate attraction modules                         */
+        /* ------------------------------------------------------------ */
+
+        const uniqueAttractionModules = Array.from(
+          new Map(
+            attractionModulesToCreate.map((module) => [
+              `${module.attractionId}:${module.key}`,
+              module,
+            ]),
+          ).values(),
         );
 
-        /* ---------------------------------------------------------------- */
-        /* Remove duplicate module assignments                              */
-        /* ---------------------------------------------------------------- */
+        /* ------------------------------------------------------------ */
+        /* Insert attraction modules and get their IDs                 */
+        /* ------------------------------------------------------------ */
 
-        const uniqueModulePermissions = Array.from(
+        const createdAttractionModules = uniqueAttractionModules.length
+          ? await tx
+              .insert(attractionModules)
+              .values(uniqueAttractionModules)
+              .returning({
+                id: attractionModules.id,
+                attractionId: attractionModules.attractionId,
+                key: attractionModules.key,
+              })
+          : [];
+
+        /* ------------------------------------------------------------ */
+        /* Create lookup: attraction + key → attraction module ID      */
+        /* ------------------------------------------------------------ */
+
+        const attractionModuleMap = new Map<string, string>();
+
+        for (const module of createdAttractionModules) {
+          attractionModuleMap.set(
+            `${module.attractionId}:${module.key}`,
+            module.id,
+          );
+        }
+
+        /* ------------------------------------------------------------ */
+        /* Create manager attraction module permissions                */
+        /* ------------------------------------------------------------ */
+
+        const managerModulePermissions: Array<{
+          managerId: string;
+          attractionModuleId: string;
+        }> = [];
+
+        for (const permission of data.attractionPermissions) {
+          if (!allowedAttractionIds.has(permission.attractionId)) {
+            continue;
+          }
+
+          for (const systemModuleId of permission.moduleIds) {
+            const systemModule = systemModuleMap.get(systemModuleId);
+
+            if (!systemModule) {
+              continue;
+            }
+
+            const attractionModuleId = attractionModuleMap.get(
+              `${permission.attractionId}:${systemModule.key}`,
+            );
+
+            if (!attractionModuleId) {
+              continue;
+            }
+
+            managerModulePermissions.push({
+              managerId: manager.id,
+              attractionModuleId,
+            });
+          }
+        }
+
+        /* ------------------------------------------------------------ */
+        /* Remove duplicate permissions                                */
+        /* ------------------------------------------------------------ */
+
+        const uniqueManagerModulePermissions = Array.from(
           new Map(
-            validModulePermissions.map((permission) => [
-              `${permission.attractionId}:${permission.attractionModuleId}`,
+            managerModulePermissions.map((permission) => [
+              `${permission.managerId}:${permission.attractionModuleId}`,
               permission,
             ]),
           ).values(),
         );
 
-        /* ---------------------------------------------------------------- */
-        /* Insert valid module permissions                                  */
-        /* ---------------------------------------------------------------- */
+        /* ------------------------------------------------------------ */
+        /* Assign modules to manager                                   */
+        /* ------------------------------------------------------------ */
 
-        if (uniqueModulePermissions.length) {
-          await tx.insert(managerAttractionModulePermissions).values(
-            uniqueModulePermissions.map((permission) => ({
-              managerId: manager.id,
-              attractionModuleId: permission.attractionModuleId,
-            })),
-          );
+        if (uniqueManagerModulePermissions.length) {
+          await tx
+            .insert(managerAttractionModulePermissions)
+            .values(uniqueManagerModulePermissions);
         }
       }
     }
@@ -504,7 +652,6 @@ export async function createManager(
     return manager;
   });
 }
-
 /* -------------------------------------------------------------------------- */
 /* GET MANAGER                                                                */
 /* -------------------------------------------------------------------------- */
