@@ -147,13 +147,55 @@ export function useBulkUploadAttractions() {
 }
 
 // ── Assign seat layout 
+/*
+// ============================================================================
+// [PREVIOUS API CODE - PATCH /api/admin/attraction-management/:id/seat]
+// export function useAssignSeatLayout() {
+//   const queryClient = useQueryClient();
+//   const { showToast } = useToast();
+// 
+//   return useMutation({
+//     mutationFn: ({ id, seatLayoutId }: { id: string; seatLayoutId: string }) =>
+//       patchData(AppUrl.attractionManagement.assignSeat(id), { seatLayoutId }),
+//     onSuccess: () => {
+//       queryClient.invalidateQueries({ queryKey: attractionManagementKeys.lists() });
+//       showToast("Seat layout assigned successfully!", "success");
+//     },
+//     onError: (error: any) => {
+//       const message =
+//         error?.response?.data?.message || error?.message || "Failed to assign seat layout.";
+//       showErrorOnce(message, "Seat Assignment Failed");
+//       showToast(message, "error");
+//     },
+//   });
+// }
+// ============================================================================
+*/
+
+/**
+ * Assign seat layout(s) to attraction (Mock Implementation)
+ */
 export function useAssignSeatLayout() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
   return useMutation({
-    mutationFn: ({ id, seatLayoutId }: { id: string; seatLayoutId: string }) =>
-      patchData(AppUrl.attractionManagement.assignSeat(id), { seatLayoutId }),
+    mutationFn: async ({
+      id,
+      seatLayoutId,
+      seatLayoutIds,
+    }: {
+      id: string;
+      seatLayoutId?: string;
+      seatLayoutIds?: string[];
+    }) => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return {
+        id,
+        seatLayoutId: seatLayoutId || (seatLayoutIds && seatLayoutIds[0]) || null,
+        seatLayoutIds: seatLayoutIds || (seatLayoutId ? [seatLayoutId] : []),
+      };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: attractionManagementKeys.lists() });
       showToast("Seat layout assigned successfully!", "success");

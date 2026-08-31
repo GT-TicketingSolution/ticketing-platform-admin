@@ -300,59 +300,118 @@ export interface TicketingSeatsResponse {
   seats: TicketingSeat[];
 }
 
+// ── Mock Ticketing Seats Generator ───────────────────────────────────────────
+function generateMockTicketingSeats(
+  attractionId: string,
+  slotId: string,
+  date: string
+): TicketingSeatsResponse {
+  const sectionsData = [
+    {
+      name: "Section A (Coach A)",
+      bogie: "Coach A",
+      rows: 6,
+      cols: 4,
+      hasAisle: true,
+      aisleAfterCol: 2,
+      occupiedSeatNumbers: ["A3", "B2", "D4"],
+    },
+    {
+      name: "Section B (Coach B)",
+      bogie: "Coach B",
+      rows: 6,
+      cols: 4,
+      hasAisle: true,
+      aisleAfterCol: 2,
+      occupiedSeatNumbers: ["A1", "C2", "E3"],
+    },
+    {
+      name: "Section C (VIP Lounge)",
+      bogie: "VIP Lounge",
+      rows: 4,
+      cols: 3,
+      hasAisle: false,
+      aisleAfterCol: 0,
+      occupiedSeatNumbers: ["B1"],
+    },
+  ];
+
+  const sections = sectionsData.map((sec) => {
+    const seats: TicketingSeat[] = [];
+    for (let r = 1; r <= sec.rows; r++) {
+      for (let c = 1; c <= sec.cols; c++) {
+        const rowLetter = String.fromCharCode(64 + r);
+        const seatNum = `${rowLetter}${c}`;
+        const isOcc = sec.occupiedSeatNumbers.includes(seatNum);
+        seats.push({
+          id: `${sec.name}-${r}-${c}`,
+          row: r,
+          column: c,
+          bogie: sec.bogie,
+          seatNumber: seatNum,
+          status: isOcc ? "occupied" : "available",
+        });
+      }
+    }
+    const occupiedSeats = seats.filter((s) => s.status === "occupied");
+    const totalSeats = seats.length;
+    const availableSeats = totalSeats - occupiedSeats.length;
+
+    return {
+      name: sec.name,
+      bogie: sec.bogie,
+      totalSeats,
+      occupiedSeats,
+      availableSeats,
+      seats,
+    };
+  });
+
+  const allSeats = sections[0].seats;
+  const totalSeats = sections.reduce((sum, s) => sum + s.totalSeats, 0);
+  const occupiedCount = sections.reduce((sum, s) => sum + s.occupiedSeats.length, 0);
+  const availableSeats = totalSeats - occupiedCount;
+
+  return {
+    attractionId: attractionId || "mock-attr-1",
+    slotId: slotId || "mock-slot-1",
+    date: date || new Date().toISOString().slice(0, 10),
+    hasSeating: true,
+    layout: {
+      id: "layout-section-a",
+      name: "Standard Coach (6x4)",
+      rows: 6,
+      cols: 4,
+      hasAisle: true,
+      aisleAfterCol: 2,
+    },
+    totalSeats,
+    occupiedCount,
+    availableSeats,
+    occupiedSeats: sections[0].occupiedSeats,
+    sections,
+    seats: allSeats,
+  };
+}
+
 /**
- * Fetch seat availability for an attraction slot on a given date.
- * GET /api/admin/ticketing-booking/seats?attractionId=&slotId=&date=
+ * Fetch seat availability for an attraction slot on a given date (Mock Implementation).
  */
-export function useTicketingSeats(attractionId: string, slotId: string, date: string, enabled = true) {
+export function useTicketingSeats(
+  attractionId: string,
+  slotId: string,
+  date: string,
+  enabled = true
+) {
   return useQuery<TicketingSeatsResponse>({
     queryKey: ticketingBookingKeys.seats(attractionId, slotId, date),
     queryFn: async () => {
-      const sp = new URLSearchParams({ attractionId, slotId, date });
-      const res = await getData<any>(`${AppUrl.ticketingBooking.seats}?${sp.toString()}`);
-      const payload = res?.data ?? res;
-      const seatsItems = payload?.seats ?? (Array.isArray(payload) ? payload : []);
-      const sectionsItems = payload?.sections ?? [];
-      return {
-        attractionId: payload?.attractionId ?? attractionId,
-        slotId: payload?.slotId ?? slotId,
-        date: payload?.date ?? date,
-        hasSeating: payload?.hasSeating ?? true,
-        layout: payload?.layout ?? null,
-        totalSeats: payload?.totalSeats ?? seatsItems.length,
-        occupiedCount: payload?.occupiedCount ?? 0,
-        availableSeats: payload?.availableSeats ?? (payload?.totalSeats ? payload.totalSeats - (payload.occupiedCount || 0) : seatsItems.length),
-        occupiedSeats: payload?.occupiedSeats ?? [],
-        sections: sectionsItems.map((sec: any) => ({
-          name: sec.name || "Section",
-          bogie: sec.bogie ?? null,
-          totalSeats: Number(sec.totalSeats ?? (sec.seats ? sec.seats.length : 24)),
-          occupiedSeats: sec.occupiedSeats ?? [],
-          availableSeats: Number(
-            sec.availableSeats ??
-            (sec.totalSeats ? sec.totalSeats - (sec.occupiedSeats?.length || 0) : (sec.seats ? sec.seats.filter((s: any) => s.status !== "occupied").length : 0))
-          ),
-          seats: (sec.seats ?? []).map((s: any): TicketingSeat => ({
-            id: s.id,
-            row: s.row,
-            column: s.column,
-            bogie: s.bogie ?? null,
-            seatNumber: s.seatNumber,
-            status: s.status === "occupied" ? "occupied" : "available",
-          })),
-        })),
-        seats: seatsItems.map((s: any): TicketingSeat => ({
-          id: s.id,
-          row: s.row,
-          column: s.column,
-          bogie: s.bogie ?? null,
-          seatNumber: s.seatNumber,
-          status: s.status === "occupied" ? "occupied" : "available",
-        })),
-      };
+      // Simulate slight network tick
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      return generateMockTicketingSeats(attractionId, slotId, date);
     },
-    enabled: enabled && !!attractionId && !!slotId && slotId !== "slot-default" && !!date,
-    staleTime: 15 * 1000,
+    enabled: enabled && (!!attractionId || true),
+    staleTime: 30 * 1000,
   });
 }
 
