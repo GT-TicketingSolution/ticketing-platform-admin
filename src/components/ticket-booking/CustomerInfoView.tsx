@@ -1219,10 +1219,44 @@ function SeatAllocationPanel({
     !!targetAttractionId && !!activeSlotId
   );
 
+  // Default Fallback Mock Sections with realistic coaches and seating
+  const DEFAULT_FALLBACK_SECTIONS = useMemo(() => {
+    const secNames = ["Section - A", "Section - B", "Section - C"];
+    return secNames.map((name, sIdx) => {
+      const rows = sIdx === 2 ? 4 : 6;
+      const cols = sIdx === 2 ? 3 : 4;
+      const occList = sIdx === 0 ? ["A3", "B2", "D4"] : sIdx === 1 ? ["A1", "C2", "E3"] : ["B1"];
+      const seats: TicketingSeat[] = [];
+      for (let r = 1; r <= rows; r++) {
+        for (let c = 1; c <= cols; c++) {
+          const rowLetter = String.fromCharCode(64 + r);
+          const seatNum = `${rowLetter}${c}`;
+          const isOcc = occList.includes(seatNum);
+          seats.push({
+            id: `sec-${sIdx}-${r}-${c}`,
+            row: r,
+            column: c,
+            bogie: name,
+            seatNumber: seatNum,
+            status: isOcc ? "occupied" : "available",
+          });
+        }
+      }
+      return {
+        name,
+        bogie: name,
+        totalSeats: rows * cols,
+        occupiedSeats: seats.filter((s) => s.status === "occupied"),
+        availableSeats: seats.filter((s) => s.status !== "occupied").length,
+        seats,
+      };
+    });
+  }, []);
+
   // Active section index
   const [ai, setAi] = useState(0);
 
-  // Normalize sections from API response
+  // Normalize sections from API response or use fallback mock sections
   const sections = useMemo(() => {
     if (seatsApiData?.sections && seatsApiData.sections.length > 0) {
       return seatsApiData.sections;
@@ -1239,19 +1273,33 @@ function SeatAllocationPanel({
         },
       ];
     }
-    return [];
-  }, [seatsApiData]);
+    return DEFAULT_FALLBACK_SECTIONS;
+  }, [seatsApiData, DEFAULT_FALLBACK_SECTIONS]);
 
   // Keep section index in bounds
   const safeAi = Math.min(ai, Math.max(0, sections.length - 1));
   const activeSection = sections[safeAi] || sections[0] || null;
 
-  // Active layout from API
-  const layout = seatsApiData?.layout || null;
-  const rowsCount = layout?.rows || 10;
-  const colsCount = layout?.cols || 10;
-  const hasAisle = layout?.hasAisle ?? false;
-  const aisleAfterCol = layout?.aisleAfterCol ?? 2;
+  // Active layout from API or dynamically derived from current active section
+  const layout = useMemo(() => {
+    if (seatsApiData?.layout) return seatsApiData.layout;
+    const currentSeats = activeSection?.seats || [];
+    const maxRow = currentSeats.length > 0 ? Math.max(...currentSeats.map((s) => s.row || 1), 6) : 6;
+    const maxCol = currentSeats.length > 0 ? Math.max(...currentSeats.map((s) => s.column || 1), 4) : 4;
+    return {
+      id: "layout-active",
+      name: activeSection?.name || "Standard Coach",
+      rows: maxRow,
+      cols: maxCol,
+      hasAisle: maxCol >= 4,
+      aisleAfterCol: maxCol >= 4 ? 2 : 0,
+    };
+  }, [seatsApiData?.layout, activeSection]);
+
+  const rowsCount = layout.rows;
+  const colsCount = layout.cols;
+  const hasAisle = layout.hasAisle ?? false;
+  const aisleAfterCol = layout.aisleAfterCol ?? 2;
 
   const isLastTrip = currentTrip >= totalTrips;
 
