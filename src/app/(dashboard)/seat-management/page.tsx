@@ -14,7 +14,7 @@ import {
   useUpdateSeatLayout,
   useDeleteSeatLayout,
 } from "@/hooks/useSeatQueries";
-import { SeatConfigData } from "./types";
+import { SeatConfigData, decodeAisle } from "./types";
 
 export default function SeatManagementPage() {
   // Query / Filter State
@@ -59,17 +59,22 @@ export default function SeatManagementPage() {
   const items = seatData?.items ?? [];
 
   // Convert SeatLayoutItem to SeatConfigData for modals / cards
-  const seatConfigItems: SeatConfigData[] = items.map((s) => ({
-    id: s.id,
-    name: s.name || "—",
-    rows: s.rows ?? 0,
-    cols: s.cols ?? 0,
-    hasAisle: !!s.hasAisle,
-    aisleAfterCol: s.aisleAfterCol ?? 0,
-    status: s.status,
-    totalSeats: s.totalSeats ?? (s.rows ?? 0) * (s.cols ?? 0),
-    createdAt: s.createdAt,
-  }));
+  const seatConfigItems: SeatConfigData[] = items.map((s) => {
+    const decoded = decodeAisle(!!s.hasAisle, s.aisleAfterCol ?? 0);
+    return {
+      id: s.id,
+      name: s.name || "—",
+      rows: s.rows ?? 0,
+      cols: s.cols ?? 0,
+      hasAisle: !!s.hasAisle,
+      aisleAfterCol: s.aisleAfterCol ?? 0,
+      aisleType: decoded.aisleType,
+      aislePosition: decoded.aislePosition,
+      status: s.status,
+      totalSeats: s.totalSeats ?? (s.rows ?? 0) * (s.cols ?? 0),
+      createdAt: s.createdAt,
+    };
+  });
 
   // Actions
   const handleSaveSeat = async (data: SeatConfigData) => {
@@ -78,13 +83,11 @@ export default function SeatManagementPage() {
 
     const finalRows = Math.max(1, data.rows || 1);
     const finalCols = Math.max(1, data.cols || 1);
-    const hasAisleBackend = finalCols > 1 ? Boolean(data.hasAisle) : false;
-    const aisleAfterColBackend = hasAisleBackend
-      ? Math.min(
-          finalCols - 1,
-          Math.max(1, data.aislePosition || (data.aisleAfterCol > 0 ? data.aisleAfterCol : 1))
-        )
-      : 0;
+    const hasAisle = Boolean(data.hasAisle);
+    const aisleAfterCol = hasAisle ? (data.aisleAfterCol ?? 0) : 0;
+    const aisleType = hasAisle ? (data.aisleType || "VERTICAL") : undefined;
+    const aisleDirection = aisleType;
+    const aislePosition = hasAisle ? (data.aislePosition ?? 0) : 0;
 
     try {
       if (data.id) {
@@ -95,8 +98,11 @@ export default function SeatManagementPage() {
             name: data.name.trim(),
             rows: finalRows,
             cols: finalCols,
-            hasAisle: hasAisleBackend,
-            aisleAfterCol: aisleAfterColBackend,
+            hasAisle,
+            aisleAfterCol,
+            aisleType,
+            aisleDirection,
+            aislePosition,
             status: statusPayload,
           },
         });
@@ -106,8 +112,11 @@ export default function SeatManagementPage() {
           name: data.name.trim(),
           rows: finalRows,
           cols: finalCols,
-          hasAisle: hasAisleBackend,
-          aisleAfterCol: aisleAfterColBackend,
+          hasAisle,
+          aisleAfterCol,
+          aisleType,
+          aisleDirection,
+          aislePosition,
           status: statusPayload,
         });
       }

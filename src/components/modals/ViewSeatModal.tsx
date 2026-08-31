@@ -331,7 +331,7 @@ export default function ViewSeatModal({
                       letterSpacing: "2px",
                     }}
                   >
-                    ─── AISLE (STARTING POINT) ───
+                    ─── AISLE ───
                   </span>
                 </div>
               )}
@@ -477,7 +477,7 @@ export default function ViewSeatModal({
                               letterSpacing: "2px",
                             }}
                           >
-                            ─── AISLE (AFTER ROW R{rowNum}) ───
+                            ─── AISLE ───
                           </span>
                         </div>
                       )}

@@ -327,7 +327,7 @@ export default function Header({
                   flexShrink: 0,
                 }}
               >
-                {displayBusinessName}
+                {displayBusinessName} - 
               </span>
             )}
             <h1
