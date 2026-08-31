@@ -45,6 +45,50 @@ const CATEGORY_COLOR: Record<string, string> = {
   Attraction: "#F4BC43",
 };
 
+// ── Castle Sketch Illustration Component ──────────────────────────────────────
+function CastleIllustration({ width = 105, height = 64 }: { width?: number | string; height?: number | string }) {
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox="0 0 120 80"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ overflow: "visible" }}
+    >
+      {/* Birds */}
+      <path d="M20 20 C23 17 26 20 29 17 C32 20 35 17 38 20" stroke="#1E4D74" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+      <path d="M74 13 C76 10 78 13 80 10 C82 13 84 10 86 13" stroke="#1E4D74" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+      {/* Cloud */}
+      <path d="M78 28 C78 25 82 23 85 25 C88 22 93 23 96 26 C99 26 102 28 101 32 C99 33 80 33 78 28 Z" stroke="#1E4D74" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      {/* Hill base contours */}
+      <path d="M5 76 C20 73 35 67 55 63 C75 59 95 65 115 76" stroke="#1E4D74" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M15 77 C30 70 50 65 65 64" stroke="#1E4D74" strokeWidth="1.1" strokeLinecap="round" />
+      <path d="M72 64 C85 67 100 72 108 77" stroke="#1E4D74" strokeWidth="1.1" strokeLinecap="round" />
+      <path d="M48 67 C55 66 62 66 70 68" stroke="#1E4D74" strokeWidth="1.1" strokeLinecap="round" />
+      {/* Left Tower Outer */}
+      <path d="M26 68 L26 49 L29 49 L29 51 L31 51 L31 49 L33 49 L33 51 L35 51 L35 49 L38 49 L38 67" stroke="#1E4D74" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="29.5" y="55" width="2" height="3.5" rx="1" fill="#1E4D74" />
+      {/* Left Inner Wall */}
+      <path d="M38 63 L44 63 L44 43 L47 43 L47 45 L49 45 L49 43 L52 43 L52 45 L54 45 L54 43 L57 43 L57 60" stroke="#1E4D74" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="47" y="49" width="2" height="4" rx="1" fill="#1E4D74" />
+      <rect x="52" y="49" width="2" height="4" rx="1" fill="#1E4D74" />
+      {/* Main Center Tower */}
+      <path d="M57 60 L57 32 L55 32 L55 30 L67 30 L67 32 L65 32 L65 60" stroke="#1E4D74" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M61 30 L61 17 L68 20.5 L61 24" stroke="#1E4D74" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="59.5" y="36" width="3" height="5" rx="1.5" fill="#1E4D74" />
+      <path d="M59 54 Q61 50 63 54 L63 60 L59 60 Z" stroke="#1E4D74" strokeWidth="1.3" fill="#1E4D74" fillOpacity="0.15" />
+      {/* Right Inner Wall */}
+      <path d="M65 60 L65 43 L68 43 L68 45 L70 45 L70 43 L73 43 L73 45 L75 45 L75 43 L78 43 L78 63 L84 63" stroke="#1E4D74" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="68" y="49" width="2" height="4" rx="1" fill="#1E4D74" />
+      <rect x="73" y="49" width="2" height="4" rx="1" fill="#1E4D74" />
+      {/* Right Tower Outer */}
+      <path d="M84 67 L84 49 L87 49 L87 51 L89 51 L89 49 L91 49 L91 51 L93 51 L93 49 L96 49 L96 68" stroke="#1E4D74" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="89" y="55" width="2" height="3.5" rx="1" fill="#1E4D74" />
+    </svg>
+  );
+}
+
 // ── Attraction Card ───────────────────────────────────────────────────────────
 interface AttractionCardProps {
   attraction: AttractionManagement;
@@ -92,7 +136,10 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
             height: "150px",
             borderRadius: "8px",
             overflow: "hidden",
-            background: "#F1F5F9",
+            background: "#F8FAFC",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
           {hasValidImage ? (
@@ -111,15 +158,12 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                background: "linear-gradient(135deg, #0C2A42 0%, #2372A5 100%)",
-                color: "#FFFFFF",
-                fontSize: "13px",
-                fontWeight: 700,
-                textAlign: "center",
+                background: "#F8FAFC",
                 padding: "8px",
+                boxSizing: "border-box",
               }}
             >
-              {attraction.name}
+              <CastleIllustration width={110} height={70} />
             </div>
           )}
         </div>
@@ -250,6 +294,8 @@ export default function AttractionManagementPage() {
       const studentSeats = Number(data.seating?.student ?? data.studentSeats ?? 0);
       const seniorSeats = Number(data.seating?.senior ?? data.seniorSeats ?? 0);
       const foreignerSeats = Number(data.seating?.foreigner ?? data.foreignerSeats ?? 0);
+      const durationVal = data.durationValue ? Number(data.durationValue) : data.duration ?? null;
+      const durationUnitVal = data.durationUnit ?? "minutes";
 
       if (viewMode === "edit" && attractionToEdit) {
         const payload: UpdateAttractionPayload = {
@@ -258,6 +304,8 @@ export default function AttractionManagementPage() {
           image: data.image ?? null,
           description: data.description ?? null,
           timing: data.timing ?? null,
+          duration: durationVal,
+          durationUnit: durationUnitVal,
           adultPrice: data.pricing?.adult ?? data.adultPrice ?? 0,
           childPrice: data.pricing?.child ?? data.childPrice ?? 0,
           studentPrice: data.pricing?.student ?? data.studentPrice ?? 0,
@@ -279,6 +327,8 @@ export default function AttractionManagementPage() {
           image: data.image ?? null,
           description: data.description ?? null,
           timing: data.timing ?? null,
+          duration: durationVal,
+          durationUnit: durationUnitVal,
           adultPrice: data.pricing?.adult ?? data.adultPrice ?? 0,
           childPrice: data.pricing?.child ?? data.childPrice ?? 0,
           studentPrice: data.pricing?.student ?? data.studentPrice ?? 0,

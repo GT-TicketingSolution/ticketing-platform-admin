@@ -304,11 +304,25 @@ export interface ScopedExportConfig<T> {
 
 /**
  * Helper to fetch all pages from a paginated API endpoint for exports
+ * Sends limit=0 first — the backend returns all records in one shot.
+ * Falls back to paginated fetching (pageSize=100) if the backend doesn't
+ * honour limit=0 (i.e. still paginates).
  */
 export async function fetchAllPages<T>(
   fetchPage: (page: number, limit: number) => Promise<{ items: T[]; pagination?: { totalPages?: number; total?: number } }>,
   pageSize = 100
 ): Promise<T[]> {
+  // Try limit=0 for a single-shot "all data" request
+  const allAtOnce = await fetchPage(1, 0);
+  const total = allAtOnce.pagination?.total ?? allAtOnce.items?.length ?? 0;
+  const items: T[] = Array.isArray(allAtOnce.items) ? allAtOnce.items : [];
+
+  // If we got all records (or backend returned single page), return immediately
+  if (items.length >= total || (allAtOnce.pagination?.totalPages ?? 1) <= 1) {
+    return items;
+  }
+
+  // Fallback: paginate with pageSize=100
   const firstPage = await fetchPage(1, pageSize);
   const totalPages = firstPage.pagination?.totalPages ?? 1;
   let allItems: T[] = Array.isArray(firstPage.items) ? [...firstPage.items] : [];

@@ -2132,6 +2132,7 @@ export default function CustomerInfoView({
   const [paxAssignment, setPaxAssignment] = useState<Record<string, string>>({});
   const [currentTrip, setCurrentTrip] = useState(1);
   const [timeSlot, setTimeSlot] = useState("10:00 AM – 10:20 AM");
+  const [seatValidationError, setSeatValidationError] = useState<string | null>(null);
 
   // Today's formatted date for the slot
   const slotDate = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -2139,9 +2140,12 @@ export default function CustomerInfoView({
   function handleSelectedSeatsChange(seats: string[], assignment: Record<string, string>) {
     setSelectedSeats(seats);
     setPaxAssignment(assignment);
+    if (seats.length >= uniquePaxCount) {
+      setSeatValidationError(null);
+    }
   }
 
-  const grandTotal = Math.ceil(bookingSummary.reduce((s, b) => s + b.totalAmount, 0) / 10) * 10;
+  const grandTotal = Number(bookingSummary.reduce((s, b) => s + b.totalAmount, 0).toFixed(2));
 
   const uniquePaxCount = useMemo(() => {
     if (!bookingSummary.length) return 0;
@@ -2151,14 +2155,20 @@ export default function CustomerInfoView({
     );
   }, [bookingSummary]);
 
+  const hasSeatingRequired = useMemo(() => {
+    return bookingSummary.some((b) => b.hasSeating !== false && (b.hasSeating || !!b.seatLayoutId));
+  }, [bookingSummary]);
+
+  const isSeatAllocationValid = !hasSeatingRequired || (selectedSeats.length > 0 && selectedSeats.length === uniquePaxCount);
+
   const allAttractionsText = useMemo(() => {
     const names = Array.from(new Set(bookingSummary.map((b) => b.attractionName).filter(Boolean)));
     return names.join(", ") || "Attractions";
   }, [bookingSummary]);
 
-  const subtotal = useMemo(() => bookingSummary.reduce((s, b) => s + (b.subtotal ?? b.totalAmount), 0), [bookingSummary]);
-  const gstAmount = useMemo(() => bookingSummary.reduce((s, b) => s + (b.gstAmount ?? 0), 0), [bookingSummary]);
-  const roundOff = useMemo(() => bookingSummary.reduce((s, b) => s + (b.roundOff ?? 0), 0), [bookingSummary]);
+  const subtotal = useMemo(() => Number(bookingSummary.reduce((s, b) => s + (b.subtotal ?? b.totalAmount), 0).toFixed(2)), [bookingSummary]);
+  const gstAmount = useMemo(() => Number(bookingSummary.reduce((s, b) => s + (b.gstAmount ?? 0), 0).toFixed(2)), [bookingSummary]);
+  const roundOff = useMemo(() => Number(bookingSummary.reduce((s, b) => s + (b.roundOff ?? 0), 0).toFixed(2)), [bookingSummary]);
 
   function handleSelectCustomer(c: CustomerRecord) {
     setSelectedCustomer(c);
@@ -2278,6 +2288,18 @@ export default function CustomerInfoView({
 
   async function handleContinue() {
     if (bookingSummary.length === 0) return;
+
+    if (hasSeatingRequired && (!selectedSeats || selectedSeats.length === 0 || selectedSeats.length < uniquePaxCount)) {
+      const diff = uniquePaxCount - (selectedSeats?.length || 0);
+      const errMsg = selectedSeats.length === 0
+        ? `Seat allocation is required. Please select ${uniquePaxCount} seat${uniquePaxCount > 1 ? "s" : ""} before continuing.`
+        : `Please select ${diff} more seat${diff > 1 ? "s" : ""} (${selectedSeats.length}/${uniquePaxCount} selected) before continuing.`;
+      setSeatValidationError(errMsg);
+      setIsSeatAllocExpanded(true);
+      document.getElementById("seat-allocation-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    setSeatValidationError(null);
 
     const firstAttraction = bookingSummary[0];
     const items = bookingSummary.flatMap((b) =>
@@ -3118,13 +3140,15 @@ export default function CustomerInfoView({
 
       {/* ── Card 3: Seat Allocation Accordion (Rectangle 98) ── */}
       <div
+        id="seat-allocation-section"
         style={{
           background: "#FFFFFF",
-          border: "1px solid #A0A0A0",
-          boxShadow: "-2px 4px 5.6px rgba(0, 0, 0, 0.08)",
+          border: seatValidationError ? "1.5px solid #EF4444" : "1px solid #A0A0A0",
+          boxShadow: seatValidationError ? "0 0 0 3px rgba(239, 68, 68, 0.15)" : "-2px 4px 5.6px rgba(0, 0, 0, 0.08)",
           borderRadius: "13px",
           boxSizing: "border-box",
           overflow: "hidden",
+          transition: "all 0.2s ease",
         }}
       >
         <div
@@ -3156,10 +3180,41 @@ export default function CustomerInfoView({
                   {selectedSeats.length} Seat{selectedSeats.length !== 1 ? "s" : ""} Assigned
                 </span>
               )}
+              {hasSeatingRequired && selectedSeats.length < uniquePaxCount && (
+                <span
+                  style={{
+                    background: "#FEE2E2",
+                    color: "#B91C1C",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRadius: "4px",
+                  }}
+                >
+                  {uniquePaxCount - selectedSeats.length} more seat{uniquePaxCount - selectedSeats.length > 1 ? "s" : ""} required
+                </span>
+              )}
             </div>
             <p style={{ margin: "2px 0 0", fontWeight: 500, fontSize: "12px", color: "#6B7280" }}>
               Choose seats for this booking
             </p>
+            {/* Show error message if seat allocation was skipped */}
+            {seatValidationError && (
+              <div
+                style={{
+                  marginTop: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  color: "#DC2626",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                }}
+              >
+                <AlertCircle size={14} color="#DC2626" />
+                <span>{seatValidationError}</span>
+              </div>
+            )}
             {/* Show assigned seat numbers prominently */}
             {selectedSeats.length > 0 ? (
               <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>
@@ -3253,8 +3308,9 @@ export default function CustomerInfoView({
 
         <button
           onClick={handleContinue}
-          disabled={createBookingMutation.isPending}
+          disabled={createBookingMutation.isPending || !isSeatAllocationValid}
           className="ci-continue-btn"
+          title={!isSeatAllocationValid ? "Please complete seat allocation before continuing" : undefined}
           style={{
             display: "flex",
             alignItems: "center",
@@ -3262,16 +3318,16 @@ export default function CustomerInfoView({
             width: "197px",
             height: "48px",
             justifyContent: "center",
-            background: createBookingMutation.isPending ? "#E2E8F0" : "#F4BC43",
+            background: createBookingMutation.isPending || !isSeatAllocationValid ? "#E2E8F0" : "#F4BC43",
             border: "none",
             borderRadius: "8px",
             fontFamily: "'Plus Jakarta Sans', sans-serif",
             fontWeight: 700,
             fontSize: "14px",
-            color: createBookingMutation.isPending ? "#94A3B8" : "#011B2F",
-            cursor: createBookingMutation.isPending ? "not-allowed" : "pointer",
+            color: createBookingMutation.isPending || !isSeatAllocationValid ? "#94A3B8" : "#011B2F",
+            cursor: createBookingMutation.isPending || !isSeatAllocationValid ? "not-allowed" : "pointer",
             transition: "background 0.18s, transform 0.15s",
-            opacity: createBookingMutation.isPending ? 0.7 : 1,
+            opacity: createBookingMutation.isPending || !isSeatAllocationValid ? 0.7 : 1,
           }}
         >
           {createBookingMutation.isPending ? "Creating Booking..." : <>Continue <ArrowRight size={18} color="#011B2F" /></>}

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { ChevronLeft, ChevronRight, FolderOpen, Loader2 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 
@@ -38,7 +38,7 @@ export function GlobalDataTable<T>({
   data,
   keyExtractor,
   pageSize = 10,
-  currentPage = 1,
+  currentPage: propCurrentPage,
   onPageChange,
   totalItems: propTotalItems,
   totalPages: propTotalPages,
@@ -53,21 +53,46 @@ export function GlobalDataTable<T>({
   itemLabel = "items",
   onRowClick,
 }: GlobalDataTableProps<T>) {
-  const isServerSide = propTotalItems !== undefined;
-  const totalItems = isServerSide ? propTotalItems : data.length;
+  const [internalCurrentPage, setInternalCurrentPage] = useState(1);
+
+  const isControlled = onPageChange !== undefined || propCurrentPage !== undefined;
+  const isServerPaged = propTotalItems !== undefined || propTotalPages !== undefined;
+  const totalItems = propTotalItems !== undefined ? propTotalItems : data.length;
   const totalPages =
     propTotalPages !== undefined
-      ? propTotalPages
+      ? Math.max(1, propTotalPages)
       : Math.max(1, Math.ceil(totalItems / pageSize));
-  const activePage = isServerSide ? currentPage : Math.min(currentPage, totalPages);
+  const activePage = isControlled
+    ? (propCurrentPage ?? 1)
+    : Math.min(internalCurrentPage, totalPages);
 
   const startIndex = (activePage - 1) * pageSize;
-  const currentData = isServerSide ? data : data.slice(startIndex, startIndex + pageSize);
+  const currentData = isServerPaged ? data : data.slice(startIndex, startIndex + pageSize);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      if (isControlled && onPageChange) {
+        onPageChange(page);
+      } else {
+        setInternalCurrentPage(page);
+      }
+    }
+  };
+
+  const handlePrev = () => {
+    if (activePage > 1) {
+      handlePageChange(activePage - 1);
+    }
+  };
+
+  const handleNext = () => {
+    if (activePage < totalPages) {
+      handlePageChange(activePage + 1);
+    }
+  };
 
   const handlePageClick = (page: number) => {
-    if (onPageChange && page >= 1 && page <= totalPages) {
-      onPageChange(page);
-    }
+    handlePageChange(page);
   };
 
   // Build pagination numbers with ellipsis logic
@@ -338,7 +363,7 @@ export function GlobalDataTable<T>({
               color: "rgba(81, 82, 82, 0.69)",
             }}
           >
-            Showing {startIndex + 1}–{Math.min(startIndex + pageSize, totalItems)} of{" "}
+            Showing {totalItems === 0 ? 0 : startIndex + 1}–{Math.min(startIndex + (isServerPaged ? data.length : currentData.length), totalItems)} of{" "}
             {totalItems.toLocaleString()} {itemLabel}
           </span>
 
@@ -346,8 +371,9 @@ export function GlobalDataTable<T>({
           <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
             {/* Previous */}
             <button
+              type="button"
               disabled={activePage <= 1}
-              onClick={() => handlePageClick(activePage - 1)}
+              onClick={handlePrev}
               style={{
                 height: "30px",
                 padding: "0 10px",
@@ -386,6 +412,7 @@ export function GlobalDataTable<T>({
               ) : (
                 <button
                   key={page}
+                  type="button"
                   onClick={() => handlePageClick(Number(page))}
                   style={{
                     width: "28px",
@@ -410,8 +437,9 @@ export function GlobalDataTable<T>({
 
             {/* Next */}
             <button
+              type="button"
               disabled={activePage >= totalPages}
-              onClick={() => handlePageClick(activePage + 1)}
+              onClick={handleNext}
               style={{
                 height: "30px",
                 padding: "0 10px",

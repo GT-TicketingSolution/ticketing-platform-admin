@@ -223,7 +223,7 @@ export default function InvoicesPage() {
         filename: `Invoices_${scopeLabel}_${dateKey}.pdf`,
         orientation: "landscape",
         columns: [
-          { header: "#", accessor: (_, i) => i + 1, width: "30px" },
+          { header: "#", accessor: (_, i) => (scope === "all" ? i + 1 : (currentPage - 1) * PAGE_SIZE + i + 1), width: "30px" },
           { header: "Invoice ID", accessor: (inv) => inv.invoiceId || inv.invoiceNumber || "-" },
           { header: "Customer", accessor: "customerName" },
           { header: "Date", accessor: (inv) => formatDateOnly(inv.dateTime || inv.invoiceDate) },
@@ -261,7 +261,7 @@ export default function InvoicesPage() {
       const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
       const headers = ["#", "Invoice ID", "Customer", "Date", "Booking ID", "Attraction", "Visitors", "Amount (₹)", "Mode", "Status"];
       const rows = items.map((inv, i) => [
-        i + 1,
+        scope === "all" ? i + 1 : (currentPage - 1) * PAGE_SIZE + i + 1,
         inv.invoiceId || inv.invoiceNumber || "-",
         inv.customerName || "-",
         formatDateOnly(inv.dateTime || inv.invoiceDate),

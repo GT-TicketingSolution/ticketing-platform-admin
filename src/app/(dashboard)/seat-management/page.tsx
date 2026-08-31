@@ -76,6 +76,16 @@ export default function SeatManagementPage() {
     const statusPayload =
       String(data.status).toUpperCase() === "ACTIVE" ? "ACTIVE" : "INACTIVE";
 
+    const finalRows = Math.max(1, data.rows || 1);
+    const finalCols = Math.max(1, data.cols || 1);
+    const hasAisleBackend = finalCols > 1 ? Boolean(data.hasAisle) : false;
+    const aisleAfterColBackend = hasAisleBackend
+      ? Math.min(
+          finalCols - 1,
+          Math.max(1, data.aislePosition || (data.aisleAfterCol > 0 ? data.aisleAfterCol : 1))
+        )
+      : 0;
+
     try {
       if (data.id) {
         // Edit existing
@@ -83,10 +93,10 @@ export default function SeatManagementPage() {
           seatId: data.id,
           data: {
             name: data.name.trim(),
-            rows: data.rows,
-            cols: data.cols,
-            hasAisle: data.hasAisle,
-            aisleAfterCol: data.aisleAfterCol,
+            rows: finalRows,
+            cols: finalCols,
+            hasAisle: hasAisleBackend,
+            aisleAfterCol: aisleAfterColBackend,
             status: statusPayload,
           },
         });
@@ -94,10 +104,10 @@ export default function SeatManagementPage() {
         // Create new
         await createMutation.mutateAsync({
           name: data.name.trim(),
-          rows: data.rows,
-          cols: data.cols,
-          hasAisle: data.hasAisle,
-          aisleAfterCol: data.aisleAfterCol,
+          rows: finalRows,
+          cols: finalCols,
+          hasAisle: hasAisleBackend,
+          aisleAfterCol: aisleAfterColBackend,
           status: statusPayload,
         });
       }

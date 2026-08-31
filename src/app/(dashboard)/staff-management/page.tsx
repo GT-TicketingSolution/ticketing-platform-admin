@@ -65,6 +65,8 @@ function StaffManagementInner() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>(
     searchParams.get("status") ?? "All"
   );
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   // Debounce search
   useEffect(() => {
@@ -73,6 +75,11 @@ function StaffManagementInner() {
     }, 350);
     return () => clearTimeout(handler);
   }, [search]);
+
+  // Reset to page 1 on filter or search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, selectedAttractionFilter, selectedStatusFilter]);
 
   useEffect(() => {
     document.title = META_CONSTANTS.staffManagement.fullTitle;
@@ -86,8 +93,8 @@ function StaffManagementInner() {
   const apiStatus =
     selectedStatusFilter === "Active" || selectedStatusFilter === "ACTIVE"
       ? "ACTIVE"
-      : selectedStatusFilter === "Inactive" || selectedStatusFilter === "DISABLED"
-        ? "DISABLED"
+      : selectedStatusFilter === "Inactive" || selectedStatusFilter === "INACTIVE"
+        ? "INACTIVE"
         : undefined;
 
   // Staff Queries & Mutations
@@ -96,10 +103,19 @@ function StaffManagementInner() {
     isLoading: isFetchingStaff,
     isFetching,
   } = useStaffList({
+    page: currentPage,
+    limit: pageSize,
     search: debouncedSearch || undefined,
     status: apiStatus,
     attractionId: selectedAttractionFilter !== "All" ? selectedAttractionFilter : undefined,
   });
+
+  const pagination = staffData?.pagination ?? {
+    page: currentPage,
+    limit: pageSize,
+    total: 0,
+    totalPages: 1,
+  };
 
   const createStaffMutation = useCreateStaff();
   const updateStaffMutation = useUpdateStaff();
@@ -265,7 +281,7 @@ function StaffManagementInner() {
         password: formData.password,
         roles: formData.role.length > 0 ? formData.role : ["STAFF"],
         attractionIds: attractionIds.length > 0 ? attractionIds : [],
-        status: formData.status === "Active" ? "ACTIVE" : "DISABLED",
+        status: formData.status === "Active" ? "ACTIVE" : "INACTIVE",
       });
       setIsAddModalOpen(false);
       resetForm();
@@ -304,7 +320,7 @@ function StaffManagementInner() {
           password: formData.password?.trim() ? formData.password : undefined,
           roles: formData.role.length > 0 ? formData.role : ["STAFF"],
           attractionIds: attractionIds.length > 0 ? attractionIds : [],
-          status: formData.status === "Active" ? "ACTIVE" : "DISABLED",
+          status: formData.status === "Active" ? "ACTIVE" : "INACTIVE",
         },
       });
 
@@ -316,7 +332,7 @@ function StaffManagementInner() {
         role: formData.role,
         roles: formData.role,
         assignedAttraction: formData.assignedAttraction,
-        status: formData.status === "Active" ? "ACTIVE" : "DISABLED",
+        status: formData.status === "Active" ? "ACTIVE" : "INACTIVE",
       });
       setIsEditing(false);
     } catch {
@@ -343,7 +359,7 @@ function StaffManagementInner() {
     if (!confirmed) return;
 
     try {
-      if (newStatus === "Inactive" || newStatus === "DISABLED" || newStatus === "Disabled") {
+      if (newStatus === "Inactive" || newStatus === "INACTIVE") {
         await disableStaffMutation.mutateAsync(staff.id);
       } else {
         await updateStaffMutation.mutateAsync({
@@ -383,7 +399,7 @@ function StaffManagementInner() {
     };
 
     if (scope === "current") {
-      const res = await fetchStaffList({ ...base, page: 1, limit: 10 });
+      const res = await fetchStaffList({ ...base, page: currentPage, limit: pageSize });
       return res.items;
     } else {
       return await fetchAllPages((page, limit) =>
@@ -409,7 +425,7 @@ function StaffManagementInner() {
         filename: `Staff_${scopeLabel}_${dateKey}.pdf`,
         orientation: "landscape",
         columns: [
-          { header: "#", accessor: (_, i) => i + 1, width: "35px" },
+          { header: "#", accessor: (_, i) => (scope === "all" ? i + 1 : (currentPage - 1) * pageSize + i + 1), width: "35px" },
           { header: "Staff Name", accessor: (s: any) => s.name || "-" },
           { header: "Email Address", accessor: (s: any) => s.email || "-" },
           { header: "Phone", accessor: (s: any) => s.phone || "-" },
@@ -468,7 +484,7 @@ function StaffManagementInner() {
             ? s.attractions.map((a: any) => a.name).join(", ")
             : "-";
         return [
-          i + 1,
+          scope === "all" ? i + 1 : (currentPage - 1) * pageSize + i + 1,
           s.name || "-",
           s.email || "-",
           s.phone || "-",
@@ -708,7 +724,7 @@ function StaffManagementInner() {
                     fontWeight: 700,
                   }}
                 >
-                  {isAct ? "Active" : "Disabled"}
+                  {isAct ? "Active" : "Inactive"}
                 </span>
               </div>
               <p
@@ -1042,9 +1058,6 @@ function StaffManagementInner() {
                       <div style={{ fontWeight: 700, fontSize: "16px", color: "#011B2F" }}>
                         {selectedStaff.name}
                       </div>
-                      <div style={{ fontSize: "12px", color: colors.text.muted }}>
-                        {selectedStaff.id}
-                      </div>
                     </div>
                   </div>
 
@@ -1176,10 +1189,29 @@ function StaffManagementInner() {
                     <div style={{ fontSize: "11px", color: colors.text.muted, fontWeight: 600, marginBottom: "8px" }}>
                       Account Status
                     </div>
-                    <StatusToggle
-                      value={isAct ? "Active" : "Inactive"}
-                      onChange={(st) => handleStatusToggle(selectedStaff, st)}
-                    />
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        background: isAct ? "#ECFDF5" : "#FEE2E2",
+                        color: isAct ? "#059669" : "#DC2626",
+                        padding: "6px 14px",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: "8px",
+                          height: "8px",
+                          borderRadius: "50%",
+                          background: isAct ? "#059669" : "#DC2626",
+                        }}
+                      />
+                      {isAct ? "Active" : "Inactive"}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1389,7 +1421,11 @@ function StaffManagementInner() {
         columns={columns}
         data={staffList}
         keyExtractor={(s) => s.id}
-        pageSize={10}
+        pageSize={pageSize}
+        currentPage={currentPage}
+        onPageChange={setCurrentPage}
+        totalItems={pagination.total}
+        totalPages={pagination.totalPages}
         isLoading={isFetchingStaff}
         emptyIcon={
           isStaffFiltered ? (
