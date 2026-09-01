@@ -1560,35 +1560,35 @@ export async function POST(request: Request) {
       management: result.management,
       seatLayouts: Array.isArray(result.seatLayouts)
         ? result.seatLayouts.map((layout: any) => ({
-            id: layout.id,
-            name: layout.name,
-            rows: layout.rows,
-            cols: layout.cols,
-            hasAisle: layout.hasAisle,
-            aisleAfterCol: layout.aisleAfterCol,
-            status: layout.status,
-            quantity: layout.quantity,
-            totalSeats: layout.totalSeats,
-          }))
+          id: layout.id,
+          name: layout.name,
+          rows: layout.rows,
+          cols: layout.cols,
+          hasAisle: layout.hasAisle,
+          aisleAfterCol: layout.aisleAfterCol,
+          status: layout.status,
+          quantity: layout.quantity,
+          totalSeats: layout.totalSeats,
+        }))
         : [],
       seatLayoutIds: result.seatLayoutIds,
       attractionSeats: Array.isArray(result.attractionSeats)
         ? result.attractionSeats.map((seat: any) => ({
-            id: seat.id,
-            attractionId: seat.attractionId,
-            seatLayoutId: seat.seatLayoutId,
-            name: seat.name,
-            seatOrder: seat.seatOrder,
-            createdAt: seat.createdAt,
-          }))
+          id: seat.id,
+          attractionId: seat.attractionId,
+          seatLayoutId: seat.seatLayoutId,
+          name: seat.name,
+          seatOrder: seat.seatOrder,
+          createdAt: seat.createdAt,
+        }))
         : [],
       timeSlots: Array.isArray(result.timeSlots)
         ? result.timeSlots.map((slot: any) => ({
-            id: slot.id,
-            attractionId: slot.attractionId,
-            slotTime: slot.slotTime,
-            isActive: slot.isActive,
-          }))
+          id: slot.id,
+          attractionId: slot.attractionId,
+          slotTime: slot.slotTime,
+          isActive: slot.isActive,
+        }))
         : [],
     };
 
