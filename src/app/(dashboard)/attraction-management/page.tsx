@@ -351,10 +351,35 @@ export default function AttractionManagementPage() {
         await createMutation.mutateAsync(payload);
         console.log("CreatePayload:", JSON.stringify(payload, null, 2));
       }
-    } catch {
-      // Handled by onError in mutation; keep form open
+      setViewMode("list");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err: any) {
+      // Detect 409 / duplicate-name from the original API error
+      const message =
+        err?.error?.message ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "";
+      const code =
+        err?.error?.code ||
+        err?.response?.data?.code ||
+        err?.response?.status ||
+        err?.status;
+      const isDuplicate =
+        /already exist/i.test(message) ||
+        /duplicate/i.test(message) ||
+        code === "DUPLICATE_NAME" ||
+        code === 409 ||
+        code === "409";
+      if (isDuplicate) {
+        // Re-throw a typed error so AddEditAttractionForm shows it inline
+        throw Object.assign(new Error("An attraction with this name already exists."), {
+          code: "DUPLICATE_NAME",
+        });
+      }
+      // All other errors are handled by mutation onError
     }
-    setViewMode("list");
+
   };
 
   const handleBulkUploadSuccess = (count: number) => {
@@ -372,7 +397,7 @@ export default function AttractionManagementPage() {
       {(viewMode === "add" || viewMode === "edit") && (
         <div style={{ width: "100%", maxWidth: "1124px", display: "flex", flexDirection: "column", gap: "16px" }}>
           <button
-            onClick={() => setViewMode("list")}
+            onClick={() => { setViewMode("list"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
             style={{
               display: "flex",
               alignItems: "center",
@@ -393,8 +418,9 @@ export default function AttractionManagementPage() {
 
           <AddEditAttractionForm
             attractionToEdit={viewMode === "edit" ? (attractionToEdit as any) : null}
+            existingAttractions={attractions as any}
             onSave={handleSaveAttraction}
-            onCancel={() => setViewMode("list")}
+            onCancel={() => { setViewMode("list"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
             isSaving={isSaving}
           />
         </div>

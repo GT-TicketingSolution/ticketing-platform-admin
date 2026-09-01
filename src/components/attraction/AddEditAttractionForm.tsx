@@ -33,6 +33,7 @@ export interface CategoryItem {
 
 interface AddEditAttractionFormProps {
   attractionToEdit?: Attraction | null;
+  existingAttractions?: Attraction[];
   onSave: (data: Partial<Attraction>) => void;
   onCancel: () => void;
   /** Called when user checks 'Requires seat allocation' — passes the partially-built attraction */
@@ -372,6 +373,7 @@ function pricingToCategories(attraction: Attraction): CategoryItem[] {
 
 export default function AddEditAttractionForm({
   attractionToEdit,
+  existingAttractions = [],
   onSave,
   onCancel,
   onConfigureSeating,
@@ -838,7 +840,7 @@ export default function AddEditAttractionForm({
     setIsAddCategoryModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const activeAllocated = decoratedAllocatedSeats.filter((s) => !s.isDisabled);
@@ -872,10 +874,11 @@ export default function AddEditAttractionForm({
       }
     }
 
+    const allErrors = { ...(validation.errors as Record<string, string>), ...seatErrors };
+
     if (!validation.success || Object.keys(seatErrors).length > 0) {
-      setFormErrors({ ...validation.errors, ...seatErrors });
-      const firstField =
-        Object.keys(validation.errors)[0] || Object.keys(seatErrors)[0];
+      setFormErrors(allErrors);
+      const firstField = Object.keys(allErrors)[0];
       document
         .getElementById(`field-${firstField}`)
         ?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -919,53 +922,68 @@ export default function AddEditAttractionForm({
     };
     const timingString = `${to12(openTime)} - ${to12(closeTime)}`;
 
-    onSave({
-      name: name.trim(),
-      description: description.trim(),
-      status,
-      hasSeating: activeAllocated.length > 0,
-      category: category.trim(),
-      timing: timingString,
-      image: imagePreview || "",
-      pricing: {
-        adult: getPriceByName("adult"),
-        child: getPriceByName("child"),
-        student: getPriceByName("student"),
-        senior: getPriceByName("senior"),
-        foreigner: getPriceByName("foreigner"),
-      },
-      seating: {
-        adult: getSeatsByName("adult"),
-        child: getSeatsByName("child"),
-        student: getSeatsByName("student"),
-        senior: getSeatsByName("senior"),
-        foreigner: getSeatsByName("foreigner"),
-      },
-      adultSeats: getSeatsByName("adult"),
-      childSeats: getSeatsByName("child"),
-      studentSeats: getSeatsByName("student"),
-      seniorSeats: getSeatsByName("senior"),
-      foreignerSeats: getSeatsByName("foreigner"),
-      visitorCategories: categories,
-      assignedSeatIds: activeLayoutIds,
-      seatLayoutIds: seatLayoutIdsAsObjects,
-      assignedSeatNames: assignedSeatNames,
-      assignedSeatId: activeLayoutIds[0] || undefined,
-      assignedSeatName: assignedSeatNames[0] || undefined,
-      seatAllocations: decoratedAllocatedSeats.map((s) => ({
-        instanceId: s.instanceId,
-        layoutId: s.layoutId,
-        displayName: s.displayName,
-        baseName: s.baseName,
-        suffix: s.suffix,
-        isDisabled: !!s.isDisabled,
-      })),
-      baseRate: calculatedBaseRate !== "—" ? calculatedBaseRate : (minCategoryPrice > 0 ? `₹${minCategoryPrice} / person` : "₹0 / person"),
-      minPrice: minCategoryPrice,
-      duration: durationValue.trim() ? Number(durationValue.trim()) : null,
-      durationUnit: durationUnit,
-      formattedDuration: effectiveDuration,
-    } as any);
+    try {
+      await onSave({
+        name: name.trim(),
+        description: description.trim(),
+        status,
+        hasSeating: activeAllocated.length > 0,
+        category: category.trim(),
+        timing: timingString,
+        image: imagePreview || "",
+        pricing: {
+          adult: getPriceByName("adult"),
+          child: getPriceByName("child"),
+          student: getPriceByName("student"),
+          senior: getPriceByName("senior"),
+          foreigner: getPriceByName("foreigner"),
+        },
+        seating: {
+          adult: getSeatsByName("adult"),
+          child: getSeatsByName("child"),
+          student: getSeatsByName("student"),
+          senior: getSeatsByName("senior"),
+          foreigner: getSeatsByName("foreigner"),
+        },
+        adultSeats: getSeatsByName("adult"),
+        childSeats: getSeatsByName("child"),
+        studentSeats: getSeatsByName("student"),
+        seniorSeats: getSeatsByName("senior"),
+        foreignerSeats: getSeatsByName("foreigner"),
+        visitorCategories: categories,
+        assignedSeatIds: activeLayoutIds,
+        seatLayoutIds: seatLayoutIdsAsObjects,
+        assignedSeatNames: assignedSeatNames,
+        assignedSeatId: activeLayoutIds[0] || undefined,
+        assignedSeatName: assignedSeatNames[0] || undefined,
+        seatAllocations: decoratedAllocatedSeats.map((s) => ({
+          instanceId: s.instanceId,
+          layoutId: s.layoutId,
+          displayName: s.displayName,
+          baseName: s.baseName,
+          suffix: s.suffix,
+          isDisabled: !!s.isDisabled,
+        })),
+        baseRate: calculatedBaseRate !== "—" ? calculatedBaseRate : (minCategoryPrice > 0 ? `₹${minCategoryPrice} / person` : "₹0 / person"),
+        minPrice: minCategoryPrice,
+        duration: durationValue.trim() ? Number(durationValue.trim()) : null,
+        durationUnit: durationUnit,
+        formattedDuration: effectiveDuration,
+      } as any);
+    } catch (err: any) {
+      // If the API returned a duplicate-name conflict, show the error inline
+      // below the name input rather than as a popup notification
+      if (err?.code === "DUPLICATE_NAME") {
+        setFormErrors((prev) => ({
+          ...prev,
+          name: "An attraction with this name already exists.",
+        }));
+        document
+          .getElementById("field-name")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+
   };
 
   // Base Rate is automatically calculated as minimum price across categories

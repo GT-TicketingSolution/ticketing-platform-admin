@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tansta
 import { getData, postData, patchData, deleteData } from "@/lib/api/apiService";
 import { AppUrl } from "@/lib/api/endpoints";
 import { useToast } from "@/components/ui/Toast";
+import { showErrorNotify } from "@/lib/notify";
 import type {
   AttractionManagement,
   AttractionQueryParams,
@@ -19,10 +20,6 @@ export const attractionManagementKeys = {
   lists: () => [...attractionManagementKeys.all, "list"] as const,
   list: (params?: AttractionQueryParams) => [...attractionManagementKeys.lists(), params] as const,
 };
-
-function showErrorOnce(message: string, title = "Error") {
-  console.error(`[${title}] ${message}`);
-}
 
 // ── List attractions
 export function useAttractionManagementList(params?: AttractionQueryParams) {
@@ -83,49 +80,87 @@ export function useAttractionManagementList(params?: AttractionQueryParams) {
   });
 }
 
-// ── Create attraction ────────────────────────────────────────────────────────
+// ── Create attraction 
 export function useCreateAttraction() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
   return useMutation({
     mutationFn: (payload: CreateAttractionPayload) =>
-      postData(AppUrl.attractionManagement.create, payload),
+      postData(AppUrl.attractionManagement.create, payload, { skipErrorToast: true } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: attractionManagementKeys.lists() });
       showToast("Attraction created successfully!", "success");
     },
     onError: (error: any) => {
       const message =
-        error?.response?.data?.message || error?.message || "Failed to create attraction.";
-      showErrorOnce(message, "Create Attraction Failed");
-      showToast(message, "error");
+        error?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "";
+      const code =
+        error?.error?.code ||
+        error?.response?.data?.code ||
+        error?.response?.status;
+
+      const isDuplicate =
+        /already exist/i.test(message) ||
+        /duplicate/i.test(message) ||
+        code === "DUPLICATE_NAME" ||
+        code === 409 ||
+        code === "409";
+
+      if (isDuplicate) {
+        // Silently return — mutateAsync re-throws the original error,
+        // which page.tsx catches and forwards to the form as a field error.
+        return;
+      }
+      showErrorNotify(message || "Failed to create attraction.", "Error");
     },
   });
 }
 
-// ── Update attraction ────────────────────────────────────────────────────────
+// ── Update attraction 
 export function useUpdateAttraction() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateAttractionPayload }) =>
-      patchData(AppUrl.attractionManagement.update(id), data),
+      patchData(AppUrl.attractionManagement.update(id), data, { skipErrorToast: true } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: attractionManagementKeys.lists() });
       showToast("Attraction updated successfully!", "success");
     },
     onError: (error: any) => {
       const message =
-        error?.response?.data?.message || error?.message || "Failed to update attraction.";
-      showErrorOnce(message, "Update Attraction Failed");
-      showToast(message, "error");
+        error?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "";
+      const code =
+        error?.error?.code ||
+        error?.response?.data?.code ||
+        error?.response?.status;
+
+      const isDuplicate =
+        /already exist/i.test(message) ||
+        /duplicate/i.test(message) ||
+        code === "DUPLICATE_NAME" ||
+        code === 409 ||
+        code === "409";
+
+      if (isDuplicate) {
+        // Silently return — mutateAsync re-throws the original error,
+        // which page.tsx catches and forwards to the form as a field error.
+        return;
+      }
+      showErrorNotify(message || "Failed to update attraction.", "Error");
     },
   });
 }
 
-// ── Delete attraction ────────────────────────────────────────────────────────
+// ── Delete attraction 
 export function useDeleteAttraction() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -139,7 +174,6 @@ export function useDeleteAttraction() {
     onError: (error: any) => {
       const message =
         error?.response?.data?.message || error?.message || "Failed to delete attraction.";
-      showErrorOnce(message, "Delete Attraction Failed");
       showToast(message, "error");
     },
   });
@@ -161,34 +195,13 @@ export function useBulkUploadAttractions() {
       const count = Array.isArray(data?.data) ? data.data.length : 0;
       showToast(`${count} attraction${count !== 1 ? "s" : ""} uploaded successfully!`, "success");
     },
+    onError: (error: any) => {
+      const message =
+        error?.response?.data?.message || error?.message || "Failed to upload attractions.";
+      showToast(message, "error");
+    },
   });
 }
-
-// ── Assign seat layout 
-/*
-// ============================================================================
-// [PREVIOUS API CODE - PATCH /api/admin/attraction-management/:id/seat]
-// export function useAssignSeatLayout() {
-//   const queryClient = useQueryClient();
-//   const { showToast } = useToast();
-// 
-//   return useMutation({
-//     mutationFn: ({ id, seatLayoutId }: { id: string; seatLayoutId: string }) =>
-//       patchData(AppUrl.attractionManagement.assignSeat(id), { seatLayoutId }),
-//     onSuccess: () => {
-//       queryClient.invalidateQueries({ queryKey: attractionManagementKeys.lists() });
-//       showToast("Seat layout assigned successfully!", "success");
-//     },
-//     onError: (error: any) => {
-//       const message =
-//         error?.response?.data?.message || error?.message || "Failed to assign seat layout.";
-//       showErrorOnce(message, "Seat Assignment Failed");
-//       showToast(message, "error");
-//     },
-//   });
-// }
-// ============================================================================
-*/
 
 /**
  * Assign seat layout(s) to attraction (Mock Implementation)
@@ -221,7 +234,6 @@ export function useAssignSeatLayout() {
     onError: (error: any) => {
       const message =
         error?.response?.data?.message || error?.message || "Failed to assign seat layout.";
-      showErrorOnce(message, "Seat Assignment Failed");
       showToast(message, "error");
     },
   });
