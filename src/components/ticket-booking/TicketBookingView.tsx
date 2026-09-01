@@ -11,7 +11,12 @@ import {
   X,
   User,
 } from "lucide-react";
-import { useTicketingAttractions, useTicketingSlots, useTicketingSeats, TicketingAttraction } from "@/hooks/useTicketingBookingQueries";
+import {
+  useTicketingAttractions,
+  useAttractionTripNo,
+  useAttractionSeatAvailability,
+  TicketingAttraction,
+} from "@/hooks/useTicketingBookingQueries";
 import CustomerInfoView from "./CustomerInfoView";
 
 export const SIDEBAR_COLLAPSE_EVENT = "tbv:sidebar-collapse";
@@ -794,52 +799,45 @@ export default function TicketBookingView() {
     [allAttractions, activeAttractionId, selectedAttractionIds]
   );
 
-  // Today's date string for slot/seats API
-  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+  // Fetch real trip number for active attraction
+  const tripNoPayload = useMemo(
+    () => (activeAttractionId ? [{ attractionId: activeAttractionId, currentTripNo: 1 }] : []),
+    [activeAttractionId]
+  );
+  const { data: tripNoData } = useAttractionTripNo(tripNoPayload, !!activeAttractionId);
+  const activeTripNo = tripNoData?.[0]?.newTripNo ?? 1;
 
-  // Fetch slots for the active attraction
-  const { data: activeSlots } = useTicketingSlots(
-    activeAttractionId ?? "",
-    todayStr,
-    !!activeAttractionId
+  // Fetch real seat availability if attraction has seating
+  const seatAvailPayload = useMemo(
+    () =>
+      activeAttractionId && activeAttraction?.hasSeating
+        ? [{ attractionId: activeAttractionId, currentTripNo: activeTripNo }]
+        : [],
+    [activeAttractionId, activeAttraction?.hasSeating, activeTripNo]
+  );
+  const { data: seatAvailData } = useAttractionSeatAvailability(
+    seatAvailPayload,
+    !!activeAttractionId && !!activeAttraction?.hasSeating
   );
 
-  // Use first slot to get seat info
-  const firstSlotId = activeSlots?.[0]?.id ?? "";
-  const { data: activeSeatsData } = useTicketingSeats(
-    activeAttractionId ?? "",
-    firstSlotId,
-    todayStr,
-    !!activeAttractionId && !!firstSlotId
-  );
-
-  // Derive duration from attraction duration/durationUnit or first slot's displayTime fallback
+  // Derive duration from attraction duration/durationUnit
   const derivedDuration = useMemo(() => {
     if (activeAttraction?.duration != null) {
       const formatted = formatAttractionDuration(activeAttraction.duration, activeAttraction.durationUnit);
       if (formatted) return formatted;
     }
-    if (!activeSlots || activeSlots.length === 0) return null;
-    const displayTime = (activeSlots[0] as any).slotTime ?? "";
-    return parseDurationFromDisplayTime(displayTime);
-  }, [activeAttraction, activeSlots]);
-
-  // Derived seats from seats API
-  const derivedSeats = useMemo(() => {
-    if (activeSeatsData?.totalSeats != null) return String(activeSeatsData.totalSeats);
     return null;
-  }, [activeSeatsData]);
+  }, [activeAttraction]);
 
-  // Initialize availableTripsMap from slots API (slot count = available trips today)
-  useEffect(() => {
-    if (activeAttractionId && activeSlots && activeSlots.length > 0) {
-      setAvailableTripsMap((prev) => {
-        // Only set from API if not already manually edited by staff
-        if (prev[activeAttractionId] !== undefined) return prev;
-        return { ...prev, [activeAttractionId]: activeSlots.length };
-      });
+  // Derived seats from seat availability API
+  const derivedSeats = useMemo(() => {
+    const dataItem = seatAvailData?.[0];
+    if (dataItem?.seats && dataItem.seats.length > 0) return String(dataItem.seats.length);
+    if (dataItem?.seatLayout?.rows && dataItem?.seatLayout?.cols) {
+      return String(dataItem.seatLayout.rows * dataItem.seatLayout.cols);
     }
-  }, [activeAttractionId, activeSlots]);
+    return null;
+  }, [seatAvailData]);
 
 
   const selectedAttractionsList = useMemo(
@@ -1238,7 +1236,7 @@ export default function TicketBookingView() {
         >
           {activeAttraction && (() => {
             const meta = { baseRate: getAttractionBaseRate(activeAttraction) };
-            const tripsToday =  1;
+            const tripsToday = activeTripNo;
             return (
               <div
                 style={{
@@ -1324,13 +1322,6 @@ export default function TicketBookingView() {
                           <span>Ongoing Trips: </span>
                           <span style={{ color: "#0E4E7A", fontWeight: 700 }}>{tripsToday}</span>
                         </div>
-
-                        {derivedSeats && (
-                          <div>
-                            <span>Seats per trip: </span>
-                            <span style={{ color: "#0E4E7A", fontWeight: 700 }}>{derivedSeats}</span>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
