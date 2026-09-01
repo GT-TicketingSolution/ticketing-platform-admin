@@ -919,6 +919,10 @@ export async function GET(request: Request) {
 
           // Legacy field
           seatLayoutId: attractionManagement.seatLayoutId,
+
+          createdAt: attractionManagement.createdAt,
+
+          updatedAt: attractionManagement.updatedAt,
         })
         .from(attractionManagement)
         .innerJoin(
@@ -988,6 +992,10 @@ export async function GET(request: Request) {
 
           // Legacy field
           seatLayoutId: attractionManagement.seatLayoutId,
+
+          createdAt: attractionManagement.createdAt,
+
+          updatedAt: attractionManagement.updatedAt,
         })
         .from(attractionManagement)
         .innerJoin(
@@ -1211,15 +1219,16 @@ export async function GET(request: Request) {
         seatAllocations: seatLayoutIds.map((layout, idx) => {
           // Count how many times this layout ID appears before this index
           const count = seatLayoutIds.filter((l) => l.id === layout.id).length;
-          const indexOfThisId = seatLayoutIds
-            .slice(0, idx + 1)
-            .filter((l) => l.id === layout.id).length - 1;
+          const indexOfThisId =
+            seatLayoutIds.slice(0, idx + 1).filter((l) => l.id === layout.id)
+              .length - 1;
 
           return {
             instanceId: `alloc_${item.id}_${layout.id}_${idx}`,
             layoutId: layout.id,
             isDisabled: layout.status === "inactive",
-            suffix: count > 1 ? ` - ${String.fromCharCode(65 + indexOfThisId)}` : "",
+            suffix:
+              count > 1 ? ` - ${String.fromCharCode(65 + indexOfThisId)}` : "",
           };
         }),
 
@@ -1362,16 +1371,16 @@ export async function POST(request: Request) {
     // VALIDATE LAYOUT OWNERSHIP
     // =====================================================
 
-         const seatLayoutOwnership = await validateSeatLayoutsForAdmin(
-           db,
-           auth.user.id,
-           resolvedSeatLayouts.uniqueIds,
-         );
-     
-         if (!seatLayoutOwnership.ok) {
-       return failure(seatLayoutOwnership.message, 400, "VALIDATION_ERROR");
-     }
- 
+    const seatLayoutOwnership = await validateSeatLayoutsForAdmin(
+      db,
+      auth.user.id,
+      resolvedSeatLayouts.uniqueIds,
+    );
+
+    if (!seatLayoutOwnership.ok) {
+      return failure(seatLayoutOwnership.message, 400, "VALIDATION_ERROR");
+    }
+
     // =====================================================
     // TRANSACTION
     // =====================================================
