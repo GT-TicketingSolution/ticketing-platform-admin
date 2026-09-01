@@ -7,9 +7,11 @@ import { db } from "@/db";
 import {
   users,
   staffRoles,
+  staffSystemModulePermissions,
   staffAttractionAssignments,
   attractions,
   managerAttractionPermissions,
+  systemModules,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -19,6 +21,15 @@ import { hashPassword } from "@/lib/auth/password";
 import { success, failure } from "@/lib/api/response";
 
 import { z } from "zod";
+
+/* =========================================================
+   STAFF ROLE → SYSTEM MODULE MAPPING
+========================================================= */
+
+const STAFF_ROLE_MODULES: Record<string, string[]> = {
+  "Counter Operator": ["TICKET_BOOKING"],
+  Validator: ["SCANNER"],
+};
 
 /* =========================================================
    VALIDATION
@@ -44,20 +55,10 @@ const createStaffSchema = z.object({
    STAFF ACCESS
 ========================================================= */
 
-/**
- * Staff APIs can be viewed by:
- * - ADMIN
- * - MANAGER
- *
- * STAFF users cannot access these APIs.
- */
 function canViewStaff(role: string) {
   return role === "ADMIN" || role === "MANAGER";
 }
 
-/**
- * Staff creation is restricted to ADMIN.
- */
 function canCreateStaff(role: string) {
   return role === "ADMIN" || role === "MANAGER";
 }
@@ -78,8 +79,6 @@ export async function GET(request: NextRequest) {
 
     // -----------------------------------------------------
     // Authorization
-    //
-    // ADMIN + MANAGER can view staff.
     // -----------------------------------------------------
 
     if (!canViewStaff(auth.user.role)) {
@@ -88,15 +87,6 @@ export async function GET(request: NextRequest) {
 
     // -----------------------------------------------------
     // Determine tenant/admin owner
-    //
-    // ADMIN:
-    //   auth.user.id = adminId
-    //
-    // MANAGER:
-    //   auth.user.adminId = adminId
-    //
-    // This ensures managers only see staff belonging
-    // to their own admin/tenant.
     // -----------------------------------------------------
 
     const adminId =
@@ -136,9 +126,6 @@ export async function GET(request: NextRequest) {
 
     // -----------------------------------------------------
     // Validate attraction filter
-    //
-    // The attraction must belong to the authenticated
-    // admin/tenant.
     // -----------------------------------------------------
 
     if (attractionId) {
@@ -164,13 +151,7 @@ export async function GET(request: NextRequest) {
     // Base staff conditions
     // -----------------------------------------------------
 
-    const conditions = [
-      eq(users.role, "STAFF"),
-
-      // CRITICAL:
-      // Staff must belong to the authenticated admin.
-      eq(users.adminId, adminId),
-    ];
+    const conditions = [eq(users.role, "STAFF"), eq(users.adminId, adminId)];
 
     // -----------------------------------------------------
     // Search
@@ -211,8 +192,6 @@ export async function GET(request: NextRequest) {
         .where(
           and(
             eq(staffAttractionAssignments.attractionId, attractionId),
-
-            // The attraction must belong to this admin.
             eq(attractions.adminId, adminId),
           ),
         );
@@ -222,7 +201,6 @@ export async function GET(request: NextRequest) {
       if (staffIds.length === 0) {
         return success({
           items: [],
-
           pagination: {
             page,
             limit,
@@ -302,8 +280,6 @@ export async function GET(request: NextRequest) {
           .where(
             and(
               eq(staffAttractionAssignments.staffId, member.id),
-
-              // Never expose another admin's attractions.
               eq(attractions.adminId, adminId),
             ),
           );
@@ -370,9 +346,6 @@ export async function POST(request: Request) {
 
     // -----------------------------------------------------
     // Authorization
-    //
-    // Only ADMIN can create staff.
-    // MANAGER can view but cannot create.
     // -----------------------------------------------------
 
     if (!canCreateStaff(auth.user.role)) {
@@ -400,11 +373,17 @@ export async function POST(request: Request) {
     const { name, email, phone, password, roles, attractionIds, status } =
       parsed.data;
 
-    const normalizedEmail = email.trim().toLowerCase();
+    // -----------------------------------------------------
+    // Normalize roles
+    // -----------------------------------------------------
+
+    const normalizedRoles = [...new Set(roles.map((role) => role.trim()))];
 
     // -----------------------------------------------------
     // Check duplicate email
     // -----------------------------------------------------
+
+    const normalizedEmail = email.trim().toLowerCase();
 
     const [existingUser] = await db
       .select({
@@ -420,9 +399,6 @@ export async function POST(request: Request) {
 
     // -----------------------------------------------------
     // Validate attractions
-    //
-    // Admin can only assign attractions belonging to
-    // that same admin.
     // -----------------------------------------------------
 
     if (attractionIds.length > 0) {
@@ -456,6 +432,44 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------------------------------
+    // Resolve modules from roles
+    // -----------------------------------------------------
+
+    const moduleKeys = [
+      ...new Set(
+        normalizedRoles.flatMap((role) => STAFF_ROLE_MODULES[role] ?? []),
+      ),
+    ];
+
+    let roleModules: {
+      id: string;
+      key: string;
+    }[] = [];
+
+    if (moduleKeys.length > 0) {
+      roleModules = await db
+        .select({
+          id: systemModules.id,
+          key: systemModules.key,
+        })
+        .from(systemModules)
+        .where(
+          and(
+            inArray(systemModules.key, moduleKeys),
+            eq(systemModules.isActive, "ACTIVE"),
+          ),
+        );
+
+      if (roleModules.length !== moduleKeys.length) {
+        return failure(
+          "One or more role modules are not configured.",
+          400,
+          "ROLE_MODULE_NOT_CONFIGURED",
+        );
+      }
+    }
+
+    // -----------------------------------------------------
     // Hash password
     // -----------------------------------------------------
 
@@ -480,7 +494,6 @@ export async function POST(request: Request) {
 
         status,
 
-        // Staff belongs to this admin.
         adminId,
       })
       .returning({
@@ -501,13 +514,29 @@ export async function POST(request: Request) {
     // Insert staff roles
     // -----------------------------------------------------
 
-    if (roles.length > 0) {
+    if (normalizedRoles.length > 0) {
       await db.insert(staffRoles).values(
-        roles.map((role) => ({
+        normalizedRoles.map((role) => ({
           staffId: staff.id,
-          role: role.trim(),
+          role,
         })),
       );
+    }
+
+    // -----------------------------------------------------
+    // Insert staff module permissions
+    // -----------------------------------------------------
+
+    if (roleModules.length > 0) {
+      await db
+        .insert(staffSystemModulePermissions)
+        .values(
+          roleModules.map((module) => ({
+            staffId: staff.id,
+            moduleId: module.id,
+          })),
+        )
+        .onConflictDoNothing();
     }
 
     // -----------------------------------------------------
@@ -551,11 +580,15 @@ export async function POST(request: Request) {
       }
     }
 
-    console.error("Get staff error:", error);
+    console.error("Create staff error:", error);
 
-    return failure("Unable to fetch staff.", 500, "INTERNAL_SERVER_ERROR");
+    return failure("Unable to create staff.", 500, "INTERNAL_SERVER_ERROR");
   }
 }
+
+/* =========================================================
+   PATCH /api/admin/staff/[staffId]
+========================================================= */
 
 const updateStaffSchema = z.object({
   name: z.string().min(2).max(150).optional(),
@@ -570,43 +603,39 @@ const updateStaffSchema = z.object({
 
   attractionIds: z.array(z.string().uuid()).optional(),
 
-  status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
 });
-
-/* =========================================================
-   PATCH /api/admin/staff/[staffId]
-========================================================= */
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ staffId: string }> },
 ) {
   try {
-    /* -----------------------------------------------------
-       Authentication
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Authentication
+    // -----------------------------------------------------
 
     const auth = await requireAuth(request);
 
     await requireModuleAccess(auth, "STAFF_MANAGEMENT");
 
-    /* -----------------------------------------------------
-       Only ADMIN / MANAGER can edit staff
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Authorization
+    // -----------------------------------------------------
 
     if (auth.user.role !== "ADMIN" && auth.user.role !== "MANAGER") {
       return failure("Admin or manager access required.", 403, "FORBIDDEN");
     }
 
-    /* -----------------------------------------------------
-       Get staffId
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Get staffId
+    // -----------------------------------------------------
 
     const { staffId } = await params;
 
-    /* -----------------------------------------------------
-       Determine admin/tenant owner
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Determine admin owner
+    // -----------------------------------------------------
 
     const adminId =
       auth.user.role === "ADMIN" ? auth.user.id : auth.user.adminId;
@@ -619,9 +648,9 @@ export async function PATCH(
       );
     }
 
-    /* -----------------------------------------------------
-       Find staff
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Find staff
+    // -----------------------------------------------------
 
     const [existingStaff] = await db
       .select({
@@ -642,9 +671,9 @@ export async function PATCH(
       return failure("Staff member not found.", 404, "STAFF_NOT_FOUND");
     }
 
-    /* -----------------------------------------------------
-       Validate body
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Validate body
+    // -----------------------------------------------------
 
     const body = await request.json();
 
@@ -657,9 +686,9 @@ export async function PATCH(
     const { name, email, phone, password, roles, attractionIds, status } =
       parsed.data;
 
-    /* -----------------------------------------------------
-       Check duplicate email
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Check duplicate email
+    // -----------------------------------------------------
 
     if (email) {
       const normalizedEmail = email.trim().toLowerCase();
@@ -677,9 +706,9 @@ export async function PATCH(
       }
     }
 
-    /* -----------------------------------------------------
-       Validate attractions
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Validate attractions
+    // -----------------------------------------------------
 
     if (attractionIds) {
       if (attractionIds.length > 0) {
@@ -709,9 +738,9 @@ export async function PATCH(
       }
     }
 
-    /* -----------------------------------------------------
-       Prepare staff update
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Prepare staff update
+    // -----------------------------------------------------
 
     const updateData: {
       name?: string;
@@ -737,17 +766,17 @@ export async function PATCH(
       updateData.status = status;
     }
 
-    /* -----------------------------------------------------
-       Hash new password
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Hash new password
+    // -----------------------------------------------------
 
     if (password) {
       updateData.passwordHash = await hashPassword(password);
     }
 
-    /* -----------------------------------------------------
-       Update staff
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Update staff
+    // -----------------------------------------------------
 
     let updatedStaff = existingStaff;
 
@@ -779,26 +808,90 @@ export async function PATCH(
       updatedStaff = result;
     }
 
-    /* -----------------------------------------------------
-       Update roles
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Update roles + module permissions
+    // -----------------------------------------------------
 
     if (roles !== undefined) {
+      const normalizedRoles = [...new Set(roles.map((role) => role.trim()))];
+
+      // -----------------------------------------------
+      // Resolve modules from the new roles
+      // -----------------------------------------------
+
+      const moduleKeys = [
+        ...new Set(
+          normalizedRoles.flatMap((role) => STAFF_ROLE_MODULES[role] ?? []),
+        ),
+      ];
+
+      let roleModules: {
+        id: string;
+        key: string;
+      }[] = [];
+
+      if (moduleKeys.length > 0) {
+        roleModules = await db
+          .select({
+            id: systemModules.id,
+            key: systemModules.key,
+          })
+          .from(systemModules)
+          .where(
+            and(
+              inArray(systemModules.key, moduleKeys),
+              eq(systemModules.isActive, "ACTIVE"),
+            ),
+          );
+
+        if (roleModules.length !== moduleKeys.length) {
+          return failure(
+            "One or more role modules are not configured.",
+            400,
+            "ROLE_MODULE_NOT_CONFIGURED",
+          );
+        }
+      }
+
+      // -----------------------------------------------
+      // Update roles
+      // -----------------------------------------------
+
       await db.delete(staffRoles).where(eq(staffRoles.staffId, staffId));
 
-      if (roles.length > 0) {
+      if (normalizedRoles.length > 0) {
         await db.insert(staffRoles).values(
-          roles.map((role) => ({
+          normalizedRoles.map((role) => ({
             staffId,
-            role: role.trim(),
+            role,
           })),
         );
       }
+
+      // -----------------------------------------------
+      // Synchronize module permissions
+      // -----------------------------------------------
+
+      await db
+        .delete(staffSystemModulePermissions)
+        .where(eq(staffSystemModulePermissions.staffId, staffId));
+
+      if (roleModules.length > 0) {
+        await db
+          .insert(staffSystemModulePermissions)
+          .values(
+            roleModules.map((module) => ({
+              staffId,
+              moduleId: module.id,
+            })),
+          )
+          .onConflictDoNothing();
+      }
     }
 
-    /* -----------------------------------------------------
-       Update attraction assignments
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Update attraction assignments
+    // -----------------------------------------------------
 
     if (attractionIds !== undefined) {
       await db
@@ -815,9 +908,9 @@ export async function PATCH(
       }
     }
 
-    /* -----------------------------------------------------
-       Fetch updated roles
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Fetch updated roles
+    // -----------------------------------------------------
 
     const updatedRoles = await db
       .select({
@@ -827,9 +920,9 @@ export async function PATCH(
       .from(staffRoles)
       .where(eq(staffRoles.staffId, staffId));
 
-    /* -----------------------------------------------------
-       Fetch updated attractions
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Fetch updated attractions
+    // -----------------------------------------------------
 
     const updatedAttractions = await db
       .select({
@@ -848,9 +941,9 @@ export async function PATCH(
         ),
       );
 
-    /* -----------------------------------------------------
-       Response
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Response
+    // -----------------------------------------------------
 
     return success({
       staff: {
@@ -877,50 +970,46 @@ export async function PATCH(
       }
     }
 
-    console.error("Get staff error:", error);
+    console.error("Update staff error:", error);
 
-    return failure("Unable to fetch staff.", 500, "INTERNAL_SERVER_ERROR");
+    return failure("Unable to update staff.", 500, "INTERNAL_SERVER_ERROR");
   }
 }
+
+/* =========================================================
+   DELETE /api/admin/staff/[staffId]
+========================================================= */
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ staffId: string }> },
 ) {
   try {
-    /* -----------------------------------------------------
-       Authentication
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Authentication
+    // -----------------------------------------------------
 
     const auth = await requireAuth(request);
 
     await requireModuleAccess(auth, "STAFF_MANAGEMENT");
 
-    /* -----------------------------------------------------
-       Authorization
-       
-       ADMIN + MANAGER can delete staff.
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Authorization
+    // -----------------------------------------------------
 
     if (auth.user.role !== "ADMIN" && auth.user.role !== "MANAGER") {
       return failure("Admin or manager access required.", 403, "FORBIDDEN");
     }
 
-    /* -----------------------------------------------------
-       Get staffId
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Get staffId
+    // -----------------------------------------------------
 
     const { staffId } = await params;
 
-    /* -----------------------------------------------------
-       Determine admin owner
-       
-       ADMIN:
-         auth.user.id = adminId
-
-       MANAGER:
-         auth.user.adminId = adminId
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Determine admin owner
+    // -----------------------------------------------------
 
     const adminId =
       auth.user.role === "ADMIN" ? auth.user.id : auth.user.adminId;
@@ -933,9 +1022,9 @@ export async function DELETE(
       );
     }
 
-    /* -----------------------------------------------------
-       Check staff exists and belongs to this admin
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Check staff exists and belongs to this admin
+    // -----------------------------------------------------
 
     const [staff] = await db
       .select({
@@ -957,17 +1046,14 @@ export async function DELETE(
       return failure("Staff member not found.", 404, "STAFF_NOT_FOUND");
     }
 
-    /* -----------------------------------------------------
-       MANAGER ACCESS CHECK
-       
-       Manager can only delete staff assigned to attractions
-       that are also assigned to that manager.
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // MANAGER ACCESS CHECK
+    // -----------------------------------------------------
 
     if (auth.user.role === "MANAGER") {
-      /* ---------------------------------------------------
-         Get attractions assigned to this manager
-      --------------------------------------------------- */
+      // -----------------------------------------------
+      // Get attractions assigned to manager
+      // -----------------------------------------------
 
       const managerAttractions = await db
         .select({
@@ -980,10 +1066,6 @@ export async function DELETE(
         ...new Set(managerAttractions.map((item) => item.attractionId)),
       ];
 
-      /* ---------------------------------------------------
-         Manager has no attraction permissions
-      --------------------------------------------------- */
-
       if (managerAttractionIds.length === 0) {
         return failure(
           "You are not assigned to any attractions.",
@@ -992,9 +1074,9 @@ export async function DELETE(
         );
       }
 
-      /* ---------------------------------------------------
-         Get attractions assigned to target staff
-      --------------------------------------------------- */
+      // -----------------------------------------------
+      // Get staff attractions
+      // -----------------------------------------------
 
       const staffAttractions = await db
         .select({
@@ -1007,13 +1089,6 @@ export async function DELETE(
         ...new Set(staffAttractions.map((item) => item.attractionId)),
       ];
 
-      /* ---------------------------------------------------
-         Staff has no attraction assignment
-         
-         Manager should not be allowed to delete an
-         unassigned staff member.
-      --------------------------------------------------- */
-
       if (staffAttractionIds.length === 0) {
         return failure(
           "This staff member is not assigned to any attraction you manage.",
@@ -1022,10 +1097,9 @@ export async function DELETE(
         );
       }
 
-      /* ---------------------------------------------------
-         Verify every staff attraction is accessible
-         to this manager.
-      --------------------------------------------------- */
+      // -----------------------------------------------
+      // Verify every staff attraction is accessible
+      // -----------------------------------------------
 
       const unauthorizedAttractions = staffAttractionIds.filter(
         (attractionId) => !managerAttractionIds.includes(attractionId),
@@ -1040,23 +1114,31 @@ export async function DELETE(
       }
     }
 
-    /* -----------------------------------------------------
-       Delete attraction assignments
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Delete attraction assignments
+    // -----------------------------------------------------
 
     await db
       .delete(staffAttractionAssignments)
       .where(eq(staffAttractionAssignments.staffId, staffId));
 
-    /* -----------------------------------------------------
-       Delete staff roles
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Delete staff module permissions
+    // -----------------------------------------------------
+
+    await db
+      .delete(staffSystemModulePermissions)
+      .where(eq(staffSystemModulePermissions.staffId, staffId));
+
+    // -----------------------------------------------------
+    // Delete staff roles
+    // -----------------------------------------------------
 
     await db.delete(staffRoles).where(eq(staffRoles.staffId, staffId));
 
-    /* -----------------------------------------------------
-       Delete staff user
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Delete staff user
+    // -----------------------------------------------------
 
     await db
       .delete(users)
@@ -1068,9 +1150,9 @@ export async function DELETE(
         ),
       );
 
-    /* -----------------------------------------------------
-       Response
-    ----------------------------------------------------- */
+    // -----------------------------------------------------
+    // Response
+    // -----------------------------------------------------
 
     return success({
       message: "Staff deleted successfully.",
@@ -1094,8 +1176,8 @@ export async function DELETE(
       }
     }
 
-    console.error("Get staff error:", error);
+    console.error("Delete staff error:", error);
 
-    return failure("Unable to fetch staff.", 500, "INTERNAL_SERVER_ERROR");
+    return failure("Unable to delete staff.", 500, "INTERNAL_SERVER_ERROR");
   }
 }
