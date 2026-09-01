@@ -72,6 +72,11 @@ export const referenceStatusEnum = pgEnum("reference_status", [
   "INACTIVE",
 ]);
 
+export const aisleDirectionEnum = pgEnum("aisle_direction", [
+  "VERTICAL",
+  "HORIZONTAL",
+]);
+
 /* =========================================================
    USERS
 ========================================================= */
@@ -1180,7 +1185,13 @@ export const seatLayouts = pgTable(
 
     hasAisle: boolean("has_aisle").notNull(),
 
-    aisleAfterCol: integer("aisle_after_col").notNull().default(0),
+    aisleDirection: aisleDirectionEnum("aisle_direction")
+      .notNull()
+      .default("VERTICAL"),
+
+    aisleAfterCol: integer("aisle_after_col"),
+
+    aisleAfterRow: integer("aisle_after_row"),
 
     status: seatLayoutStatusEnum("status").notNull().default("ACTIVE"),
 
@@ -1198,10 +1209,6 @@ export const seatLayouts = pgTable(
   },
 
   (table) => ({
-    // --------------------------------------------------
-    // INDEXES
-    // --------------------------------------------------
-
     adminIdx: index("seat_layouts_admin_idx").on(table.adminId),
 
     nameIdx: index("seat_layouts_name_idx").on(table.name),

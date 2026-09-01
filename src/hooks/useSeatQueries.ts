@@ -1,4 +1,4 @@
-"use client";
+// "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getData, postData, patchData, deleteData } from "@/lib/api/apiService";
@@ -13,8 +13,8 @@ import {
   UpdateSeatPayload,
 } from "@/app/(dashboard)/seat-management/types";
 
-// ── Mock Initial Data & LocalStorage Helpers ─────────────────────────────────
-const MOCK_STORAGE_KEY = "mock_seat_layouts_data";
+// // ── Mock Initial Data & LocalStorage Helpers ─────────────────────────────────
+// const MOCK_STORAGE_KEY = "mock_seat_layouts_data";
 
 const DEFAULT_MOCK_SEATS: SeatLayoutItem[] = [
   {
@@ -63,40 +63,40 @@ const DEFAULT_MOCK_SEATS: SeatLayoutItem[] = [
   },
 ];
 
-function getStoredMockSeats(): SeatLayoutItem[] {
-  if (typeof window === "undefined") return DEFAULT_MOCK_SEATS;
-  try {
-    const raw = localStorage.getItem(MOCK_STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(DEFAULT_MOCK_SEATS));
-      return DEFAULT_MOCK_SEATS;
-    }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_MOCK_SEATS;
-  } catch {
-    return DEFAULT_MOCK_SEATS;
-  }
-}
+// function getStoredMockSeats(): SeatLayoutItem[] {
+//   if (typeof window === "undefined") return DEFAULT_MOCK_SEATS;
+//   try {
+//     const raw = localStorage.getItem(MOCK_STORAGE_KEY);
+//     if (!raw) {
+//       localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(DEFAULT_MOCK_SEATS));
+//       return DEFAULT_MOCK_SEATS;
+//     }
+//     const parsed = JSON.parse(raw);
+//     return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_MOCK_SEATS;
+//   } catch {
+//     return DEFAULT_MOCK_SEATS;
+//   }
+// }
 
-function saveStoredMockSeats(seats: SeatLayoutItem[]) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(seats));
-  } catch (err) {
-    console.error("Failed to save mock seats to localStorage:", err);
-  }
-}
+// function saveStoredMockSeats(seats: SeatLayoutItem[]) {
+//   if (typeof window === "undefined") return;
+//   try {
+//     localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(seats));
+//   } catch (err) {
+//     console.error("Failed to save mock seats to localStorage:", err);
+//   }
+// }
 
-// ── Query Keys Factory ────────────────────────────────────────────────────────
-export const seatKeys = {
-  all: ["seat-layouts"] as const,
-  lists: () => [...seatKeys.all, "list"] as const,
-  list: (params?: SeatQueryParams) => [...seatKeys.lists(), params] as const,
-  details: () => [...seatKeys.all, "detail"] as const,
-  detail: (id: string) => [...seatKeys.details(), id] as const,
-};
+// // ── Query Keys Factory ────────────────────────────────────────────────────────
+// export const seatKeys = {
+//   all: ["seat-layouts"] as const,
+//   lists: () => [...seatKeys.all, "list"] as const,
+//   list: (params?: SeatQueryParams) => [...seatKeys.lists(), params] as const,
+//   details: () => [...seatKeys.all, "detail"] as const,
+//   detail: (id: string) => [...seatKeys.details(), id] as const,
+// };
 
-// ── Queries ───────────────────────────────────────────────────────────────────
+// // ── Queries ───────────────────────────────────────────────────────────────────
 
 /**
  * Fetch list of seat layouts from database API
@@ -115,7 +115,9 @@ export function useSeatLayouts(params?: SeatQueryParams) {
       }
 
       const queryString = searchParams.toString();
-      const url = queryString ? `${AppUrl.seat.list}?${queryString}` : AppUrl.seat.list;
+      const url = queryString
+        ? `${AppUrl.seat.list}?${queryString}`
+        : AppUrl.seat.list;
 
       try {
         const res = await getData<any>(url);
@@ -123,7 +125,12 @@ export function useSeatLayouts(params?: SeatQueryParams) {
         if (Array.isArray(res)) {
           return {
             items: res,
-            pagination: { page: 1, limit: res.length, total: res.length, totalPages: 1 },
+            pagination: {
+              page: 1,
+              limit: res.length,
+              total: res.length,
+              totalPages: 1,
+            },
           };
         }
         if (res && Array.isArray(res.items)) {
@@ -132,7 +139,12 @@ export function useSeatLayouts(params?: SeatQueryParams) {
         if (res && Array.isArray(res.data)) {
           return {
             items: res.data,
-            pagination: res.pagination || { page: 1, limit: res.data.length, total: res.data.length, totalPages: 1 },
+            pagination: res.pagination || {
+              page: 1,
+              limit: res.data.length,
+              total: res.data.length,
+              totalPages: 1,
+            },
           };
         }
 
@@ -160,44 +172,74 @@ export function useSeatLayouts(params?: SeatQueryParams) {
 //   return useQuery<SeatLayoutItem & { totalSeats?: number }>({
 //     queryKey: seatKeys.detail(seatId),
 //     queryFn: async () => {
-//       return getData<SeatLayoutItem & { totalSeats?: number }>(AppUrl.seat.get(seatId));
+//       const allSeats = getStoredMockSeats();
+//       const found = allSeats.find((s) => s.id === seatId);
+//       if (!found) throw new Error("Seat layout not found");
+//       return {
+//         ...found,
+//         totalSeats: (found.rows ?? 0) * (found.cols ?? 0),
+//       };
 //     },
 //     enabled: Boolean(seatId) && enabled,
 //   });
 // }
-// ============================================================================
-*/
 
-/**
- * Fetch a single seat layout by ID (Mock Implementation)
- */
-export function useSeatLayout(seatId: string, enabled = true) {
-  return useQuery<SeatLayoutItem & { totalSeats?: number }>({
-    queryKey: seatKeys.detail(seatId),
-    queryFn: async () => {
-      const allSeats = getStoredMockSeats();
-      const found = allSeats.find((s) => s.id === seatId);
-      if (!found) throw new Error("Seat layout not found");
-      return {
-        ...found,
-        totalSeats: (found.rows ?? 0) * (found.cols ?? 0),
-      };
-    },
-    enabled: Boolean(seatId) && enabled,
-  });
-}
+// // ── Mutations ─────────────────────────────────────────────────────────────────
 
-// ── Mutations ─────────────────────────────────────────────────────────────────
+// /*
+// // ============================================================================
+// // [PREVIOUS API CODE - POST /api/admin/seats]
+// // export function useCreateSeatLayout() {
+// //   const queryClient = useQueryClient();
+// //
+// //   return useMutation({
+// //     mutationFn: async (payload: CreateSeatPayload) => {
+// //       return postData<SeatLayoutItem>(AppUrl.seat.create, payload);
+// //     },
+// //     onSuccess: (data) => {
+// //       queryClient.invalidateQueries({ queryKey: seatKeys.lists() });
+// //       showSuccessNotify(
+// //         `Seat layout "${data?.name || "New Layout"}" created successfully.`,
+// //         "Layout Created"
+// //       );
+// //     },
+// //     onError: (error: any) => {
+// //       const message =
+// //         error?.response?.data?.message ||
+// //         error?.error?.message ||
+// //         error?.message ||
+// //         "Failed to create seat layout.";
+// //       showErrorOnce(message, "Creation Failed");
+// //     },
+// //   });
+// // }
+// // ============================================================================
+// */
 
-/*
-// ============================================================================
-// [PREVIOUS API CODE - POST /api/admin/seats]
+// /**
+//  * Create a new seat layout (Mock Implementation)
+//  */
 // export function useCreateSeatLayout() {
 //   const queryClient = useQueryClient();
-//
+
 //   return useMutation({
 //     mutationFn: async (payload: CreateSeatPayload) => {
-//       return postData<SeatLayoutItem>(AppUrl.seat.create, payload);
+//       await new Promise((resolve) => setTimeout(resolve, 80));
+//       const current = getStoredMockSeats();
+//       const newLayout: SeatLayoutItem = {
+//         id: `seat-layout-${Date.now()}`,
+//         name: payload.name,
+//         rows: payload.rows || 6,
+//         cols: payload.cols || 4,
+//         hasAisle: !!payload.hasAisle,
+//         aisleAfterCol: payload.aisleAfterCol ?? (payload.aislePosition ?? 0),
+//         status: payload.status === "INACTIVE" ? "INACTIVE" : "ACTIVE",
+//         totalSeats: (payload.rows || 6) * (payload.cols || 4),
+//         createdAt: new Date().toISOString(),
+//       };
+//       const updated = [newLayout, ...current];
+//       saveStoredMockSeats(updated);
+//       return newLayout;
 //     },
 //     onSuccess: (data) => {
 //       queryClient.invalidateQueries({ queryKey: seatKeys.lists() });
@@ -206,60 +248,52 @@ export function useSeatLayout(seatId: string, enabled = true) {
 //         "Layout Created"
 //       );
 //     },
-//     onError: (error: any) => {
-//       const message =
-//         error?.response?.data?.message ||
-//         error?.error?.message ||
-//         error?.message ||
-//         "Failed to create seat layout.";
-//       showErrorOnce(message, "Creation Failed");
-//     },
 //   });
 // }
-// ============================================================================
-*/
 
-/**
- * Create a new seat layout (Mock Implementation)
- */
-export function useCreateSeatLayout() {
-  const queryClient = useQueryClient();
+// /*
+// // ============================================================================
+// // [PREVIOUS API CODE - PATCH /api/admin/seats/:seatId]
+// // export function useUpdateSeatLayout() {
+// //   const queryClient = useQueryClient();
+// //
+// //   return useMutation({
+// //     mutationFn: async ({
+// //       seatId,
+// //       data,
+// //     }: {
+// //       seatId: string;
+// //       data: UpdateSeatPayload;
+// //     }) => {
+// //       return patchData<SeatLayoutItem>(AppUrl.seat.update(seatId), data);
+// //     },
+// //     onSuccess: (data, variables) => {
+// //       queryClient.invalidateQueries({ queryKey: seatKeys.lists() });
+// //       queryClient.invalidateQueries({ queryKey: seatKeys.detail(variables.seatId) });
+// //       showSuccessNotify(
+// //         `Seat layout "${data?.name || "Layout"}" updated successfully.`,
+// //         "Changes Saved"
+// //       );
+// //     },
+// //     onError: (error: any) => {
+// //       const message =
+// //         error?.response?.data?.message ||
+// //         error?.error?.message ||
+// //         error?.message ||
+// //         "Failed to update seat layout.";
+// //       showErrorOnce(message, "Update Failed");
+// //     },
+// //   });
+// // }
+// // ============================================================================
+// */
 
-  return useMutation({
-    mutationFn: async (payload: CreateSeatPayload) => {
-      await new Promise((resolve) => setTimeout(resolve, 80));
-      const current = getStoredMockSeats();
-      const newLayout: SeatLayoutItem = {
-        id: `seat-layout-${Date.now()}`,
-        name: payload.name,
-        rows: payload.rows || 6,
-        cols: payload.cols || 4,
-        hasAisle: !!payload.hasAisle,
-        aisleAfterCol: payload.aisleAfterCol ?? (payload.aislePosition ?? 0),
-        status: payload.status === "INACTIVE" ? "INACTIVE" : "ACTIVE",
-        totalSeats: (payload.rows || 6) * (payload.cols || 4),
-        createdAt: new Date().toISOString(),
-      };
-      const updated = [newLayout, ...current];
-      saveStoredMockSeats(updated);
-      return newLayout;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: seatKeys.lists() });
-      showSuccessNotify(
-        `Seat layout "${data?.name || "New Layout"}" created successfully.`,
-        "Layout Created"
-      );
-    },
-  });
-}
-
-/*
-// ============================================================================
-// [PREVIOUS API CODE - PATCH /api/admin/seats/:seatId]
+// /**
+//  * Update an existing seat layout (Mock Implementation)
+//  */
 // export function useUpdateSeatLayout() {
 //   const queryClient = useQueryClient();
-//
+
 //   return useMutation({
 //     mutationFn: async ({
 //       seatId,
@@ -268,7 +302,33 @@ export function useCreateSeatLayout() {
 //       seatId: string;
 //       data: UpdateSeatPayload;
 //     }) => {
-//       return patchData<SeatLayoutItem>(AppUrl.seat.update(seatId), data);
+//       await new Promise((resolve) => setTimeout(resolve, 80));
+//       const current = getStoredMockSeats();
+//       const idx = current.findIndex((s) => s.id === seatId);
+//       if (idx === -1) throw new Error("Seat layout not found");
+
+//       const existing = current[idx];
+//       const updatedItem: SeatLayoutItem = {
+//         ...existing,
+//         name: data.name !== undefined ? data.name : existing.name,
+//         rows: data.rows !== undefined ? data.rows : existing.rows,
+//         cols: data.cols !== undefined ? data.cols : existing.cols,
+//         hasAisle: data.hasAisle !== undefined ? data.hasAisle : existing.hasAisle,
+//         aisleAfterCol:
+//           data.aisleAfterCol !== undefined
+//             ? data.aisleAfterCol
+//             : data.aislePosition !== undefined
+//             ? data.aislePosition
+//             : existing.aisleAfterCol,
+//         status: data.status !== undefined ? data.status : existing.status,
+//         totalSeats:
+//           (data.rows !== undefined ? data.rows : existing.rows) *
+//           (data.cols !== undefined ? data.cols : existing.cols),
+//       };
+
+//       current[idx] = updatedItem;
+//       saveStoredMockSeats([...current]);
+//       return updatedItem;
 //     },
 //     onSuccess: (data, variables) => {
 //       queryClient.invalidateQueries({ queryKey: seatKeys.lists() });
@@ -278,119 +338,301 @@ export function useCreateSeatLayout() {
 //         "Changes Saved"
 //       );
 //     },
-//     onError: (error: any) => {
-//       const message =
-//         error?.response?.data?.message ||
-//         error?.error?.message ||
-//         error?.message ||
-//         "Failed to update seat layout.";
-//       showErrorOnce(message, "Update Failed");
-//     },
 //   });
 // }
-// ============================================================================
-*/
 
-/**
- * Update an existing seat layout (Mock Implementation)
- */
-export function useUpdateSeatLayout() {
-  const queryClient = useQueryClient();
+// /*
+// // ============================================================================
+// // [PREVIOUS API CODE - DELETE /api/admin/seats/:seatId]
+// // export function useDeleteSeatLayout() {
+// //   const queryClient = useQueryClient();
+// //
+// //   return useMutation({
+// //     mutationFn: async (seatId: string) => {
+// //       return deleteData<{ message: string; seat?: { id: string } }>(AppUrl.seat.delete(seatId));
+// //     },
+// //     onSuccess: (_, seatId) => {
+// //       queryClient.invalidateQueries({ queryKey: seatKeys.lists() });
+// //       queryClient.invalidateQueries({ queryKey: seatKeys.detail(seatId) });
+// //       showSuccessNotify("Seat layout deleted successfully.", "Deleted");
+// //     },
+// //     onError: (error: any) => {
+// //       const message =
+// //         error?.response?.data?.message ||
+// //         error?.error?.message ||
+// //         error?.message ||
+// //         "Failed to delete seat layout.";
+// //       showErrorOnce(message, "Delete Failed");
+// //     },
+// //   });
+// // }
+// // ============================================================================
+// */
 
-  return useMutation({
-    mutationFn: async ({
-      seatId,
-      data,
-    }: {
-      seatId: string;
-      data: UpdateSeatPayload;
-    }) => {
-      await new Promise((resolve) => setTimeout(resolve, 80));
-      const current = getStoredMockSeats();
-      const idx = current.findIndex((s) => s.id === seatId);
-      if (idx === -1) throw new Error("Seat layout not found");
-
-      const existing = current[idx];
-      const updatedItem: SeatLayoutItem = {
-        ...existing,
-        name: data.name !== undefined ? data.name : existing.name,
-        rows: data.rows !== undefined ? data.rows : existing.rows,
-        cols: data.cols !== undefined ? data.cols : existing.cols,
-        hasAisle: data.hasAisle !== undefined ? data.hasAisle : existing.hasAisle,
-        aisleAfterCol:
-          data.aisleAfterCol !== undefined
-            ? data.aisleAfterCol
-            : data.aislePosition !== undefined
-            ? data.aislePosition
-            : existing.aisleAfterCol,
-        status: data.status !== undefined ? data.status : existing.status,
-        totalSeats:
-          (data.rows !== undefined ? data.rows : existing.rows) *
-          (data.cols !== undefined ? data.cols : existing.cols),
-      };
-
-      current[idx] = updatedItem;
-      saveStoredMockSeats([...current]);
-      return updatedItem;
-    },
-    onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: seatKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: seatKeys.detail(variables.seatId) });
-      showSuccessNotify(
-        `Seat layout "${data?.name || "Layout"}" updated successfully.`,
-        "Changes Saved"
-      );
-    },
-  });
-}
-
-/*
-// ============================================================================
-// [PREVIOUS API CODE - DELETE /api/admin/seats/:seatId]
+// /**
+//  * Delete a seat layout (Mock Implementation)
+//  */
 // export function useDeleteSeatLayout() {
 //   const queryClient = useQueryClient();
-//
+
 //   return useMutation({
 //     mutationFn: async (seatId: string) => {
-//       return deleteData<{ message: string; seat?: { id: string } }>(AppUrl.seat.delete(seatId));
+//       await new Promise((resolve) => setTimeout(resolve, 80));
+//       const current = getStoredMockSeats();
+//       const filtered = current.filter((s) => s.id !== seatId);
+//       saveStoredMockSeats(filtered);
+//       return { message: "Deleted successfully", seat: { id: seatId } };
 //     },
 //     onSuccess: (_, seatId) => {
 //       queryClient.invalidateQueries({ queryKey: seatKeys.lists() });
 //       queryClient.invalidateQueries({ queryKey: seatKeys.detail(seatId) });
 //       showSuccessNotify("Seat layout deleted successfully.", "Deleted");
 //     },
-//     onError: (error: any) => {
-//       const message =
-//         error?.response?.data?.message ||
-//         error?.error?.message ||
-//         error?.message ||
-//         "Failed to delete seat layout.";
-//       showErrorOnce(message, "Delete Failed");
-//     },
 //   });
 // }
-// ============================================================================
-*/
 
-/**
- * Delete a seat layout (Mock Implementation)
- */
-export function useDeleteSeatLayout() {
+("use client");
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { getData, postData, patchData, deleteData } from "@/lib/api/apiService";
+
+import { AppUrl } from "@/lib/api/endpoints";
+import { showErrorOnce } from "@/lib/api/axiosConfig";
+import { showSuccessNotify } from "@/lib/notify";
+
+import {
+  SeatLayoutListResponse,
+  SeatLayoutItem,
+  SeatQueryParams,
+  CreateSeatPayload,
+  UpdateSeatPayload,
+} from "@/app/(dashboard)/seat-management/types";
+
+// ============================================================================
+// Query Keys
+// ============================================================================
+
+export const seatKeys = {
+  all: ["seat-layouts"] as const,
+
+  lists: () => [...seatKeys.all, "list"] as const,
+
+  list: (params?: SeatQueryParams) => [...seatKeys.lists(), params] as const,
+
+  details: () => [...seatKeys.all, "detail"] as const,
+
+  detail: (id: string) => [...seatKeys.details(), id] as const,
+};
+
+// ============================================================================
+// Error Helper
+// ============================================================================
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error === "object" && error !== null && "error" in error) {
+    const apiError = (
+      error as {
+        error?: {
+          code?: string;
+          message?: string;
+        };
+      }
+    ).error;
+
+    if (apiError?.message) {
+      return apiError.message;
+    }
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
+// ============================================================================
+// GET - List Seat Layouts
+// ============================================================================
+
+export function useSeatLayouts(params?: SeatQueryParams) {
+  return useQuery<SeatLayoutListResponse>({
+    queryKey: seatKeys.list(params),
+
+    queryFn: async () => {
+      const searchParams = new URLSearchParams();
+
+      if (params?.page !== undefined) {
+        searchParams.set("page", String(params.page));
+      }
+
+      if (params?.limit !== undefined) {
+        searchParams.set("limit", String(params.limit));
+      }
+
+      if (params?.search?.trim()) {
+        searchParams.set("search", params.search.trim());
+      }
+
+      if (params?.status) {
+        searchParams.set("status", params.status);
+      }
+
+      const queryString = searchParams.toString();
+
+      const url = queryString
+        ? `${AppUrl.seat.list}?${queryString}`
+        : AppUrl.seat.list;
+
+      return getData<SeatLayoutListResponse>(url);
+    },
+
+    staleTime: 30 * 1000,
+
+    refetchOnWindowFocus: false,
+  });
+}
+
+// ============================================================================
+// GET - Single Seat Layout
+// ============================================================================
+
+export function useSeatLayout(seatId: string, enabled = true) {
+  return useQuery<SeatLayoutItem>({
+    queryKey: seatKeys.detail(seatId),
+
+    queryFn: async () => {
+      return getData<SeatLayoutItem>(AppUrl.seat.get(seatId));
+    },
+
+    enabled: Boolean(seatId) && enabled,
+
+    staleTime: 30 * 1000,
+  });
+}
+
+// ============================================================================
+// POST - Create Seat Layout
+// ============================================================================
+
+export function useCreateSeatLayout() {
   const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: async (seatId: string) => {
-      await new Promise((resolve) => setTimeout(resolve, 80));
-      const current = getStoredMockSeats();
-      const filtered = current.filter((s) => s.id !== seatId);
-      saveStoredMockSeats(filtered);
-      return { message: "Deleted successfully", seat: { id: seatId } };
+  return useMutation<SeatLayoutItem, unknown, CreateSeatPayload>({
+    mutationFn: async (payload) => {
+      return postData<SeatLayoutItem, CreateSeatPayload>(
+        AppUrl.seat.create,
+        payload,
+      );
     },
-    onSuccess: (_, seatId) => {
-      queryClient.invalidateQueries({ queryKey: seatKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: seatKeys.detail(seatId) });
-      showSuccessNotify("Seat layout deleted successfully.", "Deleted");
+
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({
+        queryKey: seatKeys.lists(),
+      });
+
+      showSuccessNotify(
+        `Seat layout "${data?.name || "New Layout"}" created successfully.`,
+        "Layout Created",
+      );
+    },
+
+    onError: (error) => {
+      const message = getErrorMessage(error, "Failed to create seat layout.");
+
+      showErrorOnce(message, "Creation Failed");
     },
   });
 }
 
+// ============================================================================
+// PATCH - Update Seat Layout
+// ============================================================================
+
+export function useUpdateSeatLayout() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    SeatLayoutItem,
+    unknown,
+    {
+      seatId: string;
+      data: UpdateSeatPayload;
+    }
+  >({
+    mutationFn: async ({ seatId, data }) => {
+      return patchData<SeatLayoutItem, UpdateSeatPayload>(
+        AppUrl.seat.update(seatId),
+        data,
+      );
+    },
+
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: seatKeys.lists(),
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: seatKeys.detail(variables.seatId),
+      });
+
+      showSuccessNotify(
+        `Seat layout "${data?.name || "Layout"}" updated successfully.`,
+        "Changes Saved",
+      );
+    },
+
+    onError: (error) => {
+      const message = getErrorMessage(error, "Failed to update seat layout.");
+
+      showErrorOnce(message, "Update Failed");
+    },
+  });
+}
+
+// ============================================================================
+// DELETE - Delete Seat Layout
+// ============================================================================
+
+export function useDeleteSeatLayout() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    {
+      message: string;
+      seat: {
+        id: string;
+      };
+    },
+    unknown,
+    string
+  >({
+    mutationFn: async (seatId) => {
+      return deleteData<{
+        message: string;
+        seat: {
+          id: string;
+        };
+      }>(AppUrl.seat.delete(seatId));
+    },
+
+    onSuccess: (_, seatId) => {
+      queryClient.invalidateQueries({
+        queryKey: seatKeys.lists(),
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: seatKeys.detail(seatId),
+      });
+
+      showSuccessNotify("Seat layout deleted successfully.", "Deleted");
+    },
+
+    onError: (error) => {
+      const message = getErrorMessage(error, "Failed to delete seat layout.");
+
+      showErrorOnce(message, "Delete Failed");
+    },
+  });
+}

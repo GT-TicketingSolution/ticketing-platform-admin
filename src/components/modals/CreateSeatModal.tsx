@@ -6,8 +6,6 @@ import { X, Armchair, Loader2, Columns, Rows } from "lucide-react";
 import {
   SeatConfigData,
   AisleOrientation,
-  encodeAisle,
-  decodeAisle,
 } from "@/app/(dashboard)/seat-management/types";
 
 export type { SeatConfigData };
@@ -37,7 +35,7 @@ export default function CreateSeatModal({
   const [hasAisle, setHasAisle] = useState<boolean | null>(null);
   const [aisleType, setAisleType] = useState<AisleOrientation>("VERTICAL");
   const [aislePosition, setAislePosition] = useState<number>(0);
-  const [status, setStatus] = useState<"Active" | "Inactive" | "">("");
+  const [status, setStatus] = useState<"ACTIVE" | "INACTIVE" | "">("");
   const [isDraggingAisle, setIsDraggingAisle] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
   const gridInnerRef = useRef<HTMLDivElement>(null);
@@ -56,7 +54,7 @@ export default function CreateSeatModal({
         const colWidth = 52; // 44px + 8px
         const calculatedSlot = Math.max(
           0,
-          Math.min(displayCols, Math.round(relativeX / colWidth))
+          Math.min(displayCols, Math.round(relativeX / colWidth)),
         );
         setAislePosition(calculatedSlot);
       } else {
@@ -64,7 +62,7 @@ export default function CreateSeatModal({
         const rowHeight = 46; // 38px + 8px
         const calculatedSlot = Math.max(
           0,
-          Math.min(displayRows, Math.round(relativeY / rowHeight))
+          Math.min(displayRows, Math.round(relativeY / rowHeight)),
         );
         setAislePosition(calculatedSlot);
       }
@@ -90,19 +88,17 @@ export default function CreateSeatModal({
       setCols(initialData.cols || "");
       setHasAisle(initialData.hasAisle);
 
-      const decoded = decodeAisle(
-        initialData.hasAisle,
-        initialData.aisleAfterCol ?? 0
-      );
-      setAisleType(initialData.aisleType || decoded.aisleType);
-      setAislePosition(
-        initialData.aislePosition !== undefined
-          ? initialData.aislePosition
-          : decoded.aislePosition
-      );
+      const type: AisleOrientation = initialData.aisleDirection || "VERTICAL";
+      const position =
+        type === "HORIZONTAL"
+          ? (initialData.aisleAfterRow ?? 0)
+          : (initialData.aisleAfterCol ?? 0);
+
+      setAisleType(type);
+      setAislePosition(position);
 
       const s = String(initialData.status || "").toUpperCase();
-      setStatus(s === "ACTIVE" ? "Active" : s === "INACTIVE" ? "Inactive" : "");
+      setStatus(s === "ACTIVE" ? "ACTIVE" : s === "INACTIVE" ? "INACTIVE" : "");
     } else {
       setName("");
       setRows(1);
@@ -137,7 +133,8 @@ export default function CreateSeatModal({
   const displayCols = rows === "" && cols === "" ? 1 : Math.max(1, parsedCols);
   const totalSeats = displayRows * displayCols;
   const totalRowWidth = displayCols * 44 + (displayCols - 1) * 8;
-  const isSingleSeat = (rows === "" || rows === 1) && (cols === "" || cols === 1);
+  const isSingleSeat =
+    (rows === "" || rows === 1) && (cols === "" || cols === 1);
 
   const handleRowChange = (val: string) => {
     const clean = val.replace(/\D/g, "");
@@ -175,7 +172,10 @@ export default function CreateSeatModal({
     const clean = val.replace(/\D/g, "");
     if (clean === "") {
       setCols("");
-      setErrors((prev) => ({ ...prev, cols: "Column count must be at least 1" }));
+      setErrors((prev) => ({
+        ...prev,
+        cols: "Column count must be at least 1",
+      }));
       return;
     }
     const num = parseInt(clean, 10);
@@ -199,7 +199,10 @@ export default function CreateSeatModal({
 
   const handleColBlur = () => {
     if (cols === "" || cols < 1) {
-      setErrors((prev) => ({ ...prev, cols: "Column count must be at least 1" }));
+      setErrors((prev) => ({
+        ...prev,
+        cols: "Column count must be at least 1",
+      }));
     }
   };
 
@@ -253,12 +256,12 @@ export default function CreateSeatModal({
       rows: finalRows,
       cols: finalCols,
       hasAisle: !!hasAisle,
-      aisleAfterCol: pos,
-      aisleAfterRow: aisleType === "HORIZONTAL" ? pos : 0,
-      aisleType,
+
       aisleDirection: aisleType,
-      aislePosition: pos,
-      status: status as "Active" | "Inactive",
+      aisleAfterCol: aisleType === "VERTICAL" ? pos : 0,
+      aisleAfterRow: aisleType === "HORIZONTAL" ? pos : 0,
+
+      status: status as "ACTIVE" | "INACTIVE",
     });
     onClose();
   };
@@ -742,7 +745,7 @@ export default function CreateSeatModal({
                 <button
                   type="button"
                   onClick={() => {
-                    setStatus("Active");
+                    setStatus("ACTIVE");
                     if (errors.status)
                       setErrors((prev) => ({ ...prev, status: "" }));
                   }}
@@ -751,13 +754,13 @@ export default function CreateSeatModal({
                     height: "38px",
                     borderRadius: "8px",
                     border:
-                      status === "Active"
+                      status === "ACTIVE"
                         ? "2px solid #10B981"
                         : errors.status
                           ? "1.5px solid #DC2626"
                           : "1.5px solid #D1D5DB",
-                    background: status === "Active" ? "#ECFDF5" : "#FFFFFF",
-                    color: status === "Active" ? "#065F46" : "#4B5563",
+                    background: status === "ACTIVE" ? "#ECFDF5" : "#FFFFFF",
+                    color: status === "ACTIVE" ? "#065F46" : "#4B5563",
                     fontWeight: 700,
                     fontSize: "13px",
                     cursor: "pointer",
@@ -768,7 +771,7 @@ export default function CreateSeatModal({
                 <button
                   type="button"
                   onClick={() => {
-                    setStatus("Inactive");
+                    setStatus("INACTIVE");
                     if (errors.status)
                       setErrors((prev) => ({ ...prev, status: "" }));
                   }}
@@ -777,13 +780,13 @@ export default function CreateSeatModal({
                     height: "38px",
                     borderRadius: "8px",
                     border:
-                      status === "Inactive"
+                      status === "INACTIVE"
                         ? "2px solid #EF4444"
                         : errors.status
                           ? "1.5px solid #DC2626"
                           : "1.5px solid #D1D5DB",
-                    background: status === "Inactive" ? "#FEE2E2" : "#FFFFFF",
-                    color: status === "Inactive" ? "#991B1B" : "#4B5563",
+                    background: status === "INACTIVE" ? "#FEE2E2" : "#FFFFFF",
+                    color: status === "INACTIVE" ? "#991B1B" : "#4B5563",
                     fontWeight: 700,
                     fontSize: "13px",
                     cursor: "pointer",
@@ -843,7 +846,9 @@ export default function CreateSeatModal({
                     <span>Saving...</span>
                   </>
                 ) : (
-                  <span>{initialData ? "Update Seat Layout" : "Save Seat"}</span>
+                  <span>
+                    {initialData ? "Update Seat Layout" : "Save Seat"}
+                  </span>
                 )}
               </button>
             </div>
@@ -929,10 +934,25 @@ export default function CreateSeatModal({
               >
                 {/* ── VERTICAL AISLE LAYOUT ── */}
                 {hasAisle && aisleType === "VERTICAL" ? (
-                  <div style={{ display: "flex", flexDirection: "row", alignItems: "flex-start" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "row",
+                      alignItems: "flex-start",
+                    }}
+                  >
                     {/* R labels column */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginRight: "6px", flexShrink: 0 }}>
-                      <div style={{ height: "20px" }} />{/* spacer for col header row */}
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "8px",
+                        marginRight: "6px",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <div style={{ height: "20px" }} />
+                      {/* spacer for col header row */}
                       {Array.from({ length: displayRows }, (_, rIdx) => (
                         <span
                           key={`rl-${rIdx}`}
@@ -959,7 +979,8 @@ export default function CreateSeatModal({
                     {Array.from({ length: displayCols + 1 }, (_, slotIdx) => {
                       const isAisleHere = aislePosition === slotIdx;
                       const isDropTarget = isDraggingAisle && !isAisleHere;
-                      const gridHeight = displayRows * 38 + (displayRows - 1) * 8;
+                      const gridHeight =
+                        displayRows * 38 + (displayRows - 1) * 8;
 
                       return (
                         <React.Fragment key={`slot-${slotIdx}`}>
@@ -972,7 +993,9 @@ export default function CreateSeatModal({
                                 gap: "8px",
                                 flexShrink: 0,
                                 marginRight:
-                                  slotIdx === displayCols || isAisleHere || isDropTarget
+                                  slotIdx === displayCols ||
+                                  isAisleHere ||
+                                  isDropTarget
                                     ? "0px"
                                     : "8px",
                               }}
@@ -998,32 +1021,41 @@ export default function CreateSeatModal({
                                 C{slotIdx}
                               </div>
                               {/* Seat cells for this column */}
-                              {Array.from({ length: displayRows }, (_, rIdx) => {
-                                const seatNumber = rIdx * displayCols + slotIdx;
-                                return (
-                                  <div
-                                    key={`sc-${rIdx}-${slotIdx}`}
-                                    style={{
-                                      width: "44px",
-                                      height: "38px",
-                                      background: "#FFFFFF",
-                                      border: "1.5px solid #0C2A42",
-                                      borderRadius: "6px",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      fontSize: "11px",
-                                      fontWeight: 700,
-                                      color: "#0C2A42",
-                                      flexShrink: 0,
-                                      boxShadow: "0 1px 3px rgba(12, 42, 66, 0.08)",
-                                    }}
-                                    title={`Row ${rIdx + 1}, Column ${slotIdx} (Seat #${seatNumber})`}
-                                  >
-                                    <span>{seatNumber < 10 ? `0${seatNumber}` : seatNumber}</span>
-                                  </div>
-                                );
-                              })}
+                              {Array.from(
+                                { length: displayRows },
+                                (_, rIdx) => {
+                                  const seatNumber =
+                                    rIdx * displayCols + slotIdx;
+                                  return (
+                                    <div
+                                      key={`sc-${rIdx}-${slotIdx}`}
+                                      style={{
+                                        width: "44px",
+                                        height: "38px",
+                                        background: "#FFFFFF",
+                                        border: "1.5px solid #0C2A42",
+                                        borderRadius: "6px",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        fontSize: "11px",
+                                        fontWeight: 700,
+                                        color: "#0C2A42",
+                                        flexShrink: 0,
+                                        boxShadow:
+                                          "0 1px 3px rgba(12, 42, 66, 0.08)",
+                                      }}
+                                      title={`Row ${rIdx + 1}, Column ${slotIdx} (Seat #${seatNumber})`}
+                                    >
+                                      <span>
+                                        {seatNumber < 10
+                                          ? `0${seatNumber}`
+                                          : seatNumber}
+                                      </span>
+                                    </div>
+                                  );
+                                },
+                              )}
                             </div>
                           )}
 
@@ -1051,19 +1083,24 @@ export default function CreateSeatModal({
                                   : "transparent",
                                 cursor: "pointer",
                                 flexShrink: 0,
-                                margin: isDropTarget ? "28px 4px 0 4px" : "28px 1px 0 1px",
+                                margin: isDropTarget
+                                  ? "28px 4px 0 4px"
+                                  : "28px 1px 0 1px",
                                 transition: "all 0.15s ease",
                               }}
                               onMouseEnter={(e) => {
                                 if (!isDraggingAisle) {
                                   e.currentTarget.style.borderColor = "#93C5FD";
-                                  e.currentTarget.style.background = "rgba(239,246,255,0.7)";
+                                  e.currentTarget.style.background =
+                                    "rgba(239,246,255,0.7)";
                                 }
                               }}
                               onMouseLeave={(e) => {
                                 if (!isDraggingAisle) {
-                                  e.currentTarget.style.borderColor = "transparent";
-                                  e.currentTarget.style.background = "transparent";
+                                  e.currentTarget.style.borderColor =
+                                    "transparent";
+                                  e.currentTarget.style.background =
+                                    "transparent";
                                 }
                               }}
                             />
@@ -1082,8 +1119,8 @@ export default function CreateSeatModal({
                                   slotIdx === 0
                                     ? "0 8px 0 0"
                                     : slotIdx === displayCols
-                                    ? "0 0 0 8px"
-                                    : "0 8px",
+                                      ? "0 0 0 8px"
+                                      : "0 8px",
                               }}
                             >
                               <div
@@ -1105,16 +1142,24 @@ export default function CreateSeatModal({
                               >
                                 <button
                                   type="button"
-                                  onClick={() => setAislePosition((p) => Math.max(0, p - 1))}
+                                  onClick={() =>
+                                    setAislePosition((p) => Math.max(0, p - 1))
+                                  }
                                   disabled={aislePosition === 0}
                                   style={{
                                     border: "none",
                                     background: "transparent",
-                                    cursor: aislePosition === 0 ? "default" : "pointer",
+                                    cursor:
+                                      aislePosition === 0
+                                        ? "default"
+                                        : "pointer",
                                     padding: "0",
                                     fontSize: "10px",
                                     fontWeight: 900,
-                                    color: aislePosition === 0 ? "#CBD5E1" : "#0284C7",
+                                    color:
+                                      aislePosition === 0
+                                        ? "#CBD5E1"
+                                        : "#0284C7",
                                     lineHeight: 1,
                                     display: "flex",
                                     alignItems: "center",
@@ -1123,23 +1168,33 @@ export default function CreateSeatModal({
                                 >
                                   ◀
                                 </button>
-                                <span style={{ fontSize: "9px", fontWeight: 800 }}>AISLE</span>
+                                <span
+                                  style={{ fontSize: "9px", fontWeight: 800 }}
+                                >
+                                  AISLE
+                                </span>
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    setAislePosition((p) => Math.min(displayCols, p + 1))
+                                    setAislePosition((p) =>
+                                      Math.min(displayCols, p + 1),
+                                    )
                                   }
                                   disabled={aislePosition === displayCols}
                                   style={{
                                     border: "none",
                                     background: "transparent",
                                     cursor:
-                                      aislePosition === displayCols ? "default" : "pointer",
+                                      aislePosition === displayCols
+                                        ? "default"
+                                        : "pointer",
                                     padding: "0",
                                     fontSize: "10px",
                                     fontWeight: 900,
                                     color:
-                                      aislePosition === displayCols ? "#CBD5E1" : "#0284C7",
+                                      aislePosition === displayCols
+                                        ? "#CBD5E1"
+                                        : "#0284C7",
                                     lineHeight: 1,
                                     display: "flex",
                                     alignItems: "center",
@@ -1196,7 +1251,14 @@ export default function CreateSeatModal({
                                       whiteSpace: "nowrap",
                                     }}
                                   >
-                                    <span style={{ fontSize: "11px", lineHeight: 1 }}>⠿</span>
+                                    <span
+                                      style={{
+                                        fontSize: "11px",
+                                        lineHeight: 1,
+                                      }}
+                                    >
+                                      ⠿
+                                    </span>
                                     <span>AISLE</span>
                                   </div>
                                 ) : displayRows === 2 ? (
@@ -1215,8 +1277,17 @@ export default function CreateSeatModal({
                                       whiteSpace: "nowrap",
                                     }}
                                   >
-                                    <span style={{ fontSize: "12px", lineHeight: 1 }}>⠿</span>
-                                    <span style={{ letterSpacing: "1px" }}>AISLE</span>
+                                    <span
+                                      style={{
+                                        fontSize: "12px",
+                                        lineHeight: 1,
+                                      }}
+                                    >
+                                      ⠿
+                                    </span>
+                                    <span style={{ letterSpacing: "1px" }}>
+                                      AISLE
+                                    </span>
                                   </div>
                                 ) : (
                                   <div
@@ -1250,8 +1321,20 @@ export default function CreateSeatModal({
                   <>
                     {/* ── HORIZONTAL AISLE or NO AISLE: row-based layout ── */}
                     {/* Column headers row */}
-                    <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
-                      <div style={{ width: "36px", marginRight: "6px", flexShrink: 0 }} />
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "36px",
+                          marginRight: "6px",
+                          flexShrink: 0,
+                        }}
+                      />
                       {Array.from({ length: displayCols }, (_, cIdx) => {
                         const colNum = cIdx + 1;
                         return (
@@ -1277,7 +1360,13 @@ export default function CreateSeatModal({
                     </div>
 
                     {/* Main Grid of Rows with Horizontal Aisle & Gaps */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "6px",
+                      }}
+                    >
                       {/* ── Slot 0: Horizontal Aisle Before Row 1 (Start / Top) ── */}
                       {hasAisle && aislePosition === 0 && (
                         <div
@@ -1324,14 +1413,22 @@ export default function CreateSeatModal({
                             >
                               ▲
                             </button>
-                            <span style={{ fontSize: "8px", fontWeight: 800, color: "#0369A1" }}>
+                            <span
+                              style={{
+                                fontSize: "8px",
+                                fontWeight: 800,
+                                color: "#0369A1",
+                              }}
+                            >
                               AISLE
                             </span>
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setAislePosition((p) => Math.min(displayRows, p + 1));
+                                setAislePosition((p) =>
+                                  Math.min(displayRows, p + 1),
+                                );
                               }}
                               style={{
                                 border: "none",
@@ -1383,7 +1480,8 @@ export default function CreateSeatModal({
                               fontSize: displayCols === 1 ? "9px" : "11px",
                               fontWeight: 800,
                               color: "#0369A1",
-                              letterSpacing: displayCols === 1 ? "0.5px" : "1.5px",
+                              letterSpacing:
+                                displayCols === 1 ? "0.5px" : "1.5px",
                               whiteSpace: "nowrap",
                               overflow: "hidden",
                               padding: "0 6px",
@@ -1420,13 +1518,16 @@ export default function CreateSeatModal({
                               ? "rgba(224,242,254,0.6)"
                               : "transparent",
                             cursor: "pointer",
-                            margin: isDraggingAisle ? "2px 0 2px 42px" : "1px 0 1px 42px",
+                            margin: isDraggingAisle
+                              ? "2px 0 2px 42px"
+                              : "1px 0 1px 42px",
                             transition: "all 0.15s ease",
                           }}
                           onMouseEnter={(e) => {
                             if (!isDraggingAisle) {
                               e.currentTarget.style.borderColor = "#93C5FD";
-                              e.currentTarget.style.background = "rgba(239,246,255,0.7)";
+                              e.currentTarget.style.background =
+                                "rgba(239,246,255,0.7)";
                             }
                           }}
                           onMouseLeave={(e) => {
@@ -1442,13 +1543,17 @@ export default function CreateSeatModal({
                       {Array.from({ length: displayRows }, (_, rIdx) => {
                         const rowNum = rIdx + 1;
                         const slotAfterThis = rowNum;
-                        const isAisleAfterThis = hasAisle && aislePosition === slotAfterThis;
-                        const isDropTargetAfterThis = isDraggingAisle && !isAisleAfterThis;
+                        const isAisleAfterThis =
+                          hasAisle && aislePosition === slotAfterThis;
+                        const isDropTargetAfterThis =
+                          isDraggingAisle && !isAisleAfterThis;
 
                         return (
                           <React.Fragment key={`h-row-${rowNum}`}>
                             {/* Seat Row */}
-                            <div style={{ display: "flex", alignItems: "center" }}>
+                            <div
+                              style={{ display: "flex", alignItems: "center" }}
+                            >
                               <span
                                 style={{
                                   width: "36px",
@@ -1469,36 +1574,43 @@ export default function CreateSeatModal({
                               >
                                 R{rowNum}
                               </span>
-                              {Array.from({ length: displayCols }, (_, cIdx) => {
-                                const colNum = cIdx + 1;
-                                const seatNumber = (rowNum - 1) * displayCols + colNum;
-                                return (
-                                  <div
-                                    key={`seat-${rowNum}-${colNum}`}
-                                    style={{
-                                      width: "44px",
-                                      height: "38px",
-                                      background: "#FFFFFF",
-                                      border: "1.5px solid #0C2A42",
-                                      borderRadius: "6px",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      fontSize: "11px",
-                                      fontWeight: 700,
-                                      color: "#0C2A42",
-                                      marginRight: "8px",
-                                      flexShrink: 0,
-                                      boxShadow: "0 1px 3px rgba(12, 42, 66, 0.08)",
-                                    }}
-                                    title={`Row ${rowNum}, Column ${colNum} (Seat #${seatNumber})`}
-                                  >
-                                    <span>
-                                      {seatNumber < 10 ? `0${seatNumber}` : seatNumber}
-                                    </span>
-                                  </div>
-                                );
-                              })}
+                              {Array.from(
+                                { length: displayCols },
+                                (_, cIdx) => {
+                                  const colNum = cIdx + 1;
+                                  const seatNumber =
+                                    (rowNum - 1) * displayCols + colNum;
+                                  return (
+                                    <div
+                                      key={`seat-${rowNum}-${colNum}`}
+                                      style={{
+                                        width: "44px",
+                                        height: "38px",
+                                        background: "#FFFFFF",
+                                        border: "1.5px solid #0C2A42",
+                                        borderRadius: "6px",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        fontSize: "11px",
+                                        fontWeight: 700,
+                                        color: "#0C2A42",
+                                        marginRight: "8px",
+                                        flexShrink: 0,
+                                        boxShadow:
+                                          "0 1px 3px rgba(12, 42, 66, 0.08)",
+                                      }}
+                                      title={`Row ${rowNum}, Column ${colNum} (Seat #${seatNumber})`}
+                                    >
+                                      <span>
+                                        {seatNumber < 10
+                                          ? `0${seatNumber}`
+                                          : seatNumber}
+                                      </span>
+                                    </div>
+                                  );
+                                },
+                              )}
                             </div>
 
                             {/* Horizontal Aisle Bar after Row R{rowNum} (including bottom) */}
@@ -1532,7 +1644,9 @@ export default function CreateSeatModal({
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setAislePosition((p) => Math.max(0, p - 1));
+                                      setAislePosition((p) =>
+                                        Math.max(0, p - 1),
+                                      );
                                     }}
                                     style={{
                                       border: "none",
@@ -1550,26 +1664,38 @@ export default function CreateSeatModal({
                                   >
                                     ▲
                                   </button>
-                                  <span style={{ fontSize: "8px", fontWeight: 800, color: "#0369A1" }}>
+                                  <span
+                                    style={{
+                                      fontSize: "8px",
+                                      fontWeight: 800,
+                                      color: "#0369A1",
+                                    }}
+                                  >
                                     AISLE
                                   </span>
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setAislePosition((p) => Math.min(displayRows, p + 1));
+                                      setAislePosition((p) =>
+                                        Math.min(displayRows, p + 1),
+                                      );
                                     }}
                                     disabled={slotAfterThis === displayRows}
                                     style={{
                                       border: "none",
                                       background: "transparent",
                                       cursor:
-                                        slotAfterThis === displayRows ? "default" : "pointer",
+                                        slotAfterThis === displayRows
+                                          ? "default"
+                                          : "pointer",
                                       padding: "0",
                                       fontSize: "9px",
                                       fontWeight: 900,
                                       color:
-                                        slotAfterThis === displayRows ? "#CBD5E1" : "#0284C7",
+                                        slotAfterThis === displayRows
+                                          ? "#CBD5E1"
+                                          : "#0284C7",
                                       lineHeight: 1,
                                       display: "flex",
                                       alignItems: "center",
@@ -1589,7 +1715,10 @@ export default function CreateSeatModal({
                                   onPointerDown={startAislePointerDrag}
                                   draggable
                                   onDragStart={(e) => {
-                                    e.dataTransfer.setData("text/plain", "aisle");
+                                    e.dataTransfer.setData(
+                                      "text/plain",
+                                      "aisle",
+                                    );
                                     e.dataTransfer.effectAllowed = "move";
                                     setIsDraggingAisle(true);
                                   }}
@@ -1613,10 +1742,12 @@ export default function CreateSeatModal({
                                       ? "0 4px 12px rgba(2,132,199,0.25)"
                                       : "none",
                                     transition: "background 0.15s ease",
-                                    fontSize: displayCols === 1 ? "9px" : "11px",
+                                    fontSize:
+                                      displayCols === 1 ? "9px" : "11px",
                                     fontWeight: 800,
                                     color: "#0369A1",
-                                    letterSpacing: displayCols === 1 ? "0.5px" : "1.5px",
+                                    letterSpacing:
+                                      displayCols === 1 ? "0.5px" : "1.5px",
                                     whiteSpace: "nowrap",
                                     overflow: "hidden",
                                     padding: "0 6px",
@@ -1647,7 +1778,9 @@ export default function CreateSeatModal({
                                 }`}
                                 style={{
                                   width: `${totalRowWidth}px`,
-                                  height: isDropTargetAfterThis ? "12px" : "6px",
+                                  height: isDropTargetAfterThis
+                                    ? "12px"
+                                    : "6px",
                                   marginLeft: "42px",
                                   border: isDropTargetAfterThis
                                     ? "2px dashed #0284C7"
@@ -1664,15 +1797,18 @@ export default function CreateSeatModal({
                                 }}
                                 onMouseEnter={(e) => {
                                   if (!isDraggingAisle) {
-                                    e.currentTarget.style.borderColor = "#93C5FD";
+                                    e.currentTarget.style.borderColor =
+                                      "#93C5FD";
                                     e.currentTarget.style.background =
                                       "rgba(239,246,255,0.7)";
                                   }
                                 }}
                                 onMouseLeave={(e) => {
                                   if (!isDraggingAisle) {
-                                    e.currentTarget.style.borderColor = "transparent";
-                                    e.currentTarget.style.background = "transparent";
+                                    e.currentTarget.style.borderColor =
+                                      "transparent";
+                                    e.currentTarget.style.background =
+                                      "transparent";
                                   }
                                 }}
                               />
@@ -1699,8 +1835,11 @@ export default function CreateSeatModal({
                 gap: "8px",
               }}
             >
-              <span style={{ fontSize: "12px", color: "#1E40AF", fontWeight: 500 }}>
-                <strong>Drag the AISLE bar</strong> in the preview to reposition it anywhere in the grid. It starts at the beginning by default.
+              <span
+                style={{ fontSize: "12px", color: "#1E40AF", fontWeight: 500 }}
+              >
+                <strong>Drag the AISLE bar</strong> in the preview to reposition
+                it anywhere in the grid. It starts at the beginning by default.
               </span>
             </div>
           </div>
