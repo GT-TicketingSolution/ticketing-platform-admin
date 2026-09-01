@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-export const MAX_SEAT_ROWS = Number(process.env.NEXT_PUBLIC_MAX_SEAT_ROWS || 100);
-export const MAX_SEAT_COLS = Number(process.env.NEXT_PUBLIC_MAX_SEAT_COLS || 100);
+export const MAX_SEAT_ROWS = Number(process.env.NEXT_PUBLIC_MAX_SEAT_ROWS || 200);
+export const MAX_SEAT_COLS = Number(process.env.NEXT_PUBLIC_MAX_SEAT_COLS || 200);
 
 export const seatLayoutSchema = z.object({
   name: z.string().trim().min(1, "Seat layout name is required"),

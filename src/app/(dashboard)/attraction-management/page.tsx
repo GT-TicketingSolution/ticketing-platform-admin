@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   Search,
   SearchX,
@@ -27,7 +27,7 @@ import {
   useBulkUploadAttractions,
 } from "@/hooks/useAttractionManagementQueries";
 
-// ── Category badge color ──────────────────────────────────────────────────────
+// ── Category badge color 
 const CATEGORY_COLOR: Record<string, string> = {
   RIDE: "#F4BC43",
   Ride: "#F4BC43",
@@ -237,17 +237,27 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
+// ── Page ────────────────────────────────────────────────────────────────────
 export default function AttractionManagementPage() {
-  // ── Queries / Mutations ─────────────────────────────────────────────────
-  const { data: attractions = [], isLoading, isError } = useAttractionManagementList();
+  // ── Search state (debounced) ───────────────────
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  // ── Queries / Mutations ──────────────────────────────────────────
+  const { data: attractions = [], isLoading, isError, isFetching } = useAttractionManagementList({ search: debouncedSearch || undefined });
   const createMutation = useCreateAttraction();
   const updateMutation = useUpdateAttraction();
   const deleteMutation = useDeleteAttraction();
   const bulkMutation = useBulkUploadAttractions();
 
-  // ── UI State ────────────────────────────────────────────────────────────
-  const [searchQuery, setSearchQuery] = useState("");
+  // ── UI State ────────────────────────────────────────────────────
   const [viewMode, setViewMode] = useState<"list" | "add" | "edit">("list");
   const [attractionToEdit, setAttractionToEdit] = useState<AttractionManagement | null>(null);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
@@ -256,14 +266,8 @@ export default function AttractionManagementPage() {
     document.title = "Attraction Management | Ticketing Solution";
   }, []);
 
-  // ── Derived ─────────────────────────────────────────────────────────────
-  const filtered = attractions.filter(
-    (a) =>
-      a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.category.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const showEmptyState = !isLoading && !isError && attractions.length === 0 && viewMode === "list";
+  const isSearchActive = debouncedSearch.trim() !== "";
+  const showEmptyState = !isLoading && !isError && attractions.length === 0 && !isSearchActive && viewMode === "list";
 
   // ── Handlers 
   const handleOpenAdd = () => {
@@ -347,10 +351,35 @@ export default function AttractionManagementPage() {
         await createMutation.mutateAsync(payload);
         console.log("CreatePayload:", JSON.stringify(payload, null, 2));
       }
-    } catch {
-      // Handled by onError in mutation; keep form open
+      setViewMode("list");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err: any) {
+      // Detect 409 / duplicate-name from the original API error
+      const message =
+        err?.error?.message ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "";
+      const code =
+        err?.error?.code ||
+        err?.response?.data?.code ||
+        err?.response?.status ||
+        err?.status;
+      const isDuplicate =
+        /already exist/i.test(message) ||
+        /duplicate/i.test(message) ||
+        code === "DUPLICATE_NAME" ||
+        code === 409 ||
+        code === "409";
+      if (isDuplicate) {
+        // Re-throw a typed error so AddEditAttractionForm shows it inline
+        throw Object.assign(new Error("An attraction with this name already exists."), {
+          code: "DUPLICATE_NAME",
+        });
+      }
+      // All other errors are handled by mutation onError
     }
-    setViewMode("list");
+
   };
 
   const handleBulkUploadSuccess = (count: number) => {
@@ -368,7 +397,7 @@ export default function AttractionManagementPage() {
       {(viewMode === "add" || viewMode === "edit") && (
         <div style={{ width: "100%", maxWidth: "1124px", display: "flex", flexDirection: "column", gap: "16px" }}>
           <button
-            onClick={() => setViewMode("list")}
+            onClick={() => { setViewMode("list"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
             style={{
               display: "flex",
               alignItems: "center",
@@ -389,8 +418,9 @@ export default function AttractionManagementPage() {
 
           <AddEditAttractionForm
             attractionToEdit={viewMode === "edit" ? (attractionToEdit as any) : null}
+            existingAttractions={attractions as any}
             onSave={handleSaveAttraction}
-            onCancel={() => setViewMode("list")}
+            onCancel={() => { setViewMode("list"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
             isSaving={isSaving}
           />
         </div>
@@ -581,16 +611,18 @@ export default function AttractionManagementPage() {
           </div>
 
           {/* Cards Grid or No-search-results */}
-          {filtered.length > 0 ? (
+          {attractions.length > 0 ? (
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fill, minmax(237px, 1fr))",
                 gap: "24px",
                 width: "100%",
+                opacity: isFetching ? 0.65 : 1,
+                transition: "opacity 0.2s ease",
               }}
             >
-              {filtered.map((attraction) => (
+              {attractions.map((attraction) => (
                 <AttractionCard
                   key={attraction.id}
                   attraction={attraction}
@@ -632,11 +664,11 @@ export default function AttractionManagementPage() {
                 No Matching Attractions Found
               </p>
               <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: "13px", fontWeight: 400, color: colors.text.muted, margin: 0, maxWidth: "380px" }}>
-                No attractions match <strong>&ldquo;{searchQuery}&rdquo;</strong>. Try a different name or category keyword.
+                No attractions match <strong>&ldquo;{debouncedSearch}&rdquo;</strong>. Try a different name or category keyword.
               </p>
               <button
                 type="button"
-                onClick={() => setSearchQuery("")}
+                onClick={() => { setSearchQuery(""); setDebouncedSearch(""); }}
                 style={{
                   marginTop: "4px",
                   padding: "8px 18px",

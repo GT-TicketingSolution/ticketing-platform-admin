@@ -9,6 +9,7 @@ import {
   Minus,
   Users,
   X,
+  User,
 } from "lucide-react";
 import { useTicketingAttractions, useTicketingSlots, useTicketingSeats, TicketingAttraction } from "@/hooks/useTicketingBookingQueries";
 import CustomerInfoView from "./CustomerInfoView";
@@ -88,7 +89,7 @@ export const VISITOR_CATEGORIES: VisitorCategoryMeta[] = [
   { key: "child", label: "Child", subLabel: "5–12 yrs", image: "/Assets/Visitors/Child.jpg", defaultPrice: 50 },
   { key: "student", label: "Student", subLabel: "ID Required", image: "/Assets/Visitors/Student.jpg", defaultPrice: 60 },
   { key: "foreigner", label: "Foreigner", subLabel: "Passport verification", image: "/Assets/Visitors/Foreigner.jpg", defaultPrice: 500 },
-  { key: "senior", label: "Senior Citizen", subLabel: "60+ yrs", image: "", defaultPrice: 75 },
+  { key: "senior", label: "Senior Citizen", subLabel: "60+ yrs", image: "/Assets/Visitors/Senior.jpg", defaultPrice: 75 },
 ];
 
 // Re-export type alias so remaining code can use it without change
@@ -548,16 +549,14 @@ function VisitorCategoryCard({
             style={{
               width: "100%",
               height: "100%",
-              background: "linear-gradient(135deg,#CBD5E1 0%,#94A3B8 100%)",
+              background: "linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#FFFFFF",
-              fontWeight: 800,
-              fontSize: "16px",
+              color: "#64748B",
             }}
           >
-            {category.label.charAt(0)}
+            <User size={26} color="#64748B" />
           </div>
         )}
       </div>
