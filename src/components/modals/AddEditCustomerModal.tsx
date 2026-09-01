@@ -9,7 +9,7 @@ interface AddEditCustomerModalProps {
   isOpen: boolean;
   onClose: () => void;
   customer: Customer | null;
-  onSave: (customerData: { name: string; mobile: string; gstn?: string; id?: string }) => Promise<void> | void;
+  onSave: (customerData: { name: string; mobile: string; address?: string; gstn?: string; id?: string }) => Promise<void> | void;
   isSaving?: boolean;
 }
 
@@ -22,6 +22,7 @@ export default function AddEditCustomerModal({
 }: AddEditCustomerModalProps) {
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState("");
+  const [address, setAddress] = useState("");
   const [gstn, setGstn] = useState("");
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
@@ -29,10 +30,12 @@ export default function AddEditCustomerModal({
     if (customer) {
       setName(customer.name || "");
       setMobile(customer.mobile || "");
+      setAddress(customer.address || "");
       setGstn(customer.gstn || "");
     } else {
       setName("");
       setMobile("");
+      setAddress("");
       setGstn("");
     }
     setErrors({});
@@ -43,7 +46,12 @@ export default function AddEditCustomerModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const validation = validateCustomer({ name: name.trim(), mobile: mobile.trim(), gstn: gstn.trim() });
+    const validation = validateCustomer({
+      name: name.trim(),
+      mobile: mobile.trim(),
+      address: address.trim(),
+      gstn: gstn.trim(),
+    });
     if (!validation.success) {
       setErrors(validation.errors);
       return;
@@ -55,6 +63,7 @@ export default function AddEditCustomerModal({
       id: customer?.id,
       name: name.trim(),
       mobile: mobile.trim(),
+      address: address.trim() || undefined,
       gstn: gstn.trim() ? gstn.trim().toUpperCase() : undefined,
     });
   };
@@ -251,6 +260,61 @@ export default function AddEditCustomerModal({
                 >
                   <AlertCircle size={13} />
                   {errors.mobile}
+                </span>
+              )}
+            </div>
+
+            {/* Address (Optional) */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <label
+                htmlFor="customer-address-input"
+                style={{
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 600,
+                  fontSize: "14px",
+                  lineHeight: "18px",
+                  color: "#011B2F",
+                }}
+              >
+                Address <span style={{ color: "#64748B", fontWeight: 400, fontSize: "12px" }}>(Optional)</span>
+              </label>
+              <input
+                id="customer-address-input"
+                type="text"
+                placeholder="Enter Address (Optional)"
+                value={address}
+                onChange={(e) => {
+                  setAddress(e.target.value);
+                  if (errors.address) setErrors((prev) => ({ ...prev, address: "" }));
+                }}
+                style={{
+                  width: "100%",
+                  height: "38px",
+                  background: "#FFFFFF",
+                  border: `1.5px solid ${errors.address ? "#DC2626" : "rgba(179, 175, 175, 0.51)"}`,
+                  borderRadius: "8px",
+                  padding: "0 14px",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 500,
+                  fontSize: "13px",
+                  color: "#011B2F",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+              {errors.address && (
+                <span
+                  style={{
+                    fontSize: "12px",
+                    color: "#DC2626",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <AlertCircle size={13} />
+                  {errors.address}
                 </span>
               )}
             </div>

@@ -6,7 +6,8 @@ import { X } from "lucide-react";
 export interface NewCustomer {
   name: string;
   mobile: string;
-  gstn: string;
+  address?: string;
+  gstn?: string;
 }
 
 interface AddNewCustomerModalProps {
@@ -19,6 +20,7 @@ interface AddNewCustomerModalProps {
 interface FieldErrors {
   name?: string;
   mobile?: string;
+  address?: string;
   gstn?: string;
 }
 
@@ -36,6 +38,7 @@ export default function AddNewCustomerModal({
 }: AddNewCustomerModalProps) {
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState("");
+  const [address, setAddress] = useState("");
   const [gstn, setGstn] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -49,9 +52,9 @@ export default function AddNewCustomerModal({
     if (!mobile.trim()) errs.mobile = "Mobile number is required.";
     else if (!/^\d{10}$/.test(mobile.trim()))
       errs.mobile = "Enter a valid 10-digit mobile number.";
-    if (!gstn.trim()) errs.gstn = "GSTN is required.";
-    else if (!validateGSTN(gstn.trim()))
+    if (gstn.trim() && !validateGSTN(gstn.trim())) {
       errs.gstn = "Enter a valid 15-character GSTN (e.g. 27AAPFU0939F1ZV).";
+    }
     return errs;
   }
 
@@ -61,13 +64,19 @@ export default function AddNewCustomerModal({
   }
 
   function handleSave() {
-    setTouched({ name: true, mobile: true, gstn: true });
+    setTouched({ name: true, mobile: true, address: true, gstn: true });
     const errs = validate();
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
-    onSave({ name: name.trim(), mobile: mobile.trim(), gstn: gstn.trim().toUpperCase() });
+    onSave({
+      name: name.trim(),
+      mobile: mobile.trim(),
+      address: address.trim() || undefined,
+      gstn: gstn.trim() ? gstn.trim().toUpperCase() : undefined,
+    });
     setName("");
     setMobile("");
+    setAddress("");
     setGstn("");
     setErrors({});
     setTouched({});
@@ -76,6 +85,7 @@ export default function AddNewCustomerModal({
   function handleClose() {
     setName("");
     setMobile("");
+    setAddress("");
     setGstn("");
     setErrors({});
     setTouched({});
@@ -229,6 +239,38 @@ export default function AddNewCustomerModal({
               )}
             </div>
 
+            {/* Address */}
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontWeight: 600,
+                  fontSize: "14px",
+                  color: "#011B2F",
+                  marginBottom: "8px",
+                }}
+              >
+                Address
+                <span style={{ color: "#64748B", fontWeight: 400, fontSize: "12px", marginLeft: "4px" }}>(Optional)</span>
+              </label>
+              <input
+                type="text"
+                placeholder="Enter Address"
+                value={address}
+                onChange={(e) => {
+                  setAddress(e.target.value);
+                  if (touched.address) setErrors(validate());
+                }}
+                onBlur={() => handleBlur("address")}
+                style={inp(!!(touched.address && errors.address))}
+              />
+              {touched.address && errors.address && (
+                <p style={{ margin: "4px 0 0 2px", fontSize: "11px", color: "#EF4444", fontWeight: 500 }}>
+                  {errors.address}
+                </p>
+              )}
+            </div>
+
             {/* GSTN */}
             <div>
               <label
@@ -241,11 +283,11 @@ export default function AddNewCustomerModal({
                 }}
               >
                 GSTN
-                <span style={{ color: "#EF4444" }}>*</span>
+                <span style={{ color: "#64748B", fontWeight: 400, fontSize: "12px", marginLeft: "4px" }}>(Optional)</span>
               </label>
               <input
                 type="text"
-                placeholder="Enter GSTN (e.g. 27AAPFU0939F1ZV)"
+                placeholder="Enter GSTN (Optional)"
                 value={gstn}
                 maxLength={15}
                 onChange={(e) => {

@@ -119,6 +119,23 @@ function getAttractionBaseRate(attraction: Attraction) {
   return `₹${minP}–₹${adultP} / person`;
 }
 
+/** Format duration value and unit nicely (e.g. 30, "minutes" -> "30 minutes") */
+function formatAttractionDuration(duration?: number | string | null, durationUnit?: string | null): string | null {
+  if (duration === null || duration === undefined || duration === "") return null;
+  const num = typeof duration === "number" ? duration : parseInt(String(duration), 10);
+  if (isNaN(num)) {
+    return String(duration);
+  }
+  const unitStr = (durationUnit || "minutes").trim().toLowerCase();
+  if (unitStr.startsWith("hour") || unitStr === "hr" || unitStr === "hrs") {
+    return `${num} ${num === 1 ? "hour" : "hours"}`;
+  }
+  if (unitStr.startsWith("min")) {
+    return `${num} ${num === 1 ? "minute" : "minutes"}`;
+  }
+  return `${num} ${durationUnit || "minutes"}`;
+}
+
 /** Parse duration in minutes from a displayTime like "10:00 AM – 10:20 AM" */
 function parseDurationFromDisplayTime(displayTime: string): string | null {
   try {
@@ -139,7 +156,7 @@ function parseDurationFromDisplayTime(displayTime: string): string | null {
     if (start === null || end === null) return null;
     const diff = end - start;
     if (diff <= 0) return null;
-    return `${diff}min / trip`;
+    return `${diff} minutes`;
   } catch {
     return null;
   }
@@ -731,11 +748,8 @@ export default function TicketBookingView() {
   // Cart state
   const [cart, setCart] = useState<CartEntry[]>([]);
 
-  // Available trips counter per attraction (editable by staff, decrements on booking)
+  // Available trips counter per attraction (decrements on booking)
   const [availableTripsMap, setAvailableTripsMap] = useState<Record<string, number>>({});
-  // Tracks which attraction's trips field is being edited inline
-  const [editingTripsId, setEditingTripsId] = useState<string | null>(null);
-  const [editingTripsValue, setEditingTripsValue] = useState<string>("");
 
   useEffect(() => {
     document.title = "Ticket Booking | Ticketing Solution";
@@ -799,12 +813,16 @@ export default function TicketBookingView() {
     !!activeAttractionId && !!firstSlotId
   );
 
-  // Derive duration from first slot's displayTime
+  // Derive duration from attraction duration/durationUnit or first slot's displayTime fallback
   const derivedDuration = useMemo(() => {
+    if (activeAttraction?.duration != null) {
+      const formatted = formatAttractionDuration(activeAttraction.duration, activeAttraction.durationUnit);
+      if (formatted) return formatted;
+    }
     if (!activeSlots || activeSlots.length === 0) return null;
     const displayTime = (activeSlots[0] as any).slotTime ?? "";
     return parseDurationFromDisplayTime(displayTime);
-  }, [activeSlots]);
+  }, [activeAttraction, activeSlots]);
 
   // Derived seats from seats API
   const derivedSeats = useMemo(() => {
@@ -1220,6 +1238,7 @@ export default function TicketBookingView() {
         >
           {activeAttraction && (() => {
             const meta = { baseRate: getAttractionBaseRate(activeAttraction) };
+            const tripsToday =  1;
             return (
               <div
                 style={{
@@ -1236,6 +1255,7 @@ export default function TicketBookingView() {
                     gap: "16px",
                   }}
                 >
+                  {/* Left: Name + category badge + base rate + duration */}
                   <div style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1, minWidth: 0 }}>
                     <h2
                       style={{
@@ -1252,7 +1272,7 @@ export default function TicketBookingView() {
                     <div
                       style={{
                         display: "flex",
-                        alignItems: "center",
+                        alignItems: "flex-start",
                         gap: "16px",
                         flexWrap: "wrap",
                       }}
@@ -1265,7 +1285,6 @@ export default function TicketBookingView() {
                           fontWeight: 600,
                           padding: "2.5px 7px",
                           borderRadius: "4px",
-                          alignSelf: "flex-start",
                         }}
                       >
                         {activeAttraction.category}
@@ -1299,21 +1318,24 @@ export default function TicketBookingView() {
                           gap: "3px",
                           fontSize: "11.5px",
                           color: "#64748B",
-                          marginLeft: "8px",
                         }}
                       >
                         <div>
-                          <span>Seats per trip: </span>
-                          <span style={{ color: "#0E4E7A", fontWeight: 700 }}>
-                            {derivedSeats ?? "—"}
-                          </span>
+                          <span>Ongoing Trips: </span>
+                          <span style={{ color: "#0E4E7A", fontWeight: 700 }}>{tripsToday}</span>
                         </div>
 
+                        {derivedSeats && (
+                          <div>
+                            <span>Seats per trip: </span>
+                            <span style={{ color: "#0E4E7A", fontWeight: 700 }}>{derivedSeats}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Castle Sketch Illustration */}
+                  {/* Right: Castle illustration only */}
                   <div
                     style={{
                       flexShrink: 0,

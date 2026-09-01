@@ -2234,12 +2234,14 @@ export default function CustomerInfoView({
       const res = await createCustomerMutation.mutateAsync({
         name: nc.name,
         mobile: nc.mobile,
+        address: nc.address,
         gstn: nc.gstn,
       });
       const newC: CustomerRecord = {
         id: (res as any)?.data?.id || (res as any)?.id || `C${Date.now()}`,
         name: nc.name,
         mobile: nc.mobile,
+        address: nc.address || null,
         gstn: nc.gstn || null,
       };
       setSelectedCustomer(newC);

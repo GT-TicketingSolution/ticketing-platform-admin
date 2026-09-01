@@ -23,12 +23,15 @@ export interface TicketingAttraction {
   };
   hasSeating: boolean;
   seatLayoutId: string | null;
+  duration?: number | string | null;
+  durationUnit?: string | null;
 }
 
 export interface TicketingCustomer {
   id: string;
   name: string;
   mobile: string;
+  address?: string | null;
   gstn: string | null;
   createdAt?: string;
 }
@@ -169,6 +172,7 @@ export interface TicketingCancelResponse {
 export interface CreateTicketingCustomerPayload {
   name: string;
   mobile: string;
+  address?: string | null;
   gstn?: string | null;
 }
 
@@ -212,6 +216,8 @@ export function useTicketingAttractions() {
         },
         hasSeating: item.hasSeating ?? false,
         seatLayoutId: item.seatLayoutId ?? null,
+        duration: item.duration ?? null,
+        durationUnit: item.durationUnit ?? null,
       })) as TicketingAttraction[];
     },
     staleTime: 60 * 1000,
