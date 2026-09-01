@@ -799,25 +799,57 @@ export default function TicketBookingView() {
     [allAttractions, activeAttractionId, selectedAttractionIds]
   );
 
-  // Fetch real trip number for active attraction
-  const tripNoPayload = useMemo(
-    () => (activeAttractionId ? [{ attractionId: activeAttractionId, currentTripNo: 1 }] : []),
-    [activeAttractionId]
-  );
-  const { data: tripNoData } = useAttractionTripNo(tripNoPayload, !!activeAttractionId);
-  const activeTripNo = tripNoData?.[0]?.newTripNo ?? 1;
+  // Selected attractions that have seating
+  const selectedSeatingAttractions = useMemo(() => {
+    const idSet = new Set<string>(selectedAttractionIds);
+    if (activeAttractionId) idSet.add(activeAttractionId);
+    cart.forEach((c) => {
+      if (c.attraction?.id) idSet.add(c.attraction.id);
+    });
 
-  // Fetch real seat availability if attraction has seating
+    return allAttractions.filter(
+      (a) => idSet.has(a.id) && a.hasSeating !== false && (a.hasSeating || !!a.seatLayoutId)
+    );
+  }, [selectedAttractionIds, activeAttractionId, cart, allAttractions]);
+
+  // Fetch real trip numbers for all selected seating attractions
+  const tripNoPayload = useMemo(
+    () =>
+      selectedSeatingAttractions.map((a) => ({
+        attractionId: a.id,
+        currentTripNo: 1,
+      })),
+    [selectedSeatingAttractions]
+  );
+  const { data: tripNoData } = useAttractionTripNo(
+    tripNoPayload,
+    selectedSeatingAttractions.length > 0
+  );
+
+  const tripNoMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    tripNoData?.forEach((item) => {
+      if (item.attractionId) {
+        map[item.attractionId] = item.newTripNo ?? 1;
+      }
+    });
+    return map;
+  }, [tripNoData]);
+
+  const activeTripNo = (activeAttractionId ? tripNoMap[activeAttractionId] : undefined) ?? 1;
+
+  // Fetch real seat availability for all selected seating attractions
   const seatAvailPayload = useMemo(
     () =>
-      activeAttractionId && activeAttraction?.hasSeating
-        ? [{ attractionId: activeAttractionId, currentTripNo: activeTripNo }]
-        : [],
-    [activeAttractionId, activeAttraction?.hasSeating, activeTripNo]
+      selectedSeatingAttractions.map((a) => ({
+        attractionId: a.id,
+        currentTripNo: tripNoMap[a.id] ?? 1,
+      })),
+    [selectedSeatingAttractions, tripNoMap]
   );
   const { data: seatAvailData } = useAttractionSeatAvailability(
     seatAvailPayload,
-    !!activeAttractionId && !!activeAttraction?.hasSeating
+    selectedSeatingAttractions.length > 0
   );
 
   // Derive duration from attraction duration/durationUnit
@@ -829,15 +861,18 @@ export default function TicketBookingView() {
     return null;
   }, [activeAttraction]);
 
-  // Derived seats from seat availability API
+  // Derived seats from seat availability API for the active attraction
   const derivedSeats = useMemo(() => {
-    const dataItem = seatAvailData?.[0];
+    if (!activeAttractionId) return null;
+    const dataItem =
+      seatAvailData?.find((d) => d.attractionId === activeAttractionId) ||
+      seatAvailData?.[0];
     if (dataItem?.seats && dataItem.seats.length > 0) return String(dataItem.seats.length);
     if (dataItem?.seatLayout?.rows && dataItem?.seatLayout?.cols) {
       return String(dataItem.seatLayout.rows * dataItem.seatLayout.cols);
     }
     return null;
-  }, [seatAvailData]);
+  }, [seatAvailData, activeAttractionId]);
 
 
   const selectedAttractionsList = useMemo(

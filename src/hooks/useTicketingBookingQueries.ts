@@ -306,6 +306,7 @@ export interface AttractionSeatItem {
   attractionSeatId: string;
   name: string;
   seatOrder: number;
+  bookedSeats?: number[];
 }
 
 export interface AttractionSeatLayout {
@@ -316,14 +317,15 @@ export interface AttractionSeatLayout {
   hasAisle: boolean;
   aisleAfterCol: number | null;
   aisleAfterRow: number | null;
+  seats?: AttractionSeatItem[];
 }
 
 export interface AttractionSeatAvailabilityData {
   attractionId: string;
   currentTripNo: number;
-  seats: AttractionSeatItem[];
+  seats?: AttractionSeatItem[];
   seatLayout: AttractionSeatLayout;
-  bookedSeats: number[];
+  bookedSeats?: number[];
 }
 
 export interface AttractionSeatAvailabilityResponse {
@@ -355,7 +357,7 @@ export function useAttractionSeatAvailability(
   });
 }
 
-// ── Attraction Seat Booking Types & Mutation ────────────────────────────────
+// ── Attraction Seat Booking Types & Mutation 
 
 export interface AttractionSeatBookingItem {
   attractionId: string;
