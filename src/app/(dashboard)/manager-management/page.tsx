@@ -81,12 +81,14 @@ const normalizeSubModuleName = (mod: string): string => {
   if (clean.includes("staff")) return "Staff Management";
   if (clean.includes("inventory")) return "Inventory Management";
   if (clean.includes("customer")) return "Customer Management";
-  if (clean.includes("complimentary")) return "Complimentary Passes";
+  if (clean.includes("complimentary") || clean.includes("pass")) return "Complimentary Passes";
   if (clean.includes("cctv")) return "CCTV Monitoring";
   return mod;
 };
 
 const isSameSubModule = (a: string, b: string): boolean => {
+  if (!a || !b) return false;
+  if (a === b) return true;
   return normalizeSubModuleName(a).toLowerCase() === normalizeSubModuleName(b).toLowerCase();
 };
 
@@ -366,7 +368,13 @@ function AttractionPermissionTree({
         const modLower = mod.toLowerCase().trim();
         const modKey = mod.toLowerCase().replace(/[\s_-]/g, "");
         const isActive = String(sm.isActive).toUpperCase() === "ACTIVE" || (sm.isActive as unknown) === true;
-        return isActive && (smName === modLower || smKey === modKey);
+        return (
+          isActive &&
+          (smName === modLower ||
+            smKey === modKey ||
+            isSameSubModule(smName, mod) ||
+            isSameSubModule(smKey, mod))
+        );
       })
     );
     return [...FIXED_SUB_MODULES, ...conditionalEnabled];
@@ -908,17 +916,40 @@ function ManagerManagementInner() {
   // Add Manager — sends exact backend payload format with module UUIDs
   // Returns null if no UUID match found — callers must filter(Boolean) to drop unresolved names
   const resolveModuleId = (modItem: string): string | null => {
+    if (!modItem) return null;
     // Already looks like a UUID — pass through as-is
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (uuidRegex.test(modItem)) return modItem;
 
-    // Try to resolve by name or key in system modules
-    const found = systemModules.find(
+    const normMod = normalizeSubModuleName(modItem).toLowerCase();
+    const cleanMod = String(modItem).toLowerCase().trim().replace(/[\s_&-]/g, "");
+
+    // 1. Direct match by id, name, or key
+    let found = systemModules.find(
       (sm) =>
-        sm.name.toLowerCase() === modItem.toLowerCase() ||
-        sm.key.toLowerCase() === modItem.toLowerCase()
+        sm.id === modItem ||
+        (sm.name && sm.name.toLowerCase() === modItem.toLowerCase()) ||
+        (sm.key && sm.key.toLowerCase() === modItem.toLowerCase())
     );
-    // Return UUID if found, null otherwise — never return raw name strings
+
+    // 2. Normalized match (e.g. "Inventory Management" -> matches key "INVENTORY_CAPACITY" or name "Inventory & Capacity")
+    if (!found) {
+      found = systemModules.find((sm) => {
+        const smNameNorm = normalizeSubModuleName(sm.name || "").toLowerCase();
+        const smKeyNorm = normalizeSubModuleName(sm.key || "").toLowerCase();
+        const smKeyClean = (sm.key || "").toLowerCase().replace(/[\s_&-]/g, "");
+        const smNameClean = (sm.name || "").toLowerCase().replace(/[\s_&-]/g, "");
+
+        if (smNameNorm === normMod || smKeyNorm === normMod) return true;
+        if (cleanMod.includes("inventory") && (smKeyClean.includes("inventory") || smNameClean.includes("inventory"))) return true;
+        if (cleanMod.includes("staff") && (smKeyClean.includes("staff") || smNameClean.includes("staff"))) return true;
+        if (cleanMod.includes("customer") && (smKeyClean.includes("customer") || smNameClean.includes("customer"))) return true;
+        if ((cleanMod.includes("complimentary") || cleanMod.includes("pass")) && (smKeyClean.includes("complimentary") || smKeyClean.includes("pass") || smNameClean.includes("complimentary") || smNameClean.includes("pass"))) return true;
+        if (cleanMod.includes("cctv") && (smKeyClean.includes("cctv") || smNameClean.includes("cctv"))) return true;
+        return false;
+      });
+    }
+
     return found ? found.id : null;
   };
 
@@ -1543,9 +1574,13 @@ function ManagerManagementInner() {
                           {perm.modules.length > 0 ? (
                             perm.modules.map((modId) => {
                               const modObj = systemModules.find(
-                                (sm) => sm.id === modId || sm.name === modId
+                                (sm) =>
+                                  sm.id === modId ||
+                                  sm.name === modId ||
+                                  isSameSubModule(sm.name, modId) ||
+                                  isSameSubModule(sm.key, modId)
                               );
-                              const displayName = modObj ? modObj.name : modId;
+                              const displayName = modObj ? modObj.name : normalizeSubModuleName(modId);
                               return (
                                 <span
                                   key={modId}
