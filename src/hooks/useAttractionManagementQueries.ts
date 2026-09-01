@@ -1,11 +1,12 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { getData, postData, patchData, deleteData } from "@/lib/api/apiService";
 import { AppUrl } from "@/lib/api/endpoints";
 import { useToast } from "@/components/ui/Toast";
 import type {
   AttractionManagement,
+  AttractionQueryParams,
   CreateAttractionPayload,
   UpdateAttractionPayload,
   BulkAttractionPayload,
@@ -16,18 +17,28 @@ import type {
 export const attractionManagementKeys = {
   all: ["attractionManagement"] as const,
   lists: () => [...attractionManagementKeys.all, "list"] as const,
+  list: (params?: AttractionQueryParams) => [...attractionManagementKeys.lists(), params] as const,
 };
 
 function showErrorOnce(message: string, title = "Error") {
   console.error(`[${title}] ${message}`);
 }
 
-// ── List attractions 
-export function useAttractionManagementList() {
+// ── List attractions
+export function useAttractionManagementList(params?: AttractionQueryParams) {
+  const searchParams = new URLSearchParams();
+  if (params?.search?.trim()) searchParams.set("search", params.search.trim());
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.category) searchParams.set("category", params.category);
+
+  const url = searchParams.toString()
+    ? `${AppUrl.attractionManagement.list}?${searchParams.toString()}`
+    : AppUrl.attractionManagement.list;
+
   return useQuery({
-    queryKey: attractionManagementKeys.lists(),
+    queryKey: attractionManagementKeys.list(params),
     queryFn: async () => {
-      const res = await getData<any>(AppUrl.attractionManagement.list);
+      const res = await getData<any>(url);
       const items: any[] = Array.isArray(res)
         ? res
         : Array.isArray(res?.data)
@@ -60,7 +71,8 @@ export function useAttractionManagementList() {
         seatLayoutId: item.seatLayoutId ?? (item.seatLayouts?.[0]?.id ?? null),
       })) as AttractionManagement[];
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: 30 * 1000,
+    placeholderData: keepPreviousData,
     refetchOnWindowFocus: false,
   });
 }

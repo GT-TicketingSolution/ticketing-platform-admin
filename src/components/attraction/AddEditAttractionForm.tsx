@@ -1,13 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Upload, Plus, Trash2, X, Check, Armchair, ChevronDown, ChevronUp, Search, Loader2, GripVertical, Power } from "lucide-react";
+import { Upload, Plus, Trash2, X, Check, Armchair, ChevronDown, ChevronUp, Search, Loader2, GripVertical, Power, User } from "lucide-react";
 import { Attraction } from "@/app/(dashboard)/attraction-management/types";
 import { confirmDelete } from "@/lib/notify";
 import { validateAttractionForm } from "@/app/(dashboard)/attraction-management/schema";
 import { SeatConfigData } from "@/app/(dashboard)/seat-management/types";
 import { useSeatLayouts } from "@/hooks/useSeatQueries";
-import { useAttractionManagementList } from "@/hooks/useAttractionManagementQueries";
 
 // ── Shared required asterisk
 const Req = () => <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>;
@@ -171,7 +170,7 @@ function AddVisitorCategoryModal({
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img src={image} alt="Preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
-                <Upload size={22} color="#2372A5" />
+                <User size={30} color="#2372A5" />
               )}
             </div>
             <label
@@ -288,6 +287,57 @@ function AddVisitorCategoryModal({
   );
 }
 
+// ── Visitor Category Avatar with Profile Icon Fallback ─────────────
+function VisitorCategoryAvatar({ src, name }: { src?: string; name: string }) {
+  const [imgErr, setImgErr] = useState(false);
+
+  useEffect(() => {
+    setImgErr(false);
+  }, [src]);
+
+  return (
+    <div
+      style={{
+        width: "69px",
+        height: "69px",
+        borderRadius: "50%",
+        overflow: "hidden",
+        border: "1.5px solid #E2E8F0",
+        background: "#F8FAFC",
+        flexShrink: 0,
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {src && !imgErr ? (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
+          src={src}
+          alt={name}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          onError={() => setImgErr(true)}
+        />
+      ) : (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            background: "linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",
+            color: "#64748B",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <User size={32} color="#64748B" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Default categories using local /Assets/Visitors/ images 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", basePrice: "100.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
@@ -383,8 +433,6 @@ export default function AddEditAttractionForm({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const seatDropdownRef = useRef<HTMLDivElement>(null);
-  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
-  const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
@@ -392,26 +440,6 @@ export default function AddEditAttractionForm({
   // ── Operating hours (display-only, no booking enforcement) 
   const [openTime, setOpenTime] = useState("09:00");
   const [closeTime, setCloseTime] = useState("18:00");
-
-  // ── Fetch active attractions to extract categories purely from backend ───
-  const { data: attractionManagementData = [] } = useAttractionManagementList();
-  const availableCategories = useMemo(() => {
-    const set = new Set<string>();
-    if (Array.isArray(attractionManagementData)) {
-      attractionManagementData.forEach((item) => {
-        if (item.category && typeof item.category === "string" && item.category.trim()) {
-          set.add(item.category.trim());
-        }
-      });
-    }
-    return Array.from(set);
-  }, [attractionManagementData]);
-
-  const filteredCategories = useMemo(() => {
-    const q = category.trim().toLowerCase();
-    if (!q) return availableCategories;
-    return availableCategories.filter((c) => c.toLowerCase().includes(q));
-  }, [availableCategories, category]);
 
   // ── Fetch active seat layouts from backend API ────────────────────────────
   const { data: seatData, isLoading: isSeatsLoading } = useSeatLayouts();
@@ -472,14 +500,11 @@ export default function AddEditAttractionForm({
     });
   }, [allocatedSeats, availableSeats]);
 
-  // ── Close Seat & Category Dropdowns on outside click 
+  // ── Close Seat Dropdown on outside click 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (seatDropdownRef.current && !seatDropdownRef.current.contains(event.target as Node)) {
         setIsSeatDropdownOpen(false);
-      }
-      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
-        setIsCategoryDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -638,7 +663,7 @@ export default function AddEditAttractionForm({
       {
         id: `cat_${Date.now()}`,
         name: catName,
-        image: image || "/Assets/Visitors/Adult.jpg",
+        image: image || "",
         basePrice: basePrice || "00.00",
         futurePrice: "00.00",
         effectiveFrom: "",
@@ -996,129 +1021,34 @@ export default function AddEditAttractionForm({
               {formErrors.name && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{formErrors.name}</span>}
             </div>
 
-            {/* Attraction Category - Typable & Dropdown Select */}
-            <div style={{ flex: "1 1 160px", position: "relative" }} id="field-category" ref={categoryDropdownRef}>
+            {/* Attraction Category - Type Only Field */}
+            <div style={{ flex: "1 1 160px" }} id="field-category">
               <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
                 Category<Req />
               </label>
-              <div style={{ position: "relative", width: "100%" }}>
-                <input
-                  type="text"
-                  placeholder="Type or select category..."
-                  value={category}
-                  onChange={(e) => {
-                    setCategory(e.target.value);
-                    setIsCategoryDropdownOpen(true);
-                  }}
-                  onFocus={() => setIsCategoryDropdownOpen(true)}
-                  style={{
-                    boxSizing: "border-box",
-                    width: "100%",
-                    height: "38px",
-                    background: "#FFFFFF",
-                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                    borderRadius: "8px",
-                    padding: "0 34px 0 12px",
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 500,
-                    fontSize: "12px",
-                    color: "rgba(55, 65, 81, 0.89)",
-                    outline: "none",
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setIsCategoryDropdownOpen((prev) => !prev)}
-                  tabIndex={-1}
-                  style={{
-                    position: "absolute",
-                    right: "8px",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "4px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#6B7280",
-                  }}
-                >
-                  <ChevronDown
-                    size={16}
-                    style={{
-                      transform: isCategoryDropdownOpen ? "rotate(180deg)" : "rotate(0deg)",
-                      transition: "transform 0.2s ease",
-                    }}
-                  />
-                </button>
-
-                {/* Dropdown Menu */}
-                {isCategoryDropdownOpen && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "calc(100% + 4px)",
-                      left: 0,
-                      right: 0,
-                      zIndex: 250,
-                      background: "#FFFFFF",
-                      borderRadius: "8px",
-                      border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                      boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
-                      maxHeight: "180px",
-                      overflowY: "auto",
-                    }}
-                  >
-                    {filteredCategories.length > 0 ? (
-                      filteredCategories.map((c) => (
-                        <div
-                          key={c}
-                          onClick={() => {
-                            setCategory(c);
-                            setIsCategoryDropdownOpen(false);
-                            setFormErrors((p) => ({ ...p, category: "" }));
-                          }}
-                          style={{
-                            padding: "8px 14px",
-                            fontFamily: "'Plus Jakarta Sans', sans-serif",
-                            fontSize: "12px",
-                            fontWeight: 500,
-                            color: "#011B2F",
-                            cursor: "pointer",
-                            background: category.toLowerCase() === c.toLowerCase() ? "#F0F7FF" : "#FFFFFF",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")}
-                          onMouseLeave={(e) =>
-                          (e.currentTarget.style.background =
-                            category.toLowerCase() === c.toLowerCase() ? "#F0F7FF" : "#FFFFFF")
-                          }
-                        >
-                          <span>{c}</span>
-                          {category.toLowerCase() === c.toLowerCase() && (
-                            <Check size={14} color="#2372A5" />
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <div
-                        style={{
-                          padding: "10px 14px",
-                          fontFamily: "'Plus Jakarta Sans', sans-serif",
-                          fontSize: "12px",
-                          color: "#6B7280",
-                        }}
-                      >
-                        No categories found. Type to use custom category.
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <input
+                type="text"
+                placeholder="e.g. Ride, Water Park, 3D Show"
+                value={category}
+                onChange={(e) => {
+                  setCategory(e.target.value);
+                  setFormErrors((p) => ({ ...p, category: "" }));
+                }}
+                style={{
+                  boxSizing: "border-box",
+                  width: "100%",
+                  height: "38px",
+                  background: "#FFFFFF",
+                  border: formErrors.category ? "1.5px solid #DC2626" : "1.5px solid rgba(179, 175, 175, 0.51)",
+                  borderRadius: "8px",
+                  padding: "0 15px",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 500,
+                  fontSize: "12px",
+                  color: "rgba(55, 65, 81, 0.89)",
+                  outline: "none",
+                }}
+              />
               {formErrors.category && (
                 <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>
                   {formErrors.category}
@@ -2100,46 +2030,8 @@ export default function AddEditAttractionForm({
                 {cat.name}
               </span>
 
-              {/* Avatar Circle - uses local /Assets/Visitors/ images */}
-              <div
-                style={{
-                  width: "69px",
-                  height: "69px",
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  border: "1px solid #E2E8F0",
-                  flexShrink: 0,
-                  position: "relative",
-                }}
-              >
-                {cat.image ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={cat.image}
-                    alt={cat.name}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = "none";
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      background: "linear-gradient(135deg, #0C2A42 0%, #2372A5 100%)",
-                      color: "#FFFFFF",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 700,
-                      fontSize: "18px",
-                    }}
-                  >
-                    {cat.name ? cat.name.charAt(0).toUpperCase() : "C"}
-                  </div>
-                )}
-              </div>
+              {/* Avatar Circle - uses profile icon if not uploaded or error */}
+              <VisitorCategoryAvatar src={cat.image} name={cat.name} />
 
               {/* Upload Image Button */}
               <label

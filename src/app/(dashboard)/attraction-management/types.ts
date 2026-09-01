@@ -54,6 +54,12 @@ export interface AttractionManagement {
   timeSlots?: AttractionTimeSlot[];
 }
 
+export interface AttractionQueryParams {
+  search?: string;
+  status?: string;
+  category?: string;
+}
+
 /** Per-slot Active/Inactive — independent of attraction status */
 export interface AttractionTimeSlot {
   id: string;

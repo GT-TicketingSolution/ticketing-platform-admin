@@ -13,7 +13,7 @@ import {
   UpdateSeatPayload,
 } from "@/app/(dashboard)/seat-management/types";
 
-// ── Mock Initial Data & LocalStorage Helpers ─────────────────────────────────
+// ── Mock Initial Data & LocalStorage Helpers 
 const MOCK_STORAGE_KEY = "mock_seat_layouts_data";
 
 const DEFAULT_MOCK_SEATS: SeatLayoutItem[] = [
@@ -321,8 +321,8 @@ export function useUpdateSeatLayout() {
           data.aisleAfterCol !== undefined
             ? data.aisleAfterCol
             : data.aislePosition !== undefined
-            ? data.aislePosition
-            : existing.aisleAfterCol,
+              ? data.aislePosition
+              : existing.aisleAfterCol,
         status: data.status !== undefined ? data.status : existing.status,
         totalSeats:
           (data.rows !== undefined ? data.rows : existing.rows) *
