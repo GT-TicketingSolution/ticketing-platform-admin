@@ -1755,6 +1755,12 @@ export const attractionManagementSeatLayouts = pgTable(
     /** How many times this layout is allocated to the attraction (quantity semantics). */
     quantity: integer("quantity").notNull().default(1),
 
+    /** Position/order of this allocation (for display order when fetching). */
+    position: integer("position").notNull().default(0),
+
+    /** Whether this allocation is enabled (true) or disabled (false). */
+    isEnabled: boolean("is_enabled").notNull().default(true),
+
     createdAt: timestamp("created_at", {
       withTimezone: true,
     })
@@ -1762,9 +1768,9 @@ export const attractionManagementSeatLayouts = pgTable(
       .notNull(),
   },
   (table) => ({
-    attractionSeatLayoutUnique: unique(
-      "attraction_management_seat_layout_unique",
-    ).on(table.attractionManagementId, table.seatLayoutId),
+    // REMOVED: attractionSeatLayoutUnique
+    // Reason: Now supports multiple allocations of same layout (with different positions/enabled state)
+    // E.g., can have 3 rows with same (attractionManagementId, seatLayoutId) but different positions
 
     attractionManagementIdx: index(
       "attraction_management_seat_layout_attraction_idx",

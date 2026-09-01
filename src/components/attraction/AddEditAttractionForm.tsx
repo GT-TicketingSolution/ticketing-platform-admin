@@ -500,10 +500,21 @@ export default function AddEditAttractionForm({
       setCategory(attractionToEdit.category || "");
       setStatus(normalizeStatus(attractionToEdit.status));
 
+      // Extract layout IDs, handling both string array and object array formats
+      const extractLayoutIds = (items: any[]): string[] => {
+        return items
+          .map((item) => {
+            if (typeof item === "string") return item;
+            if (item && typeof item === "object" && item.id) return item.id;
+            return null;
+          })
+          .filter((id): id is string => id !== null);
+      };
+
       const rawLayoutIds: string[] =
         (Array.isArray((attractionToEdit as any).seatLayoutIds) &&
           (attractionToEdit as any).seatLayoutIds.length > 0
-          ? (attractionToEdit as any).seatLayoutIds
+          ? extractLayoutIds((attractionToEdit as any).seatLayoutIds)
           : null) ||
         (attractionToEdit as any).assignedSeatIds ||
         ((attractionToEdit as any).seatLayouts &&
@@ -829,6 +840,15 @@ export default function AddEditAttractionForm({
     const activeLayoutIds = activeAllocated.map((s) => s.layoutId);
     const assignedSeatNames = activeAllocated.map((s) => s.displayName);
 
+    // Build seatLayoutIds as array of objects with id, name, status, and position
+    // Include ALL allocated seats (both enabled and disabled) so backend can handle enable/disable
+    const seatLayoutIdsAsObjects = decoratedAllocatedSeats.map((seat, index) => ({
+      id: seat.layoutId,
+      name: seat.displayName,
+      status: seat.isDisabled ? "inactive" : "active",
+      position: index + 1,
+    }));
+
     // Build display-only timing string from the two time inputs
     const to12 = (t: string) => {
       const [hStr, mStr] = t.split(":");
@@ -870,7 +890,7 @@ export default function AddEditAttractionForm({
       foreignerSeats: getSeatsByName("foreigner"),
       visitorCategories: categories,
       assignedSeatIds: activeLayoutIds,
-      seatLayoutIds: activeLayoutIds,
+      seatLayoutIds: seatLayoutIdsAsObjects,
       assignedSeatNames: assignedSeatNames,
       assignedSeatId: activeLayoutIds[0] || undefined,
       assignedSeatName: assignedSeatNames[0] || undefined,

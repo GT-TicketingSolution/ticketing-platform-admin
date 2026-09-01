@@ -286,8 +286,9 @@ export default function AttractionManagementPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSaveAttraction = async (data: any) => {
     try {
-      const selectedSeats: string[] = data.assignedSeatIds ?? data.seatLayoutIds ?? [];
-      const hasSeating = Boolean(data.hasSeating ?? (selectedSeats.length > 0));
+      const selectedSeats = data.seatLayoutIds ?? data.assignedSeatIds ?? [];  // Prioritize new format
+      const selectedSeatsIds = Array.isArray(selectedSeats) ? selectedSeats.map((s: any) => typeof s === "string" ? s : s.id).filter(Boolean) : [];
+      const hasSeating = Boolean(data.hasSeating ?? (selectedSeatsIds.length > 0));
 
       const adultSeats = Number(data.seating?.adult ?? data.adultSeats ?? 0);
       const childSeats = Number(data.seating?.child ?? data.childSeats ?? 0);
@@ -319,6 +320,7 @@ export default function AttractionManagementPage() {
           hasSeating,
           seatLayoutIds: selectedSeats,
         };
+        console.log("UpdatePayload:", JSON.stringify(payload, null, 2));
         await updateMutation.mutateAsync({ id: attractionToEdit.id, data: payload });
       } else {
         const payload: CreateAttractionPayload = {
@@ -343,11 +345,12 @@ export default function AttractionManagementPage() {
           seatLayoutIds: selectedSeats,
         };
         await createMutation.mutateAsync(payload);
+        console.log("CreatePayload:", JSON.stringify(payload, null, 2));
       }
-      setViewMode("list");
     } catch {
       // Handled by onError in mutation; keep form open
     }
+    setViewMode("list");
   };
 
   const handleBulkUploadSuccess = (count: number) => {

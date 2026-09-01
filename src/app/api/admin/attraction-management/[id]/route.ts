@@ -371,10 +371,14 @@ export async function PATCH(
 
     let expandedSeatLayoutIds: string[] | null = null;
 
+    let resolvedSeatLayouts:
+      | ReturnType<typeof resolveSeatLayoutIds>
+      | null = null;
+
     if (shouldSyncSeatLayouts) {
       const hasSeating = body.hasSeating === false ? false : true;
 
-      const resolvedSeatLayouts = resolveSeatLayoutIds({
+      resolvedSeatLayouts = resolveSeatLayoutIds({
         hasSeating,
         seatLayoutIds: body.seatLayoutIds ?? [],
       });
@@ -600,11 +604,12 @@ export async function PATCH(
         | Awaited<ReturnType<typeof replaceAttractionSeatLayouts>>
         | undefined;
 
-      if (seatLayoutAssignments !== null) {
+      if (seatLayoutAssignments !== null && resolvedSeatLayouts?.ok) {
         seatLayoutMappings = await replaceAttractionSeatLayouts(
           tx,
           id,
           seatLayoutAssignments,
+          resolvedSeatLayouts.fullObjects,
         );
       }
 
@@ -766,7 +771,7 @@ export async function PATCH(
       return {
         management: updated,
 
-        seatLayouts,
+        seatLayouts: seatLayoutsResponse,
 
         seatLayoutIds: expandedSeatLayoutIds ?? undefined,
 
@@ -780,33 +785,86 @@ export async function PATCH(
     // RESPONSE
     // =====================================================
 
-    return success({
+    const sanitizedResponse = {
       ...result.management,
 
-      ...(result.seatLayouts !== undefined
+      ...(Array.isArray(result.seatLayouts)
         ? {
-            seatLayouts: result.seatLayouts,
+            seatLayouts: result.seatLayouts.map((layout: any) => ({
+              id: layout.id,
+              name: layout.name,
+              rows: layout.rows,
+              cols: layout.cols,
+              hasAisle: layout.hasAisle,
+              aisleAfterCol: layout.aisleAfterCol,
+              status: layout.status,
+              quantity: layout.quantity,
+              totalSeats: layout.totalSeats,
+            })),
           }
         : {}),
 
-      ...(result.seatLayoutIds !== undefined
+      ...(Array.isArray(result.seatLayoutIds) && result.seatLayoutIds.length > 0
         ? {
             seatLayoutIds: result.seatLayoutIds,
           }
         : {}),
 
-      ...(result.attractionSeats !== undefined
+      ...(Array.isArray(result.attractionSeats)
         ? {
-            attractionSeats: result.attractionSeats,
+            attractionSeats: result.attractionSeats.map((seat: any) => ({
+              id: seat.id,
+              attractionId: seat.attractionId,
+              seatLayoutId: seat.seatLayoutId,
+              name: seat.name,
+              seatOrder: seat.seatOrder,
+              createdAt: seat.createdAt,
+            })),
           }
         : {}),
 
-      timeSlots: result.timeSlots,
-    });
+      timeSlots: Array.isArray(result.timeSlots)
+        ? result.timeSlots.map((slot: any) => ({
+            id: slot.id,
+            attractionId: slot.attractionId,
+            slotTime: slot.slotTime,
+            isActive: slot.isActive,
+          }))
+        : [],
+    };
+
+    return success(sanitizedResponse);
   } catch (error) {
     console.error("Update attraction error:", error);
+    if (error instanceof Error) {
+      console.error("Error message:", error.message);
+      console.error("Error code:", (error as any).code);
+      console.error("Error detail:", (error as any).detail);
+    }
 
     if (error instanceof Error) {
+      // =====================================================
+      // DATABASE CONSTRAINT ERROR
+      // =====================================================
+
+      const errorStr = error.message.toLowerCase();
+
+      if (errorStr.includes("foreign key") || errorStr.includes("23503")) {
+        return failure(
+          "One or more seat layouts do not exist in the database.",
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
+      if (errorStr.includes("unique") || errorStr.includes("23505")) {
+        return failure(
+          "Duplicate seat layout assignment detected.",
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
       // =====================================================
       // TIME SLOT ERROR
       // =====================================================

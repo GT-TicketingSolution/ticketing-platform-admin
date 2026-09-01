@@ -818,7 +818,7 @@
 //     );
 //   }
 // }
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 
@@ -1017,28 +1017,71 @@ export async function GET(request: Request) {
     // GET SEAT LAYOUT MAPPINGS
     // =====================================================
 
-    const seatLayoutMappings = await db
-      .select({
-        attractionManagementId:
-          attractionManagementSeatLayouts.attractionManagementId,
+    let seatLayoutMappings;
+    try {
+      // Try with position and isEnabled columns (new schema)
+      seatLayoutMappings = await db
+        .select({
+          attractionManagementId:
+            attractionManagementSeatLayouts.attractionManagementId,
 
-        seatLayoutId: attractionManagementSeatLayouts.seatLayoutId,
+          seatLayoutId: attractionManagementSeatLayouts.seatLayoutId,
 
-        quantity: attractionManagementSeatLayouts.quantity,
+          quantity: attractionManagementSeatLayouts.quantity,
 
-        seatLayout: seatLayouts,
-      })
-      .from(attractionManagementSeatLayouts)
-      .innerJoin(
-        seatLayouts,
-        eq(attractionManagementSeatLayouts.seatLayoutId, seatLayouts.id),
-      )
-      .where(
-        inArray(
-          attractionManagementSeatLayouts.attractionManagementId,
-          managementIds,
-        ),
-      );
+          position: attractionManagementSeatLayouts.position,
+
+          isEnabled: attractionManagementSeatLayouts.isEnabled,
+
+          seatLayout: seatLayouts,
+        })
+        .from(attractionManagementSeatLayouts)
+        .innerJoin(
+          seatLayouts,
+          eq(attractionManagementSeatLayouts.seatLayoutId, seatLayouts.id),
+        )
+        .where(
+          inArray(
+            attractionManagementSeatLayouts.attractionManagementId,
+            managementIds,
+          ),
+        );
+    } catch (error: any) {
+      // Fallback: columns don't exist yet, use defaults
+      if (
+        error.message?.includes("does not exist") ||
+        error.cause?.message?.includes("does not exist")
+      ) {
+        seatLayoutMappings = await db
+          .select({
+            attractionManagementId:
+              attractionManagementSeatLayouts.attractionManagementId,
+
+            seatLayoutId: attractionManagementSeatLayouts.seatLayoutId,
+
+            quantity: attractionManagementSeatLayouts.quantity,
+
+            position: sql<number>`0`,
+
+            isEnabled: sql<boolean>`true`,
+
+            seatLayout: seatLayouts,
+          })
+          .from(attractionManagementSeatLayouts)
+          .innerJoin(
+            seatLayouts,
+            eq(attractionManagementSeatLayouts.seatLayoutId, seatLayouts.id),
+          )
+          .where(
+            inArray(
+              attractionManagementSeatLayouts.attractionManagementId,
+              managementIds,
+            ),
+          );
+      } else {
+        throw error;
+      }
+    }
 
     // =====================================================
     // GROUP MAPPINGS
@@ -1126,12 +1169,19 @@ export async function GET(request: Request) {
       //
       // ["layout1", "layout1", "layout2"]
 
-      const seatLayoutIds = expandSeatLayoutIds(
-        mappings.map((mapping) => ({
-          seatLayoutId: mapping.seatLayoutId,
-          quantity: mapping.quantity ?? 1,
-        })),
-      );
+      // Build seatLayoutIds as array of objects with full metadata (position, status)
+      // IMPORTANT: Expand by quantity so same layout allocated N times shows N entries
+      const seatLayoutIds = mappings
+        .flatMap((mapping) => {
+          const quantity = mapping.quantity ?? 1;
+          return Array.from({ length: quantity }, (_, i) => ({
+            id: mapping.seatLayoutId,
+            name: mapping.seatLayout?.name || "Layout",
+            status: mapping.isEnabled ? "active" : "inactive",
+            position: (mapping.position ?? 0) + i,
+          }));
+        })
+        .sort((a, b) => a.position - b.position);
 
       const seats = attractionSeatsByAttractionId.get(item.attractionId) ?? [];
 
@@ -1149,10 +1199,29 @@ export async function GET(request: Request) {
         })),
 
         // =================================================
-        // EXPANDED IDS
+        // EXPANDED IDS - Full objects with position and status
         // =================================================
 
         seatLayoutIds,
+
+        // =================================================
+        // SEAT ALLOCATIONS - For form reconstruction with suffixes
+        // =================================================
+
+        seatAllocations: seatLayoutIds.map((layout, idx) => {
+          // Count how many times this layout ID appears before this index
+          const count = seatLayoutIds.filter((l) => l.id === layout.id).length;
+          const indexOfThisId = seatLayoutIds
+            .slice(0, idx + 1)
+            .filter((l) => l.id === layout.id).length - 1;
+
+          return {
+            instanceId: `alloc_${item.id}_${layout.id}_${idx}`,
+            layoutId: layout.id,
+            isDisabled: layout.status === "inactive",
+            suffix: count > 1 ? ` - ${String.fromCharCode(65 + indexOfThisId)}` : "",
+          };
+        }),
 
         // =================================================
         // ATTRACTION SEATS
@@ -1293,16 +1362,16 @@ export async function POST(request: Request) {
     // VALIDATE LAYOUT OWNERSHIP
     // =====================================================
 
-    const seatLayoutOwnership = await validateSeatLayoutsForAdmin(
-      db,
-      auth.user.id,
-      resolvedSeatLayouts.uniqueIds,
-    );
-
-    if (!seatLayoutOwnership.ok) {
-      return failure(seatLayoutOwnership.message, 400, "VALIDATION_ERROR");
-    }
-
+         const seatLayoutOwnership = await validateSeatLayoutsForAdmin(
+           db,
+           auth.user.id,
+           resolvedSeatLayouts.uniqueIds,
+         );
+     
+         if (!seatLayoutOwnership.ok) {
+       return failure(seatLayoutOwnership.message, 400, "VALIDATION_ERROR");
+     }
+ 
     // =====================================================
     // TRANSACTION
     // =====================================================
@@ -1375,6 +1444,7 @@ export async function POST(request: Request) {
         tx,
         management.id,
         resolvedSeatLayouts.assignments,
+        resolvedSeatLayouts.fullObjects,
       );
 
       // =================================================
@@ -1465,10 +1535,55 @@ export async function POST(request: Request) {
     });
 
     // =====================================================
-    // SUCCESS
+    // SUCCESS - SANITIZE RESPONSE
     // =====================================================
 
-    return success(result);
+    const sanitizedResult = {
+      attraction: {
+        id: result.attraction.id,
+        adminId: result.attraction.adminId,
+        name: result.attraction.name,
+        type: result.attraction.type,
+        status: result.attraction.status,
+        createdAt: result.attraction.createdAt,
+        updatedAt: result.attraction.updatedAt,
+      },
+      management: result.management,
+      seatLayouts: Array.isArray(result.seatLayouts)
+        ? result.seatLayouts.map((layout: any) => ({
+            id: layout.id,
+            name: layout.name,
+            rows: layout.rows,
+            cols: layout.cols,
+            hasAisle: layout.hasAisle,
+            aisleAfterCol: layout.aisleAfterCol,
+            status: layout.status,
+            quantity: layout.quantity,
+            totalSeats: layout.totalSeats,
+          }))
+        : [],
+      seatLayoutIds: result.seatLayoutIds,
+      attractionSeats: Array.isArray(result.attractionSeats)
+        ? result.attractionSeats.map((seat: any) => ({
+            id: seat.id,
+            attractionId: seat.attractionId,
+            seatLayoutId: seat.seatLayoutId,
+            name: seat.name,
+            seatOrder: seat.seatOrder,
+            createdAt: seat.createdAt,
+          }))
+        : [],
+      timeSlots: Array.isArray(result.timeSlots)
+        ? result.timeSlots.map((slot: any) => ({
+            id: slot.id,
+            attractionId: slot.attractionId,
+            slotTime: slot.slotTime,
+            isActive: slot.isActive,
+          }))
+        : [],
+    };
+
+    return success(sanitizedResult);
   } catch (error) {
     console.error("Create attraction error:", error);
 
