@@ -66,6 +66,8 @@ export async function GET(request: NextRequest) {
 
         hasSeating: attractionManagement.hasSeating,
         seatLayoutId: attractionManagement.seatLayoutId,
+        duration: attractionManagement.duration,
+        durationUnit: attractionManagement.durationUnit,
       })
       .from(attractions)
       .innerJoin(
@@ -99,6 +101,9 @@ export async function GET(request: NextRequest) {
       hasSeating: row.hasSeating,
 
       seatLayoutId: row.seatLayoutId,
+
+      duration: row.duration,
+      durationUnit: row.durationUnit,
     }));
 
     return success({
