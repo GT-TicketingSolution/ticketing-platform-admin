@@ -7,6 +7,9 @@ export type SeatLayoutStatus = "ACTIVE" | "INACTIVE";
 
 export type SeatLayoutAisleDirection = "VERTICAL" | "HORIZONTAL";
 
+const MAX_SEAT_ROWS = Number(process.env.NEXT_PUBLIC_MAX_SEAT_ROWS ?? 200);
+const MAX_SEAT_COLS = Number(process.env.NEXT_PUBLIC_MAX_SEAT_COLS ?? 200);
+
 export type SeatLayoutFilters = {
   page?: number;
   limit?: number;
@@ -258,8 +261,8 @@ export async function createSeatLayout(input: CreateSeatLayoutInput) {
     throw new Error("Row count must be a positive integer.");
   }
 
-  if (input.rows > 200) {
-    throw new Error("Row count cannot exceed 200.");
+  if (input.rows > MAX_SEAT_ROWS) {
+    throw new Error(`Row count cannot exceed ${MAX_SEAT_ROWS}.`);
   }
 
   // ============================================================
@@ -270,8 +273,8 @@ export async function createSeatLayout(input: CreateSeatLayoutInput) {
     throw new Error("Column count must be a positive integer.");
   }
 
-  if (input.cols > 200) {
-    throw new Error("Column count cannot exceed 200.");
+  if (input.cols > MAX_SEAT_COLS) {
+    throw new Error(`Column count cannot exceed ${MAX_SEAT_COLS}.`);
   }
 
   // ============================================================
@@ -436,8 +439,8 @@ export async function updateSeatLayout(
     throw new Error("Row count must be a positive integer.");
   }
 
-  if (rows > 200) {
-    throw new Error("Row count cannot exceed 200.");
+  if (rows > MAX_SEAT_ROWS) {
+    throw new Error(`Row count cannot exceed ${MAX_SEAT_ROWS}.`);
   }
 
   // ============================================================
@@ -448,10 +451,9 @@ export async function updateSeatLayout(
     throw new Error("Column count must be a positive integer.");
   }
 
-  if (cols > 200) {
-    throw new Error("Column count cannot exceed 200.");
+  if (cols > MAX_SEAT_COLS) {
+    throw new Error(`Column count cannot exceed ${MAX_SEAT_COLS}.`);
   }
-
   // ============================================================
   // AISLE VALIDATION
   // ============================================================

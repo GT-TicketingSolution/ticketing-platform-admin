@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { AnyPgColumn } from "drizzle-orm/pg-core";
+
 /* =========================================================
    ENUMS
 ========================================================= */
@@ -374,7 +375,7 @@ export const attractions = pgTable(
   },
 
   (table) => ({
-    nameIdx: index("attractions_name_idx").on(table.name),
+    nameUniqueIdx: uniqueIndex("attractions_name_unique_idx").on(table.name),
     adminIdx: index("attractions_admin_idx").on(table.adminId),
     statusIdx: index("attractions_status_idx").on(table.status),
   }),
