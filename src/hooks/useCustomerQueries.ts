@@ -11,6 +11,7 @@ export interface CustomerItem {
   id: string;
   name: string;
   mobile: string;
+  address?: string | null;
   gstn?: string | null;
   createdAt?: string;
   updatedAt?: string;
@@ -35,6 +36,7 @@ export interface CustomerListResponse {
 export interface CreateCustomerPayload {
   name: string;
   mobile: string;
+  address?: string;
   gstn?: string;
 }
 
@@ -42,6 +44,7 @@ export interface UpdateCustomerPayload {
   id: string;
   name: string;
   mobile: string;
+  address?: string;
   gstn?: string;
 }
 

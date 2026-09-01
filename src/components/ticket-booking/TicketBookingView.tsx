@@ -731,11 +731,8 @@ export default function TicketBookingView() {
   // Cart state
   const [cart, setCart] = useState<CartEntry[]>([]);
 
-  // Available trips counter per attraction (editable by staff, decrements on booking)
+  // Available trips counter per attraction (decrements on booking)
   const [availableTripsMap, setAvailableTripsMap] = useState<Record<string, number>>({});
-  // Tracks which attraction's trips field is being edited inline
-  const [editingTripsId, setEditingTripsId] = useState<string | null>(null);
-  const [editingTripsValue, setEditingTripsValue] = useState<string>("");
 
   useEffect(() => {
     document.title = "Ticket Booking | Ticketing Solution";
@@ -1220,6 +1217,7 @@ export default function TicketBookingView() {
         >
           {activeAttraction && (() => {
             const meta = { baseRate: getAttractionBaseRate(activeAttraction) };
+            const tripsToday = availableTripsMap[activeAttraction.id] ?? 0;
             return (
               <div
                 style={{
@@ -1236,6 +1234,7 @@ export default function TicketBookingView() {
                     gap: "16px",
                   }}
                 >
+                  {/* Left: Name + category badge + base rate + duration */}
                   <div style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1, minWidth: 0 }}>
                     <h2
                       style={{
@@ -1299,21 +1298,24 @@ export default function TicketBookingView() {
                           gap: "3px",
                           fontSize: "11.5px",
                           color: "#64748B",
-                          marginLeft: "8px",
                         }}
                       >
                         <div>
-                          <span>Seats per trip: </span>
-                          <span style={{ color: "#0E4E7A", fontWeight: 700 }}>
-                            {derivedSeats ?? "—"}
-                          </span>
+                          <span>Ongoing Trips: </span>
+                          <span style={{ color: "#0E4E7A", fontWeight: 700 }}>{tripsToday}</span>
                         </div>
 
+                        {derivedSeats && (
+                          <div>
+                            <span>Seats per trip: </span>
+                            <span style={{ color: "#0E4E7A", fontWeight: 700 }}>{derivedSeats}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Castle Sketch Illustration */}
+                  {/* Right: Castle illustration only */}
                   <div
                     style={{
                       flexShrink: 0,

@@ -2234,6 +2234,7 @@ export default function CustomerInfoView({
       const res = await createCustomerMutation.mutateAsync({
         name: nc.name,
         mobile: nc.mobile,
+        address: nc.address,
         gstn: nc.gstn,
       });
       const newC: CustomerRecord = {
