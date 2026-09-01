@@ -1326,6 +1326,31 @@ export async function POST(request: Request) {
     }
 
     // =====================================================
+    // UNIQUE NAME VALIDATION
+    // =====================================================
+
+    const existingAttraction = await db
+      .select({
+        id: attractions.id,
+      })
+      .from(attractions)
+      .where(
+        and(
+          eq(attractions.adminId, auth.user.id),
+          eq(attractions.name, name.trim()),
+        ),
+      )
+      .limit(1);
+
+    if (existingAttraction.length > 0) {
+      return failure(
+        "An attraction with this name already exists.",
+        409,
+        "DUPLICATE_NAME",
+      );
+    }
+
+    // =====================================================
     // RESOLVE SEAT LAYOUTS
     // =====================================================
 
@@ -1395,7 +1420,7 @@ export async function POST(request: Request) {
         .values({
           adminId: auth.user.id,
 
-          name,
+          name: name.trim(),
 
           type: category,
         })
