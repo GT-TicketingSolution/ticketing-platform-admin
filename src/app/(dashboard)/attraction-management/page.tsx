@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   Search,
   SearchX,
@@ -27,7 +27,7 @@ import {
   useBulkUploadAttractions,
 } from "@/hooks/useAttractionManagementQueries";
 
-// ── Category badge color ──────────────────────────────────────────────────────
+// ── Category badge color 
 const CATEGORY_COLOR: Record<string, string> = {
   RIDE: "#F4BC43",
   Ride: "#F4BC43",

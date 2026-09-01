@@ -44,7 +44,7 @@ export function useAttractionManagementList(params?: AttractionQueryParams) {
         : Array.isArray(res?.data)
           ? res.data
           : [];
-      return items.map((item: any) => ({
+      const mapped = items.map((item: any) => ({
         ...item,
         pricing: {
           adult: Number(item?.pricing?.adult ?? 0),
@@ -64,12 +64,18 @@ export function useAttractionManagementList(params?: AttractionQueryParams) {
           ? item.seatLayoutIds
           : Array.isArray(item?.seatLayouts)
             ? item.seatLayouts.flatMap((l: any) => {
-                const qty = Math.max(1, Number(l?.quantity) || 1);
-                return Array.from({ length: qty }, () => l.id);
-              })
+              const qty = Math.max(1, Number(l?.quantity) || 1);
+              return Array.from({ length: qty }, () => l.id);
+            })
             : [],
         seatLayoutId: item.seatLayoutId ?? (item.seatLayouts?.[0]?.id ?? null),
       })) as AttractionManagement[];
+
+      return mapped.sort((a: any, b: any) => {
+        const timeA = new Date(a.updatedAt || 0).getTime();
+        const timeB = new Date(b.updatedAt || 0).getTime();
+        return timeB - timeA;
+      });
     },
     staleTime: 30 * 1000,
     placeholderData: keepPreviousData,

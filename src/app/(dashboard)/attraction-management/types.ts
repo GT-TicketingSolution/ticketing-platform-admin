@@ -46,6 +46,8 @@ export interface AttractionManagement {
    * Same layout ID may appear multiple times (quantity).
    */
   seatLayoutIds?: string[] | Array<{ id: string; name: string; status: string; position: number }>;
+  createdAt?: string;
+  updatedAt?: string;
   /**
    * Optional bookable time slots (future FE).
    * Current UI may ignore this key.

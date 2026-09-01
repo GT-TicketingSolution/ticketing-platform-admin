@@ -590,21 +590,42 @@ export default function AddEditAttractionForm({
 
       setImagePreview(attractionToEdit.image || null);
       setCategories(pricingToCategories(attractionToEdit));
-      // Parse existing duration string (e.g. "20min / trip" or "1hr / trip") back to value + unit
-      const rawDur: string = (attractionToEdit as any).duration || ((attractionToEdit as any).durationMins ? `${(attractionToEdit as any).durationMins}min / trip` : "");
-      const hrMatch = rawDur.match(/(\d+(?:\.\d+)?)\s*hr/);
-      const minMatch = rawDur.match(/(\d+(?:\.\d+)?)\s*min/);
-      if (hrMatch) { setDurationValue(hrMatch[1]); setDurationUnit("hours"); }
-      else if (minMatch) { setDurationValue(minMatch[1]); setDurationUnit("minutes"); }
-      else { setDurationValue(rawDur.replace(/[^\d.]/g, "") || ""); setDurationUnit("minutes"); }
+      // Parse existing duration string (e.g. "20min / trip" or "1hr / trip") or numeric value back to value + unit safely
+      const durProp = (attractionToEdit as any).duration;
+      const durMinsProp = (attractionToEdit as any).durationMins;
+      const durUnitProp = (attractionToEdit as any).durationUnit;
+
+      const rawDurStr = typeof durProp === "string" ? durProp : (durProp != null ? String(durProp) : (durMinsProp != null ? `${durMinsProp}min / trip` : ""));
+      const hrMatch = rawDurStr.match(/(\d+(?:\.\d+)?)\s*(?:hr|hour)/i);
+      const minMatch = rawDurStr.match(/(\d+(?:\.\d+)?)\s*(?:min|minute)/i);
+      if (hrMatch) {
+        setDurationValue(hrMatch[1]);
+        setDurationUnit("hours");
+      } else if (minMatch) {
+        setDurationValue(minMatch[1]);
+        setDurationUnit("minutes");
+      } else {
+        const cleanVal = rawDurStr.replace(/[^\d.]/g, "");
+        setDurationValue(cleanVal);
+        if (durUnitProp === "hours" || durUnitProp === "hrs" || durUnitProp === "hour") {
+          setDurationUnit("hours");
+        } else {
+          setDurationUnit("minutes");
+        }
+      }
 
       // Parse timing string "HH:MM AM/PM - HH:MM AM/PM" back into 24-hour values
-      if (attractionToEdit.timing) {
+      if (attractionToEdit.timing && typeof attractionToEdit.timing === "string") {
         const parts = attractionToEdit.timing.split(" - ");
         if (parts.length === 2) {
           const to24 = (t: string) => {
-            const [time, meridiem] = t.trim().split(" ");
+            if (!t) return "09:00";
+            const partsStr = t.trim().split(" ");
+            const time = partsStr[0] || "";
+            const meridiem = partsStr[1] || "";
             let [h, m] = time.split(":").map(Number);
+            if (isNaN(h)) h = 9;
+            if (isNaN(m)) m = 0;
             if (meridiem === "PM" && h !== 12) h += 12;
             if (meridiem === "AM" && h === 12) h = 0;
             return `${String(h).padStart(2, "0")}:${String(m ?? 0).padStart(2, "0")}`;
@@ -718,9 +739,18 @@ export default function AddEditAttractionForm({
 
   const toggleSeatDisabled = (instanceId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    setAllocatedSeats((prev) =>
-      prev.map((s) => (s.instanceId === instanceId ? { ...s, isDisabled: !s.isDisabled } : s))
-    );
+    setAllocatedSeats((prev) => {
+      const updated = prev.map((s) => (s.instanceId === instanceId ? { ...s, isDisabled: !s.isDisabled } : s));
+      if (updated.some((s) => !s.isDisabled)) {
+        setFormErrors((errs) => {
+          if (!errs.seatAllocation) return errs;
+          const next = { ...errs };
+          delete next.seatAllocation;
+          return next;
+        });
+      }
+      return updated;
+    });
   };
 
   const removeAllocatedSeat = async (instanceId: string, displayName?: string, e?: React.MouseEvent) => {
@@ -825,9 +855,12 @@ export default function AddEditAttractionForm({
 
     const seatErrors: Record<string, string> = {};
 
-    if (allocatedSeats.length > 0 && activeAllocated.length === 0) {
+    if (allocatedSeats.length === 0) {
       seatErrors.seatAllocation =
-        "All allocated seat layouts are disabled. Please enable at least one or remove them.";
+        "Seat allocation is required. Please select at least one seat layout.";
+    } else if (activeAllocated.length === 0) {
+      seatErrors.seatAllocation =
+        "All allocated seat layouts are disabled. Please enable at least one or select another seat layout.";
     }
 
     for (const cat of categories) {
@@ -1441,7 +1474,7 @@ export default function AddEditAttractionForm({
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <Armchair size={18} color="#0C2A42" />
                 <h3 style={{ margin: 0, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "16px", color: "#0C2A42" }}>
-                  Seat Allocation <span style={{ fontWeight: 400, fontSize: "12px", color: "#6B7280" }}>(Optional)</span>
+                  Seat Allocation<Req />
                 </h3>
               </div>
               {allocatedSeats.length > 0 && (
@@ -1481,7 +1514,7 @@ export default function AddEditAttractionForm({
             {/* 1. First Dropdown: Select Seat Layouts */}
             <div style={{ marginBottom: "12px" }} ref={seatDropdownRef}>
               <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "6px" }}>
-                Select Seat Layout (Dropdown)
+                Select Seat Layout (Dropdown)<Req />
               </label>
 
               <div style={{ position: "relative", width: "100%" }}>
