@@ -1,0 +1,1 @@
+ALTER TABLE "seat_booking_history" ALTER COLUMN "seat_no" SET DATA TYPE integer;
