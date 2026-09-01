@@ -1395,7 +1395,7 @@ export async function POST(request: Request) {
         .values({
           adminId: auth.user.id,
 
-          name,
+          name: name.trim(),
 
           type: category,
         })
@@ -1596,34 +1596,74 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Create attraction error:", error);
 
-    if (error instanceof Error) {
-      if (error.message.startsWith("TIME_SLOT_NOT_FOUND:")) {
-        return failure(
-          `Unknown timeSlots.id: ${error.message.replace(
-            "TIME_SLOT_NOT_FOUND:",
-            "",
-          )}`,
-          400,
-          "VALIDATION_ERROR",
-        );
-      }
+    // =====================================================
+    // POSTGRES UNIQUE VIOLATION
+    // =====================================================
 
-      if (error.message === "UNAUTHORIZED") {
-        return failure("Authentication required.", 401, "UNAUTHORIZED");
-      }
+    const dbError = error as any;
 
-      if (error.message === "ACCOUNT_NOT_ACTIVE") {
-        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
-      }
+    const postgresCode = dbError?.cause?.code ?? dbError?.code;
 
-      if (error.message === "FORBIDDEN") {
-        return failure(
-          "You are not authorized to access attraction management.",
-          403,
-          "FORBIDDEN",
-        );
-      }
+    const postgresConstraint =
+      dbError?.cause?.constraint ?? dbError?.constraint;
+
+    const postgresDetail = dbError?.cause?.detail ?? dbError?.detail;
+
+    // =====================================================
+    // DUPLICATE ATTRACTION NAME
+    // =====================================================
+
+    if (
+      postgresCode === "23505" ||
+      postgresConstraint === "attractions_name_unique_idx"
+    ) {
+      return failure(
+        "An attraction with this name already exists.",
+        409,
+        "DUPLICATE_NAME",
+      );
     }
+
+    // =====================================================
+    // TIME SLOT NOT FOUND
+    // =====================================================
+
+    const message = dbError?.message ?? dbError?.cause?.message;
+
+    if (
+      typeof message === "string" &&
+      message.startsWith("TIME_SLOT_NOT_FOUND:")
+    ) {
+      return failure(
+        `Unknown timeSlots.id: ${message.replace("TIME_SLOT_NOT_FOUND:", "")}`,
+        400,
+        "VALIDATION_ERROR",
+      );
+    }
+
+    // =====================================================
+    // AUTH ERRORS
+    // =====================================================
+
+    if (message === "UNAUTHORIZED") {
+      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    }
+
+    if (message === "ACCOUNT_NOT_ACTIVE") {
+      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+    }
+
+    if (message === "FORBIDDEN") {
+      return failure(
+        "You are not authorized to access attraction management.",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    // =====================================================
+    // UNKNOWN ERROR
+    // =====================================================
 
     return failure(
       "Unable to create attraction.",
