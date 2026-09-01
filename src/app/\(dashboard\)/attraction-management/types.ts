@@ -44,6 +44,7 @@ export interface AttractionManagement {
   /**
    * Expanded allocation list for UI chips.
    * Same layout ID may appear multiple times (quantity).
+   * Can be string[] (legacy) or array of objects with id, name, status, position
    */
   seatLayoutIds?: string[] | Array<{ id: string; name: string; status: string; position: number }>;
   /**
@@ -125,7 +126,7 @@ export interface UpdateAttractionPayload {
   timeSlots?: AttractionTimeSlotPayloadItem[];
 }
 
-// ── Bulk upload 
+// ── Bulk upload
 export interface BulkAttractionItem {
   name: string;
   type?: string;
