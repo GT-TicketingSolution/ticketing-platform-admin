@@ -1875,3 +1875,54 @@ export const adminSystemModulePermissions = pgTable(
     ),
   ],
 );
+
+export const seatBookingHistory = pgTable(
+  "seat_booking_history",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    attractionId: uuid("attraction_id")
+      .notNull()
+      .references(() => attractions.id, {
+        onDelete: "cascade",
+      }),
+
+    tripNo: integer("trip_no").notNull(),
+
+    seatNo: integer("seat_no").notNull(),
+
+    attractionSeatId: uuid("attraction_seat_id")
+      .notNull()
+      .references(() => attractionSeats.id, {
+        onDelete: "cascade",
+      }),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    attractionIdx: index("seat_booking_history_attraction_idx").on(
+      table.attractionId,
+    ),
+
+    tripIdx: index("seat_booking_history_trip_idx").on(table.tripNo),
+
+    attractionSeatIdx: index("seat_booking_history_attraction_seat_idx").on(
+      table.attractionSeatId,
+    ),
+
+    attractionTripIdx: index("seat_booking_history_attraction_trip_idx").on(
+      table.attractionId,
+      table.tripNo,
+    ),
+  }),
+);
