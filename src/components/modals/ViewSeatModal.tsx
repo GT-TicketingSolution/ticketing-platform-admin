@@ -2,7 +2,8 @@
 
 import React from "react";
 import { X, Armchair, CheckCircle, XCircle } from "lucide-react";
-import { SeatConfigData, decodeAisle } from "@/app/(dashboard)/seat-management/types";
+
+import { SeatConfigData } from "@/app/(dashboard)/seat-management/types";
 
 interface ViewSeatModalProps {
   isOpen: boolean;
@@ -21,13 +22,19 @@ export default function ViewSeatModal({
 
   const rows = Math.max(1, seat.rows || 1);
   const cols = Math.max(1, seat.cols || 1);
-  const totalSeats = rows * cols;
-  const isSingleSeat = rows === 1 && cols === 1;
 
-  const { hasAisle, aisleType, aislePosition } = decodeAisle(
-    seat.hasAisle,
-    seat.aisleAfterCol ?? 0
-  );
+  const totalSeats = seat.totalSeats ?? rows * cols;
+
+  const hasAisle = Boolean(seat.hasAisle);
+
+  const aisleType = seat.aisleDirection ?? null;
+
+  const aislePosition =
+    aisleType === "HORIZONTAL"
+      ? (seat.aisleAfterRow ?? 0)
+      : (seat.aisleAfterCol ?? 0);
+
+  const isActive = String(seat.status || "").toUpperCase() === "ACTIVE";
 
   return (
     <div
@@ -69,8 +76,15 @@ export default function ViewSeatModal({
             justifyContent: "space-between",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+            }}
+          >
             <Armchair size={22} color="#F4BC43" />
+
             <h2
               style={{
                 margin: 0,
@@ -82,6 +96,7 @@ export default function ViewSeatModal({
               {seat.name}
             </h2>
           </div>
+
           <button
             type="button"
             onClick={onClose}
@@ -108,7 +123,7 @@ export default function ViewSeatModal({
             gap: "16px",
           }}
         >
-          {/* Metadata badges */}
+          {/* Metadata */}
           <div
             style={{
               display: "grid",
@@ -120,6 +135,7 @@ export default function ViewSeatModal({
               border: "1px solid #E5E7EB",
             }}
           >
+            {/* Capacity */}
             <div>
               <span
                 style={{
@@ -131,10 +147,18 @@ export default function ViewSeatModal({
               >
                 Total Capacity
               </span>
-              <strong style={{ fontSize: "15px", color: "#011B2F" }}>
+
+              <strong
+                style={{
+                  fontSize: "15px",
+                  color: "#011B2F",
+                }}
+              >
                 {totalSeats} {totalSeats === 1 ? "Seat (Single)" : "Seats"}
               </strong>
             </div>
+
+            {/* Grid */}
             <div>
               <span
                 style={{
@@ -146,10 +170,18 @@ export default function ViewSeatModal({
               >
                 Grid Format
               </span>
-              <strong style={{ fontSize: "15px", color: "#011B2F" }}>
+
+              <strong
+                style={{
+                  fontSize: "15px",
+                  color: "#011B2F",
+                }}
+              >
                 {rows} Rows × {cols} Cols
               </strong>
             </div>
+
+            {/* Aisle */}
             <div>
               <span
                 style={{
@@ -161,7 +193,13 @@ export default function ViewSeatModal({
               >
                 Aisle Position
               </span>
-              <strong style={{ fontSize: "13px", color: "#011B2F" }}>
+
+              <strong
+                style={{
+                  fontSize: "13px",
+                  color: "#011B2F",
+                }}
+              >
                 {hasAisle
                   ? `${aisleType === "VERTICAL" ? "Vertical" : "Horizontal"} (${
                       aislePosition === 0
@@ -173,6 +211,8 @@ export default function ViewSeatModal({
                   : "No Aisle"}
               </strong>
             </div>
+
+            {/* Status */}
             <div>
               <span
                 style={{
@@ -184,6 +224,7 @@ export default function ViewSeatModal({
               >
                 Status
               </span>
+
               <span
                 style={{
                   display: "inline-flex",
@@ -191,25 +232,17 @@ export default function ViewSeatModal({
                   gap: "4px",
                   fontSize: "12px",
                   fontWeight: 700,
-                  color:
-                    String(seat.status || "").toUpperCase() === "ACTIVE"
-                      ? "#059669"
-                      : "#DC2626",
+                  color: isActive ? "#059669" : "#DC2626",
                 }}
               >
-                {String(seat.status || "").toUpperCase() === "ACTIVE" ? (
-                  <CheckCircle size={14} />
-                ) : (
-                  <XCircle size={14} />
-                )}
-                {String(seat.status || "").toUpperCase() === "ACTIVE"
-                  ? "Active"
-                  : "Inactive"}
+                {isActive ? <CheckCircle size={14} /> : <XCircle size={14} />}
+
+                {isActive ? "Active" : "Inactive"}
               </span>
             </div>
           </div>
 
-          {/* Full Interactive Grid Preview with C1, C2... & R1, R2... and Scrollable Fix */}
+          {/* Full Grid */}
           <div
             style={{
               background: "#FFFFFF",
@@ -231,7 +264,7 @@ export default function ViewSeatModal({
                 alignItems: "flex-start",
               }}
             >
-              {/* ── Column Headers Row (C1, C2...) ── */}
+              {/* Column Headers */}
               <div
                 style={{
                   display: "flex",
@@ -239,29 +272,37 @@ export default function ViewSeatModal({
                   marginBottom: "8px",
                 }}
               >
-                {/* Spacer matching row label width */}
-                <div style={{ width: "36px", marginRight: "6px", flexShrink: 0 }} />
+                {/* Row label spacer */}
+                <div
+                  style={{
+                    width: "36px",
+                    marginRight: "6px",
+                    flexShrink: 0,
+                  }}
+                />
 
-                {/* If vertical aisle is at position 0 (Starting point before C1) */}
-                {hasAisle && aisleType === "VERTICAL" && aislePosition === 0 && (
-                  <div
-                    style={{
-                      width: "56px",
-                      marginRight: "10px",
-                      textAlign: "center",
-                      fontSize: "10px",
-                      fontWeight: 800,
-                      color: "#0369A1",
-                      flexShrink: 0,
-                    }}
-                  >
-                    AISLE
-                  </div>
-                )}
+                {/* Vertical aisle at start */}
+                {hasAisle &&
+                  aisleType === "VERTICAL" &&
+                  aislePosition === 0 && (
+                    <div
+                      style={{
+                        width: "56px",
+                        marginRight: "10px",
+                        textAlign: "center",
+                        fontSize: "10px",
+                        fontWeight: 800,
+                        color: "#0369A1",
+                        flexShrink: 0,
+                      }}
+                    >
+                      AISLE
+                    </div>
+                  )}
 
-                {/* Column header tags (C1, C2, C3...) */}
                 {Array.from({ length: cols }, (_, cIdx) => {
                   const colNum = cIdx + 1;
+
                   const isAisleAfterThis =
                     hasAisle &&
                     aisleType === "VERTICAL" &&
@@ -286,7 +327,6 @@ export default function ViewSeatModal({
                         C{colNum}
                       </div>
 
-                      {/* Header for Vertical Aisle after this column */}
                       {isAisleAfterThis && (
                         <div
                           style={{
@@ -307,39 +347,48 @@ export default function ViewSeatModal({
                 })}
               </div>
 
-              {/* If horizontal aisle is at position 0 (Starting point before R1) */}
-              {hasAisle && aisleType === "HORIZONTAL" && aislePosition === 0 && (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    margin: "0 0 10px 42px",
-                    width: "calc(100% - 42px)",
-                    minWidth: `${cols * 52}px`,
-                    background: "rgba(224, 242, 254, 0.75)",
-                    border: "1.5px dashed #0284C7",
-                    borderRadius: "6px",
-                    padding: "6px 14px",
-                    justifyContent: "center",
-                  }}
-                >
-                  <span
+              {/* Horizontal aisle at start */}
+              {hasAisle &&
+                aisleType === "HORIZONTAL" &&
+                aislePosition === 0 && (
+                  <div
                     style={{
-                      fontSize: "11px",
-                      fontWeight: 800,
-                      color: "#0369A1",
-                      letterSpacing: "2px",
+                      display: "flex",
+                      alignItems: "center",
+                      margin: "0 0 10px 42px",
+                      width: "calc(100% - 42px)",
+                      minWidth: `${cols * 52}px`,
+                      background: "rgba(224, 242, 254, 0.75)",
+                      border: "1.5px dashed #0284C7",
+                      borderRadius: "6px",
+                      padding: "6px 14px",
+                      justifyContent: "center",
                     }}
                   >
-                    ─── AISLE ───
-                  </span>
-                </div>
-              )}
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        color: "#0369A1",
+                        letterSpacing: "2px",
+                      }}
+                    >
+                      ─── AISLE ───
+                    </span>
+                  </div>
+                )}
 
-              {/* ── Main Grid of Rows (R1, R2...) ── */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {/* Main Rows */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                }}
+              >
                 {Array.from({ length: rows }, (_, rIdx) => {
                   const rowNum = rIdx + 1;
+
                   const isHorizontalAisleAfterThis =
                     hasAisle &&
                     aisleType === "HORIZONTAL" &&
@@ -347,8 +396,13 @@ export default function ViewSeatModal({
 
                   return (
                     <React.Fragment key={`view-grid-row-${rowNum}`}>
-                      <div style={{ display: "flex", alignItems: "center" }}>
-                        {/* Row Label (R1, R2, R3...) */}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        {/* Row Label */}
                         <span
                           style={{
                             width: "36px",
@@ -366,7 +420,7 @@ export default function ViewSeatModal({
                           R{rowNum}
                         </span>
 
-                        {/* If vertical aisle is at position 0 (before C1) */}
+                        {/* Vertical aisle at start */}
                         {hasAisle &&
                           aisleType === "VERTICAL" &&
                           aislePosition === 0 && (
@@ -395,14 +449,18 @@ export default function ViewSeatModal({
                         {/* Seat Cells */}
                         {Array.from({ length: cols }, (_, cIdx) => {
                           const colNum = cIdx + 1;
+
                           const seatNumber = rIdx * cols + colNum;
+
                           const isVerticalAisleAfterThis =
                             hasAisle &&
                             aisleType === "VERTICAL" &&
                             aislePosition === colNum;
 
                           return (
-                            <React.Fragment key={`view-seat-${rowNum}-${colNum}`}>
+                            <React.Fragment
+                              key={`view-seat-${rowNum}-${colNum}`}
+                            >
                               <div
                                 style={{
                                   width: "44px",
@@ -421,10 +479,12 @@ export default function ViewSeatModal({
                                   flexShrink: 0,
                                 }}
                               >
-                                {seatNumber < 10 ? `0${seatNumber}` : seatNumber}
+                                {seatNumber < 10
+                                  ? `0${seatNumber}`
+                                  : seatNumber}
                               </div>
 
-                              {/* Vertical Aisle Bar after this column */}
+                              {/* Vertical aisle */}
                               {isVerticalAisleAfterThis && (
                                 <div
                                   style={{
@@ -452,7 +512,7 @@ export default function ViewSeatModal({
                         })}
                       </div>
 
-                      {/* Horizontal Aisle Bar after this row */}
+                      {/* Horizontal aisle */}
                       {isHorizontalAisleAfterThis && (
                         <div
                           style={{
@@ -517,6 +577,7 @@ export default function ViewSeatModal({
           >
             Close
           </button>
+
           {onEdit && (
             <button
               type="button"

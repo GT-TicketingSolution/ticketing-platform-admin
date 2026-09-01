@@ -141,6 +141,13 @@
       "when": 1788236029166,
       "tag": "0019_remove_seat_layout_unique_constraint",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788246791440,
+      "tag": "0020_unique_iron_fist",
+      "breakpoints": true
     }
   ]
 }
