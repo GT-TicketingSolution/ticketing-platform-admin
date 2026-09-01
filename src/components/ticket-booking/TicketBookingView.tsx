@@ -119,6 +119,23 @@ function getAttractionBaseRate(attraction: Attraction) {
   return `₹${minP}–₹${adultP} / person`;
 }
 
+/** Format duration value and unit nicely (e.g. 30, "minutes" -> "30 minutes") */
+function formatAttractionDuration(duration?: number | string | null, durationUnit?: string | null): string | null {
+  if (duration === null || duration === undefined || duration === "") return null;
+  const num = typeof duration === "number" ? duration : parseInt(String(duration), 10);
+  if (isNaN(num)) {
+    return String(duration);
+  }
+  const unitStr = (durationUnit || "minutes").trim().toLowerCase();
+  if (unitStr.startsWith("hour") || unitStr === "hr" || unitStr === "hrs") {
+    return `${num} ${num === 1 ? "hour" : "hours"}`;
+  }
+  if (unitStr.startsWith("min")) {
+    return `${num} ${num === 1 ? "minute" : "minutes"}`;
+  }
+  return `${num} ${durationUnit || "minutes"}`;
+}
+
 /** Parse duration in minutes from a displayTime like "10:00 AM – 10:20 AM" */
 function parseDurationFromDisplayTime(displayTime: string): string | null {
   try {
@@ -139,7 +156,7 @@ function parseDurationFromDisplayTime(displayTime: string): string | null {
     if (start === null || end === null) return null;
     const diff = end - start;
     if (diff <= 0) return null;
-    return `${diff}min / trip`;
+    return `${diff} minutes`;
   } catch {
     return null;
   }
@@ -796,12 +813,16 @@ export default function TicketBookingView() {
     !!activeAttractionId && !!firstSlotId
   );
 
-  // Derive duration from first slot's displayTime
+  // Derive duration from attraction duration/durationUnit or first slot's displayTime fallback
   const derivedDuration = useMemo(() => {
+    if (activeAttraction?.duration != null) {
+      const formatted = formatAttractionDuration(activeAttraction.duration, activeAttraction.durationUnit);
+      if (formatted) return formatted;
+    }
     if (!activeSlots || activeSlots.length === 0) return null;
     const displayTime = (activeSlots[0] as any).slotTime ?? "";
     return parseDurationFromDisplayTime(displayTime);
-  }, [activeSlots]);
+  }, [activeAttraction, activeSlots]);
 
   // Derived seats from seats API
   const derivedSeats = useMemo(() => {
@@ -1217,7 +1238,7 @@ export default function TicketBookingView() {
         >
           {activeAttraction && (() => {
             const meta = { baseRate: getAttractionBaseRate(activeAttraction) };
-            const tripsToday = availableTripsMap[activeAttraction.id] ?? 0;
+            const tripsToday =  1;
             return (
               <div
                 style={{
@@ -1251,7 +1272,7 @@ export default function TicketBookingView() {
                     <div
                       style={{
                         display: "flex",
-                        alignItems: "center",
+                        alignItems: "flex-start",
                         gap: "16px",
                         flexWrap: "wrap",
                       }}
@@ -1264,7 +1285,6 @@ export default function TicketBookingView() {
                           fontWeight: 600,
                           padding: "2.5px 7px",
                           borderRadius: "4px",
-                          alignSelf: "flex-start",
                         }}
                       >
                         {activeAttraction.category}

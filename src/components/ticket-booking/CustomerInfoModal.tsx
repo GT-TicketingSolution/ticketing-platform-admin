@@ -1268,6 +1268,7 @@ export default function CustomerInfoModal({
       id: `C${Date.now()}`,
       name: nc.name,
       mobile: nc.mobile,
+      address: nc.address || null,
       gstn: nc.gstn ?? null,
     };
     setSelectedCustomer(newC);

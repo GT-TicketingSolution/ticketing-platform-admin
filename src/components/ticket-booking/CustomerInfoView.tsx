@@ -2241,6 +2241,7 @@ export default function CustomerInfoView({
         id: (res as any)?.data?.id || (res as any)?.id || `C${Date.now()}`,
         name: nc.name,
         mobile: nc.mobile,
+        address: nc.address || null,
         gstn: nc.gstn || null,
       };
       setSelectedCustomer(newC);
