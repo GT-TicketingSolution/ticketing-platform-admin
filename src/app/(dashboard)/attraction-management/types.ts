@@ -45,7 +45,7 @@ export interface AttractionManagement {
    * Expanded allocation list for UI chips.
    * Same layout ID may appear multiple times (quantity).
    */
-  seatLayoutIds?: string[];
+  seatLayoutIds?: string[] | Array<{ id: string; name: string; status: string; position: number }>;
   /**
    * Optional bookable time slots (future FE).
    * Current UI may ignore this key.
@@ -95,7 +95,7 @@ export interface CreateAttractionPayload {
   seniorSeats: number;
   foreignerSeats: number;
   hasSeating?: boolean;
-  seatLayoutIds?: string[];
+  seatLayoutIds?: string[] | Array<{ id: string; name: string; status: string; position: number }>;
   /** Optional — omit to leave slots untouched / empty on create */
   timeSlots?: AttractionTimeSlotPayloadItem[];
 }
@@ -120,7 +120,7 @@ export interface UpdateAttractionPayload {
   seniorSeats?: number;
   foreignerSeats?: number;
   hasSeating?: boolean;
-  seatLayoutIds?: string[];
+  seatLayoutIds?: string[] | Array<{ id: string; name: string; status: string; position: number }>;
   /** Optional — omit to leave existing slots untouched */
   timeSlots?: AttractionTimeSlotPayloadItem[];
 }

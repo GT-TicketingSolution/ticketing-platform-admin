@@ -1,6 +1,6 @@
 {
-  "id": "bdb668ac-05f7-48fe-b9bf-808125e526a1",
-  "prevId": "ed89c2d3-8fef-4fa4-b8b4-ce25f7ee82bc",
+  "id": "d08d7819-da2b-44fe-8150-7e4130010d7c",
+  "prevId": "fadcf26c-4fc6-497f-b71f-84380c04c375",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -41,12 +41,8 @@
           "name": "admin_system_module_permissions_admin_id_users_id_fk",
           "tableFrom": "admin_system_module_permissions",
           "tableTo": "users",
-          "columnsFrom": [
-            "admin_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["admin_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -54,12 +50,8 @@
           "name": "admin_system_module_permissions_module_id_system_modules_id_fk",
           "tableFrom": "admin_system_module_permissions",
           "tableTo": "system_modules",
-          "columnsFrom": [
-            "module_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["module_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -69,10 +61,7 @@
         "admin_system_module_permissions_unique": {
           "name": "admin_system_module_permissions_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "admin_id",
-            "module_id"
-          ]
+          "columns": ["admin_id", "module_id"]
         }
       },
       "policies": {},
@@ -182,12 +171,8 @@
           "name": "attraction_daily_capacities_attraction_id_attractions_id_fk",
           "tableFrom": "attraction_daily_capacities",
           "tableTo": "attractions",
-          "columnsFrom": [
-            "attraction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attraction_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -248,12 +233,8 @@
           "name": "attraction_inventory_attraction_id_attractions_id_fk",
           "tableFrom": "attraction_inventory",
           "tableTo": "attractions",
-          "columnsFrom": [
-            "attraction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attraction_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -263,10 +244,7 @@
         "attraction_inventory_attraction_date_unique": {
           "name": "attraction_inventory_attraction_date_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "attraction_id",
-            "inventory_date"
-          ]
+          "columns": ["attraction_id", "inventory_date"]
         }
       },
       "policies": {},
@@ -323,12 +301,8 @@
           "name": "attraction_inventory_slots_inventory_id_attraction_inventory_id_fk",
           "tableFrom": "attraction_inventory_slots",
           "tableTo": "attraction_inventory",
-          "columnsFrom": [
-            "inventory_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["inventory_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -338,10 +312,7 @@
         "attraction_inventory_slot_unique": {
           "name": "attraction_inventory_slot_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "inventory_id",
-            "slot_time"
-          ]
+          "columns": ["inventory_id", "slot_time"]
         }
       },
       "policies": {},
@@ -386,6 +357,18 @@
         "timing": {
           "name": "timing",
           "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration": {
+          "name": "duration",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_unit": {
+          "name": "duration_unit",
+          "type": "varchar(20)",
           "primaryKey": false,
           "notNull": false
         },
@@ -560,12 +543,8 @@
           "name": "attraction_management_admin_id_users_id_fk",
           "tableFrom": "attraction_management",
           "tableTo": "users",
-          "columnsFrom": [
-            "admin_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["admin_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -573,12 +552,8 @@
           "name": "attraction_management_attraction_id_attractions_id_fk",
           "tableFrom": "attraction_management",
           "tableTo": "attractions",
-          "columnsFrom": [
-            "attraction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attraction_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -586,12 +561,8 @@
           "name": "attraction_management_seat_layout_id_seat_layouts_id_fk",
           "tableFrom": "attraction_management",
           "tableTo": "seat_layouts",
-          "columnsFrom": [
-            "seat_layout_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["seat_layout_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -631,6 +602,20 @@
           "primaryKey": false,
           "notNull": true,
           "default": 1
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "is_enabled": {
+          "name": "is_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         },
         "created_at": {
           "name": "created_at",
@@ -677,12 +662,8 @@
           "name": "attraction_management_seat_layouts_attraction_management_id_attraction_management_id_fk",
           "tableFrom": "attraction_management_seat_layouts",
           "tableTo": "attraction_management",
-          "columnsFrom": [
-            "attraction_management_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attraction_management_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -690,12 +671,8 @@
           "name": "attraction_management_seat_layouts_seat_layout_id_seat_layouts_id_fk",
           "tableFrom": "attraction_management_seat_layouts",
           "tableTo": "seat_layouts",
-          "columnsFrom": [
-            "seat_layout_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["seat_layout_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -705,10 +682,7 @@
         "attraction_management_seat_layout_unique": {
           "name": "attraction_management_seat_layout_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "attraction_management_id",
-            "seat_layout_id"
-          ]
+          "columns": ["attraction_management_id", "seat_layout_id"]
         }
       },
       "policies": {},
@@ -810,12 +784,78 @@
           "name": "attraction_modules_attraction_id_attractions_id_fk",
           "tableFrom": "attraction_modules",
           "tableTo": "attractions",
-          "columnsFrom": [
-            "attraction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attraction_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.attraction_seats": {
+      "name": "attraction_seats",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "attraction_id": {
+          "name": "attraction_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seat_layout_id": {
+          "name": "seat_layout_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seat_order": {
+          "name": "seat_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "attraction_seats_attraction_id_attractions_id_fk": {
+          "name": "attraction_seats_attraction_id_attractions_id_fk",
+          "tableFrom": "attraction_seats",
+          "tableTo": "attractions",
+          "columnsFrom": ["attraction_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "attraction_seats_seat_layout_id_seat_layouts_id_fk": {
+          "name": "attraction_seats_seat_layout_id_seat_layouts_id_fk",
+          "tableFrom": "attraction_seats",
+          "tableTo": "seat_layouts",
+          "columnsFrom": ["seat_layout_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -929,12 +969,8 @@
           "name": "attraction_slot_capacities_time_slot_id_attraction_time_slots_id_fk",
           "tableFrom": "attraction_slot_capacities",
           "tableTo": "attraction_time_slots",
-          "columnsFrom": [
-            "time_slot_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["time_slot_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1033,12 +1069,8 @@
           "name": "attraction_time_slots_attraction_id_attractions_id_fk",
           "tableFrom": "attraction_time_slots",
           "tableTo": "attractions",
-          "columnsFrom": [
-            "attraction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attraction_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1153,12 +1185,8 @@
           "name": "attractions_admin_id_users_id_fk",
           "tableFrom": "attractions",
           "tableTo": "users",
-          "columnsFrom": [
-            "admin_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["admin_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1267,12 +1295,8 @@
           "name": "audit_logs_user_id_users_id_fk",
           "tableFrom": "audit_logs",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1366,12 +1390,8 @@
           "name": "booking_checkins_booking_id_bookings_id_fk",
           "tableFrom": "booking_checkins",
           "tableTo": "bookings",
-          "columnsFrom": [
-            "booking_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["booking_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1379,12 +1399,8 @@
           "name": "booking_checkins_checked_in_by_users_id_fk",
           "tableFrom": "booking_checkins",
           "tableTo": "users",
-          "columnsFrom": [
-            "checked_in_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["checked_in_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1471,12 +1487,8 @@
           "name": "booking_items_booking_id_bookings_id_fk",
           "tableFrom": "booking_items",
           "tableTo": "bookings",
-          "columnsFrom": [
-            "booking_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["booking_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1484,12 +1496,8 @@
           "name": "booking_items_attraction_id_attractions_id_fk",
           "tableFrom": "booking_items",
           "tableTo": "attractions",
-          "columnsFrom": [
-            "attraction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attraction_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1497,12 +1505,8 @@
           "name": "booking_items_time_slot_id_attraction_time_slots_id_fk",
           "tableFrom": "booking_items",
           "tableTo": "attraction_time_slots",
-          "columnsFrom": [
-            "time_slot_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["time_slot_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1638,12 +1642,8 @@
           "name": "booking_seats_booking_id_bookings_id_fk",
           "tableFrom": "booking_seats",
           "tableTo": "bookings",
-          "columnsFrom": [
-            "booking_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["booking_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1651,12 +1651,8 @@
           "name": "booking_seats_time_slot_id_attraction_time_slots_id_fk",
           "tableFrom": "booking_seats",
           "tableTo": "attraction_time_slots",
-          "columnsFrom": [
-            "time_slot_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["time_slot_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1919,12 +1915,8 @@
           "name": "bookings_attraction_id_attractions_id_fk",
           "tableFrom": "bookings",
           "tableTo": "attractions",
-          "columnsFrom": [
-            "attraction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attraction_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1932,12 +1924,8 @@
           "name": "bookings_created_by_users_id_fk",
           "tableFrom": "bookings",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -1945,12 +1933,8 @@
           "name": "bookings_deleted_by_users_id_fk",
           "tableFrom": "bookings",
           "tableTo": "users",
-          "columnsFrom": [
-            "deleted_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["deleted_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1960,9 +1944,7 @@
         "bookings_booking_number_unique": {
           "name": "bookings_booking_number_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "booking_number"
-          ]
+          "columns": ["booking_number"]
         }
       },
       "policies": {},
@@ -2186,12 +2168,8 @@
           "name": "complimentary_passes_admin_id_users_id_fk",
           "tableFrom": "complimentary_passes",
           "tableTo": "users",
-          "columnsFrom": [
-            "admin_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["admin_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2199,12 +2177,8 @@
           "name": "complimentary_passes_attraction_id_attractions_id_fk",
           "tableFrom": "complimentary_passes",
           "tableTo": "attractions",
-          "columnsFrom": [
-            "attraction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attraction_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -2212,12 +2186,8 @@
           "name": "complimentary_passes_reference_id_references_id_fk",
           "tableFrom": "complimentary_passes",
           "tableTo": "references",
-          "columnsFrom": [
-            "reference_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["reference_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -2225,12 +2195,8 @@
           "name": "complimentary_passes_deleted_by_users_id_fk",
           "tableFrom": "complimentary_passes",
           "tableTo": "users",
-          "columnsFrom": [
-            "deleted_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["deleted_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -2240,9 +2206,7 @@
         "complimentary_passes_pass_id_unique": {
           "name": "complimentary_passes_pass_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "pass_id"
-          ]
+          "columns": ["pass_id"]
         }
       },
       "policies": {},
@@ -2406,12 +2370,8 @@
           "name": "customers_admin_id_users_id_fk",
           "tableFrom": "customers",
           "tableTo": "users",
-          "columnsFrom": [
-            "admin_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["admin_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2419,12 +2379,8 @@
           "name": "customers_deleted_by_users_id_fk",
           "tableFrom": "customers",
           "tableTo": "users",
-          "columnsFrom": [
-            "deleted_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["deleted_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -2524,12 +2480,8 @@
           "name": "manager_attraction_module_permissions_manager_id_users_id_fk",
           "tableFrom": "manager_attraction_module_permissions",
           "tableTo": "users",
-          "columnsFrom": [
-            "manager_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["manager_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2537,12 +2489,8 @@
           "name": "manager_attraction_module_permissions_attraction_module_id_attraction_modules_id_fk",
           "tableFrom": "manager_attraction_module_permissions",
           "tableTo": "attraction_modules",
-          "columnsFrom": [
-            "attraction_module_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attraction_module_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2642,12 +2590,8 @@
           "name": "manager_attraction_permissions_manager_id_users_id_fk",
           "tableFrom": "manager_attraction_permissions",
           "tableTo": "users",
-          "columnsFrom": [
-            "manager_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["manager_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2655,12 +2599,8 @@
           "name": "manager_attraction_permissions_attraction_id_attractions_id_fk",
           "tableFrom": "manager_attraction_permissions",
           "tableTo": "attractions",
-          "columnsFrom": [
-            "attraction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attraction_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2760,12 +2700,8 @@
           "name": "manager_system_module_permissions_manager_id_users_id_fk",
           "tableFrom": "manager_system_module_permissions",
           "tableTo": "users",
-          "columnsFrom": [
-            "manager_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["manager_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2773,12 +2709,8 @@
           "name": "manager_system_module_permissions_module_id_system_modules_id_fk",
           "tableFrom": "manager_system_module_permissions",
           "tableTo": "system_modules",
-          "columnsFrom": [
-            "module_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["module_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2869,12 +2801,8 @@
           "name": "password_reset_tokens_user_id_users_id_fk",
           "tableFrom": "password_reset_tokens",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2884,9 +2812,7 @@
         "password_reset_tokens_token_hash_unique": {
           "name": "password_reset_tokens_token_hash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token_hash"
-          ]
+          "columns": ["token_hash"]
         }
       },
       "policies": {},
@@ -3034,12 +2960,8 @@
           "name": "references_admin_id_users_id_fk",
           "tableFrom": "references",
           "tableTo": "users",
-          "columnsFrom": [
-            "admin_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["admin_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3047,12 +2969,8 @@
           "name": "references_deleted_by_users_id_fk",
           "tableFrom": "references",
           "tableTo": "users",
-          "columnsFrom": [
-            "deleted_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["deleted_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -3169,12 +3087,8 @@
           "name": "seat_layout_seats_seat_layout_id_seat_layouts_id_fk",
           "tableFrom": "seat_layout_seats",
           "tableTo": "seat_layouts",
-          "columnsFrom": [
-            "seat_layout_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["seat_layout_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3321,12 +3235,8 @@
           "name": "seat_layouts_admin_id_users_id_fk",
           "tableFrom": "seat_layouts",
           "tableTo": "users",
-          "columnsFrom": [
-            "admin_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["admin_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3417,12 +3327,8 @@
           "name": "sessions_user_id_users_id_fk",
           "tableFrom": "sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3432,9 +3338,7 @@
         "sessions_token_hash_unique": {
           "name": "sessions_token_hash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token_hash"
-          ]
+          "columns": ["token_hash"]
         }
       },
       "policies": {},
@@ -3509,12 +3413,8 @@
           "name": "staff_attraction_assignments_staff_id_users_id_fk",
           "tableFrom": "staff_attraction_assignments",
           "tableTo": "users",
-          "columnsFrom": [
-            "staff_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["staff_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3522,12 +3422,8 @@
           "name": "staff_attraction_assignments_attraction_id_attractions_id_fk",
           "tableFrom": "staff_attraction_assignments",
           "tableTo": "attractions",
-          "columnsFrom": [
-            "attraction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attraction_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3591,12 +3487,8 @@
           "name": "staff_roles_staff_id_users_id_fk",
           "tableFrom": "staff_roles",
           "tableTo": "users",
-          "columnsFrom": [
-            "staff_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["staff_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3696,12 +3588,8 @@
           "name": "staff_system_module_permissions_staff_id_users_id_fk",
           "tableFrom": "staff_system_module_permissions",
           "tableTo": "users",
-          "columnsFrom": [
-            "staff_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["staff_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3709,12 +3597,8 @@
           "name": "staff_system_module_permissions_module_id_system_modules_id_fk",
           "tableFrom": "staff_system_module_permissions",
           "tableTo": "system_modules",
-          "columnsFrom": [
-            "module_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["module_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3815,12 +3699,8 @@
           "name": "system_module_role_permissions_module_id_system_modules_id_fk",
           "tableFrom": "system_module_role_permissions",
           "tableTo": "system_modules",
-          "columnsFrom": [
-            "module_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["module_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3912,9 +3792,7 @@
         "system_modules_key_unique": {
           "name": "system_modules_key_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "key"
-          ]
+          "columns": ["key"]
         }
       },
       "policies": {},
@@ -4067,12 +3945,8 @@
           "name": "ticket_scan_logs_booking_id_bookings_id_fk",
           "tableFrom": "ticket_scan_logs",
           "tableTo": "bookings",
-          "columnsFrom": [
-            "booking_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["booking_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4080,12 +3954,8 @@
           "name": "ticket_scan_logs_scanned_by_users_id_fk",
           "tableFrom": "ticket_scan_logs",
           "tableTo": "users",
-          "columnsFrom": [
-            "scanned_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["scanned_by"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -4277,12 +4147,8 @@
           "name": "transactions_booking_id_bookings_id_fk",
           "tableFrom": "transactions",
           "tableTo": "bookings",
-          "columnsFrom": [
-            "booking_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["booking_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -4290,12 +4156,8 @@
           "name": "transactions_deleted_by_users_id_fk",
           "tableFrom": "transactions",
           "tableTo": "users",
-          "columnsFrom": [
-            "deleted_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["deleted_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4305,9 +4167,7 @@
         "transactions_transaction_number_unique": {
           "name": "transactions_transaction_number_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "transaction_number"
-          ]
+          "columns": ["transaction_number"]
         }
       },
       "policies": {},
@@ -4456,12 +4316,8 @@
           "name": "users_admin_id_users_id_fk",
           "tableFrom": "users",
           "tableTo": "users",
-          "columnsFrom": [
-            "admin_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["admin_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4469,12 +4325,8 @@
           "name": "users_manager_id_users_id_fk",
           "tableFrom": "users",
           "tableTo": "users",
-          "columnsFrom": [
-            "manager_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["manager_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4484,9 +4336,7 @@
         "users_email_unique": {
           "name": "users_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -4498,105 +4348,62 @@
     "public.aisle_direction": {
       "name": "aisle_direction",
       "schema": "public",
-      "values": [
-        "VERTICAL",
-        "HORIZONTAL"
-      ]
+      "values": ["VERTICAL", "HORIZONTAL"]
     },
     "public.attraction_status": {
       "name": "attraction_status",
       "schema": "public",
-      "values": [
-        "ACTIVE",
-        "INACTIVE"
-      ]
+      "values": ["ACTIVE", "INACTIVE"]
     },
     "public.booking_status": {
       "name": "booking_status",
       "schema": "public",
-      "values": [
-        "PENDING",
-        "CONFIRMED",
-        "CANCELLED"
-      ]
+      "values": ["PENDING", "CONFIRMED", "CANCELLED"]
     },
     "public.complimentary_pass_status": {
       "name": "complimentary_pass_status",
       "schema": "public",
-      "values": [
-        "ACTIVE",
-        "USED",
-        "EXPIRED"
-      ]
+      "values": ["ACTIVE", "USED", "EXPIRED"]
     },
     "public.module_status": {
       "name": "module_status",
       "schema": "public",
-      "values": [
-        "ACTIVE",
-        "INACTIVE"
-      ]
+      "values": ["ACTIVE", "INACTIVE"]
     },
     "public.payment_mode": {
       "name": "payment_mode",
       "schema": "public",
-      "values": [
-        "CASH",
-        "UPI",
-        "CARD",
-        "ONLINE"
-      ]
+      "values": ["CASH", "UPI", "CARD", "ONLINE"]
     },
     "public.reference_status": {
       "name": "reference_status",
       "schema": "public",
-      "values": [
-        "ACTIVE",
-        "INACTIVE"
-      ]
+      "values": ["ACTIVE", "INACTIVE"]
     },
     "public.seat_layout_status": {
       "name": "seat_layout_status",
       "schema": "public",
-      "values": [
-        "ACTIVE",
-        "INACTIVE"
-      ]
+      "values": ["ACTIVE", "INACTIVE"]
     },
     "public.ticket_scan_verdict": {
       "name": "ticket_scan_verdict",
       "schema": "public",
-      "values": [
-        "ALLOWED",
-        "DENIED"
-      ]
+      "values": ["ALLOWED", "DENIED"]
     },
     "public.transaction_status": {
       "name": "transaction_status",
       "schema": "public",
-      "values": [
-        "SUCCESSFUL",
-        "PENDING",
-        "CANCELLED",
-        "FAILED"
-      ]
+      "values": ["SUCCESSFUL", "PENDING", "CANCELLED", "FAILED"]
     },
     "public.user_role": {
       "name": "user_role",
       "schema": "public",
-      "values": [
-        "ADMIN",
-        "MANAGER",
-        "STAFF"
-      ]
+      "values": ["ADMIN", "MANAGER", "STAFF"]
     },
     "public.user_status": {
       "name": "user_status",
       "schema": "public",
-      "values": [
-        "ACTIVE",
-        "INACTIVE"
-      ]
+      "values": ["ACTIVE", "INACTIVE"]
     }
   },
   "schemas": {},

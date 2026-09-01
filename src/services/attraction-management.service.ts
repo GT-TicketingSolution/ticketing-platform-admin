@@ -37,7 +37,12 @@ export type AttractionTimeSlotDto = {
 
 export function getLegacySeatLayoutId(seatLayoutIds: string[]): string | null {
   const unique = [...new Set(seatLayoutIds)];
-  return unique.length === 1 ? unique[0] : null;
+  if (unique.length !== 1) return null;
+
+  const id = unique[0];
+  // Only return if it's a valid UUID format (database requirement)
+  // Otherwise return null to use junction table instead
+  return UUID_RE.test(id) ? id : null;
 }
 
 /**
@@ -382,6 +387,8 @@ export function resolveSeatLayoutIds(input: {
       assignments: { seatLayoutId: string; quantity: number }[];
       /** Expanded ID list (ID repeated `quantity` times) for FE chips */
       expandedIds: string[];
+      /** Full objects with position and status info for persistence */
+      fullObjects: Array<{ id: string; position: number; isEnabled: boolean; name?: string; status?: string }>;
     }
   | { ok: false; message: string } {
   const { hasSeating, seatLayoutIds } = input;
@@ -394,11 +401,27 @@ export function resolveSeatLayoutIds(input: {
     ? ((seatLayoutIds as unknown[] | undefined) ?? [])
     : [];
 
+  // Extract IDs from both string and object formats
+  // Only count ENABLED seats toward quantity; keep disabled for validation
   const cleaned = rawIds
-    .map((id) => String(id))
-    .filter((id) => id.trim().length > 0);
+    .map((item) => {
+      if (typeof item === "string") {
+        return { id: item.trim(), status: "active" };
+      } else if (item && typeof item === "object" && "id" in item) {
+        const obj = item as { id?: unknown; status?: string };
+        return {
+          id: String(obj.id || "").trim(),
+          status: obj.status || "active",
+        };
+      }
+      return { id: String(item).trim(), status: "active" };
+    })
+    .filter((item) => item.id.length > 0);
 
-  if (hasSeating && cleaned.length === 0) {
+  // Separate enabled and disabled
+  const enabledItems = cleaned.filter((item) => item.status === "active");
+
+  if (hasSeating && enabledItems.length === 0) {
     return {
       ok: false,
       message:
@@ -406,31 +429,35 @@ export function resolveSeatLayoutIds(input: {
     };
   }
 
-  const quantityById = new Map<string, number>();
-  const order: string[] = [];
-
-  for (const id of cleaned) {
-    if (!quantityById.has(id)) {
-      order.push(id);
-      quantityById.set(id, 0);
-    }
-    quantityById.set(id, (quantityById.get(id) ?? 0) + 1);
-  }
-
-  const assignments = order.map((seatLayoutId) => ({
-    seatLayoutId,
-    quantity: quantityById.get(seatLayoutId) ?? 1,
+  // IMPORTANT: Store each allocation separately, don't consolidate by quantity
+  // when there are mixed enabled/disabled states
+  // Each row in junction table = 1 allocation with its own enabled/disabled state
+  const assignments = cleaned.map((item) => ({
+    seatLayoutId: item.id,
+    quantity: 1, // Each allocation stored as quantity: 1
   }));
 
-  const expandedIds = assignments.flatMap(({ seatLayoutId, quantity }) =>
-    Array.from({ length: quantity }, () => seatLayoutId),
-  );
+  // Expanded IDs list (same layout ID repeated for each allocation)
+  const expandedIds = cleaned.map((item) => item.id);
+
+  // Return all unique IDs (for validation) including disabled ones
+  const allUniqueIds = [...new Set(cleaned.map((item) => item.id))];
+
+  // Build full objects array preserving position and enabled status
+  const fullObjects = cleaned.map((item, index) => ({
+    id: item.id,
+    position: index + 1,
+    isEnabled: item.status === "active",
+    name: (item as any).name,
+    status: item.status,
+  }));
 
   return {
     ok: true,
-    uniqueIds: order,
+    uniqueIds: allUniqueIds,
     assignments,
     expandedIds,
+    fullObjects,
   };
 }
 
@@ -480,11 +507,13 @@ export async function validateSeatLayoutsForAdmin(
 /**
  * Replace junction rows for an attraction management record.
  * Stores one row per layout with `quantity` (same layout may be allocated N times).
+ * Now also tracks position and isEnabled status.
  */
 export async function replaceAttractionSeatLayouts(
   executor: DbExecutor,
   attractionManagementId: string,
   assignments: { seatLayoutId: string; quantity: number }[],
+  fullObjects?: Array<{ id: string; position: number; isEnabled: boolean }>,
 ) {
   await executor
     .delete(attractionManagementSeatLayouts)
@@ -499,15 +528,23 @@ export async function replaceAttractionSeatLayouts(
     return [];
   }
 
+  // Build values with position and isEnabled from fullObjects
+  // IMPORTANT: Match by index order, not by ID, since multiple allocations
+  // of same layout need different position/isEnabled values
+  const valuesToInsert = assignments.map(({ seatLayoutId, quantity }, index) => {
+    const fullObj = fullObjects?.[index]; // Match by index, not by ID
+    return {
+      attractionManagementId,
+      seatLayoutId,
+      quantity: Math.max(1, quantity),
+      position: fullObj?.position ?? index + 1,
+      isEnabled: fullObj?.isEnabled ?? true,
+    };
+  });
+
   return executor
     .insert(attractionManagementSeatLayouts)
-    .values(
-      assignments.map(({ seatLayoutId, quantity }) => ({
-        attractionManagementId,
-        seatLayoutId,
-        quantity: Math.max(1, quantity),
-      })),
-    )
+    .values(valuesToInsert)
     .returning();
 }
 

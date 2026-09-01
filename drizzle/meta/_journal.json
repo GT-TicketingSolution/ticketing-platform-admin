@@ -124,15 +124,22 @@
     {
       "idx": 17,
       "version": "7",
-      "when": 1788195746808,
-      "tag": "0017_minor_wallop",
+      "when": 1788185201962,
+      "tag": "0017_nasty_justin_hammer",
       "breakpoints": true
     },
     {
       "idx": 18,
       "version": "7",
-      "when": 1788198161309,
-      "tag": "0018_graceful_miracleman",
+      "when": 1788234755447,
+      "tag": "0018_add_seat_allocation_position_and_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788236029166,
+      "tag": "0019_remove_seat_layout_unique_constraint",
       "breakpoints": true
     }
   ]

@@ -1370,6 +1370,12 @@ export const attractionManagement = pgTable(
       length: 100,
     }),
 
+    duration: integer("duration"),
+
+    durationUnit: varchar("duration_unit", {
+      length: 20,
+    }),
+
     adultPrice: numeric("adult_price", {
       precision: 12,
       scale: 2,
@@ -1450,6 +1456,30 @@ export const attractionManagement = pgTable(
     ).on(table.adminId, table.attractionId),
   }),
 );
+
+export const attractionSeats = pgTable("attraction_seats", {
+  id: uuid("id").defaultRandom().primaryKey(),
+
+  attractionId: uuid("attraction_id")
+    .notNull()
+    .references(() => attractions.id, {
+      onDelete: "cascade",
+    }),
+
+  seatLayoutId: uuid("seat_layout_id")
+    .notNull()
+    .references(() => seatLayouts.id, {
+      onDelete: "cascade",
+    }),
+
+  name: varchar("name", {
+    length: 100,
+  }).notNull(),
+
+  seatOrder: integer("seat_order").notNull(),
+
+  isActive: boolean("is_active").notNull().default(true),
+});
 
 /* =========================================================
    CUSTOMERS
@@ -1732,6 +1762,12 @@ export const attractionManagementSeatLayouts = pgTable(
     /** How many times this layout is allocated to the attraction (quantity semantics). */
     quantity: integer("quantity").notNull().default(1),
 
+    /** Position/order of this allocation (for display order when fetching). */
+    position: integer("position").notNull().default(0),
+
+    /** Whether this allocation is enabled (true) or disabled (false). */
+    isEnabled: boolean("is_enabled").notNull().default(true),
+
     createdAt: timestamp("created_at", {
       withTimezone: true,
     })
@@ -1739,9 +1775,9 @@ export const attractionManagementSeatLayouts = pgTable(
       .notNull(),
   },
   (table) => ({
-    attractionSeatLayoutUnique: unique(
-      "attraction_management_seat_layout_unique",
-    ).on(table.attractionManagementId, table.seatLayoutId),
+    // REMOVED: attractionSeatLayoutUnique
+    // Reason: Now supports multiple allocations of same layout (with different positions/enabled state)
+    // E.g., can have 3 rows with same (attractionManagementId, seatLayoutId) but different positions
 
     attractionManagementIdx: index(
       "attraction_management_seat_layout_attraction_idx",

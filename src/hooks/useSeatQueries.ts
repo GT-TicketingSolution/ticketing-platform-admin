@@ -1,70 +1,67 @@
 // "use client";
 
-// import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-// // ============================================================================
-// // [PREVIOUS API CODE - COMMENTED OUT AS REQUESTED]
-// // import { getData, postData, patchData, deleteData } from "@/lib/api/apiService";
-// // import { AppUrl } from "@/lib/api/endpoints";
-// // import { showErrorOnce } from "@/lib/api/axiosConfig";
-// // ============================================================================
-// import { showSuccessNotify } from "@/lib/notify";
-// import {
-//   SeatLayoutListResponse,
-//   SeatLayoutItem,
-//   SeatQueryParams,
-//   CreateSeatPayload,
-//   UpdateSeatPayload,
-// } from "@/app/(dashboard)/seat-management/types";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getData, postData, patchData, deleteData } from "@/lib/api/apiService";
+import { AppUrl } from "@/lib/api/endpoints";
+import { showErrorOnce } from "@/lib/api/axiosConfig";
+import { showSuccessNotify } from "@/lib/notify";
+import {
+  SeatLayoutListResponse,
+  SeatLayoutItem,
+  SeatQueryParams,
+  CreateSeatPayload,
+  UpdateSeatPayload,
+} from "@/app/(dashboard)/seat-management/types";
 
 // // ── Mock Initial Data & LocalStorage Helpers ─────────────────────────────────
 // const MOCK_STORAGE_KEY = "mock_seat_layouts_data";
 
-// const DEFAULT_MOCK_SEATS: SeatLayoutItem[] = [
-//   {
-//     id: "seat-layout-1",
-//     name: "Express Coach A (6x4)",
-//     rows: 6,
-//     cols: 4,
-//     hasAisle: true,
-//     aisleAfterCol: 2,
-//     status: "ACTIVE",
-//     totalSeats: 24,
-//     createdAt: new Date().toISOString(),
-//   },
-//   {
-//     id: "seat-layout-2",
-//     name: "VIP Lounge (4x3)",
-//     rows: 4,
-//     cols: 3,
-//     hasAisle: false,
-//     aisleAfterCol: 0,
-//     status: "ACTIVE",
-//     totalSeats: 12,
-//     createdAt: new Date().toISOString(),
-//   },
-//   {
-//     id: "seat-layout-3",
-//     name: "Standard Section B (8x4)",
-//     rows: 8,
-//     cols: 4,
-//     hasAisle: true,
-//     aisleAfterCol: 2,
-//     status: "ACTIVE",
-//     totalSeats: 32,
-//     createdAt: new Date().toISOString(),
-//   },
-//   {
-//     id: "seat-layout-4",
-//     name: "Deck Compartment (5x5)",
-//     rows: 5,
-//     cols: 5,
-//     hasAisle: true,
-//     aisleAfterCol: 3,
-//     status: "ACTIVE",
-//     totalSeats: 25,
-//     createdAt: new Date().toISOString(),
-//   },
-// ];
+const DEFAULT_MOCK_SEATS: SeatLayoutItem[] = [
+  {
+    id: "550e8400-e29b-41d4-a716-446655440000",
+    name: "Express Coach A (6x4)",
+    rows: 6,
+    cols: 4,
+    hasAisle: true,
+    aisleAfterCol: 2,
+    status: "ACTIVE",
+    totalSeats: 24,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "550e8400-e29b-41d4-a716-446655440001",
+    name: "VIP Lounge (4x3)",
+    rows: 4,
+    cols: 3,
+    hasAisle: false,
+    aisleAfterCol: 0,
+    status: "ACTIVE",
+    totalSeats: 12,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "550e8400-e29b-41d4-a716-446655440002",
+    name: "Standard Section B (8x4)",
+    rows: 8,
+    cols: 4,
+    hasAisle: true,
+    aisleAfterCol: 2,
+    status: "ACTIVE",
+    totalSeats: 32,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "550e8400-e29b-41d4-a716-446655440003",
+    name: "Deck Compartment (5x5)",
+    rows: 5,
+    cols: 5,
+    hasAisle: true,
+    aisleAfterCol: 3,
+    status: "ACTIVE",
+    totalSeats: 25,
+    createdAt: new Date().toISOString(),
+  },
+];
 
 // function getStoredMockSeats(): SeatLayoutItem[] {
 //   if (typeof window === "undefined") return DEFAULT_MOCK_SEATS;
@@ -101,107 +98,76 @@
 
 // // ── Queries ───────────────────────────────────────────────────────────────────
 
-// /*
-// // ============================================================================
-// // [PREVIOUS API CODE - GET /api/admin/seats]
-// // export function useSeatLayouts(params?: SeatQueryParams) {
-// //   return useQuery<SeatLayoutListResponse>({
-// //     queryKey: seatKeys.list(params),
-// //     queryFn: async () => {
-// //       const searchParams = new URLSearchParams();
-// //       if (params?.search?.trim()) {
-// //         searchParams.set("search", params.search.trim());
-// //       }
-// //       if (params?.status) {
-// //         searchParams.set("status", params.status);
-// //       }
-// //
-// //       const queryString = searchParams.toString();
-// //       const url = queryString ? `${AppUrl.seat.list}?${queryString}` : AppUrl.seat.list;
-// //       const res = await getData<any>(url);
-// //
-// //       if (Array.isArray(res)) {
-// //         return {
-// //           items: res,
-// //           pagination: { page: 1, limit: res.length, total: res.length, totalPages: 1 },
-// //         };
-// //       }
-// //       if (res && Array.isArray(res.items)) {
-// //         return res;
-// //       }
-// //       if (res && Array.isArray(res.data)) {
-// //         return {
-// //           items: res.data,
-// //           pagination: res.pagination || { page: 1, limit: res.data.length, total: res.data.length, totalPages: 1 },
-// //         };
-// //       }
-// //       return {
-// //         items: [],
-// //         pagination: { page: 1, limit: 12, total: 0, totalPages: 1 },
-// //       };
-// //     },
-// //     staleTime: 30 * 1000,
-// //     refetchOnWindowFocus: true,
-// //   });
-// // }
-// // ============================================================================
-// */
+/**
+ * Fetch list of seat layouts from database API
+ * Only returns seat layouts that actually exist in the database with real UUIDs
+ */
+export function useSeatLayouts(params?: SeatQueryParams) {
+  return useQuery<SeatLayoutListResponse>({
+    queryKey: seatKeys.list(params),
+    queryFn: async () => {
+      const searchParams = new URLSearchParams();
+      if (params?.search?.trim()) {
+        searchParams.set("search", params.search.trim());
+      }
+      if (params?.status) {
+        searchParams.set("status", params.status);
+      }
 
-// /**
-//  * Fetch list of seat layouts (Mock Implementation)
-//  */
-// export function useSeatLayouts(params?: SeatQueryParams) {
-//   return useQuery<SeatLayoutListResponse>({
-//     queryKey: seatKeys.list(params),
-//     queryFn: async () => {
-//       // Simulate minor async tick
-//       await new Promise((resolve) => setTimeout(resolve, 50));
-//       const allSeats = getStoredMockSeats();
+      const queryString = searchParams.toString();
+      const url = queryString
+        ? `${AppUrl.seat.list}?${queryString}`
+        : AppUrl.seat.list;
 
-//       let filtered = [...allSeats];
-//       if (params?.search?.trim()) {
-//         const query = params.search.trim().toLowerCase();
-//         filtered = filtered.filter((s) => s.name.toLowerCase().includes(query));
-//       }
-//       if (params?.status) {
-//         filtered = filtered.filter(
-//           (s) => s.status.toUpperCase() === params.status?.toUpperCase()
-//         );
-//       }
+      try {
+        const res = await getData<any>(url);
 
-//       return {
-//         items: filtered,
-//         pagination: {
-//           page: 1,
-//           limit: filtered.length || 10,
-//           total: filtered.length,
-//           totalPages: 1,
-//         },
-//       };
-//     },
-//     staleTime: 30 * 1000,
-//     refetchOnWindowFocus: false,
-//   });
-// }
+        if (Array.isArray(res)) {
+          return {
+            items: res,
+            pagination: {
+              page: 1,
+              limit: res.length,
+              total: res.length,
+              totalPages: 1,
+            },
+          };
+        }
+        if (res && Array.isArray(res.items)) {
+          return res;
+        }
+        if (res && Array.isArray(res.data)) {
+          return {
+            items: res.data,
+            pagination: res.pagination || {
+              page: 1,
+              limit: res.data.length,
+              total: res.data.length,
+              totalPages: 1,
+            },
+          };
+        }
 
-// /*
-// // ============================================================================
-// // [PREVIOUS API CODE - GET /api/admin/seats/:seatId]
-// // export function useSeatLayout(seatId: string, enabled = true) {
-// //   return useQuery<SeatLayoutItem & { totalSeats?: number }>({
-// //     queryKey: seatKeys.detail(seatId),
-// //     queryFn: async () => {
-// //       return getData<SeatLayoutItem & { totalSeats?: number }>(AppUrl.seat.get(seatId));
-// //     },
-// //     enabled: Boolean(seatId) && enabled,
-// //   });
-// // }
-// // ============================================================================
-// */
+        return {
+          items: [],
+          pagination: { page: 1, limit: 0, total: 0, totalPages: 1 },
+        };
+      } catch (error) {
+        console.error("Failed to fetch seat layouts:", error);
+        return {
+          items: [],
+          pagination: { page: 1, limit: 0, total: 0, totalPages: 1 },
+        };
+      }
+    },
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+  });
+}
 
-// /**
-//  * Fetch a single seat layout by ID (Mock Implementation)
-//  */
+/*
+// ============================================================================
+// [PREVIOUS API CODE - GET /api/admin/seats/:seatId]
 // export function useSeatLayout(seatId: string, enabled = true) {
 //   return useQuery<SeatLayoutItem & { totalSeats?: number }>({
 //     queryKey: seatKeys.detail(seatId),
@@ -425,7 +391,7 @@
 //   });
 // }
 
-"use client";
+("use client");
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
