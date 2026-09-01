@@ -1,1 +1,0 @@
-ALTER TABLE "attraction_management_seat_layouts" DROP CONSTRAINT "attraction_management_seat_layout_unique";
