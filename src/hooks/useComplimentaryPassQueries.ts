@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { getData, postData, patchData, deleteData } from "@/lib/api/apiService";
 import { AppUrl } from "@/lib/api/endpoints";
 import { useToast } from "@/components/ui/Toast";
@@ -97,6 +97,7 @@ export function useComplimentaryPassList(params: ComplimentaryPassListParams = {
   return useQuery<ComplimentaryPassListResponse>({
     queryKey: complimentaryPassKeys.list(params),
     queryFn: () => fetchComplimentaryPassList(params),
+    placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });

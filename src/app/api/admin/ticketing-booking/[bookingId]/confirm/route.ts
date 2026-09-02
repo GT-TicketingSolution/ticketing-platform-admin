@@ -1,25 +1,50 @@
 import { NextRequest } from "next/server";
-import { eq, and } from "drizzle-orm";
-
-import { db } from "@/db";
+import { eq } from "drizzle-orm";
 import QRCode from "qrcode";
 import crypto from "crypto";
 
-import { bookings, bookingItems } from "@/db/schema";
+import { db } from "@/db";
+import { bookings } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
-import {
-  requireModuleAccess,
-  requireAttractionAccess,
-} from "@/lib/auth/authorization";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 import { success, failure } from "@/lib/api/response";
+
+/* =========================================================
+   ROUTE PARAMS
+========================================================= */
 
 interface RouteParams {
   params: Promise<{
     bookingId: string;
   }>;
 }
+
+/* =========================================================
+   CREATE QR PAYLOAD
+========================================================= */
+
+// function createQrPayload(bookingId: string, attractionId: string) {
+//   const secret = process.env.QR_SECRET;
+
+//   if (!secret) {
+//     throw new Error("QR_SECRET_NOT_CONFIGURED");
+//   }
+
+//   const data = `${bookingId}:${attractionId}`;
+
+//   const signature = crypto
+//     .createHmac("sha256", secret)
+//     .update(data)
+//     .digest("hex");
+
+//   return JSON.stringify({
+//     bookingId,
+//     attractionId,
+//     signature,
+//   });
+// }
 
 function createQrPayload(bookingId: string, attractionId: string) {
   const secret = process.env.QR_SECRET;
@@ -42,32 +67,20 @@ function createQrPayload(bookingId: string, attractionId: string) {
   });
 }
 
-async function generateBookingQRCodes(bookingId: string) {
-  const items = await db
-    .select({
-      attractionId: bookingItems.attractionId,
-    })
-    .from(bookingItems)
-    .where(eq(bookingItems.bookingId, bookingId));
+async function generateBookingQRCode(bookingId: string, attractionId: string) {
+  const payload = createQrPayload(bookingId, attractionId);
 
-  // Remove duplicate attractions
-  const attractionIds = [...new Set(items.map((item) => item.attractionId))];
+  const qrCode = await QRCode.toDataURL(payload);
 
-  const qrCodes = await Promise.all(
-    attractionIds.map(async (attractionId) => {
-      const payload = createQrPayload(bookingId, attractionId);
-
-      const qrCode = await QRCode.toDataURL(payload);
-
-      return {
-        attractionId,
-        qrCode,
-      };
-    }),
-  );
-
-  return qrCodes;
+  return {
+    attractionId,
+    qrCode,
+  };
 }
+
+/* =========================================================
+   POST
+========================================================= */
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
@@ -96,172 +109,94 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const [booking] = await db
       .select({
         id: bookings.id,
+
         bookingNumber: bookings.bookingNumber,
+
         attractionId: bookings.attractionId,
+
         status: bookings.status,
+
         customerName: bookings.customerName,
+
         mobileNumber: bookings.mobileNumber,
+
+        gstNumber: bookings.gstNumber,
+
         visitAt: bookings.visitAt,
+
+        subtotal: bookings.subtotal,
+
+        gstAmount: bookings.gstAmount,
+
+        gstAdjustment: bookings.gstAdjustment,
+
+        roundOff: bookings.roundOff,
+
+        discountAmount: bookings.discountAmount,
+
         totalAmount: bookings.totalAmount,
-        amountPaid: bookings.amountPaid,
+
+        amountReceived: bookings.amountReceived,
+
+        returnAmount: bookings.returnAmount,
+
         paymentMode: bookings.paymentMode,
+
+        paymentExpiresAt: bookings.paymentExpiresAt,
+
         createdAt: bookings.createdAt,
+
         updatedAt: bookings.updatedAt,
       })
       .from(bookings)
       .where(eq(bookings.id, bookingId))
       .limit(1);
 
+    // ---------------------------------------------
+    // BOOKING NOT FOUND
+    // ---------------------------------------------
+
     if (!booking) {
       return failure("Booking not found.", 404, "BOOKING_NOT_FOUND");
     }
 
     // ---------------------------------------------
-    // ATTRACTION ACCESS
+    // CHECK STATUS
     // ---------------------------------------------
 
-    try {
-      await requireAttractionAccess(auth, booking.attractionId);
-    } catch (error) {
-      if (error instanceof Error && error.message === "FORBIDDEN") {
-        return failure(
-          "You do not have permission to access this booking.",
-          403,
-          "FORBIDDEN",
-        );
-      }
-
-      throw error;
+    if (booking.status !== "CONFIRMED") {
+      return failure(
+        "Booking must be confirmed before generating the QR code.",
+        409,
+        "INVALID_BOOKING_STATUS",
+      );
     }
 
     // ---------------------------------------------
-    // CONFIRM BOOKING
+    // GENERATE QR
     // ---------------------------------------------
 
-    const confirmedBooking = await db.transaction(async (tx) => {
-      // -------------------------------------------
-      // LOCK BOOKING
-      // -------------------------------------------
-
-      const [lockedBooking] = await tx
-        .select({
-          id: bookings.id,
-          bookingNumber: bookings.bookingNumber,
-          attractionId: bookings.attractionId,
-          status: bookings.status,
-          customerName: bookings.customerName,
-          mobileNumber: bookings.mobileNumber,
-          visitAt: bookings.visitAt,
-          totalAmount: bookings.totalAmount,
-          amountPaid: bookings.amountPaid,
-          paymentMode: bookings.paymentMode,
-          paymentExpiresAt: bookings.paymentExpiresAt,
-          createdAt: bookings.createdAt,
-          updatedAt: bookings.updatedAt,
-        })
-        .from(bookings)
-        .where(eq(bookings.id, bookingId))
-        .for("update");
-
-      if (!lockedBooking) {
-        throw new Error("BOOKING_NOT_FOUND");
-      }
-
-      // -------------------------------------------
-      // CHECK BOOKING STATUS
-      // -------------------------------------------
-
-      if (lockedBooking.status === "CONFIRMED") {
-        return {
-          alreadyConfirmed: true as const,
-          booking: lockedBooking,
-        };
-      }
-
-      if (lockedBooking.status !== "PENDING") {
-        throw new Error("INVALID_BOOKING_STATUS");
-      }
-
-      if (
-        lockedBooking.paymentExpiresAt &&
-        new Date() > lockedBooking.paymentExpiresAt
-      ) {
-        throw new Error("PAYMENT_EXPIRED");
-      }
-
-      // -------------------------------------------
-      // CHECK PAYMENT
-      // -------------------------------------------
-
-      const totalAmount = Number(lockedBooking.totalAmount);
-      const amountPaid = Number(lockedBooking.amountPaid);
-
-      if (amountPaid < totalAmount) {
-        throw new Error("PAYMENT_NOT_COMPLETED");
-      }
-
-      // -------------------------------------------
-      // CONFIRM BOOKING
-      // -------------------------------------------
-
-      const [confirmed] = await tx
-        .update(bookings)
-        .set({
-          status: "CONFIRMED",
-          updatedAt: new Date(),
-        })
-        .where(and(eq(bookings.id, bookingId), eq(bookings.status, "PENDING")))
-        .returning({
-          id: bookings.id,
-          bookingNumber: bookings.bookingNumber,
-          attractionId: bookings.attractionId,
-          status: bookings.status,
-          customerName: bookings.customerName,
-          mobileNumber: bookings.mobileNumber,
-          visitAt: bookings.visitAt,
-          totalAmount: bookings.totalAmount,
-          amountPaid: bookings.amountPaid,
-          paymentMode: bookings.paymentMode,
-          createdAt: bookings.createdAt,
-          updatedAt: bookings.updatedAt,
-        });
-
-      if (!confirmed) {
-        throw new Error("BOOKING_UPDATE_FAILED");
-      }
-
-      return {
-        alreadyConfirmed: false as const,
-        booking: confirmed,
-      };
-    });
-
+    const qrCodes = await Promise.all(
+      booking.attractionId.map((attractionId) =>
+        generateBookingQRCode(booking.id, attractionId),
+      ),
+    );
     // ---------------------------------------------
     // RESPONSE
     // ---------------------------------------------
 
-    if (confirmedBooking.alreadyConfirmed) {
-      const qrCodes = await generateBookingQRCodes(bookingId);
-
-      return success({
-        message: "Booking is already confirmed.",
-        booking: confirmedBooking.booking,
-        qrCodes,
-      });
-    }
-
-    const qrCodes = await generateBookingQRCodes(bookingId);
-
     return success(
       {
-        message: "Booking confirmed successfully.",
-        booking: confirmedBooking.booking,
+        message: "Booking QR generated successfully.",
+
+        booking,
+
         qrCodes,
       },
       200,
     );
   } catch (error) {
-    console.error("Confirm ticketing booking error:", error);
+    console.error("Generate booking QR error:", error);
 
     // ---------------------------------------------
     // AUTH ERRORS
@@ -283,13 +218,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    if (error instanceof Error && error.message === "PAYMENT_NOT_COMPLETED") {
-      return failure(
-        "Booking cannot be confirmed until full payment is completed.",
-        409,
-        "PAYMENT_NOT_COMPLETED",
-      );
-    }
+    // ---------------------------------------------
+    // BOOKING ERRORS
+    // ---------------------------------------------
 
     if (error instanceof Error && error.message === "BOOKING_NOT_FOUND") {
       return failure("Booking not found.", 404, "BOOKING_NOT_FOUND");
@@ -297,20 +228,31 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     if (error instanceof Error && error.message === "INVALID_BOOKING_STATUS") {
       return failure(
-        "Only pending bookings can be confirmed.",
+        "Booking must be confirmed before generating the QR code.",
         409,
         "INVALID_BOOKING_STATUS",
       );
     }
 
-    if (error instanceof Error && error.message === "BOOKING_UPDATE_FAILED") {
+    // ---------------------------------------------
+    // QR ERROR
+    // ---------------------------------------------
+
+    if (
+      error instanceof Error &&
+      error.message === "QR_SECRET_NOT_CONFIGURED"
+    ) {
       return failure(
-        "Unable to confirm booking.",
+        "QR configuration is missing.",
         500,
-        "BOOKING_UPDATE_FAILED",
+        "QR_SECRET_NOT_CONFIGURED",
       );
     }
 
-    return failure("Unable to confirm booking.", 500, "INTERNAL_SERVER_ERROR");
+    return failure(
+      "Unable to generate booking QR.",
+      500,
+      "INTERNAL_SERVER_ERROR",
+    );
   }
 }

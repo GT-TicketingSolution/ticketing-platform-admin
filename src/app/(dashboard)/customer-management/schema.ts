@@ -18,6 +18,11 @@ export const customerSchema = z.object({
       const cleanVal = val.replace(/\s/g, "");
       return /^(\+91)?[6-9]\d{9}$/.test(cleanVal) || cleanVal.length >= 7;
     }, "Please enter a valid mobile number"),
+  address: z
+    .string()
+    .max(255, "Address cannot exceed 255 characters")
+    .optional()
+    .or(z.literal("")),
   gstn: z
     .string()
     .max(20, "GSTN cannot exceed 20 characters")
@@ -31,7 +36,7 @@ export type CustomerFormData = z.infer<typeof customerSchema>;
  * Validate customer data against the customerSchema.
  * Returns an object with `success: boolean` and `errors: Record<string, string>`.
  */
-export function validateCustomer(data: { name: string; mobile: string; gstn?: string }) {
+export function validateCustomer(data: { name: string; mobile: string; address?: string; gstn?: string }) {
   const result = customerSchema.safeParse(data);
   if (!result.success) {
     const errors: Record<string, string> = {};

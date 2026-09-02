@@ -54,7 +54,9 @@ export const attractionSchema = z.object({
   description: z.string().optional().nullable(),
   image: z.string().optional().nullable(),
   status: z.enum(["Active", "Inactive"] as const),
-  hasSeating: z.boolean(),
+  hasSeating: z.boolean().refine((val) => val === true, {
+    message: "Seat allocation is required. Please select at least one seat layout.",
+  }),
 });
 
 export type AttractionFormData = z.infer<typeof attractionSchema>;
@@ -107,7 +109,15 @@ export function validateVisitorCategory(data: {
 /**
  * Helper validation function for Attraction Form
  */
-export function validateAttractionForm(data: { name: string; category: string; description?: string | null; image?: string | null; status: "Active" | "Inactive"; hasSeating: boolean }) {
+export function validateAttractionForm(data: {
+  name: string;
+  category: string;
+  description?: string | null;
+  image?: string | null;
+  status: "Active" | "Inactive";
+  hasSeating: boolean;
+  allocatedSeatsCount?: number;
+}) {
   const result = attractionSchema.safeParse({
     ...data,
     description: data.description ?? "",
@@ -116,7 +126,10 @@ export function validateAttractionForm(data: { name: string; category: string; d
   if (!result.success) {
     const errors: Record<string, string> = {};
     for (const issue of result.error.issues) {
-      const field = issue.path[0] as string;
+      let field = issue.path[0] as string;
+      if (field === "hasSeating") {
+        field = "seatAllocation";
+      }
       if (!errors[field]) errors[field] = issue.message;
     }
     return { success: false, errors };

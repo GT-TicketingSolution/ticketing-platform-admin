@@ -89,7 +89,7 @@ export default function SeatAllocationModal({
     const gap = 3;
 
     const leftCols = seat.hasAisle
-      ? Math.min(seat.aisleAfterCol, maxCols - 1)
+      ? Math.min(seat.aisleAfterCol ?? 0, maxCols - 1)
       : maxCols;
     const rightCols = seat.hasAisle ? maxCols - leftCols : 0;
 

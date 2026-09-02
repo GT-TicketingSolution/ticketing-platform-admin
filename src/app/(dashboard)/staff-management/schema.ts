@@ -23,7 +23,7 @@ export const staffSchema = z.object({
   assignedAttraction: z
     .array(z.string())
     .min(1, "Please select at least one attraction"),
-  status: z.enum(["Active", "Inactive", "ACTIVE", "DISABLED", "SUSPENDED"] as const),
+  status: z.enum(["Active", "Inactive", "ACTIVE", "INACTIVE"] as const),
 });
 
 export type StaffFormData = z.infer<typeof staffSchema>;

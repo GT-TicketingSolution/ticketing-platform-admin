@@ -5,6 +5,11 @@ import { seatLayouts } from "@/db/schema";
 
 export type SeatLayoutStatus = "ACTIVE" | "INACTIVE";
 
+export type SeatLayoutAisleDirection = "VERTICAL" | "HORIZONTAL";
+
+const MAX_SEAT_ROWS = Number(process.env.NEXT_PUBLIC_MAX_SEAT_ROWS ?? 200);
+const MAX_SEAT_COLS = Number(process.env.NEXT_PUBLIC_MAX_SEAT_COLS ?? 200);
+
 export type SeatLayoutFilters = {
   page?: number;
   limit?: number;
@@ -17,19 +22,37 @@ export type CreateSeatLayoutInput = {
   adminId: string;
 
   name: string;
+
   rows: number;
+
   cols: number;
+
   hasAisle: boolean;
-  aisleAfterCol: number;
+
+  aisleDirection: SeatLayoutAisleDirection;
+
+  aisleAfterCol: number | null;
+
+  aisleAfterRow: number | null;
+
   status: SeatLayoutStatus;
 };
 
 export type UpdateSeatLayoutInput = {
   name?: string;
+
   rows?: number;
+
   cols?: number;
+
   hasAisle?: boolean;
-  aisleAfterCol?: number;
+
+  aisleDirection?: SeatLayoutAisleDirection;
+
+  aisleAfterCol?: number | null;
+
+  aisleAfterRow?: number | null;
+
   status?: SeatLayoutStatus;
 };
 
@@ -44,11 +67,7 @@ export async function getSeatLayouts(filters: SeatLayoutFilters) {
 
   const offset = (page - 1) * limit;
 
-  const conditions = [
-    // IMPORTANT:
-    // Only return layouts belonging to this admin
-    eq(seatLayouts.adminId, filters.adminId),
-  ];
+  const conditions = [eq(seatLayouts.adminId, filters.adminId)];
 
   // ============================================================
   // SEARCH
@@ -112,7 +131,11 @@ export async function getSeatLayouts(filters: SeatLayoutFilters) {
 
       hasAisle: seatLayouts.hasAisle,
 
+      aisleDirection: seatLayouts.aisleDirection,
+
       aisleAfterCol: seatLayouts.aisleAfterCol,
+
+      aisleAfterRow: seatLayouts.aisleAfterRow,
 
       status: seatLayouts.status,
 
@@ -145,7 +168,11 @@ export async function getSeatLayouts(filters: SeatLayoutFilters) {
 
     hasAisle: row.hasAisle,
 
+    aisleDirection: row.aisleDirection,
+
     aisleAfterCol: row.aisleAfterCol,
+
+    aisleAfterRow: row.aisleAfterRow,
 
     status: row.status,
 
@@ -190,7 +217,11 @@ export async function getSeatLayoutById(seatId: string, adminId: string) {
 
       hasAisle: seatLayouts.hasAisle,
 
+      aisleDirection: seatLayouts.aisleDirection,
+
       aisleAfterCol: seatLayouts.aisleAfterCol,
+
+      aisleAfterRow: seatLayouts.aisleAfterRow,
 
       status: seatLayouts.status,
 
@@ -199,15 +230,7 @@ export async function getSeatLayoutById(seatId: string, adminId: string) {
       updatedAt: seatLayouts.updatedAt,
     })
     .from(seatLayouts)
-    .where(
-      and(
-        eq(seatLayouts.id, seatId),
-
-        // IMPORTANT:
-        // Admin can only access their own layout
-        eq(seatLayouts.adminId, adminId),
-      ),
-    )
+    .where(and(eq(seatLayouts.id, seatId), eq(seatLayouts.adminId, adminId)))
     .limit(1);
 
   return seat ?? null;
@@ -219,7 +242,7 @@ export async function getSeatLayoutById(seatId: string, adminId: string) {
 
 export async function createSeatLayout(input: CreateSeatLayoutInput) {
   // ============================================================
-  // VALIDATION
+  // BASIC VALIDATION
   // ============================================================
 
   if (!input.adminId) {
@@ -230,43 +253,87 @@ export async function createSeatLayout(input: CreateSeatLayoutInput) {
     throw new Error("Seat layout name is required.");
   }
 
+  // ============================================================
+  // ROW VALIDATION
+  // ============================================================
+
   if (!Number.isInteger(input.rows) || input.rows <= 0) {
     throw new Error("Row count must be a positive integer.");
   }
+
+  if (input.rows > MAX_SEAT_ROWS) {
+    throw new Error(`Row count cannot exceed ${MAX_SEAT_ROWS}.`);
+  }
+
+  // ============================================================
+  // COLUMN VALIDATION
+  // ============================================================
 
   if (!Number.isInteger(input.cols) || input.cols <= 0) {
     throw new Error("Column count must be a positive integer.");
   }
 
+  if (input.cols > MAX_SEAT_COLS) {
+    throw new Error(`Column count cannot exceed ${MAX_SEAT_COLS}.`);
+  }
+
+  // ============================================================
+  // AISLE VALIDATION
+  // ============================================================
+
   if (input.hasAisle) {
-    if (
-      input.cols <= 1 ||
-      input.aisleAfterCol < 1 ||
-      input.aisleAfterCol >= input.cols
-    ) {
-      throw new Error(
-        "Aisle position must be between column 1 and columns - 1.",
-      );
+    // ----------------------------------------------------------
+    // VERTICAL AISLE
+    // ----------------------------------------------------------
+
+    if (input.aisleDirection === "VERTICAL") {
+      if (input.cols <= 1) {
+        throw new Error(
+          "At least 2 columns are required for a vertical aisle.",
+        );
+      }
+
+      if (
+        input.aisleAfterCol === null ||
+        !Number.isInteger(input.aisleAfterCol) ||
+        input.aisleAfterCol < 0 ||
+        input.aisleAfterCol >= input.cols
+      ) {
+        throw new Error(
+          "Vertical aisle position must be between 0 and columns - 1.",
+        );
+      }
+    }
+
+    // ----------------------------------------------------------
+    // HORIZONTAL AISLE
+    // ----------------------------------------------------------
+
+    if (input.aisleDirection === "HORIZONTAL") {
+      if (input.rows <= 1) {
+        throw new Error("At least 2 rows are required for a horizontal aisle.");
+      }
+
+      if (
+        input.aisleAfterRow === null ||
+        !Number.isInteger(input.aisleAfterRow) ||
+        input.aisleAfterRow < 0 ||
+        input.aisleAfterRow >= input.rows
+      ) {
+        throw new Error(
+          "Horizontal aisle position must be between 0 and rows - 1.",
+        );
+      }
     }
   }
 
-  const aisleAfterCol = input.hasAisle ? input.aisleAfterCol : 0;
-
   // ============================================================
-  // CHECK ADMIN
+  // NORMALIZE AISLE VALUES
   // ============================================================
 
-  const [admin] = await db
-    .select({
-      id: seatLayouts.adminId,
-    })
-    .from(seatLayouts)
-    .where(eq(seatLayouts.adminId, input.adminId))
-    .limit(1);
+  const aisleAfterCol = input.hasAisle ? input.aisleAfterCol : null;
 
-  // We don't actually need an existing layout to verify
-  // the admin here because adminId comes from requireAuth().
-  // The FK on seat_layouts.admin_id guarantees that the user exists.
+  const aisleAfterRow = input.hasAisle ? input.aisleAfterRow : null;
 
   // ============================================================
   // CREATE
@@ -285,7 +352,11 @@ export async function createSeatLayout(input: CreateSeatLayoutInput) {
 
       hasAisle: input.hasAisle,
 
+      aisleDirection: input.aisleDirection,
+
       aisleAfterCol,
+
+      aisleAfterRow,
 
       status: input.status,
     })
@@ -317,16 +388,41 @@ export async function updateSeatLayout(
     throw new Error("Seat layout not found.");
   }
 
+  // ============================================================
+  // FINAL VALUES
+  // ============================================================
+
   const rows = input.rows ?? existing.rows;
 
   const cols = input.cols ?? existing.cols;
 
   const hasAisle = input.hasAisle ?? existing.hasAisle;
 
-  const aisleAfterCol = input.aisleAfterCol ?? existing.aisleAfterCol;
+  const aisleDirection = input.aisleDirection ?? existing.aisleDirection;
+
+  /*
+   * IMPORTANT:
+   * Do not use `??` here because null is meaningful.
+   *
+   * If the caller sends:
+   *
+   * aisleAfterCol: null
+   *
+   * we want the final value to be null.
+   */
+
+  const aisleAfterCol =
+    input.aisleAfterCol !== undefined
+      ? input.aisleAfterCol
+      : existing.aisleAfterCol;
+
+  const aisleAfterRow =
+    input.aisleAfterRow !== undefined
+      ? input.aisleAfterRow
+      : existing.aisleAfterRow;
 
   // ============================================================
-  // VALIDATION
+  // NAME VALIDATION
   // ============================================================
 
   if (input.name !== undefined) {
@@ -335,21 +431,86 @@ export async function updateSeatLayout(
     }
   }
 
+  // ============================================================
+  // ROW VALIDATION
+  // ============================================================
+
   if (!Number.isInteger(rows) || rows <= 0) {
     throw new Error("Row count must be a positive integer.");
   }
+
+  if (rows > MAX_SEAT_ROWS) {
+    throw new Error(`Row count cannot exceed ${MAX_SEAT_ROWS}.`);
+  }
+
+  // ============================================================
+  // COLUMN VALIDATION
+  // ============================================================
 
   if (!Number.isInteger(cols) || cols <= 0) {
     throw new Error("Column count must be a positive integer.");
   }
 
+  if (cols > MAX_SEAT_COLS) {
+    throw new Error(`Column count cannot exceed ${MAX_SEAT_COLS}.`);
+  }
+  // ============================================================
+  // AISLE VALIDATION
+  // ============================================================
+
   if (hasAisle) {
-    if (cols <= 1 || aisleAfterCol < 1 || aisleAfterCol >= cols) {
-      throw new Error(
-        "Aisle position must be between column 1 and columns - 1.",
-      );
+    // ----------------------------------------------------------
+    // VERTICAL AISLE
+    // ----------------------------------------------------------
+
+    if (aisleDirection === "VERTICAL") {
+      if (cols <= 1) {
+        throw new Error(
+          "At least 2 columns are required for a vertical aisle.",
+        );
+      }
+
+      if (
+        aisleAfterCol === null ||
+        !Number.isInteger(aisleAfterCol) ||
+        aisleAfterCol < 0 ||
+        aisleAfterCol >= cols
+      ) {
+        throw new Error(
+          "Vertical aisle position must be between 0 and columns - 1.",
+        );
+      }
+    }
+
+    // ----------------------------------------------------------
+    // HORIZONTAL AISLE
+    // ----------------------------------------------------------
+
+    if (aisleDirection === "HORIZONTAL") {
+      if (rows <= 1) {
+        throw new Error("At least 2 rows are required for a horizontal aisle.");
+      }
+
+      if (
+        aisleAfterRow === null ||
+        !Number.isInteger(aisleAfterRow) ||
+        aisleAfterRow < 0 ||
+        aisleAfterRow >= rows
+      ) {
+        throw new Error(
+          "Horizontal aisle position must be between 0 and rows - 1.",
+        );
+      }
     }
   }
+
+  // ============================================================
+  // NORMALIZE AISLE VALUES
+  // ============================================================
+
+  const normalizedAisleAfterCol = hasAisle ? aisleAfterCol : null;
+
+  const normalizedAisleAfterRow = hasAisle ? aisleAfterRow : null;
 
   // ============================================================
   // UPDATE
@@ -374,7 +535,13 @@ export async function updateSeatLayout(
         hasAisle,
       }),
 
-      aisleAfterCol: hasAisle ? aisleAfterCol : 0,
+      ...(input.aisleDirection !== undefined && {
+        aisleDirection,
+      }),
+
+      aisleAfterCol: normalizedAisleAfterCol,
+
+      aisleAfterRow: normalizedAisleAfterRow,
 
       ...(input.status !== undefined && {
         status: input.status,
@@ -382,15 +549,7 @@ export async function updateSeatLayout(
 
       updatedAt: new Date(),
     })
-    .where(
-      and(
-        eq(seatLayouts.id, seatId),
-
-        // IMPORTANT:
-        // Prevent Admin B from updating Admin A's layout
-        eq(seatLayouts.adminId, adminId),
-      ),
-    )
+    .where(and(eq(seatLayouts.id, seatId), eq(seatLayouts.adminId, adminId)))
     .returning();
 
   if (!updated) {
@@ -425,15 +584,7 @@ export async function deleteSeatLayout(seatId: string, adminId: string) {
 
   const [deleted] = await db
     .delete(seatLayouts)
-    .where(
-      and(
-        eq(seatLayouts.id, seatId),
-
-        // IMPORTANT:
-        // Admin can only delete their own layout
-        eq(seatLayouts.adminId, adminId),
-      ),
-    )
+    .where(and(eq(seatLayouts.id, seatId), eq(seatLayouts.adminId, adminId)))
     .returning({
       id: seatLayouts.id,
 

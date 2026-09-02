@@ -315,7 +315,7 @@ export default function Header({
               flexWrap: "nowrap",
             }}
           >
-            {displayBusinessName && !isMobile && (
+            {displayBusinessName && (
               <span
                 style={{
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
@@ -327,7 +327,7 @@ export default function Header({
                   flexShrink: 0,
                 }}
               >
-                {displayBusinessName}
+                {displayBusinessName} - 
               </span>
             )}
             <h1

@@ -1,5 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { showNotify } from "notify-bolt";
+import { showAccessDeniedModal, showSessionExpiredModal } from "@/lib/notify";
 
 // ── Default Error Messages 
 export const ERROR_MESSAGES = {
@@ -108,17 +109,29 @@ axiosInstance.interceptors.response.use(
         break;
       case 401: {
         const isLoginRequest = error.config?.url?.includes("/auth/login");
-        const title = isLoginRequest ? "Login Failed" : "Session Expired";
-        showErrorOnce(serverMessage || (isLoginRequest ? "Invalid email or password." : ERROR_MESSAGES.UNAUTHORIZED), title);
-        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-          localStorage.removeItem("token");
-          sessionStorage.removeItem("token");
+        if (isLoginRequest) {
+          // Login page failure — plain toast is fine (user is already on /login)
+          showErrorOnce(
+            serverMessage || "Invalid email or password.",
+            "Login Failed"
+          );
+        } else {
+          // Unauthorized while inside the dashboard —
+          // Persistent blocking modal: outside click disabled, no close icon, OK redirects to /login
+          showSessionExpiredModal(
+            serverMessage || ERROR_MESSAGES.UNAUTHORIZED
+          );
         }
         break;
       }
-      case 403:
-        showErrorOnce(serverMessage || ERROR_MESSAGES.FORBIDDEN, "Access Denied");
+      case 403: {
+        // All 403 Forbidden errors show the persistent blocking modal:
+        // outside click disabled, no close icon, OK redirects to /login
+        showAccessDeniedModal(
+          serverMessage || ERROR_MESSAGES.FORBIDDEN
+        );
         break;
+      }
       case 404:
         showErrorOnce(serverMessage || ERROR_MESSAGES.RESOURCE_NOT_FOUND, "Not Found");
         break;

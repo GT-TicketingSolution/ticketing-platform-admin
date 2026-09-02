@@ -1,11 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/db";
 
 import {
   systemModules,
-  managerSystemModulePermissions,
   adminSystemModulePermissions,
+  managerSystemModulePermissions,
   staffSystemModulePermissions,
 } from "@/db/schema";
 
@@ -23,7 +23,6 @@ export async function GET(request: Request) {
     // =====================================================
 
     const auth = await requireAuth(request);
-
     const user = auth.user;
 
     // =====================================================
@@ -31,7 +30,55 @@ export async function GET(request: Request) {
     // =====================================================
 
     if (user.role === "ADMIN") {
-      const modules = await db
+      /*
+       * Admins get:
+       *
+       * 1. Default modules available to all admins
+       * 2. Any additional modules explicitly assigned
+       *    to this specific admin
+       *
+       * Duplicate modules are removed.
+       */
+
+      const defaultAdminModules = [
+        "DASHBOARD",
+        "BOOKINGS",
+        "STAFF_MANAGEMENT",
+        "ATTRACTION_MANAGEMENT",
+        "REPORTS",
+        "TRANSACTIONS",
+        "INVENTORY_CAPACITY",
+        "SEAT_MANAGEMENT",
+        "INVOICES",
+        "MANAGER_MANAGEMENT",
+      ];
+
+      // ---------------------------------------------------
+      // Get default admin modules
+      // ---------------------------------------------------
+
+      const defaultModules = await db
+        .select({
+          id: systemModules.id,
+          key: systemModules.key,
+          name: systemModules.name,
+          description: systemModules.description,
+          isActive: systemModules.isActive,
+          sortOrder: systemModules.sortOrder,
+        })
+        .from(systemModules)
+        .where(
+          and(
+            inArray(systemModules.key, defaultAdminModules),
+            eq(systemModules.isActive, "ACTIVE"),
+          ),
+        );
+
+      // ---------------------------------------------------
+      // Get modules specifically assigned to this admin
+      // ---------------------------------------------------
+
+      const assignedModules = await db
         .select({
           id: systemModules.id,
           key: systemModules.key,
@@ -50,8 +97,29 @@ export async function GET(request: Request) {
             eq(adminSystemModulePermissions.adminId, user.id),
             eq(systemModules.isActive, "ACTIVE"),
           ),
-        )
-        .orderBy(systemModules.sortOrder);
+        );
+
+      // ---------------------------------------------------
+      // Merge default + assigned modules
+      // ---------------------------------------------------
+
+      const modulesMap = new Map();
+
+      for (const module of defaultModules) {
+        modulesMap.set(module.id, module);
+      }
+
+      for (const module of assignedModules) {
+        modulesMap.set(module.id, module);
+      }
+
+      // ---------------------------------------------------
+      // Sort by sortOrder
+      // ---------------------------------------------------
+
+      const modules = Array.from(modulesMap.values()).sort(
+        (a, b) => a.sortOrder - b.sortOrder,
+      );
 
       return success(modules);
     }
@@ -64,10 +132,6 @@ export async function GET(request: Request) {
       /*
        * Managers can only see modules explicitly assigned
        * to the authenticated manager.
-       *
-       * IMPORTANT:
-       * managerId comes from the authenticated JWT/session.
-       * It is NOT accepted from query parameters.
        */
 
       const modules = await db
@@ -103,8 +167,6 @@ export async function GET(request: Request) {
       /*
        * Staff can only see modules explicitly assigned
        * to the authenticated staff member.
-       *
-       * staffId comes from the authenticated user.
        */
 
       const modules = await db

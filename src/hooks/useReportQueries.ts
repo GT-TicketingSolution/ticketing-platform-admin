@@ -275,37 +275,37 @@ export function buildOverallSummary(
       const categoryBreakdown: TicketCategoryStat[] =
         item.ticketCategorySales && item.ticketCategorySales.length > 0
           ? item.ticketCategorySales.map((c: any) => ({
-              category: ticketTypeToCategory(c.category),
-              count: Number(c.quantity ?? c.count ?? 0),
-              revenue: Number(c.revenue ?? 0),
-              unitPrice: Number(c.rate ?? (c.quantity > 0 ? Math.round(c.revenue / c.quantity) : 0)),
-            }))
+            category: ticketTypeToCategory(c.category),
+            count: Number(c.quantity ?? c.count ?? 0),
+            revenue: Number(c.revenue ?? 0),
+            unitPrice: Number(c.rate ?? (c.quantity > 0 ? Math.round(c.revenue / c.quantity) : 0)),
+          }))
           : [];
 
       // Map item-specific payment distribution if returned by backend
       const paymentBreakdown: PaymentModeStat[] =
         item.paymentDistribution && item.paymentDistribution.length > 0
           ? item.paymentDistribution.map((p: any) => ({
-              mode: p.mode || p.paymentMode || "-",
-              count: Number(p.transactions ?? p.count ?? 0),
-              revenue: Number(p.amount ?? p.revenue ?? 0),
-            }))
+            mode: p.mode || p.paymentMode || "-",
+            count: Number(p.transactions ?? p.count ?? 0),
+            revenue: Number(p.amount ?? p.revenue ?? 0),
+          }))
           : [];
 
       // Map item-specific recent transactions if returned by backend
       const transactions: any[] =
         item.recentTransactions && item.recentTransactions.length > 0
           ? item.recentTransactions.map((t: any) => ({
-              id: t.transactionId || t.id || "",
-              transactionId: t.transactionId || t.id || "",
-              customerName: t.customerName || "-",
-              dateTime: t.dateTime ? new Date(t.dateTime).toLocaleString("en-IN") : "-",
-              transactionDate: t.dateTime ? new Date(t.dateTime).toISOString() : "",
-              paymentMode: t.paymentMode || "-",
-              amount: Number(t.amount ?? 0),
-              status: t.status || "SUCCESSFUL",
-              attraction: { name: item.attractionName || attrObj.name || "-" },
-            }))
+            id: t.transactionId || t.id || "",
+            transactionId: t.transactionId || t.id || "",
+            customerName: t.customerName || "-",
+            dateTime: t.dateTime ? new Date(t.dateTime).toLocaleString("en-IN") : "-",
+            transactionDate: t.dateTime ? new Date(t.dateTime).toISOString() : "",
+            paymentMode: t.paymentMode || "-",
+            amount: Number(t.amount ?? 0),
+            status: t.status || "SUCCESSFUL",
+            attraction: { name: item.attractionName || attrObj.name || "-" },
+          }))
           : [];
 
       return {
@@ -328,6 +328,7 @@ export function buildOverallSummary(
           hasSeating: attrObj.hasSeating || false,
           seatLayoutId: attrObj.seatLayoutId || null,
           seatLayouts: attrObj.seatLayouts || [],
+          seating: master.seating ?? { adult: 1, child: 1, student: 1, senior: 1, foreigner: 1 },
         },
         totalRevenue: item.totalRevenue,
         totalTicketsSold: item.totalTickets,
@@ -360,6 +361,7 @@ export function buildOverallSummary(
         hasSeating: master.hasSeating || false,
         seatLayoutId: master.seatLayoutId || null,
         seatLayouts: master.seatLayouts || [],
+        seating: master.seating ?? { adult: 1, child: 1, student: 1, senior: 1, foreigner: 1 },
       },
       totalRevenue: 0,
       totalTicketsSold: 0,

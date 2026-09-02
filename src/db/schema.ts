@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { AnyPgColumn } from "drizzle-orm/pg-core";
+
 /* =========================================================
    ENUMS
 ========================================================= */
@@ -70,6 +71,11 @@ export const complimentaryPassStatusEnum = pgEnum("complimentary_pass_status", [
 export const referenceStatusEnum = pgEnum("reference_status", [
   "ACTIVE",
   "INACTIVE",
+]);
+
+export const aisleDirectionEnum = pgEnum("aisle_direction", [
+  "VERTICAL",
+  "HORIZONTAL",
 ]);
 
 /* =========================================================
@@ -369,7 +375,7 @@ export const attractions = pgTable(
   },
 
   (table) => ({
-    nameIdx: index("attractions_name_idx").on(table.name),
+    nameUniqueIdx: uniqueIndex("attractions_name_unique_idx").on(table.name),
     adminIdx: index("attractions_admin_idx").on(table.adminId),
     statusIdx: index("attractions_status_idx").on(table.status),
   }),
@@ -402,11 +408,7 @@ export const bookings = pgTable(
       length: 20,
     }),
 
-    attractionId: uuid("attraction_id")
-      .notNull()
-      .references(() => attractions.id, {
-        onDelete: "restrict",
-      }),
+    attractionId: uuid("attraction_ids").array().notNull(),
 
     visitAt: timestamp("visit_at", {
       withTimezone: true,
@@ -463,7 +465,23 @@ export const bookings = pgTable(
     amountPaid: numeric("amount_paid", {
       precision: 12,
       scale: 2,
-    }).notNull(),
+    })
+      .notNull()
+      .default("0"),
+
+    amountReceived: numeric("amount_received", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+
+    returnAmount: numeric("return_change", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
 
     createdBy: uuid("created_by").references(() => users.id, {
       onDelete: "set null",
@@ -500,8 +518,6 @@ export const bookings = pgTable(
     customerNameIdx: index("bookings_customer_name_idx").on(table.customerName),
 
     mobileIdx: index("bookings_mobile_idx").on(table.mobileNumber),
-
-    attractionIdx: index("bookings_attraction_idx").on(table.attractionId),
 
     visitAtIdx: index("bookings_visit_at_idx").on(table.visitAt),
 
@@ -1180,7 +1196,13 @@ export const seatLayouts = pgTable(
 
     hasAisle: boolean("has_aisle").notNull(),
 
-    aisleAfterCol: integer("aisle_after_col").notNull().default(0),
+    aisleDirection: aisleDirectionEnum("aisle_direction")
+      .notNull()
+      .default("VERTICAL"),
+
+    aisleAfterCol: integer("aisle_after_col"),
+
+    aisleAfterRow: integer("aisle_after_row"),
 
     status: seatLayoutStatusEnum("status").notNull().default("ACTIVE"),
 
@@ -1198,10 +1220,6 @@ export const seatLayouts = pgTable(
   },
 
   (table) => ({
-    // --------------------------------------------------
-    // INDEXES
-    // --------------------------------------------------
-
     adminIdx: index("seat_layouts_admin_idx").on(table.adminId),
 
     nameIdx: index("seat_layouts_name_idx").on(table.name),
@@ -1363,6 +1381,12 @@ export const attractionManagement = pgTable(
       length: 100,
     }),
 
+    duration: integer("duration"),
+
+    durationUnit: varchar("duration_unit", {
+      length: 20,
+    }),
+
     adultPrice: numeric("adult_price", {
       precision: 12,
       scale: 2,
@@ -1443,6 +1467,30 @@ export const attractionManagement = pgTable(
     ).on(table.adminId, table.attractionId),
   }),
 );
+
+export const attractionSeats = pgTable("attraction_seats", {
+  id: uuid("id").defaultRandom().primaryKey(),
+
+  attractionId: uuid("attraction_id")
+    .notNull()
+    .references(() => attractions.id, {
+      onDelete: "cascade",
+    }),
+
+  seatLayoutId: uuid("seat_layout_id")
+    .notNull()
+    .references(() => seatLayouts.id, {
+      onDelete: "cascade",
+    }),
+
+  name: varchar("name", {
+    length: 100,
+  }).notNull(),
+
+  seatOrder: integer("seat_order").notNull(),
+
+  isActive: boolean("is_active").notNull().default(true),
+});
 
 /* =========================================================
    CUSTOMERS
@@ -1725,6 +1773,12 @@ export const attractionManagementSeatLayouts = pgTable(
     /** How many times this layout is allocated to the attraction (quantity semantics). */
     quantity: integer("quantity").notNull().default(1),
 
+    /** Position/order of this allocation (for display order when fetching). */
+    position: integer("position").notNull().default(0),
+
+    /** Whether this allocation is enabled (true) or disabled (false). */
+    isEnabled: boolean("is_enabled").notNull().default(true),
+
     createdAt: timestamp("created_at", {
       withTimezone: true,
     })
@@ -1732,9 +1786,9 @@ export const attractionManagementSeatLayouts = pgTable(
       .notNull(),
   },
   (table) => ({
-    attractionSeatLayoutUnique: unique(
-      "attraction_management_seat_layout_unique",
-    ).on(table.attractionManagementId, table.seatLayoutId),
+    // REMOVED: attractionSeatLayoutUnique
+    // Reason: Now supports multiple allocations of same layout (with different positions/enabled state)
+    // E.g., can have 3 rows with same (attractionManagementId, seatLayoutId) but different positions
 
     attractionManagementIdx: index(
       "attraction_management_seat_layout_attraction_idx",
@@ -1830,4 +1884,55 @@ export const adminSystemModulePermissions = pgTable(
       table.moduleId,
     ),
   ],
+);
+
+export const seatBookingHistory = pgTable(
+  "seat_booking_history",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    attractionId: uuid("attraction_id")
+      .notNull()
+      .references(() => attractions.id, {
+        onDelete: "cascade",
+      }),
+
+    tripNo: integer("trip_no").notNull(),
+
+    seatNo: integer("seat_no").notNull(),
+
+    attractionSeatId: uuid("attraction_seat_id")
+      .notNull()
+      .references(() => attractionSeats.id, {
+        onDelete: "cascade",
+      }),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    attractionIdx: index("seat_booking_history_attraction_idx").on(
+      table.attractionId,
+    ),
+
+    tripIdx: index("seat_booking_history_trip_idx").on(table.tripNo),
+
+    attractionSeatIdx: index("seat_booking_history_attraction_seat_idx").on(
+      table.attractionSeatId,
+    ),
+
+    attractionTripIdx: index("seat_booking_history_attraction_trip_idx").on(
+      table.attractionId,
+      table.tripNo,
+    ),
+  }),
 );

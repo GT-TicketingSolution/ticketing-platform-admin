@@ -16,7 +16,7 @@ export interface AttractionPermission {
   modules: string[];
 }
 
-export type ManagerStatus = "ACTIVE" | "DISABLED" | "SUSPENDED" | "Active" | "Inactive" | "Disabled";
+export type ManagerStatus = "ACTIVE" | "INACTIVE" | "Active" | "Inactive";
 
 // ─── Manager entity matching API response
 export interface ManagerUser {

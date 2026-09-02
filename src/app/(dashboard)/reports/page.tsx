@@ -265,6 +265,7 @@ export default function ReportsPage() {
           hasSeating: selectedAttractionObj.hasSeating || false,
           seatLayoutId: selectedAttractionObj.seatLayoutId || null,
           seatLayouts: selectedAttractionObj.seatLayouts || [],
+          seating: selectedAttractionObj.seating ?? { adult: 1, child: 1, student: 1, senior: 1, foreigner: 1 },
         },
         totalRevenue: summaryData?.totalRevenue ?? 0,
         totalTicketsSold: summaryData?.totalTickets ?? 0,
@@ -272,9 +273,9 @@ export default function ReportsPage() {
         avgOrderValue:
           (summaryData?.totalBookings ?? 0) > 0
             ? Math.round(
-                (summaryData?.totalRevenue ?? 0) /
-                  (summaryData?.totalBookings ?? 1)
-              )
+              (summaryData?.totalRevenue ?? 0) /
+              (summaryData?.totalBookings ?? 1)
+            )
             : 0,
         categoryBreakdown: [],
         paymentBreakdown: [],

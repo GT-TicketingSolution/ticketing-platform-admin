@@ -79,6 +79,7 @@ export default function AdminDashboardView() {
 
   const totalRecentManagers = data?.recentManagers?.total ?? recentManagers.length;
 
+
   const handleExportXLS = () => {
     const selectedAttractionLabel =
       selectedAttraction === "All"

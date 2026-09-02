@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Eye, Pencil, Trash2, Armchair, CheckCircle2, XCircle } from "lucide-react";
+import { Eye, Pencil, Trash2, CheckCircle2, XCircle } from "lucide-react";
 import { SeatConfigData } from "../modals/CreateSeatModal";
 
 interface SeatCardProps {
@@ -11,12 +11,34 @@ interface SeatCardProps {
   onDelete: (seat: SeatConfigData) => void;
 }
 
-export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardProps) {
-  const totalSeats = seat.rows * seat.cols;
+export default function SeatCard({
+  seat,
+  onView,
+  onEdit,
+  onDelete,
+}: SeatCardProps) {
+  const rows = Math.max(1, seat.rows || 1);
+  const cols = Math.max(1, seat.cols || 1);
 
-  // Mini preview calculation (cap rows/cols for the 150px thumbnail)
-  const previewRows = Math.min(seat.rows, 5);
-  const previewCols = Math.min(seat.cols, 6);
+  const totalSeats = rows * cols;
+  const isSingleSeat = rows === 1 && cols === 1;
+
+  // ============================================================
+  // AISLE DATA
+  // ============================================================
+
+  const hasAisle = Boolean(seat.hasAisle);
+
+  const aisleType = seat.aisleDirection || "VERTICAL";
+
+  const aislePosition =
+    aisleType === "HORIZONTAL"
+      ? (seat.aisleAfterRow ?? 0)
+      : (seat.aisleAfterCol ?? 0);
+
+  // Mini preview calculation
+  const previewRows = Math.min(rows, 5);
+  const previewCols = Math.min(cols, 6);
 
   return (
     <div
@@ -39,7 +61,10 @@ export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardPro
       className="seat-card-item"
     >
       <div>
-        {/* Top: Mini Seat Layout Preview */}
+        {/* ======================================================
+            MINI SEAT LAYOUT PREVIEW
+        ====================================================== */}
+
         <div
           style={{
             position: "relative",
@@ -57,44 +82,143 @@ export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardPro
           }}
         >
           {/* Visual Mini Seat Grid */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px", margin: "auto" }}>
-            {Array.from({ length: previewRows }, (_, rIdx) => (
-              <div key={`mini-r-${rIdx}`} style={{ display: "flex", alignItems: "center", gap: "3px" }}>
-                {Array.from({ length: previewCols }, (_, cIdx) => {
-                  const colNum = cIdx + 1;
-                  const isAisle = seat.hasAisle && seat.aisleAfterCol === colNum;
 
-                  return (
-                    <React.Fragment key={`mini-c-${rIdx}-${cIdx}`}>
-                      <div
-                        style={{
-                          width: "18px",
-                          height: "14px",
-                          background: "#F4BC43",
-                          borderRadius: "2px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      />
-                      {isAisle && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "4px",
+              margin: "auto",
+            }}
+          >
+            {/* ==================================================
+                HORIZONTAL AISLE AT START
+            ================================================== */}
+
+            {hasAisle && aisleType === "HORIZONTAL" && aislePosition === 0 && (
+              <div
+                style={{
+                  width: "100%",
+                  height: "4px",
+                  borderBottom: "1px dashed rgba(255,255,255,0.6)",
+                  margin: "1px 0",
+                }}
+              />
+            )}
+
+            {/* ==================================================
+                ROWS
+            ================================================== */}
+
+            {Array.from({ length: previewRows }, (_, rIdx) => {
+              const rowNum = rIdx + 1;
+
+              const isHorizontalAisle =
+                hasAisle &&
+                aisleType === "HORIZONTAL" &&
+                aislePosition === rowNum;
+
+              return (
+                <React.Fragment key={`mini-r-${rIdx}`}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "3px",
+                    }}
+                  >
+                    {/* ==================================================
+                        VERTICAL AISLE AT START
+                    ================================================== */}
+
+                    {hasAisle &&
+                      aisleType === "VERTICAL" &&
+                      aislePosition === 0 && (
                         <div
                           style={{
-                            width: "8px",
+                            width: "4px",
                             height: "14px",
-                            borderRight: "1px dashed rgba(255,255,255,0.4)",
+                            borderRight: "1px dashed rgba(255,255,255,0.6)",
                             margin: "0 2px",
                           }}
                         />
                       )}
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-            ))}
+
+                    {/* ==================================================
+                        COLUMNS
+                    ================================================== */}
+
+                    {Array.from({ length: previewCols }, (_, cIdx) => {
+                      const colNum = cIdx + 1;
+
+                      const isVerticalAisle =
+                        hasAisle &&
+                        aisleType === "VERTICAL" &&
+                        aislePosition === colNum;
+
+                      return (
+                        <React.Fragment key={`mini-c-${rIdx}-${cIdx}`}>
+                          {/* Seat */}
+
+                          <div
+                            style={{
+                              width: isSingleSeat ? "32px" : "18px",
+                              height: isSingleSeat ? "24px" : "14px",
+                              background: "#F4BC43",
+                              borderRadius: "2px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: isSingleSeat ? "9px" : "7px",
+                              fontWeight: 800,
+                              color: "#011B2F",
+                            }}
+                          >
+                            {isSingleSeat ? "01" : ""}
+                          </div>
+
+                          {/* ==================================================
+                                VERTICAL AISLE AFTER COLUMN
+                            ================================================== */}
+
+                          {isVerticalAisle && (
+                            <div
+                              style={{
+                                width: "6px",
+                                height: "14px",
+                                borderRight: "1px dashed rgba(255,255,255,0.5)",
+                                margin: "0 2px",
+                              }}
+                            />
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+
+                  {/* ==================================================
+                      HORIZONTAL AISLE AFTER ROW
+                  ================================================== */}
+
+                  {isHorizontalAisle && (
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "4px",
+                        borderBottom: "1px dashed rgba(255,255,255,0.5)",
+                        margin: "1px 0",
+                      }}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
           </div>
 
-          {/* Subtitle tag */}
+          {/* ======================================================
+              PREVIEW FOOTER
+          ====================================================== */}
+
           <div
             style={{
               position: "absolute",
@@ -107,19 +231,26 @@ export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardPro
               fontSize: "9px",
               color: "#FFFFFF",
               fontWeight: 600,
-              background: "rgba(0,0,0,0.4)",
+              background: "rgba(0,0,0,0.5)",
               padding: "2px 6px",
               borderRadius: "4px",
             }}
           >
-            <span>{seat.rows}R × {seat.cols}C</span>
-            <span>{totalSeats} Seats</span>
+            <span>{isSingleSeat ? "Single Seat" : `${rows}R × ${cols}C`}</span>
+
+            <span>
+              {totalSeats} {totalSeats === 1 ? "Seat" : "Seats"}
+            </span>
           </div>
         </div>
 
-        {/* Content Details */}
+        {/* ======================================================
+            CONTENT DETAILS
+        ====================================================== */}
+
         <div style={{ padding: "10px 8px 4px 8px" }}>
-          {/* Name of the seat */}
+          {/* Seat Name */}
+
           <h3
             style={{
               margin: 0,
@@ -136,8 +267,18 @@ export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardPro
             {seat.name}
           </h3>
 
-          {/* Status badge */}
-          <div style={{ display: "flex", alignItems: "center", gap: "4px", marginTop: "4px" }}>
+          {/* ==================================================
+              STATUS BADGE
+          ================================================== */}
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              marginTop: "4px",
+            }}
+          >
             {String(seat.status || "").toUpperCase() === "ACTIVE" ? (
               <span
                 style={{
@@ -175,19 +316,53 @@ export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardPro
             )}
           </div>
 
-          {/* Row & Column details */}
-          <div style={{ marginTop: "8px", fontSize: "10px", color: "rgba(81,82,82,0.88)", lineHeight: "14px" }}>
-            <span style={{ fontWeight: 600 }}>Rows:</span> {seat.rows} &bull; <span style={{ fontWeight: 600 }}>Cols:</span> {seat.cols}
+          {/* ==================================================
+              ROW & COLUMN DETAILS
+          ================================================== */}
+
+          <div
+            style={{
+              marginTop: "8px",
+              fontSize: "10px",
+              color: "rgba(81,82,82,0.88)",
+              lineHeight: "14px",
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>Rows:</span> {rows}
+            {" • "}
+            <span style={{ fontWeight: 600 }}>Cols:</span> {cols}
           </div>
 
-          {/* Aisle details */}
-          <div style={{ marginTop: "4px", fontSize: "10px", color: "rgba(81,82,82,0.88)", lineHeight: "14px" }}>
-            <span style={{ fontWeight: 600 }}>Aisle:</span> {seat.hasAisle ? `Yes (After Col ${seat.aisleAfterCol})` : "No Aisle"}
+          {/* ==================================================
+              AISLE DETAILS
+          ================================================== */}
+
+          <div
+            style={{
+              marginTop: "4px",
+              fontSize: "10px",
+              color: "rgba(81,82,82,0.88)",
+              lineHeight: "14px",
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>Aisle:</span>{" "}
+            {hasAisle
+              ? `${aisleType === "VERTICAL" ? "Vertical" : "Horizontal"} (${
+                  aislePosition === 0
+                    ? "Start"
+                    : aisleType === "VERTICAL"
+                      ? `Col C${aislePosition}`
+                      : `Row R${aislePosition}`
+                })`
+              : "No Aisle"}
           </div>
         </div>
       </div>
 
-      {/* Action Buttons: View, Edit, Delete */}
+      {/* ========================================================
+          ACTION BUTTONS
+      ======================================================== */}
+
       <div
         style={{
           display: "flex",
@@ -197,7 +372,10 @@ export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardPro
           padding: "0 4px 4px 4px",
         }}
       >
-        {/* View */}
+        {/* ======================================================
+            VIEW
+        ====================================================== */}
+
         <button
           type="button"
           onClick={() => onView(seat)}
@@ -219,10 +397,22 @@ export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardPro
           title="View Seat Layout"
         >
           <Eye size={12} color="#0C2A42" strokeWidth={2} />
-          <span style={{ fontWeight: 600, fontSize: "11px", color: "#0C2A42" }}>View</span>
+
+          <span
+            style={{
+              fontWeight: 600,
+              fontSize: "11px",
+              color: "#0C2A42",
+            }}
+          >
+            View
+          </span>
         </button>
 
-        {/* Edit */}
+        {/* ======================================================
+            EDIT
+        ====================================================== */}
+
         <button
           type="button"
           onClick={() => onEdit(seat)}
@@ -244,10 +434,22 @@ export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardPro
           title="Edit Seat Layout"
         >
           <Pencil size={12} color="#2372A5" strokeWidth={2} />
-          <span style={{ fontWeight: 600, fontSize: "11px", color: "#2372A5" }}>Edit</span>
+
+          <span
+            style={{
+              fontWeight: 600,
+              fontSize: "11px",
+              color: "#2372A5",
+            }}
+          >
+            Edit
+          </span>
         </button>
 
-        {/* Delete */}
+        {/* ======================================================
+            DELETE
+        ====================================================== */}
+
         <button
           type="button"
           onClick={() => onDelete(seat)}
@@ -269,33 +471,55 @@ export default function SeatCard({ seat, onView, onEdit, onDelete }: SeatCardPro
           title="Delete Seat Layout"
         >
           <Trash2 size={12} color="#DC2626" strokeWidth={2} />
-          <span style={{ fontWeight: 600, fontSize: "11px", color: "#DC2626" }}>Delete</span>
+
+          <span
+            style={{
+              fontWeight: 600,
+              fontSize: "11px",
+              color: "#DC2626",
+            }}
+          >
+            Delete
+          </span>
         </button>
       </div>
+
+      {/* ========================================================
+          HOVER STYLES
+      ======================================================== */}
 
       <style>{`
         .seat-card-item:hover {
           transform: translateY(-2px);
           box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
         }
+
         .btn-view:hover {
           background: #0C2A42 !important;
         }
-        .btn-view:hover span, .btn-view:hover svg {
+
+        .btn-view:hover span,
+        .btn-view:hover svg {
           color: #FFFFFF !important;
           stroke: #FFFFFF !important;
         }
+
         .btn-edit:hover {
           background: #2372A5 !important;
         }
-        .btn-edit:hover span, .btn-edit:hover svg {
+
+        .btn-edit:hover span,
+        .btn-edit:hover svg {
           color: #FFFFFF !important;
           stroke: #FFFFFF !important;
         }
+
         .btn-delete:hover {
           background: #DC2626 !important;
         }
-        .btn-delete:hover span, .btn-delete:hover svg {
+
+        .btn-delete:hover span,
+        .btn-delete:hover svg {
           color: #FFFFFF !important;
           stroke: #FFFFFF !important;
         }

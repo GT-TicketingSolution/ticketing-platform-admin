@@ -9,14 +9,20 @@ import {
   Minus,
   Users,
   X,
+  User,
 } from "lucide-react";
-import { useTicketingAttractions, useTicketingSlots, useTicketingSeats, TicketingAttraction } from "@/hooks/useTicketingBookingQueries";
+import {
+  useTicketingAttractions,
+  useAttractionTripNo,
+  useAttractionSeatAvailability,
+  TicketingAttraction,
+} from "@/hooks/useTicketingBookingQueries";
 import CustomerInfoView from "./CustomerInfoView";
 
 export const SIDEBAR_COLLAPSE_EVENT = "tbv:sidebar-collapse";
 
 function normalizeAttractionImage(img?: string | null): string {
-  if (!img) return "/Assets/Attractions/Toy_Train.jpg";
+  if (!img || !img.trim()) return "";
   return img.replace("/Assets/Attraction/", "/Assets/Attractions/");
 }
 
@@ -88,7 +94,7 @@ export const VISITOR_CATEGORIES: VisitorCategoryMeta[] = [
   { key: "child", label: "Child", subLabel: "5–12 yrs", image: "/Assets/Visitors/Child.jpg", defaultPrice: 50 },
   { key: "student", label: "Student", subLabel: "ID Required", image: "/Assets/Visitors/Student.jpg", defaultPrice: 60 },
   { key: "foreigner", label: "Foreigner", subLabel: "Passport verification", image: "/Assets/Visitors/Foreigner.jpg", defaultPrice: 500 },
-  { key: "senior", label: "Senior Citizen", subLabel: "60+ yrs", image: "", defaultPrice: 75 },
+  { key: "senior", label: "Senior Citizen", subLabel: "60+ yrs", image: "/Assets/Visitors/Senior.jpg", defaultPrice: 75 },
 ];
 
 // Re-export type alias so remaining code can use it without change
@@ -103,22 +109,51 @@ const EMPTY_QTY: Record<CategoryKey, number> = { adult: 0, child: 0, senior: 0, 
 const GST_RATE = 0.18;
 
 function calcEntry(entry: CartEntry) {
-  const subtotal = VISITOR_CATEGORIES.reduce(
-    (s, c) => s + (entry.quantities[c.key] || 0) * (entry.attraction.pricing[c.key] ?? c.defaultPrice), 0
+  const subtotal = parseFloat(
+    VISITOR_CATEGORIES.reduce(
+      (s, c) => s + (entry.quantities[c.key] || 0) * (entry.attraction.pricing[c.key] ?? c.defaultPrice), 0
+    ).toFixed(2)
   );
-  const gst = parseFloat((subtotal * GST_RATE).toFixed(2));
-  const rawTotal = subtotal + gst;
-  const rounded = Math.round(rawTotal);
-  const roundOff = parseFloat((rounded - rawTotal).toFixed(2));
-  const gstAdj = -parseFloat((gst - Math.floor(gst)).toFixed(2));
-  return { subtotal, gst, gstAdj, roundOff, total: rounded };
+  const roundedSubtotal = Math.round(subtotal);
+  const roundOff = parseFloat((roundedSubtotal - subtotal).toFixed(2));
+  const rawGst = parseFloat((subtotal * GST_RATE).toFixed(2));
+  const roundedGst = Math.round(rawGst);
+  const gstAdj = parseFloat((roundedGst - rawGst).toFixed(2));
+  const total = parseFloat((subtotal + rawGst + gstAdj + roundOff).toFixed(2));
+  return { subtotal, gst: rawGst, gstAdj, roundOff, total };
+}
+
+function formatRoundedPrice(price: number): number {
+  if (price <= 0) return 0;
+  // If price has decimals, round up to next 10 (e.g. 98.5/98.7 -> 100, 12.3 -> 20, 50 -> 50)
+  return price % 10 !== 0 ? Math.ceil(price / 10) * 10 : price;
 }
 
 function getAttractionBaseRate(attraction: Attraction) {
-  const prices = Object.values(attraction.pricing).filter((p) => p > 0);
+  const prices = Object.values(attraction.pricing)
+    .filter((p) => p > 0)
+    .map((p) => formatRoundedPrice(p));
   const minP = prices.length > 0 ? Math.min(...prices) : 0;
-  const adultP = attraction.pricing.adult || (prices.length > 0 ? Math.max(...prices) : 0);
+  const rawAdultP = attraction.pricing.adult || (prices.length > 0 ? Math.max(...prices) : 0);
+  const adultP = formatRoundedPrice(rawAdultP);
   return `₹${minP}–₹${adultP} / person`;
+}
+
+/** Format duration value and unit nicely (e.g. 30, "minutes" -> "30 minutes") */
+function formatAttractionDuration(duration?: number | string | null, durationUnit?: string | null): string | null {
+  if (duration === null || duration === undefined || duration === "") return null;
+  const num = typeof duration === "number" ? duration : parseInt(String(duration), 10);
+  if (isNaN(num)) {
+    return String(duration);
+  }
+  const unitStr = (durationUnit || "minutes").trim().toLowerCase();
+  if (unitStr.startsWith("hour") || unitStr === "hr" || unitStr === "hrs") {
+    return `${num} ${num === 1 ? "hour" : "hours"}`;
+  }
+  if (unitStr.startsWith("min")) {
+    return `${num} ${num === 1 ? "minute" : "minutes"}`;
+  }
+  return `${num} ${durationUnit || "minutes"}`;
 }
 
 /** Parse duration in minutes from a displayTime like "10:00 AM – 10:20 AM" */
@@ -141,18 +176,18 @@ function parseDurationFromDisplayTime(displayTime: string): string | null {
     if (start === null || end === null) return null;
     const diff = end - start;
     if (diff <= 0) return null;
-    return `${diff}min / trip`;
+    return `${diff} minutes`;
   } catch {
     return null;
   }
 }
 
 // ── Castle Sketch Illustration Component ──────────────────────────────────────
-function CastleIllustration() {
+function CastleIllustration({ width = 105, height = 64 }: { width?: number | string; height?: number | string }) {
   return (
     <svg
-      width="105"
-      height="64"
+      width={width}
+      height={height}
       viewBox="0 0 120 80"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -296,15 +331,18 @@ function GridAttractionCard({
         position: "relative",
       }}
     >
-      {/* Cover Image */}
+      {/* Cover Image or Castle Sketch Fallback */}
       <div
         style={{
           width: "100%",
           height: "145px",
-          background: "linear-gradient(135deg,#0C2A42 0%,#2372A5 100%)",
+          background: imageSrc && !imgErr ? "linear-gradient(135deg,#0C2A42 0%,#2372A5 100%)" : "#F8FAFC",
           position: "relative",
           flexShrink: 0,
           overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
         {imageSrc && !imgErr ? (
@@ -323,13 +361,12 @@ function GridAttractionCard({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#FFFFFF",
-              fontSize: "28px",
-              fontWeight: 800,
-              opacity: 0.6,
+              background: "#F8FAFC",
+              padding: "10px",
+              boxSizing: "border-box",
             }}
           >
-            {attraction.name.slice(0, 2).toUpperCase()}
+            <CastleIllustration width={120} height={76} />
           </div>
         )}
       </div>
@@ -388,8 +425,8 @@ function VerticalAttractionCard({
       className="attraction-vert-card"
       style={{
         width: "100%",
-        background: "#FFFFFF",
-        border: "1.5px solid rgba(179,175,175,0.35)",
+        background: isActive ? "rgba(244,188,67,0.08)" : "#FFFFFF",
+        border: isActive ? "2px solid #F4BC43" : "1.5px solid rgba(179,175,175,0.35)",
         borderRadius: "10px",
         padding: "8px 10px",
         cursor: "pointer",
@@ -409,9 +446,13 @@ function VerticalAttractionCard({
           height: "42px",
           borderRadius: "6px",
           overflow: "hidden",
-          background: "linear-gradient(135deg,#0C2A42 0%,#2372A5 100%)",
+          background: imageSrc && !imgErr ? "linear-gradient(135deg,#0C2A42 0%,#2372A5 100%)" : "#F8FAFC",
           position: "relative",
           flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          border: imageSrc && !imgErr ? "none" : "1px solid #E2E8F0",
         }}
       >
         {imageSrc && !imgErr ? (
@@ -430,18 +471,17 @@ function VerticalAttractionCard({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#fff",
-              fontSize: "10px",
-              fontWeight: 700,
+              transform: "scale(0.35)",
+              transformOrigin: "center",
             }}
           >
-            {attraction.name.slice(0, 3)}
+            <CastleIllustration width={105} height={64} />
           </div>
         )}
       </div>
 
       {/* Name and Category */}
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" }}>
+      <div className="vert-card-text" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" }}>
         <h4
           style={{
             margin: 0,
@@ -453,6 +493,7 @@ function VerticalAttractionCard({
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
           }}
+          title={attraction.name}
         >
           {attraction.name}
         </h4>
@@ -546,16 +587,14 @@ function VisitorCategoryCard({
             style={{
               width: "100%",
               height: "100%",
-              background: "linear-gradient(135deg,#CBD5E1 0%,#94A3B8 100%)",
+              background: "linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#FFFFFF",
-              fontWeight: 800,
-              fontSize: "16px",
+              color: "#64748B",
             }}
           >
-            {category.label.charAt(0)}
+            <User size={26} color="#64748B" />
           </div>
         )}
       </div>
@@ -730,11 +769,8 @@ export default function TicketBookingView() {
   // Cart state
   const [cart, setCart] = useState<CartEntry[]>([]);
 
-  // Available trips counter per attraction (editable by staff, decrements on booking)
+  // Available trips counter per attraction (decrements on booking)
   const [availableTripsMap, setAvailableTripsMap] = useState<Record<string, number>>({});
-  // Tracks which attraction's trips field is being edited inline
-  const [editingTripsId, setEditingTripsId] = useState<string | null>(null);
-  const [editingTripsValue, setEditingTripsValue] = useState<string>("");
 
   useEffect(() => {
     document.title = "Ticket Booking | Ticketing Solution";
@@ -779,48 +815,80 @@ export default function TicketBookingView() {
     [allAttractions, activeAttractionId, selectedAttractionIds]
   );
 
-  // Today's date string for slot/seats API
-  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+  // Selected attractions that have seating
+  const selectedSeatingAttractions = useMemo(() => {
+    const idSet = new Set<string>(selectedAttractionIds);
+    if (activeAttractionId) idSet.add(activeAttractionId);
+    cart.forEach((c) => {
+      if (c.attraction?.id) idSet.add(c.attraction.id);
+    });
 
-  // Fetch slots for the active attraction
-  const { data: activeSlots } = useTicketingSlots(
-    activeAttractionId ?? "",
-    todayStr,
-    !!activeAttractionId
+    return allAttractions.filter(
+      (a) => idSet.has(a.id) && a.hasSeating !== false && (a.hasSeating || !!a.seatLayoutId)
+    );
+  }, [selectedAttractionIds, activeAttractionId, cart, allAttractions]);
+
+  // Fetch real trip numbers for all selected seating attractions
+  const tripNoPayload = useMemo(
+    () =>
+      selectedSeatingAttractions.map((a) => ({
+        attractionId: a.id,
+        currentTripNo: 1,
+      })),
+    [selectedSeatingAttractions]
+  );
+  const { data: tripNoData } = useAttractionTripNo(
+    tripNoPayload,
+    mode === "booking" && selectedSeatingAttractions.length > 0
   );
 
-  // Use first slot to get seat info
-  const firstSlotId = activeSlots?.[0]?.id ?? "";
-  const { data: activeSeatsData } = useTicketingSeats(
-    activeAttractionId ?? "",
-    firstSlotId,
-    todayStr,
-    !!activeAttractionId && !!firstSlotId
+  const tripNoMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    tripNoData?.forEach((item) => {
+      if (item.attractionId) {
+        map[item.attractionId] = item.newTripNo ?? 1;
+      }
+    });
+    return map;
+  }, [tripNoData]);
+
+  const activeTripNo = (activeAttractionId ? tripNoMap[activeAttractionId] : undefined) ?? 1;
+
+  // Fetch real seat availability for all selected seating attractions
+  const seatAvailPayload = useMemo(
+    () =>
+      selectedSeatingAttractions.map((a) => ({
+        attractionId: a.id,
+        currentTripNo: tripNoMap[a.id] ?? 1,
+      })),
+    [selectedSeatingAttractions, tripNoMap]
+  );
+  const { data: seatAvailData } = useAttractionSeatAvailability(
+    seatAvailPayload,
+    mode === "booking" && selectedSeatingAttractions.length > 0
   );
 
-  // Derive duration from first slot's displayTime
+  // Derive duration from attraction duration/durationUnit
   const derivedDuration = useMemo(() => {
-    if (!activeSlots || activeSlots.length === 0) return null;
-    const displayTime = (activeSlots[0] as any).slotTime ?? "";
-    return parseDurationFromDisplayTime(displayTime);
-  }, [activeSlots]);
-
-  // Derived seats from seats API
-  const derivedSeats = useMemo(() => {
-    if (activeSeatsData?.totalSeats != null) return String(activeSeatsData.totalSeats);
-    return null;
-  }, [activeSeatsData]);
-
-  // Initialize availableTripsMap from slots API (slot count = available trips today)
-  useEffect(() => {
-    if (activeAttractionId && activeSlots && activeSlots.length > 0) {
-      setAvailableTripsMap((prev) => {
-        // Only set from API if not already manually edited by staff
-        if (prev[activeAttractionId] !== undefined) return prev;
-        return { ...prev, [activeAttractionId]: activeSlots.length };
-      });
+    if (activeAttraction?.duration != null) {
+      const formatted = formatAttractionDuration(activeAttraction.duration, activeAttraction.durationUnit);
+      if (formatted) return formatted;
     }
-  }, [activeAttractionId, activeSlots]);
+    return null;
+  }, [activeAttraction]);
+
+  // Derived seats from seat availability API for the active attraction
+  const derivedSeats = useMemo(() => {
+    if (!activeAttractionId) return null;
+    const dataItem =
+      seatAvailData?.find((d) => d.attractionId === activeAttractionId) ||
+      seatAvailData?.[0];
+    if (dataItem?.seats && dataItem.seats.length > 0) return String(dataItem.seats.length);
+    if (dataItem?.seatLayout?.rows && dataItem?.seatLayout?.cols) {
+      return String(dataItem.seatLayout.rows * dataItem.seatLayout.cols);
+    }
+    return null;
+  }, [seatAvailData, activeAttractionId]);
 
 
   const selectedAttractionsList = useMemo(
@@ -970,6 +1038,7 @@ export default function TicketBookingView() {
     return (
       <CustomerInfoView
         bookingSummary={bookingSummary}
+        initialTripMap={tripNoMap}
         onBack={() => setMode("booking")}
         onContinue={(customer) => {
           // Decrement available trips for each attraction in cart
@@ -1118,6 +1187,7 @@ export default function TicketBookingView() {
       >
         {/* ── COLUMN 1: ATTRACTIONS (Vertical Compact List) ── */}
         <div
+          className="tbv-col-attractions"
           style={{
             background: "#FFFFFF",
             borderRadius: "12px",
@@ -1154,6 +1224,7 @@ export default function TicketBookingView() {
               Attractions
             </h3>
             <span
+              className="att-selected-badge"
               style={{
                 background: selectedAttractionIds.size > 0 ? "rgba(244,188,67,0.15)" : "#F1F5F9",
                 color: selectedAttractionIds.size > 0 ? "#173F63" : "#64748B",
@@ -1203,6 +1274,7 @@ export default function TicketBookingView() {
 
         {/* ── COLUMN 2: VISITOR CATEGORIES (For Active Attraction) ── */}
         <div
+          className="tbv-col-categories"
           style={{
             background: "#FFFFFF",
             borderRadius: "12px",
@@ -1219,6 +1291,7 @@ export default function TicketBookingView() {
         >
           {activeAttraction && (() => {
             const meta = { baseRate: getAttractionBaseRate(activeAttraction) };
+            const tripsToday = activeTripNo;
             return (
               <div
                 style={{
@@ -1235,6 +1308,7 @@ export default function TicketBookingView() {
                     gap: "16px",
                   }}
                 >
+                  {/* Left: Name + category badge + base rate + duration */}
                   <div style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1, minWidth: 0 }}>
                     <h2
                       style={{
@@ -1251,7 +1325,7 @@ export default function TicketBookingView() {
                     <div
                       style={{
                         display: "flex",
-                        alignItems: "center",
+                        alignItems: "flex-start",
                         gap: "16px",
                         flexWrap: "wrap",
                       }}
@@ -1264,7 +1338,6 @@ export default function TicketBookingView() {
                           fontWeight: 600,
                           padding: "2.5px 7px",
                           borderRadius: "4px",
-                          alignSelf: "flex-start",
                         }}
                       >
                         {activeAttraction.category}
@@ -1298,79 +1371,17 @@ export default function TicketBookingView() {
                           gap: "3px",
                           fontSize: "11.5px",
                           color: "#64748B",
-                          marginLeft: "8px",
                         }}
                       >
                         <div>
-                          <span>Seats per trip: </span>
-                          <span style={{ color: "#0E4E7A", fontWeight: 700 }}>
-                            {derivedSeats ?? "—"}
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                          <span>Available trips today: </span>
-                          {editingTripsId === activeAttraction.id ? (
-                            <input
-                              autoFocus
-                              type="number"
-                              min="0"
-                              value={editingTripsValue}
-                              onChange={(e) => setEditingTripsValue(e.target.value)}
-                              onBlur={() => {
-                                const parsed = parseInt(editingTripsValue, 10);
-                                if (!isNaN(parsed) && parsed >= 0) {
-                                  setAvailableTripsMap((prev) => ({ ...prev, [activeAttraction.id]: parsed }));
-                                }
-                                setEditingTripsId(null);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  const parsed = parseInt(editingTripsValue, 10);
-                                  if (!isNaN(parsed) && parsed >= 0) {
-                                    setAvailableTripsMap((prev) => ({ ...prev, [activeAttraction.id]: parsed }));
-                                  }
-                                  setEditingTripsId(null);
-                                } else if (e.key === "Escape") {
-                                  setEditingTripsId(null);
-                                }
-                              }}
-                              style={{
-                                width: "44px",
-                                fontSize: "11.5px",
-                                fontWeight: 700,
-                                color: "#0E4E7A",
-                                border: "1px solid #CBD5E1",
-                                borderRadius: "4px",
-                                padding: "1px 4px",
-                                outline: "none",
-                                background: "#F8FAFC",
-                              }}
-                            />
-                          ) : (
-                            <span
-                              title="Click to edit"
-                              onClick={() => {
-                                const cur = availableTripsMap[activeAttraction.id] ?? (activeSlots?.length ?? 0);
-                                setEditingTripsValue(String(cur));
-                                setEditingTripsId(activeAttraction.id);
-                              }}
-                              style={{
-                                color: (availableTripsMap[activeAttraction.id] ?? (activeSlots?.length ?? 1)) === 0 ? "#EF4444" : "#0E4E7A",
-                                fontWeight: 700,
-                                cursor: "pointer",
-                                borderBottom: "1px dashed #94A3B8",
-                                paddingBottom: "1px",
-                              }}
-                            >
-                              {availableTripsMap[activeAttraction.id] ?? (activeSlots?.length ?? "—")}
-                            </span>
-                          )}
+                          <span>Ongoing Trips: </span>
+                          <span style={{ color: "#0E4E7A", fontWeight: 700 }}>{tripsToday}</span>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Castle Sketch Illustration */}
+                  {/* Right: Castle illustration only */}
                   <div
                     style={{
                       flexShrink: 0,
@@ -1501,6 +1512,7 @@ export default function TicketBookingView() {
         {/* ── COLUMN 3: CATEGORIES & QUANTITY + CART & BILLING ── */}
         {showBillingColumn && (
           <div
+            className="tbv-col-billing"
             style={{
               display: "flex",
               flexDirection: "column",
@@ -1593,7 +1605,7 @@ export default function TicketBookingView() {
                         {visibleCats.map((cat, idx) => {
                           const qty = cartEntry?.quantities[cat.key] || 0;
                           const price = attr.pricing[cat.key] ?? cat.defaultPrice;
-                          const lineTotal = qty * price;
+                          const lineTotal = Number((qty * price).toFixed(2));
 
                           return (
                             <div
@@ -1798,7 +1810,7 @@ export default function TicketBookingView() {
                                   {c.label} × {qty}
                                 </span>
                                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                  <span style={{ fontWeight: 700 }}>₹{qty * price}</span>
+                                  <span style={{ fontWeight: 700 }}>₹{Number((qty * price).toFixed(2))}</span>
                                   <button
                                     onClick={() => {
                                       setQuantity(c.key, 0, entry.attraction);
@@ -1834,7 +1846,7 @@ export default function TicketBookingView() {
                           >
                             <div style={{ display: "flex", justifyContent: "space-between" }}>
                               <span style={{ color: "#64748B", fontWeight: 600 }}>Subtotal</span>
-                              <span style={{ fontWeight: 700, color: "#1E293B" }}>₹{calc.subtotal}</span>
+                              <span style={{ fontWeight: 700, color: "#1E293B" }}>₹{calc.subtotal.toFixed(2)}</span>
                             </div>
                             <div style={{ display: "flex", justifyContent: "space-between" }}>
                               <span style={{ color: "#64748B", fontWeight: 600 }}>GST (18%)</span>
@@ -1845,12 +1857,14 @@ export default function TicketBookingView() {
                                 Round-off GST Adj.
                               </span>
                               <span style={{ color: "#94A3B8", fontWeight: 500, fontSize: "9px" }}>
-                                ₹{calc.gstAdj.toFixed(2)}
+                                {calc.gstAdj >= 0 ? (calc.gstAdj > 0 ? `+₹${calc.gstAdj.toFixed(2)}` : `₹0.00`) : `-₹${Math.abs(calc.gstAdj).toFixed(2)}`}
                               </span>
                             </div>
                             <div style={{ display: "flex", justifyContent: "space-between" }}>
                               <span style={{ color: "#64748B", fontWeight: 600 }}>Round-Off</span>
-                              <span style={{ fontWeight: 700, color: "#1E293B" }}>₹{calc.roundOff.toFixed(2)}</span>
+                              <span style={{ fontWeight: 700, color: "#1E293B" }}>
+                                {calc.roundOff >= 0 ? (calc.roundOff > 0 ? `+₹${calc.roundOff.toFixed(2)}` : `₹0.00`) : `-₹${Math.abs(calc.roundOff).toFixed(2)}`}
+                              </span>
                             </div>
                           </div>
 
@@ -1943,7 +1957,7 @@ export default function TicketBookingView() {
       <style jsx global>{`
         .tbv-layout-two-col {
           display: grid;
-          grid-template-columns: minmax(260px, 1fr) minmax(0, 3fr);
+          grid-template-columns: minmax(240px, 1fr) minmax(0, 3fr);
           gap: 16px;
           align-items: start;
           width: 100%;
@@ -1951,7 +1965,7 @@ export default function TicketBookingView() {
 
         .tbv-layout-three-col {
           display: grid;
-          grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 2fr);
+          grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr) minmax(0, 2fr);
           gap: 16px;
           align-items: start;
           width: 100%;
@@ -1987,19 +2001,60 @@ export default function TicketBookingView() {
           background: transparent;
         }
 
-        @media (max-width: 1100px) {
+        @media (max-width: 1100px) and (min-width: 768px) {
           .tbv-layout-three-col {
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 180px minmax(0, 1.2fr) minmax(260px, 1.1fr);
+            gap: 12px;
           }
           .tbv-layout-two-col {
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 180px minmax(0, 1fr);
+            gap: 12px;
           }
         }
 
-        @media (max-width: 680px) {
-          .tbv-layout-three-col,
+        @media (max-width: 767px) {
+          .tbv-layout-three-col {
+            grid-template-columns: 78px minmax(0, 1.2fr) minmax(230px, 1fr);
+            gap: 8px;
+          }
           .tbv-layout-two-col {
-            grid-template-columns: 1fr;
+            grid-template-columns: 80px minmax(0, 1fr);
+            gap: 8px;
+          }
+          .tbv-col-attractions {
+            padding: 10px 5px !important;
+          }
+          .tbv-col-attractions h3 {
+            display: none !important;
+          }
+          .tbv-col-attractions .att-selected-badge {
+            width: 100% !important;
+            text-align: center !important;
+            font-size: 9px !important;
+            padding: 2px 4px !important;
+          }
+          .attraction-vert-card {
+            flex-direction: column !important;
+            padding: 6px 3px !important;
+            gap: 4px !important;
+            text-align: center !important;
+          }
+          .vert-card-text {
+            text-align: center !important;
+            align-items: center !important;
+          }
+          .vert-card-text h4 {
+            font-size: 10.5px !important;
+            line-height: 12px !important;
+          }
+          .vert-card-text p {
+            display: none !important;
+          }
+          .tbv-col-categories {
+            padding: 12px 10px !important;
+          }
+          .tbv-col-billing {
+            padding: 0 !important;
           }
         }
       `}</style>

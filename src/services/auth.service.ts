@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 
@@ -31,7 +31,7 @@ export async function login(input: LoginInput) {
   const result = await db
     .select()
     .from(users)
-    .where(eq(users.email, email))
+    .where(sql`lower(${users.email}) = ${email}`)
     .limit(1);
 
   const user = result[0];

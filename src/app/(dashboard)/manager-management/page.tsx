@@ -62,13 +62,35 @@ import {
 } from "@/lib/exportUtils";
 import { useSystemModules, SystemModule } from "@/hooks/useSystemModuleQueries";
 
-// Sub-modules available inside each attraction
-const SUB_MODULES = [
+// Fixed sub-modules always available inside each attraction
+const FIXED_SUB_MODULES = [
+  "Staff Management",
+  "Inventory Management",
+];
+
+// Conditional sub-modules — only shown if the admin's system modules include them
+const CONDITIONAL_SUB_MODULES = [
   "Customer Management",
   "Complimentary Passes",
-  "Seat Management",
   "CCTV Monitoring",
 ];
+
+// Helper to normalize sub-module names across different naming conventions
+const normalizeSubModuleName = (mod: string): string => {
+  const clean = String(mod || "").toLowerCase().trim().replace(/[\s_&-]/g, "");
+  if (clean.includes("staff")) return "Staff Management";
+  if (clean.includes("inventory")) return "Inventory Management";
+  if (clean.includes("customer")) return "Customer Management";
+  if (clean.includes("complimentary") || clean.includes("pass")) return "Complimentary Passes";
+  if (clean.includes("cctv")) return "CCTV Monitoring";
+  return mod;
+};
+
+const isSameSubModule = (a: string, b: string): boolean => {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return normalizeSubModuleName(a).toLowerCase() === normalizeSubModuleName(b).toLowerCase();
+};
 
 function SystemModulePermissionTree({
   selectedModules,
@@ -304,8 +326,6 @@ const inputStyle = (hasError: boolean): React.CSSProperties => ({
   transition: "border-color 0.18s",
 });
 
-
-
 // Helper to derive attraction label from selected permissions
 function getAttractionFromPermissions(
   permissions: AttractionPermission[],
@@ -326,16 +346,41 @@ function AttractionPermissionTree({
   enabled,
   permissions,
   attractions = [],
+  systemModules = [],
   onEnabledChange,
   onPermissionsChange,
 }: {
   enabled: boolean;
   permissions: AttractionPermission[];
   attractions?: AttractionItem[];
+  systemModules?: SystemModule[];
   onEnabledChange: (v: boolean) => void;
   onPermissionsChange: (p: AttractionPermission[]) => void;
 }) {
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
+
+  // Build the effective sub-modules list: always fixed ones + conditional ones if admin has access
+  const getEffectiveSubModules = (): string[] => {
+    const conditionalEnabled = CONDITIONAL_SUB_MODULES.filter((mod) =>
+      systemModules.some((sm) => {
+        const smName = (sm.name || "").toLowerCase().trim();
+        const smKey = (sm.key || "").toLowerCase().replace(/[\s_-]/g, "");
+        const modLower = mod.toLowerCase().trim();
+        const modKey = mod.toLowerCase().replace(/[\s_-]/g, "");
+        const isActive = String(sm.isActive).toUpperCase() === "ACTIVE" || (sm.isActive as unknown) === true;
+        return (
+          isActive &&
+          (smName === modLower ||
+            smKey === modKey ||
+            isSameSubModule(smName, mod) ||
+            isSameSubModule(smKey, mod))
+        );
+      })
+    );
+    return [...FIXED_SUB_MODULES, ...conditionalEnabled];
+  };
+
+  const effectiveSubModules = getEffectiveSubModules();
 
   const getPermission = (attractionId: string) =>
     permissions.find((p) => p.attractionId === attractionId);
@@ -343,12 +388,18 @@ function AttractionPermissionTree({
   const isAttractionSelected = (attractionId: string) =>
     !!getPermission(attractionId);
 
+  const isSubModuleSelected = (permModules: string[] | undefined, mod: string): boolean => {
+    if (!permModules) return false;
+    return permModules.some((m) => isSameSubModule(m, mod));
+  };
+
   const toggleAttraction = (attractionId: string) => {
     const alreadySelected = isAttractionSelected(attractionId);
     if (alreadySelected) {
       onPermissionsChange(permissions.filter((p) => p.attractionId !== attractionId));
       setExpandedIds((prev) => prev.filter((id) => id !== attractionId));
     } else {
+      // Do not pre-select any sub-modules by default inside the attraction
       onPermissionsChange([...permissions, { attractionId, modules: [] }]);
       setExpandedIds((prev) => [...prev, attractionId]);
     }
@@ -358,10 +409,13 @@ function AttractionPermissionTree({
     onPermissionsChange(
       permissions.map((p) => {
         if (p.attractionId !== attractionId) return p;
-        const hasModule = p.modules.includes(module);
+        const normMod = normalizeSubModuleName(module);
+        const hasModule = (p.modules || []).some((m) => isSameSubModule(m, normMod));
         return {
           ...p,
-          modules: hasModule ? p.modules.filter((m) => m !== module) : [...p.modules, module],
+          modules: hasModule
+            ? p.modules.filter((m) => !isSameSubModule(m, normMod))
+            : [...p.modules.map(normalizeSubModuleName), normMod],
         };
       })
     );
@@ -371,7 +425,7 @@ function AttractionPermissionTree({
     onPermissionsChange(
       permissions.map((p) =>
         p.attractionId === attractionId
-          ? { ...p, modules: selectAll ? [...SUB_MODULES] : [] }
+          ? { ...p, modules: selectAll ? [...effectiveSubModules] : [] }
           : p
       )
     );
@@ -459,7 +513,10 @@ function AttractionPermissionTree({
               const selected = isAttractionSelected(attraction.id);
               const expanded = expandedIds.includes(attraction.id);
               const perm = getPermission(attraction.id);
-              const allSubsChecked = perm?.modules.length === SUB_MODULES.length;
+              const allSubsChecked =
+                perm &&
+                effectiveSubModules.length > 0 &&
+                effectiveSubModules.every((mod) => isSubModuleSelected(perm.modules, mod));
 
               return (
                 <div
@@ -521,7 +578,7 @@ function AttractionPermissionTree({
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {perm?.modules.length ?? 0}/{SUB_MODULES.length} modules
+                        {perm?.modules.length ?? 0}/{effectiveSubModules.length} modules
                       </span>
                     )}
 
@@ -569,7 +626,7 @@ function AttractionPermissionTree({
                       >
                         <input
                           type="checkbox"
-                          checked={allSubsChecked}
+                          checked={Boolean(allSubsChecked)}
                           onChange={(e) => toggleAllSubModules(attraction.id, e.target.checked)}
                           style={{ accentColor: colors.brand.accent, width: "13px", height: "13px" }}
                         />
@@ -584,8 +641,8 @@ function AttractionPermissionTree({
                         </span>
                       </label>
 
-                      {SUB_MODULES.map((mod) => {
-                        const modEnabled = perm?.modules.includes(mod) ?? false;
+                      {effectiveSubModules.map((mod) => {
+                        const modEnabled = isSubModuleSelected(perm?.modules, mod);
                         return (
                           <label
                             key={mod}
@@ -639,7 +696,7 @@ function AttractionPermissionTree({
       >
         {enabled
           ? `${permissions.length} attraction${permissions.length !== 1 ? "s" : ""} with access · ${permissions.reduce((acc, p) => acc + p.modules.length, 0)} total module permissions`
-          : "Enable Attraction Management to assign attractions & module access"}
+          : "Enable Attraction Management to assign attraction access"}
       </div>
     </div>
   );
@@ -655,6 +712,7 @@ function ManagerManagementInner() {
   const searchParams = useSearchParams();
   const [managers, setManagers] = useState<ManagerUser[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedAttractionFilter, setSelectedAttractionFilter] = useState<string>("All");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>(
     searchParams.get("status") ?? "All"
@@ -665,9 +723,54 @@ function ManagerManagementInner() {
   const [selectedManager, setSelectedManager] = useState<ManagerUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
-  // TanStack Query Hooks
-  const { data: apiManagerData, isLoading: isFetchingManagers } = useManagers();
-  const { data: systemModules = [], isLoading: isSystemModulesLoading } = useSystemModules();
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  // Debounce search input for API
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    const handler = setTimeout(() => {
+      setDebouncedSearch(trimmed);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  // Reset to page 1 on filter or search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, selectedAttractionFilter, selectedStatusFilter]);
+
+  // Status mapping for API ("ACTIVE" | "INACTIVE")
+  const apiStatus =
+    selectedStatusFilter === "Active" || selectedStatusFilter === "ACTIVE"
+      ? ("ACTIVE" as const)
+      : selectedStatusFilter === "Inactive" || selectedStatusFilter === "INACTIVE"
+        ? ("INACTIVE" as const)
+        : undefined;
+
+  // TanStack Query Hooks — directly driven by API
+  const { data: apiManagerData, isLoading: isFetchingManagers } = useManagers({
+    search: debouncedSearch.trim() || undefined,
+    status: apiStatus,
+    attractionId: selectedAttractionFilter !== "All" ? selectedAttractionFilter : undefined,
+    page: currentPage,
+    limit: pageSize,
+  });
+
+  const pagination = apiManagerData?.pagination ?? {
+    page: currentPage,
+    limit: pageSize,
+    total: managers.length,
+    totalPages: 1,
+  };
+
+  // Adjust page if total pages decreases (e.g. after deletion)
+  useEffect(() => {
+    if (pagination.totalPages > 0 && currentPage > pagination.totalPages) {
+      setCurrentPage(pagination.totalPages);
+    }
+  }, [pagination.totalPages, currentPage]);
+  const { data: systemModules = [] } = useSystemModules();
   const { data: attractionsData } = useAttractions();
   const attractionsList: AttractionItem[] = attractionsData || [];
 
@@ -691,7 +794,9 @@ function ManagerManagementInner() {
         const attrPerms: AttractionPermission[] = attractions.map((a: any) => ({
           attractionId: a.id,
           attractionName: a.name,
-          modules: (a.modules || []).map((mod: any) => mod.name || mod.id),
+          modules: (a.modules || []).map((mod: any) =>
+            normalizeSubModuleName(mod.name || mod.key || mod.id || mod)
+          ),
         }));
 
         return {
@@ -700,7 +805,7 @@ function ManagerManagementInner() {
           email: m.email,
           phone: m.phone ?? null,
           role: m.role || "MANAGER",
-          status: (m.status as import("./types").ManagerStatus) || "ACTIVE",
+          status: m.status === "ACTIVE" ? "ACTIVE" : "INACTIVE",
           createdAt: m.createdAt || new Date().toISOString(),
           lastLoginAt: m.lastLoginAt ?? null,
           attraction: attractionLabel,
@@ -725,7 +830,10 @@ function ManagerManagementInner() {
       const sysMods = (managerPermissionsData.systemModules || []).map((sm) => sm.id);
       const attrPerms: AttractionPermission[] = (managerPermissionsData.attractions || []).map((attr) => ({
         attractionId: attr.id,
-        modules: (attr.modules || []).map((m) => m.name || m.id),
+        attractionName: attr.name,
+        modules: (attr.modules || []).map((m: any) =>
+          normalizeSubModuleName(typeof m === "string" ? m : (m.name || m.key || m.id || ""))
+        ),
       }));
       const computedAttraction = getAttractionFromPermissions(attrPerms, attractionsList);
 
@@ -769,19 +877,17 @@ function ManagerManagementInner() {
   const watchedStatus = useWatch({ control, name: "status", defaultValue: "Active" });
   const watchedEnabled = useWatch({ control, name: "attractionManagementEnabled", defaultValue: true });
   const watchedPermissions = useWatch({ control, name: "attractionPermissions", defaultValue: [] });
-  const watchedAllowedModules = useWatch({ control, name: "allowedModules", defaultValue: [] });
 
-  // Filter 
+  // Filter (client instant fallback & sync)
   const filteredManagers = managers.filter((m) => {
     const statusMatches =
       selectedStatusFilter === "All" ||
-      m.status.toUpperCase() === selectedStatusFilter.toUpperCase() ||
-      (selectedStatusFilter === "Active" && m.status.toUpperCase() === "ACTIVE") ||
-      (selectedStatusFilter === "Inactive" && m.status.toUpperCase() === "DISABLED");
+      (selectedStatusFilter === "Active" && (m.status === "ACTIVE" || m.status === "Active")) ||
+      (selectedStatusFilter === "Inactive" && (m.status === "INACTIVE" || m.status === "Inactive"));
 
     const attractionMatches =
       selectedAttractionFilter === "All" ||
-      (m.attractions && m.attractions.some((a) => a.name === selectedAttractionFilter || a.id === selectedAttractionFilter)) ||
+      (m.attractions && m.attractions.some((a) => a.id === selectedAttractionFilter || a.name === selectedAttractionFilter)) ||
       (m.attraction && m.attraction.toLowerCase().includes(selectedAttractionFilter.toLowerCase()));
 
     const searchLower = searchQuery.toLowerCase();
@@ -790,8 +896,7 @@ function ManagerManagementInner() {
       m.name.toLowerCase().includes(searchLower) ||
       m.email.toLowerCase().includes(searchLower) ||
       (m.phone && m.phone.toLowerCase().includes(searchLower)) ||
-      (m.attraction && m.attraction.toLowerCase().includes(searchLower)) ||
-      m.status.toLowerCase().includes(searchLower);
+      (m.attraction && m.attraction.toLowerCase().includes(searchLower));
 
     return statusMatches && attractionMatches && searchMatches;
   });
@@ -803,19 +908,49 @@ function ManagerManagementInner() {
 
   const handleResetFilters = () => {
     setSearchQuery("");
+    setDebouncedSearch("");
     setSelectedAttractionFilter("All");
     setSelectedStatusFilter("All");
   };
 
   // Add Manager — sends exact backend payload format with module UUIDs
-  const resolveModuleId = (modItem: string): string => {
-    const found = systemModules.find(
+  // Returns null if no UUID match found — callers must filter(Boolean) to drop unresolved names
+  const resolveModuleId = (modItem: string): string | null => {
+    if (!modItem) return null;
+    // Already looks like a UUID — pass through as-is
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(modItem)) return modItem;
+
+    const normMod = normalizeSubModuleName(modItem).toLowerCase();
+    const cleanMod = String(modItem).toLowerCase().trim().replace(/[\s_&-]/g, "");
+
+    // 1. Direct match by id, name, or key
+    let found = systemModules.find(
       (sm) =>
         sm.id === modItem ||
-        sm.name.toLowerCase() === modItem.toLowerCase() ||
-        sm.key.toLowerCase() === modItem.toLowerCase()
+        (sm.name && sm.name.toLowerCase() === modItem.toLowerCase()) ||
+        (sm.key && sm.key.toLowerCase() === modItem.toLowerCase())
     );
-    return found ? found.id : modItem;
+
+    // 2. Normalized match (e.g. "Inventory Management" -> matches key "INVENTORY_CAPACITY" or name "Inventory & Capacity")
+    if (!found) {
+      found = systemModules.find((sm) => {
+        const smNameNorm = normalizeSubModuleName(sm.name || "").toLowerCase();
+        const smKeyNorm = normalizeSubModuleName(sm.key || "").toLowerCase();
+        const smKeyClean = (sm.key || "").toLowerCase().replace(/[\s_&-]/g, "");
+        const smNameClean = (sm.name || "").toLowerCase().replace(/[\s_&-]/g, "");
+
+        if (smNameNorm === normMod || smKeyNorm === normMod) return true;
+        if (cleanMod.includes("inventory") && (smKeyClean.includes("inventory") || smNameClean.includes("inventory"))) return true;
+        if (cleanMod.includes("staff") && (smKeyClean.includes("staff") || smNameClean.includes("staff"))) return true;
+        if (cleanMod.includes("customer") && (smKeyClean.includes("customer") || smNameClean.includes("customer"))) return true;
+        if ((cleanMod.includes("complimentary") || cleanMod.includes("pass")) && (smKeyClean.includes("complimentary") || smKeyClean.includes("pass") || smNameClean.includes("complimentary") || smNameClean.includes("pass"))) return true;
+        if (cleanMod.includes("cctv") && (smKeyClean.includes("cctv") || smNameClean.includes("cctv"))) return true;
+        return false;
+      });
+    }
+
+    return found ? found.id : null;
   };
 
   const isRemovedSubModule = (modItem: string): boolean => {
@@ -833,15 +968,14 @@ function ManagerManagementInner() {
         email: data.email.trim().toLowerCase(),
         phone: data.phone ? data.phone.trim() : undefined,
         password: data.password,
-        status: data.status === "Active" ? "ACTIVE" : "DISABLED",
-        systemModuleIds: data.allowedModules || [],
+        status: data.status === "Active" ? "ACTIVE" : "INACTIVE",
         attractionPermissions: data.attractionManagementEnabled
           ? (data.attractionPermissions || []).map((p) => ({
             attractionId: p.attractionId,
             moduleIds: (p.modules || [])
               .filter((m) => !isRemovedSubModule(m))
               .map(resolveModuleId)
-              .filter(Boolean),
+              .filter((id): id is string => id !== null),
           }))
           : [],
       });
@@ -870,7 +1004,7 @@ function ManagerManagementInner() {
           name: selectedManager.name,
           email: selectedManager.email,
           phone: selectedManager.phone || undefined,
-          status: selectedManager.status === "Active" || selectedManager.status === "ACTIVE" ? "ACTIVE" : "DISABLED",
+          status: selectedManager.status === "Active" || selectedManager.status === "ACTIVE" ? "ACTIVE" : "INACTIVE",
         },
       });
 
@@ -878,23 +1012,22 @@ function ManagerManagementInner() {
       await updateManagerPermissionsMutation.mutateAsync({
         managerId: selectedManager.id,
         data: {
-          systemModuleIds: selectedManager.allowedModules || [],
           attractionPermissions: (selectedManager.attractionPermissions || []).map((p) => ({
             attractionId: p.attractionId,
             moduleIds: (p.modules || [])
               .filter((m) => !isRemovedSubModule(m))
               .map(resolveModuleId)
-              .filter(Boolean),
+              .filter((id): id is string => id !== null),
           })),
         },
       });
-    } catch {
-      // Fallback
-    }
 
-    setManagers((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
-    setSelectedManager(updated);
-    setIsEditing(false);
+      setManagers((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+      setSelectedManager(null);
+      setIsEditing(false);
+    } catch {
+      // Keep edit state open if mutation fails
+    }
   };
 
   const [isExportingPDF, setIsExportingPDF] = useState(false);
@@ -913,18 +1046,17 @@ function ManagerManagementInner() {
       selectedStatusFilter === "Active"
         ? ("ACTIVE" as const)
         : selectedStatusFilter === "Inactive"
-          ? ("DISABLED" as const)
-          : selectedStatusFilter !== "All"
-            ? (selectedStatusFilter as any)
-            : undefined;
+          ? ("INACTIVE" as const)
+          : undefined;
 
     const base: ManagerQueryParams = {
       search: searchQuery.trim() || undefined,
       status: statusParam,
+      attractionId: selectedAttractionFilter !== "All" ? selectedAttractionFilter : undefined,
     };
 
     if (scope === "current") {
-      const res = await fetchManagers({ ...base, page: 1, limit: 10 });
+      const res = await fetchManagers({ ...base, page: currentPage, limit: pageSize });
       return res.managers;
     } else {
       return await fetchAllPages(async (page, limit) => {
@@ -951,7 +1083,7 @@ function ManagerManagementInner() {
         filename: `Managers_${scopeLabel}_${dateKey}.pdf`,
         orientation: "portrait",
         columns: [
-          { header: "#", accessor: (_, i) => i + 1, width: "40px" },
+          { header: "#", accessor: (_, i) => (scope === "all" ? i + 1 : (currentPage - 1) * pageSize + i + 1), width: "40px" },
           { header: "Manager Name", accessor: (m) => m.name || "-" },
           { header: "Email Address", accessor: (m) => m.email || "-" },
           { header: "Phone Number", accessor: (m) => m.phone || "-" },
@@ -998,7 +1130,7 @@ function ManagerManagementInner() {
       const scopeLabel = scope === "all" ? "All" : "Current";
       const headers = ["#", "Manager Name", "Email Address", "Phone Number", "Assigned Attraction", "Role", "Status"];
       const rows = items.map((m: any, i) => [
-        i + 1,
+        scope === "all" ? i + 1 : (currentPage - 1) * pageSize + i + 1,
         m.name || "-",
         m.email || "-",
         m.phone || "-",
@@ -1021,25 +1153,24 @@ function ManagerManagementInner() {
   // Delete
   const handleDeleteManager = async (id: string) => {
     const target = managers.find((m) => m.id === id);
-    const prev = selectedManager;
-    setSelectedManager(null);
     const confirmed = await confirmDelete(`manager "${target?.name ?? id}"`);
-    if (!confirmed) { setSelectedManager(prev); return; }
+    if (!confirmed) return;
 
     try {
       await disableManagerMutation.mutateAsync(id);
+      setManagers((prev) => prev.filter((m) => m.id !== id));
+      setSelectedManager(null);
+      setIsEditing(false);
     } catch {
-      // Fallback
+      // Failed - keep manager detail view open
     }
-
-    setManagers(managers.filter((m) => m.id !== id));
   };
 
   // Status toggle with confirmation
   const handleStatusChangeWithConfirm = async (manager: ManagerUser, newStatus: "Active" | "Inactive") => {
     const confirmed = await confirmStatusChange(manager.name, newStatus);
     if (!confirmed) return;
-    const apiStatus = newStatus === "Active" ? "ACTIVE" : "DISABLED";
+    const apiStatus = newStatus === "Active" ? "ACTIVE" : "INACTIVE";
     const updated = { ...manager, status: apiStatus };
 
     try {
@@ -1049,13 +1180,13 @@ function ManagerManagementInner() {
           status: apiStatus,
         },
       });
-    } catch {
-      // Fallback
-    }
 
-    setManagers(managers.map((m) => (m.id === manager.id ? (updated as ManagerUser) : m)));
-    if (selectedManager?.id === manager.id) {
-      setSelectedManager(updated as ManagerUser);
+      setManagers((prev) => prev.map((m) => (m.id === manager.id ? (updated as ManagerUser) : m)));
+      if (selectedManager?.id === manager.id) {
+        setSelectedManager(updated as ManagerUser);
+      }
+    } catch {
+      // Failed - do not update state
     }
   };
 
@@ -1146,7 +1277,7 @@ function ManagerManagementInner() {
     },
     {
       header: "Status",
-      cell: (m) => <StatusBadge status={m.status} />,
+      cell: (m) => <StatusBadge status={m.status === "ACTIVE" || m.status === "Active" ? "Active" : "Inactive"} />,
     },
     {
       header: "Action",
@@ -1213,7 +1344,7 @@ function ManagerManagementInner() {
                 <span style={{ background: "rgba(35,114,165,0.1)", color: colors.brand.accent, padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 700 }}>
                   {selectedManager.role || "MANAGER"}
                 </span>
-                <StatusBadge status={selectedManager.status} />
+                <StatusBadge status={selectedManager.status === "ACTIVE" || selectedManager.status === "Active" ? "Active" : "Inactive"} />
               </div>
             </div>
           </div>
@@ -1308,24 +1439,19 @@ function ManagerManagementInner() {
                 <label style={{ fontSize: "13px", fontWeight: 600, display: "block", marginBottom: "8px" }}>Account Status</label>
                 <StatusToggle
                   status={selectedManager.status === "ACTIVE" || selectedManager.status === "Active" ? "Active" : "Inactive"}
-                  onChange={(s) => setSelectedManager({ ...selectedManager, status: s === "Active" ? "ACTIVE" : "DISABLED" })}
+                  onChange={(s) => setSelectedManager({ ...selectedManager, status: s === "Active" ? "ACTIVE" : "INACTIVE" })}
                 />
               </div>
             </div>
 
-            {/* Permission tree in edit mode */}
+            {/* Attraction Permission tree in edit mode */}
             <div>
-              <label style={{ fontSize: "13px", fontWeight: 600, display: "block", marginBottom: "8px", color: colors.text.primary }}>Module Permissions</label>
-              <SystemModulePermissionTree
-                selectedModules={selectedManager.allowedModules || []}
-                modules={systemModules}
-                isLoading={isSystemModulesLoading}
-                onChange={(mods) => setSelectedManager({ ...selectedManager, allowedModules: mods })}
-              />
+              <label style={{ fontSize: "13px", fontWeight: 600, display: "block", marginBottom: "8px", color: colors.text.primary }}>Attraction Management Permissions</label>
               <AttractionPermissionTree
                 enabled={selectedManager.attractionManagementEnabled ?? true}
                 permissions={selectedManager.attractionPermissions || []}
                 attractions={attractionsList}
+                systemModules={systemModules}
                 onEnabledChange={(v) => setSelectedManager({ ...selectedManager, attractionManagementEnabled: v, attractionPermissions: v ? (selectedManager.attractionPermissions || []) : [] })}
                 onPermissionsChange={(p) => setSelectedManager({ ...selectedManager, attractionPermissions: p })}
               />
@@ -1364,15 +1490,7 @@ function ManagerManagementInner() {
                   </div>
                   <div>
                     <span style={{ fontSize: "12px", color: colors.text.muted, display: "block", marginBottom: "4px" }}>Status</span>
-                    <StatusToggle
-                      status={selectedManager.status === "ACTIVE" || selectedManager.status === "Active" ? "Active" : "Inactive"}
-                      onChange={(s) => {
-                        const apiStatus = s === "Active" ? "ACTIVE" : "DISABLED";
-                        const updated = { ...selectedManager, status: apiStatus as any };
-                        setSelectedManager(updated);
-                        setManagers(managers.map((m) => (m.id === updated.id ? updated : m)));
-                      }}
-                    />
+                    <StatusBadge status={selectedManager.status === "ACTIVE" || selectedManager.status === "Active" ? "Active" : "Inactive"} />
                   </div>
                 </div>
               </div>
@@ -1416,47 +1534,6 @@ function ManagerManagementInner() {
               </div>
             </div>
 
-            {/* System Module Permission summary */}
-            <div style={{ background: "#FFFFFF", borderRadius: "16px", padding: "20px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", marginBottom: "16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", paddingBottom: "14px", marginBottom: "14px", borderBottom: `1px solid ${colors.header.border}` }}>
-                <ShieldCheck size={18} color={colors.brand.accent} />
-                <h3 style={{ fontSize: "15px", margin: 0, fontWeight: 700, fontFamily: typography.fontFamily.sans, color: colors.text.primary }}>
-                  Main System Module Access
-                </h3>
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                {selectedManager.allowedModules && selectedManager.allowedModules.length > 0 ? (
-                  selectedManager.allowedModules.map((modId) => {
-                    const modObj = systemModules.find(
-                      (sm) => sm.id === modId || sm.key === modId || sm.name === modId
-                    );
-                    const displayName = modObj ? modObj.name : modId;
-                    return (
-                      <span
-                        key={modId}
-                        style={{
-                          background: "rgba(35,114,165,0.08)",
-                          color: colors.brand.accent,
-                          border: `1px solid rgba(35,114,165,0.2)`,
-                          borderRadius: "6px",
-                          padding: "4px 10px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          fontFamily: typography.fontFamily.sans,
-                        }}
-                      >
-                        {displayName}
-                      </span>
-                    );
-                  })
-                ) : (
-                  <span style={{ fontSize: "12px", color: colors.text.muted, fontFamily: typography.fontFamily.sans }}>
-                    No system modules assigned.
-                  </span>
-                )}
-              </div>
-            </div>
-
             {/* Permission summary */}
             <div style={{ background: "#FFFFFF", borderRadius: "16px", padding: "20px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", paddingBottom: "14px", marginBottom: "14px", borderBottom: `1px solid ${colors.header.border}` }}>
@@ -1497,9 +1574,13 @@ function ManagerManagementInner() {
                           {perm.modules.length > 0 ? (
                             perm.modules.map((modId) => {
                               const modObj = systemModules.find(
-                                (sm) => sm.id === modId || sm.name === modId
+                                (sm) =>
+                                  sm.id === modId ||
+                                  sm.name === modId ||
+                                  isSameSubModule(sm.name, modId) ||
+                                  isSameSubModule(sm.key, modId)
                               );
-                              const displayName = modObj ? modObj.name : modId;
+                              const displayName = modObj ? modObj.name : normalizeSubModuleName(modId);
                               return (
                                 <span
                                   key={modId}
@@ -1570,7 +1651,7 @@ function ManagerManagementInner() {
           <select value={selectedAttractionFilter} onChange={(e) => setSelectedAttractionFilter(e.target.value)} style={{ height: "38px", borderRadius: "8px", border: `1px solid ${colors.header.border}`, padding: "0 12px", fontFamily: typography.fontFamily.sans, fontSize: "13px", fontWeight: 600, color: colors.brand.accent, outline: "none", cursor: "pointer", background: "#FFFFFF" }}>
             <option value="All">All Attractions</option>
             {attractionsList.map((loc) => (
-              <option key={loc.id} value={loc.name}>{loc.name}</option>
+              <option key={loc.id} value={loc.id}>{loc.name}</option>
             ))}
           </select>
 
@@ -1583,8 +1664,15 @@ function ManagerManagementInner() {
         <div style={{ display: "flex", alignItems: "center", gap: "10px", background: colors.bg.page, padding: "8px 14px", borderRadius: "8px", border: `1px solid ${colors.header.border}`, flex: 1, minWidth: "240px" }}>
           <Search size={18} color={colors.text.muted} />
           <input
-            type="text" placeholder="Search manager by name, email, phone, or status"
-            value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            type="text"
+            placeholder="Search manager by name, email, phone, or status"
+            value={searchQuery}
+            onKeyDown={(e) => {
+              if (e.key === " " && searchQuery === "") {
+                e.preventDefault();
+              }
+            }}
+            onChange={(e) => setSearchQuery(e.target.value.trimStart())}
             style={{ width: "100%", border: "none", outline: "none", fontSize: "14px", background: "transparent", fontFamily: typography.fontFamily.sans, color: colors.text.primary }}
           />
         </div>
@@ -1594,7 +1682,11 @@ function ManagerManagementInner() {
         columns={columns}
         data={filteredManagers}
         keyExtractor={(m) => m.id}
-        pageSize={5}
+        pageSize={pageSize}
+        currentPage={currentPage}
+        onPageChange={setCurrentPage}
+        totalItems={pagination.total}
+        totalPages={pagination.totalPages}
         isLoading={isFetchingManagers}
         emptyIcon={
           isFiltered ? (
@@ -1684,7 +1776,7 @@ function ManagerManagementInner() {
                 <div>
                   <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary, fontFamily: typography.fontFamily.sans }}>Phone <span style={{ color: "#EF4444" }}>*</span></label>
                   <input
-                    type="text" maxLength={10} placeholder="9876543210"
+                    type="text" maxLength={10} placeholder="Enter phone number"
                     {...register("phone")}
                     onKeyDown={(e) => { if (e.key.length === 1 && !/\d/.test(e.key) && !e.ctrlKey && !e.metaKey) e.preventDefault(); }}
                     onInput={(e) => { const v = e.currentTarget.value.replace(/\D/g, "").slice(0, 10); e.currentTarget.value = v; setValue("phone", v, { shouldValidate: true }); }}
@@ -1694,7 +1786,7 @@ function ManagerManagementInner() {
                 </div>
                 <div>
                   <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary, fontFamily: typography.fontFamily.sans }}>Email <span style={{ color: "#EF4444" }}>*</span></label>
-                  <input type="email" placeholder="manager@gmail.com" {...register("email")} style={inputStyle(!!errors.email)} />
+                  <input type="email" placeholder="enter email address" {...register("email")} style={inputStyle(!!errors.email)} />
                   <FieldError message={errors.email?.message} />
                 </div>
               </div>
@@ -1743,21 +1835,16 @@ function ManagerManagementInner() {
                 </div>
               </div>
 
-              {/* Permission Tree */}
+              {/* Attraction Permission Tree */}
               <div>
                 <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary, fontFamily: typography.fontFamily.sans, display: "block", marginBottom: "8px" }}>
-                  Module Permissions
+                  Attraction Management Permissions
                 </label>
-                <SystemModulePermissionTree
-                  selectedModules={watchedAllowedModules || []}
-                  modules={systemModules}
-                  isLoading={isSystemModulesLoading}
-                  onChange={(mods) => setValue("allowedModules", mods, { shouldValidate: true })}
-                />
                 <AttractionPermissionTree
                   enabled={watchedEnabled ?? false}
                   permissions={(watchedPermissions ?? []) as AttractionPermission[]}
                   attractions={attractionsList}
+                  systemModules={systemModules}
                   onEnabledChange={(v) => {
                     setValue("attractionManagementEnabled", v, { shouldValidate: true });
                     if (!v) setValue("attractionPermissions", [], { shouldValidate: true });

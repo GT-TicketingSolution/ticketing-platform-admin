@@ -23,12 +23,15 @@ export interface TicketingAttraction {
   };
   hasSeating: boolean;
   seatLayoutId: string | null;
+  duration?: number | string | null;
+  durationUnit?: string | null;
 }
 
 export interface TicketingCustomer {
   id: string;
   name: string;
   mobile: string;
+  address?: string | null;
   gstn: string | null;
   createdAt?: string;
 }
@@ -67,42 +70,54 @@ export interface TicketingBookingSeat {
 }
 
 export interface CreateTicketingBookingPayload {
-  customer: {
-    id?: string | null;
-    name: string;
-    mobile: string;
-    gstn?: string | null;
-  };
-  attractionId: string;
+  customerName?: string | null;
+  mobileNumber?: string | null;
+  gstNumber?: string | null;
   visitAt: string;
-  items: TicketingBookingItem[];
-  seats?: TicketingBookingSeat[];
   subtotal: number;
   gstAmount: number;
   gstAdjustment: number;
   roundOff: number;
   discountAmount: number;
+  paymentMode?: "CASH" | "UPI" | "CARD" | "ONLINE";
   totalAmount: number;
+  amountReceived?: number;
+  returnAmount?: number;
+  attractionId: string[];
 }
 
 export interface CreateTicketingBookingResponse {
-  booking: {
+  success?: boolean;
+  data?: {
+    bookingId?: string;
+    bookingNumber?: string;
+    status?: string;
+    attractionId?: string[];
+    qrCodes?: Array<{
+      attractionId?: string;
+      qrCode: string;
+      [key: string]: unknown;
+    }>;
+    [key: string]: unknown;
+  };
+  booking?: {
     id: string;
     bookingNumber: string;
     status: string;
-    customerId: string;
-    attractionId: string;
-    attractionName: string;
-    visitAt: string;
-    totalAmount: number;
-    amountPaid: number;
+    customerId?: string;
+    attractionId?: string | string[];
+    attractionName?: string;
+    visitAt?: string;
+    totalAmount?: number;
+    amountPaid?: number;
     seats?: TicketingBookingSeat[];
   };
-  paymentRequired: boolean;
+  paymentRequired?: boolean;
 }
 
 export interface TicketingPaymentPayload {
-  amountPaid: number;
+  amountReceived?: number;
+  amountPaid?: number;
   payment: {
     mode: "CASH" | "UPI" | "CARD" | "ONLINE";
   };
@@ -156,19 +171,10 @@ export interface TicketingConfirmResponse {
   }>;
 }
 
-export interface TicketingCancelResponse {
-  message: string;
-  booking: {
-    id: string;
-    bookingNumber: string;
-    status: string;
-    [key: string]: unknown;
-  };
-}
-
 export interface CreateTicketingCustomerPayload {
   name: string;
   mobile: string;
+  address?: string | null;
   gstn?: string | null;
 }
 
@@ -178,10 +184,6 @@ export const ticketingBookingKeys = {
   all: ["ticketing-booking"] as const,
   attractions: () => [...ticketingBookingKeys.all, "attractions"] as const,
   customers: (search: string) => [...ticketingBookingKeys.all, "customers", search] as const,
-  slots: (attractionId: string, date: string) =>
-    [...ticketingBookingKeys.all, "slots", attractionId, date] as const,
-  seats: (attractionId: string, slotId: string, date: string) =>
-    [...ticketingBookingKeys.all, "seats", attractionId, slotId, date] as const,
 };
 
 // ── Queries ───────────────────────────────────────────────────────────────────
@@ -196,8 +198,8 @@ export function useTicketingAttractions() {
     queryFn: async () => {
       const res = await getData<any>(AppUrl.ticketingBooking.attractions);
       const payload = res?.data ?? res;
-      const items = payload?.items ?? (Array.isArray(payload) ? payload : []);
-      return items.map((item: any) => ({
+      const items = payload?.items ?? payload?.attractions ?? (Array.isArray(payload) ? payload : []);
+      return items.map((item: any): TicketingAttraction => ({
         id: item.id,
         name: item.name,
         category: item.category ?? item.type ?? "-",
@@ -212,24 +214,23 @@ export function useTicketingAttractions() {
         },
         hasSeating: item.hasSeating ?? false,
         seatLayoutId: item.seatLayoutId ?? null,
-      })) as TicketingAttraction[];
+        duration: item.duration ?? null,
+        durationUnit: item.durationUnit ?? null,
+      }));
     },
     staleTime: 60 * 1000,
-    refetchOnWindowFocus: true,
   });
 }
 
 /**
- * Search customers for the ticket booking customer selection.
- * GET /api/admin/ticketing-booking/customers?search=&limit=20
+ * Search existing customers by name, mobile, or GSTN.
+ * GET /api/admin/ticketing-booking/customers?search=
  */
 export function useTicketingCustomers(search: string, enabled = true) {
   return useQuery<TicketingCustomer[]>({
     queryKey: ticketingBookingKeys.customers(search),
     queryFn: async () => {
-      const sp = new URLSearchParams();
-      if (search.trim()) sp.set("search", search.trim());
-      sp.set("limit", "20");
+      const sp = new URLSearchParams({ search });
       const res = await getData<any>(`${AppUrl.ticketingBooking.customers}?${sp.toString()}`);
       const payload = res?.data ?? res;
       const items = payload?.items ?? (Array.isArray(payload) ? payload : []);
@@ -246,113 +247,152 @@ export function useTicketingCustomers(search: string, enabled = true) {
   });
 }
 
+// ── Attraction Trip Number Types & Hook ─────────────────────────────────────
+
+export interface AttractionTripNoItem {
+  attractionId: string;
+  currentTripNo: number;
+}
+
+export interface AttractionTripNoRequest {
+  attractions: AttractionTripNoItem[];
+}
+
+export interface AttractionTripNoResponseItem {
+  attractionId: string;
+  currentTripNo: number;
+  newTripNo: number;
+}
+
+export interface AttractionTripNoResponse {
+  success: boolean;
+  data: AttractionTripNoResponseItem[];
+}
+
 /**
- * Fetch time slots for an attraction on a given date.
- * GET /api/admin/ticketing-booking/slots?attractionId=&date=
+ * Fetch attraction trip numbers.
+ * POST /api/admin/ticketing-booking/get-attraction-trip-no
  */
-export function useTicketingSlots(attractionId: string, date: string, enabled = true) {
-  return useQuery<TicketingSlot[]>({
-    queryKey: ticketingBookingKeys.slots(attractionId, date),
+export function useAttractionTripNo(
+  attractions: AttractionTripNoItem[],
+  enabled = true
+) {
+  return useQuery<AttractionTripNoResponseItem[]>({
+    queryKey: [...ticketingBookingKeys.all, "trip-no", attractions],
     queryFn: async () => {
-      const sp = new URLSearchParams({ attractionId, date });
-      const res = await getData<any>(`${AppUrl.ticketingBooking.slots}?${sp.toString()}`);
+      const res = await postData<any, AttractionTripNoRequest>(
+        AppUrl.ticketingBooking.getAttractionTripNo,
+        { attractions }
+      );
       const payload = res?.data ?? res;
-      const items = payload?.items ?? payload?.slots ?? (Array.isArray(payload) ? payload : []);
-      return items.map((s: any): TicketingSlot => ({
-        id: s.id,
-        slotTime: s.displayTime ?? s.slotTime ?? s.startTime ?? "10:00 AM – 10:20 AM",
-        isActive: s.isActive ?? true,
-        capacity: s.capacity != null ? Number(s.capacity) : null,
-        booked: Number(s.booked ?? 0),
-        available: Number(s.available ?? (s.capacity != null ? Math.max(0, Number(s.capacity) - Number(s.booked ?? 0)) : 0)),
-      }));
+      return Array.isArray(payload) ? payload : [];
     },
-    enabled: enabled && !!attractionId && !!date,
-    staleTime: 30 * 1000,
+    enabled: enabled && attractions.length > 0 && attractions.every((a) => !!a.attractionId),
+    staleTime: 10 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
-export interface TicketingSeatsResponse {
+// ── Attraction Seat Availability Types & Hook ────────────────────────────────
+
+export interface AttractionSeatAvailabilityItem {
   attractionId: string;
-  slotId: string;
-  date: string;
-  hasSeating: boolean;
-  layout?: {
-    id: string;
-    name: string;
-    rows: number;
-    cols: number;
-    hasAisle?: boolean;
-    aisleAfterCol?: number;
-  } | null;
-  totalSeats?: number;
-  occupiedCount?: number;
-  availableSeats?: number;
-  occupiedSeats?: any[];
-  sections: Array<{
-    name: string;
-    bogie: string | null;
-    totalSeats: number;
-    occupiedSeats: any[];
-    availableSeats: number;
-    seats?: TicketingSeat[];
-  }>;
-  seats: TicketingSeat[];
+  currentTripNo: number;
+}
+
+export interface AttractionSeatAvailabilityRequest {
+  attractions: AttractionSeatAvailabilityItem[];
+}
+
+export interface AttractionSeatItem {
+  attractionSeatId: string;
+  name: string;
+  seatOrder: number;
+  bookedSeats?: number[];
+}
+
+export interface AttractionSeatLayout {
+  seatLayoutId: string;
+  name: string;
+  rows: number;
+  cols: number;
+  hasAisle: boolean;
+  aisleAfterCol: number | null;
+  aisleAfterRow: number | null;
+  seats?: AttractionSeatItem[];
+}
+
+export interface AttractionSeatAvailabilityData {
+  attractionId: string;
+  currentTripNo: number;
+  seats?: AttractionSeatItem[];
+  seatLayout: AttractionSeatLayout;
+  bookedSeats?: number[];
+}
+
+export interface AttractionSeatAvailabilityResponse {
+  success: boolean;
+  data: AttractionSeatAvailabilityData[];
 }
 
 /**
- * Fetch seat availability for an attraction slot on a given date.
- * GET /api/admin/ticketing-booking/seats?attractionId=&slotId=&date=
+ * Fetch seat availability for attraction(s) and trip number.
+ * POST /api/admin/ticketing-booking/attraction-seat-availability
  */
-export function useTicketingSeats(attractionId: string, slotId: string, date: string, enabled = true) {
-  return useQuery<TicketingSeatsResponse>({
-    queryKey: ticketingBookingKeys.seats(attractionId, slotId, date),
+export function useAttractionSeatAvailability(
+  attractions: AttractionSeatAvailabilityItem[],
+  enabled = true
+) {
+  return useQuery<AttractionSeatAvailabilityData[]>({
+    queryKey: [...ticketingBookingKeys.all, "seat-availability", attractions],
     queryFn: async () => {
-      const sp = new URLSearchParams({ attractionId, slotId, date });
-      const res = await getData<any>(`${AppUrl.ticketingBooking.seats}?${sp.toString()}`);
+      const res = await postData<any, AttractionSeatAvailabilityRequest>(
+        AppUrl.ticketingBooking.attractionSeatAvailability,
+        { attractions }
+      );
       const payload = res?.data ?? res;
-      const seatsItems = payload?.seats ?? (Array.isArray(payload) ? payload : []);
-      const sectionsItems = payload?.sections ?? [];
-      return {
-        attractionId: payload?.attractionId ?? attractionId,
-        slotId: payload?.slotId ?? slotId,
-        date: payload?.date ?? date,
-        hasSeating: payload?.hasSeating ?? true,
-        layout: payload?.layout ?? null,
-        totalSeats: payload?.totalSeats ?? seatsItems.length,
-        occupiedCount: payload?.occupiedCount ?? 0,
-        availableSeats: payload?.availableSeats ?? (payload?.totalSeats ? payload.totalSeats - (payload.occupiedCount || 0) : seatsItems.length),
-        occupiedSeats: payload?.occupiedSeats ?? [],
-        sections: sectionsItems.map((sec: any) => ({
-          name: sec.name || "Section",
-          bogie: sec.bogie ?? null,
-          totalSeats: Number(sec.totalSeats ?? (sec.seats ? sec.seats.length : 24)),
-          occupiedSeats: sec.occupiedSeats ?? [],
-          availableSeats: Number(
-            sec.availableSeats ??
-            (sec.totalSeats ? sec.totalSeats - (sec.occupiedSeats?.length || 0) : (sec.seats ? sec.seats.filter((s: any) => s.status !== "occupied").length : 0))
-          ),
-          seats: (sec.seats ?? []).map((s: any): TicketingSeat => ({
-            id: s.id,
-            row: s.row,
-            column: s.column,
-            bogie: s.bogie ?? null,
-            seatNumber: s.seatNumber,
-            status: s.status === "occupied" ? "occupied" : "available",
-          })),
-        })),
-        seats: seatsItems.map((s: any): TicketingSeat => ({
-          id: s.id,
-          row: s.row,
-          column: s.column,
-          bogie: s.bogie ?? null,
-          seatNumber: s.seatNumber,
-          status: s.status === "occupied" ? "occupied" : "available",
-        })),
-      };
+      return Array.isArray(payload) ? payload : [];
     },
-    enabled: enabled && !!attractionId && !!slotId && slotId !== "slot-default" && !!date,
-    staleTime: 15 * 1000,
+    enabled: enabled && attractions.length > 0 && attractions.every((a) => !!a.attractionId),
+    staleTime: 10 * 1000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+// ── Attraction Seat Booking Types & Mutation 
+
+export interface AttractionSeatBookingItem {
+  attractionId: string;
+  tripNo: number;
+  attractionSeatId: string;
+  seatNo: number[];
+}
+
+export interface AttractionSeatBookingRequest {
+  bookings: AttractionSeatBookingItem[];
+}
+
+export interface AttractionSeatBookingResponse {
+  success: boolean;
+  data: {
+    message: string;
+  };
+}
+
+/**
+ * Create attraction seat booking history.
+ * POST /api/admin/ticketing-booking/attraction-seat-booking
+ */
+export function useCreateAttractionSeatBooking() {
+  return useMutation({
+    mutationFn: (payload: AttractionSeatBookingRequest) =>
+      postData<AttractionSeatBookingResponse, AttractionSeatBookingRequest>(
+        AppUrl.ticketingBooking.attractionSeatBooking,
+        payload
+      ),
+    onError: (err: any) => {
+      showErrorOnce(err?.error?.message || err?.message || "Failed to create seat booking.");
+    },
   });
 }
 
@@ -424,33 +464,9 @@ export function useConfirmTicketingBooking() {
       postData<TicketingConfirmResponse>(
         AppUrl.ticketingBooking.confirm(bookingId)
       ),
-    onSuccess: () => {
-      showSuccessNotify("Booking confirmed successfully.");
-    },
     onError: (err: any) => {
       showErrorOnce(err?.error?.message || err?.message || "Failed to confirm booking.");
     },
   });
 }
 
-/**
- * Cancel a PENDING booking (releases all reserved seats).
- * POST /api/admin/ticketing-booking/:bookingId/cancel
- */
-export function useCancelTicketingBooking() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (bookingId: string) =>
-      postData<TicketingCancelResponse, {}>(
-        AppUrl.ticketingBooking.cancel(bookingId),
-        {}
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ticketingBookingKeys.all });
-      showSuccessNotify("Booking cancelled successfully.");
-    },
-    onError: (err: any) => {
-      showErrorOnce(err?.error?.message || err?.message || "Failed to cancel booking.");
-    },
-  });
-}

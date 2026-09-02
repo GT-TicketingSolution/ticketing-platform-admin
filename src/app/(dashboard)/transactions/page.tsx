@@ -236,7 +236,7 @@ export default function TransactionsPage() {
         filename: `Transactions_${scopeLabel}_${dateKey}.pdf`,
         orientation: "landscape",
         columns: [
-          { header: "#", accessor: (_, i) => i + 1, width: "30px" },
+          { header: "#", accessor: (_, i) => (scope === "all" ? i + 1 : (currentPage - 1) * ITEMS_PER_PAGE + i + 1), width: "30px" },
           { header: "Transaction ID", accessor: "transactionId" },
           { header: "Customer", accessor: "customerName" },
           { header: "Date", accessor: (t) => t.transactionDate ? new Date(t.transactionDate).toLocaleDateString("en-IN") : "-" },
@@ -270,7 +270,7 @@ export default function TransactionsPage() {
       const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
       const headers = ["#", "Transaction ID", "Customer", "Date", "Booking ID", "Attraction", "Amount (₹)", "Mode", "Status"];
       const rows = items.map((t, i) => [
-        i + 1, t.transactionId, t.customerName,
+        scope === "all" ? i + 1 : (currentPage - 1) * ITEMS_PER_PAGE + i + 1, t.transactionId, t.customerName,
         t.transactionDate ? new Date(t.transactionDate).toLocaleDateString("en-IN") : "-",
         t.bookingId, t.attraction?.name ?? "-",
         Number(t.amount).toFixed(2), t.paymentMode, t.status,

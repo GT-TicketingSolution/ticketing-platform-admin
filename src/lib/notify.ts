@@ -48,6 +48,100 @@ export function showErrorNotify(message: string = "An error occurred.", title: s
   });
 }
 
+// Deduplication flag — prevents multiple Access Denied modals from stacking
+let _accessDeniedModalOpen = false;
+
+/**
+ * Shows a persistent "Access Denied" modal that:
+ * - Cannot be dismissed by clicking outside (allowOutsideClick: false).
+ * - Has no close (X) icon.
+ * - Redirects the user to /login on OK.
+ * - Does NOT clear localStorage (only logout should do that).
+ *
+ * Designed for MODULE_ACCESS_DENIED / 403 API errors.
+ */
+export async function showAccessDeniedModal(message?: string) {
+  if (typeof window === "undefined") return;
+  if (_accessDeniedModalOpen) return; // prevent stacking
+
+  _accessDeniedModalOpen = true;
+
+  try {
+    await showNotify({
+      title: "Access Denied",
+      message: message || "You do not have permission to access this module.",
+      variant: "classic",
+      status: "error",
+      animation: "slide-up",
+      size: "sm",
+      allowOutsideClick: false,
+      showCloseIcon: false,
+      showDenyButton: false,
+      showCancelButton: false,
+      showConfirmButton: true,
+      confirmButtonText: "OK",
+      focusConfirm: true,
+      celebrate: false,
+    });
+  } catch {
+    // dismissed
+  } finally {
+    _accessDeniedModalOpen = false;
+    // Redirect to login — localStorage is NOT cleared here.
+    // Only the explicit logout action should clear localStorage.
+    window.location.replace("/login");
+  }
+}
+
+// Deduplication flag — prevents multiple Session Expired modals from stacking
+let _sessionExpiredModalOpen = false;
+
+/**
+ * Shows a persistent "Session Expired" modal that:
+ * - Cannot be dismissed by clicking outside (allowOutsideClick: false).
+ * - Has no close (X) icon.
+ * - Redirects the user to /login on OK.
+ * - Does NOT clear localStorage (only logout should do that).
+ *
+ * Designed for 401 Unauthorized / session timeout errors.
+ */
+export async function showSessionExpiredModal(message?: string) {
+  if (typeof window === "undefined") return;
+  if (_sessionExpiredModalOpen) return; // prevent stacking
+
+  // Don't show if already on the login page
+  if (window.location.pathname.startsWith("/login")) return;
+
+  _sessionExpiredModalOpen = true;
+
+  try {
+    await showNotify({
+      title: "Session Expired",
+      message: message || "Your session has expired. Please log in again.",
+      variant: "classic",
+      status: "warning",
+      animation: "slide-up",
+      size: "sm",
+      allowOutsideClick: false,
+      showCloseIcon: false,
+      showDenyButton: false,
+      showCancelButton: false,
+      showConfirmButton: true,
+      confirmButtonText: "OK",
+      focusConfirm: true,
+      celebrate: false,
+    });
+  } catch {
+    // dismissed
+  } finally {
+    _sessionExpiredModalOpen = false;
+    // Redirect to login — localStorage is NOT cleared here.
+    // Only the explicit logout action should clear localStorage.
+    window.location.replace("/login");
+  }
+}
+
+
 /**
  * Confirm before deleting a record — uses sentence case messaging.
  */

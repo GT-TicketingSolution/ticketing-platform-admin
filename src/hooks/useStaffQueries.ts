@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { getData, postData, patchData, deleteData } from "@/lib/api/apiService";
 import { AppUrl } from "@/lib/api/endpoints";
 import { showSuccessNotify } from "@/lib/notify";
@@ -83,11 +83,24 @@ export async function fetchStaffList(params?: StaffQueryParams): Promise<StaffLi
 export function useStaffList(params?: StaffQueryParams) {
   const page = params?.page ?? 1;
   const limit = params?.limit !== undefined ? params.limit : 10;
+  const search = params?.search?.trim() ?? "";
+  const status = params?.status ?? "";
+  const attractionId = params?.attractionId ?? "";
+
+  const resolvedParams: StaffQueryParams = {
+    ...params,
+    page,
+    limit,
+    search: search || undefined,
+    status: (status as StaffQueryParams["status"]) || undefined,
+    attractionId: attractionId || undefined,
+  };
 
   return useQuery<StaffListResponse>({
-    queryKey: staffKeys.list({ ...params, page, limit }),
-    queryFn: () => fetchStaffList({ ...params, page, limit }),
-    staleTime: 30 * 1000,
+    queryKey: staffKeys.list(resolvedParams),
+    queryFn: () => fetchStaffList(resolvedParams),
+    placeholderData: keepPreviousData,
+    staleTime: 0,
     refetchOnWindowFocus: true,
   });
 }

@@ -1,7 +1,12 @@
 import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/db";
-import { attractionManagement, attractions } from "@/db/schema";
+import {
+  attractionManagement,
+  attractions,
+  attractionSeats,
+  seatLayouts,
+} from "@/db/schema";
 
 import { success, failure } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -39,9 +44,9 @@ export async function PATCH(
 
     const body = await request.json();
 
-    // =====================================
-    // Check ownership/access
-    // =====================================
+    // =====================================================
+    // CHECK OWNERSHIP / ACCESS
+    // =====================================================
 
     let existing;
 
@@ -53,41 +58,49 @@ export async function PATCH(
         ),
       });
     } else {
-      const ids = await getAccessibleAttractionIds(auth);
+      const allowedIds = await getAccessibleAttractionIds(auth);
+
+      if (!allowedIds.length) {
+        return failure("Access denied", 403, "FORBIDDEN");
+      }
 
       existing = await db.query.attractionManagement.findFirst({
         where: and(
           eq(attractionManagement.id, id),
-          inArray(attractionManagement.attractionId, ids),
+          inArray(attractionManagement.attractionId, allowedIds),
         ),
       });
     }
 
     if (!existing) {
-      return failure("Access denied", 403, "FORBIDDEN");
+      return failure("Attraction not found or access denied", 403, "FORBIDDEN");
     }
 
-    // =====================================
-    // Seat layouts (optional on PATCH)
-    // - If seatLayoutIds provided OR seating disabled → sync junction + legacy
-    // - Otherwise leave existing seat mappings untouched
-    // =====================================
+    // =====================================================
+    // SEAT LAYOUTS
+    // =====================================================
 
-    // Seat layouts: required whenever the client sends allocation fields (create/edit form always does)
     const shouldSyncSeatLayouts =
       body.seatLayoutIds !== undefined || body.hasSeating !== undefined;
 
-    let seatLayoutAssignments: {
-      seatLayoutId: string;
-      quantity: number;
-    }[] | null = null;
+    let seatLayoutAssignments:
+      | {
+          seatLayoutId: string;
+          quantity: number;
+          name?: string;
+          position?: number;
+        }[]
+      | null = null;
+
     let expandedSeatLayoutIds: string[] | null = null;
 
+    let resolvedSeatLayouts: ReturnType<typeof resolveSeatLayoutIds> | null =
+      null;
+
     if (shouldSyncSeatLayouts) {
-      // Seat allocation is mandatory — hasSeating false is rejected via empty layouts
       const hasSeating = body.hasSeating === false ? false : true;
 
-      const resolvedSeatLayouts = resolveSeatLayoutIds({
+      resolvedSeatLayouts = resolveSeatLayoutIds({
         hasSeating,
         seatLayoutIds: body.seatLayoutIds ?? [],
       });
@@ -104,7 +117,12 @@ export async function PATCH(
       }
 
       seatLayoutAssignments = resolvedSeatLayouts.assignments;
+
       expandedSeatLayoutIds = resolvedSeatLayouts.expandedIds;
+
+      // =====================================================
+      // VALIDATE LAYOUT OWNERSHIP
+      // =====================================================
 
       const seatLayoutOwnership = await validateSeatLayoutsForAdmin(
         db,
@@ -113,15 +131,14 @@ export async function PATCH(
       );
 
       if (!seatLayoutOwnership.ok) {
-        return failure(
-          seatLayoutOwnership.message,
-          400,
-          "VALIDATION_ERROR",
-        );
+        return failure(seatLayoutOwnership.message, 400, "VALIDATION_ERROR");
       }
     }
 
-    // Seat counts: required whenever any seat field is present (frontend always sends all)
+    // =====================================================
+    // SEAT CATEGORY COUNTS
+    // =====================================================
+
     const seatFieldProvided = [
       "adultSeats",
       "childSeats",
@@ -134,16 +151,18 @@ export async function PATCH(
       null;
 
     if (seatFieldProvided) {
-      parsedSeatCounts = parseCategorySeatCounts(body, { required: true });
+      parsedSeatCounts = parseCategorySeatCounts(body, {
+        required: true,
+      });
 
       if (!parsedSeatCounts.ok) {
-        return failure(
-          parsedSeatCounts.message,
-          400,
-          "VALIDATION_ERROR",
-        );
+        return failure(parsedSeatCounts.message, 400, "VALIDATION_ERROR");
       }
     }
+
+    // =====================================================
+    // TIME SLOTS
+    // =====================================================
 
     const timeSlotsParsed = parseTimeSlotsPayload(body);
 
@@ -151,51 +170,102 @@ export async function PATCH(
       return failure(timeSlotsParsed.message, 400, "VALIDATION_ERROR");
     }
 
+    // =====================================================
+    // TRANSACTION
+    // =====================================================
+
     const result = await db.transaction(async (tx) => {
-      // =====================================
-      // UPDATE MAIN ATTRACTION
-      // =====================================
+      // =====================================================
+      // UPDATE ATTRACTION
+      // =====================================================
 
       if (body.name !== undefined || body.category !== undefined) {
         await tx
           .update(attractions)
           .set({
-            ...(body.name !== undefined ? { name: body.name } : {}),
-            ...(body.category !== undefined ? { type: body.category } : {}),
+            ...(body.name !== undefined
+              ? {
+                  name: body.name,
+                }
+              : {}),
+
+            ...(body.category !== undefined
+              ? {
+                  type: body.category,
+                }
+              : {}),
+
             updatedAt: new Date(),
           })
           .where(eq(attractions.id, existing.attractionId));
       }
 
-      // =====================================
-      // UPDATE MANAGEMENT DATA
-      // =====================================
+      // =====================================================
+      // UPDATE MANAGEMENT
+      // =====================================================
 
-      const managementUpdate: Partial<typeof attractionManagement.$inferInsert> =
-        {
-          updatedAt: new Date(),
-        };
+      const managementUpdate: Partial<
+        typeof attractionManagement.$inferInsert
+      > = {
+        updatedAt: new Date(),
+      };
 
-      if (body.image !== undefined) managementUpdate.image = body.image;
+      // -----------------------------
+      // BASIC DATA
+      // -----------------------------
+
+      if (body.image !== undefined) {
+        managementUpdate.image = body.image;
+      }
+
       if (body.description !== undefined) {
         managementUpdate.description = body.description;
       }
-      if (body.timing !== undefined) managementUpdate.timing = body.timing;
+
+      if (body.timing !== undefined) {
+        managementUpdate.timing = body.timing;
+      }
+
+      // -----------------------------
+      // DURATION
+      // -----------------------------
+
+      if (body.duration !== undefined) {
+        managementUpdate.duration = body.duration;
+      }
+
+      if (body.durationUnit !== undefined) {
+        managementUpdate.durationUnit = body.durationUnit;
+      }
+
+      // -----------------------------
+      // PRICES
+      // -----------------------------
+
       if (body.adultPrice !== undefined) {
         managementUpdate.adultPrice = body.adultPrice;
       }
+
       if (body.childPrice !== undefined) {
         managementUpdate.childPrice = body.childPrice;
       }
+
       if (body.studentPrice !== undefined) {
         managementUpdate.studentPrice = body.studentPrice;
       }
+
       if (body.seniorPrice !== undefined) {
         managementUpdate.seniorPrice = body.seniorPrice;
       }
+
       if (body.foreignerPrice !== undefined) {
         managementUpdate.foreignerPrice = body.foreignerPrice;
       }
+
+      // -----------------------------
+      // SEATING
+      // -----------------------------
+
       if (body.hasSeating !== undefined) {
         managementUpdate.hasSeating = Boolean(body.hasSeating);
       }
@@ -204,30 +274,111 @@ export async function PATCH(
         Object.assign(managementUpdate, parsedSeatCounts.seats);
       }
 
+      // =====================================================
+      // LEGACY SEAT LAYOUT
+      // =====================================================
+
       if (seatLayoutAssignments !== null && expandedSeatLayoutIds !== null) {
         managementUpdate.seatLayoutId = getLegacySeatLayoutId(
           expandedSeatLayoutIds,
         );
+
         managementUpdate.hasSeating = expandedSeatLayoutIds.length > 0;
       }
 
-      const updated = await tx
+      // =====================================================
+      // UPDATE MANAGEMENT ROW
+      // =====================================================
+
+      const updatedRows = await tx
         .update(attractionManagement)
         .set(managementUpdate)
         .where(eq(attractionManagement.id, id))
         .returning();
 
+      const updated = updatedRows[0];
+
+      // =====================================================
+      // SYNC SEAT LAYOUT JUNCTION
+      // =====================================================
+
       let seatLayoutMappings:
         | Awaited<ReturnType<typeof replaceAttractionSeatLayouts>>
         | undefined;
 
-      if (seatLayoutAssignments !== null) {
+      if (seatLayoutAssignments !== null && resolvedSeatLayouts?.ok) {
         seatLayoutMappings = await replaceAttractionSeatLayouts(
           tx,
           id,
           seatLayoutAssignments,
+          resolvedSeatLayouts.fullObjects,
         );
       }
+
+      // =====================================================
+      // SYNC ATTRACTION SEATS
+      // =====================================================
+
+      let updatedAttractionSeats:
+        | (typeof attractionSeats.$inferSelect)[]
+        | undefined;
+
+      if (seatLayoutAssignments !== null) {
+        // ---------------------------------------------
+        // DELETE OLD SEATS
+        // ---------------------------------------------
+
+        await tx
+          .delete(attractionSeats)
+          .where(eq(attractionSeats.attractionId, existing.attractionId));
+
+        const attractionSeatRows: {
+          attractionId: string;
+          seatLayoutId: string;
+          name: string;
+          seatOrder: number;
+        }[] = [];
+
+        let seatOrder = 1;
+
+        for (const [index, assignment] of seatLayoutAssignments.entries()) {
+          const quantity = assignment.quantity ?? 1;
+
+          const layout = resolvedSeatLayouts?.fullObjects[index];
+
+          if (!layout) {
+            throw new Error(`Seat layout not found at position ${index + 1}`);
+          }
+
+          for (let i = 0; i < quantity; i++) {
+            attractionSeatRows.push({
+              attractionId: existing.attractionId,
+              seatLayoutId: assignment.seatLayoutId,
+              name: layout.name ?? "",
+              seatOrder,
+            });
+
+            seatOrder++;
+          }
+        }
+
+        // ---------------------------------------------
+        // INSERT NEW SEATS
+        // ---------------------------------------------
+
+        if (attractionSeatRows.length > 0) {
+          updatedAttractionSeats = await tx
+            .insert(attractionSeats)
+            .values(attractionSeatRows)
+            .returning();
+        } else {
+          updatedAttractionSeats = [];
+        }
+      }
+
+      // =====================================================
+      // TIME SLOTS
+      // =====================================================
 
       let timeSlots:
         | Awaited<ReturnType<typeof syncAttractionTimeSlots>>
@@ -243,45 +394,186 @@ export async function PATCH(
         const map = await listTimeSlotsByAttractionIds(tx, [
           existing.attractionId,
         ]);
+
         timeSlots = map.get(existing.attractionId) ?? [];
       }
 
+      // =====================================================
+      // GET SEAT LAYOUT RESPONSE
+      // =====================================================
+
+      let seatLayoutsResponse:
+        | {
+            id: string;
+            quantity: number;
+            [key: string]: unknown;
+          }[]
+        | undefined;
+
+      if (seatLayoutMappings !== undefined) {
+        const layoutIds = seatLayoutMappings.map(
+          (mapping) => mapping.seatLayoutId,
+        );
+
+        if (layoutIds.length > 0) {
+          const layouts = await tx
+            .select()
+            .from(seatLayouts)
+            .where(inArray(seatLayouts.id, layoutIds));
+
+          const layoutMap = new Map(
+            layouts.map((layout) => [layout.id, layout]),
+          );
+
+          seatLayoutsResponse = seatLayoutMappings.map((mapping) => ({
+            ...(layoutMap.get(mapping.seatLayoutId) ?? {}),
+            quantity: mapping.quantity ?? 1,
+          })) as {
+            id: string;
+            quantity: number;
+            [key: string]: unknown;
+          }[];
+        } else {
+          seatLayoutsResponse = [];
+        }
+      }
+
+      // =====================================================
+      // RETURN
+      // =====================================================
+
       return {
-        management: updated[0],
-        seatLayouts: seatLayoutMappings,
+        management: updated,
+
+        seatLayouts: seatLayoutsResponse,
+
+        seatLayoutIds: expandedSeatLayoutIds ?? undefined,
+
+        attractionSeats: updatedAttractionSeats,
+
         timeSlots,
       };
     });
 
-    // Preserve prior response shape (management row) and add seatLayouts when synced
-    return success({
+    // =====================================================
+    // RESPONSE
+    // =====================================================
+
+    const sanitizedResponse = {
       ...result.management,
-      ...(result.seatLayouts !== undefined
-        ? { seatLayouts: result.seatLayouts }
+
+      ...(Array.isArray(result.seatLayouts)
+        ? {
+            seatLayouts: result.seatLayouts.map((layout: any) => ({
+              id: layout.id,
+              name: layout.name,
+              rows: layout.rows,
+              cols: layout.cols,
+              hasAisle: layout.hasAisle,
+              aisleAfterCol: layout.aisleAfterCol,
+              status: layout.status,
+              quantity: layout.quantity,
+              totalSeats: layout.totalSeats,
+            })),
+          }
         : {}),
-      timeSlots: result.timeSlots,
-    });
+
+      ...(Array.isArray(result.seatLayoutIds) && result.seatLayoutIds.length > 0
+        ? {
+            seatLayoutIds: result.seatLayoutIds,
+          }
+        : {}),
+
+      ...(Array.isArray(result.attractionSeats)
+        ? {
+            attractionSeats: result.attractionSeats.map((seat: any) => ({
+              id: seat.id,
+              attractionId: seat.attractionId,
+              seatLayoutId: seat.seatLayoutId,
+              name: seat.name,
+              seatOrder: seat.seatOrder,
+              createdAt: seat.createdAt,
+            })),
+          }
+        : {}),
+
+      timeSlots: Array.isArray(result.timeSlots)
+        ? result.timeSlots.map((slot: any) => ({
+            id: slot.id,
+            attractionId: slot.attractionId,
+            slotTime: slot.slotTime,
+            isActive: slot.isActive,
+          }))
+        : [],
+    };
+
+    return success(sanitizedResponse);
   } catch (error) {
+    console.error("Update attraction error:", error);
     if (error instanceof Error) {
-      if (error.message.startsWith("TIME_SLOT_NOT_FOUND:")) {
+      console.error("Error message:", error.message);
+      console.error("Error code:", (error as any).code);
+      console.error("Error detail:", (error as any).detail);
+    }
+
+    if (error instanceof Error) {
+      // =====================================================
+      // DATABASE CONSTRAINT ERROR
+      // =====================================================
+
+      const errorStr = error.message.toLowerCase();
+
+      if (errorStr.includes("foreign key") || errorStr.includes("23503")) {
         return failure(
-          `Unknown timeSlots.id: ${error.message.replace("TIME_SLOT_NOT_FOUND:", "")}`,
+          "One or more seat layouts do not exist in the database.",
           400,
           "VALIDATION_ERROR",
         );
       }
 
-      // Authentication
+      if (errorStr.includes("unique") || errorStr.includes("23505")) {
+        return failure(
+          "Duplicate seat layout assignment detected.",
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
+      // =====================================================
+      // TIME SLOT ERROR
+      // =====================================================
+
+      if (error.message.startsWith("TIME_SLOT_NOT_FOUND:")) {
+        return failure(
+          `Unknown timeSlots.id: ${error.message.replace(
+            "TIME_SLOT_NOT_FOUND:",
+            "",
+          )}`,
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
+      // =====================================================
+      // AUTHENTICATION
+      // =====================================================
+
       if (error.message === "UNAUTHORIZED") {
         return failure("Authentication required.", 401, "UNAUTHORIZED");
       }
 
-      // Account inactive
+      // =====================================================
+      // ACCOUNT STATUS
+      // =====================================================
+
       if (error.message === "ACCOUNT_NOT_ACTIVE") {
         return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
       }
 
-      // Module authorization
+      // =====================================================
+      // AUTHORIZATION
+      // =====================================================
+
       if (error.message === "FORBIDDEN") {
         return failure(
           "You are not authorized to access attraction management.",

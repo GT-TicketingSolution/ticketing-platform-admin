@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { getData, postData } from "@/lib/api/apiService";
 import { AppUrl } from "@/lib/api/endpoints";
 import { useToast } from "@/components/ui/Toast";
@@ -154,6 +154,7 @@ export function useInventoryList(params?: InventoryListParams) {
         pagination: { page: 1, limit, total: 0, totalPages: 0 },
       };
     },
+    placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });

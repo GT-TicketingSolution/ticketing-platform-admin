@@ -134,14 +134,14 @@ export const AppUrl = {
   ticketingBooking: {
     attractions: "/admin/ticketing-booking/attractions",
     customers: "/admin/ticketing-booking/customers",
-    slots: "/admin/ticketing-booking/slots",
-    seats: "/admin/ticketing-booking/seats",
     references: "/admin/ticketing-booking/references",
     create: "/admin/ticketing-booking",
     payment: (bookingId: string) => `/admin/ticketing-booking/${bookingId}/payment`,
     confirm: (bookingId: string) => `/admin/ticketing-booking/${bookingId}/confirm`,
-    cancel: (bookingId: string) => `/admin/ticketing-booking/${bookingId}/cancel`,
     get: (bookingId: string) => `/admin/ticketing-booking/${bookingId}`,
+    getAttractionTripNo: "/admin/ticketing-booking/get-attraction-trip-no",
+    attractionSeatAvailability: "/admin/ticketing-booking/attraction-seat-availability",
+    attractionSeatBooking: "/admin/ticketing-booking/attraction-seat-booking",
   },
 
   // Ticket Scanner

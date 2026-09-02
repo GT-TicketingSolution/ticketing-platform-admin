@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { getData, postData, patchData, deleteData } from "@/lib/api/apiService";
 import { AppUrl } from "@/lib/api/endpoints";
 import { useToast } from "@/components/ui/Toast";
@@ -86,6 +86,7 @@ export function useReferenceList(params: ReferenceListParams = {}) {
   return useQuery<ReferenceListResponse>({
     queryKey: referenceKeys.list(params),
     queryFn: () => fetchReferenceList(params),
+    placeholderData: keepPreviousData,
     staleTime: 60 * 1000,
     refetchOnWindowFocus: true,
   });
