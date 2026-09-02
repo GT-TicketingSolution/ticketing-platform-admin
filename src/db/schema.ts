@@ -408,11 +408,7 @@ export const bookings = pgTable(
       length: 20,
     }),
 
-    attractionId: uuid("attraction_id")
-      .notNull()
-      .references(() => attractions.id, {
-        onDelete: "restrict",
-      }),
+    attractionId: uuid("attraction_ids").array().notNull(),
 
     visitAt: timestamp("visit_at", {
       withTimezone: true,
@@ -522,8 +518,6 @@ export const bookings = pgTable(
     customerNameIdx: index("bookings_customer_name_idx").on(table.customerName),
 
     mobileIdx: index("bookings_mobile_idx").on(table.mobileNumber),
-
-    attractionIdx: index("bookings_attraction_idx").on(table.attractionId),
 
     visitAtIdx: index("bookings_visit_at_idx").on(table.visitAt),
 
