@@ -538,8 +538,8 @@ function printReceiptViaIframe(elementId: string, onDone?: () => void) {
         <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800;900&display=swap" rel="stylesheet">
         <style>
           @page {
-            size: auto;
-            margin: 0;
+            size: 58mm auto;
+            margin: 0mm 2mm;
           }
           * {
             box-sizing: border-box;
@@ -550,13 +550,13 @@ function printReceiptViaIframe(elementId: string, onDone?: () => void) {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Courier New', Courier, monospace;
             color: #000000;
             background: #FFFFFF;
-            width: 80mm;
-            max-width: 80mm;
+            width: 54mm;
+            max-width: 54mm;
             margin: 0 auto;
-            padding: 2mm 1.5mm;
+            padding: 2mm 0mm;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            font-weight: 700;
+            font-weight: 400;
           }
           table {
             width: 100%;
@@ -878,8 +878,8 @@ function TicketGeneratedModal({
               <h3
                 style={{
                   margin: "0 0 2px 0",
-                  fontWeight: 900,
-                  fontSize: "18px",
+                  fontWeight: 700,
+                  fontSize: "14px",
                   color: "#000000",
                   letterSpacing: "0.03em",
                   textTransform: "uppercase",
@@ -988,16 +988,16 @@ function TicketGeneratedModal({
 
             {/* Prominent Total Header */}
             <div style={{ textAlign: "center", padding: "10px 0", borderBottom: "1px dashed #000000" }}>
-              <div style={{ fontSize: "28px", fontWeight: 900, color: "#000000", letterSpacing: "0.01em", lineHeight: "1.1" }}>
+              <div style={{ fontSize: "24px", fontWeight: 500, color: "#000000", letterSpacing: "0.01em", lineHeight: "1.1" }}>
                 ₹{finalTotal.toFixed(2)}
               </div>
-              <div style={{ fontSize: "12px", fontWeight: 800, color: "#000000", textTransform: "uppercase", marginTop: "2px" }}>
+              <div style={{ fontSize: "11px", fontWeight: 500, color: "#000000", textTransform: "uppercase", marginTop: "2px" }}>
                 Total Amount Paid ({payMode || "-"})
               </div>
             </div>
 
             {/* Invoice & Customer Meta */}
-            <div style={{ padding: "8px 0", borderBottom: "1px dashed #000000", fontSize: "11.5px", fontWeight: 700, color: "#000000" }}>
+            <div style={{ padding: "8px 0", borderBottom: "1px dashed #000000", fontSize: "11.5px", fontWeight: 400, color: "#000000" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
                 <span><strong>Invoice:</strong> {ticketNo}</span>
                 <span><strong>Bill To:</strong> {custName}</span>
@@ -1012,17 +1012,17 @@ function TicketGeneratedModal({
             <div style={{ padding: "8px 0", borderBottom: "1px dashed #000000" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11.5px", color: "#000000" }}>
                 <thead>
-                  <tr style={{ borderBottom: "1.5px solid #000000", textAlign: "left", fontWeight: 900 }}>
-                    <th style={{ paddingBottom: "4px", width: "12%" }}>S.No.</th>
-                    <th style={{ paddingBottom: "4px", width: "50%" }}>Category / Item</th>
-                    <th style={{ paddingBottom: "4px", width: "15%", textAlign: "center" }}>Qty</th>
-                    <th style={{ paddingBottom: "4px", width: "23%", textAlign: "right" }}>Amount</th>
+                  <tr style={{ borderBottom: "1.5px solid #000000", textAlign: "left", fontWeight: 400 }}>
+                    <th style={{ paddingBottom: "4px", width: "12%", fontWeight: 400 }}>S.No.</th>
+                    <th style={{ paddingBottom: "4px", width: "50%", fontWeight: 400 }}>Category / Item</th>
+                    <th style={{ paddingBottom: "4px", width: "15%", textAlign: "center", fontWeight: 400 }}>Qty</th>
+                    <th style={{ paddingBottom: "4px", width: "23%", textAlign: "right", fontWeight: 400 }}>Amount</th>
                   </tr>
                 </thead>
                 <tbody>
                   {itemsList.length > 0 ? (
                     itemsList.map((item, idx) => (
-                      <tr key={idx} style={{ fontWeight: 700 }}>
+                      <tr key={idx} style={{ fontWeight: 400 }}>
                         <td style={{ paddingTop: "5px", verticalAlign: "top" }}>{item.sNo}</td>
                         <td style={{ paddingTop: "5px" }}>{item.name}</td>
                         <td style={{ paddingTop: "5px", textAlign: "center", verticalAlign: "top" }}>{item.qty}</td>
@@ -1032,7 +1032,7 @@ function TicketGeneratedModal({
                       </tr>
                     ))
                   ) : (
-                    <tr style={{ fontWeight: 700 }}>
+                    <tr style={{ fontWeight: 400 }}>
                       <td style={{ paddingTop: "5px" }}>1</td>
                       <td style={{ paddingTop: "5px" }}>{attractionName || "-"}</td>
                       <td style={{ paddingTop: "5px", textAlign: "center" }}>{totalPax || 1}</td>
@@ -1044,7 +1044,7 @@ function TicketGeneratedModal({
             </div>
 
             {/* Tax and Adjustment Breakdown */}
-            <div style={{ padding: "8px 0", borderBottom: "1px dashed #000000", fontSize: "11.5px", fontWeight: 700, color: "#000000" }}>
+            <div style={{ padding: "8px 0", borderBottom: "1px dashed #000000", fontSize: "11.5px", fontWeight: 400, color: "#000000" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
                 <span>Sub-Total</span>
                 <span>₹{calculatedSubtotal.toFixed(2)}</span>
@@ -1085,8 +1085,8 @@ function TicketGeneratedModal({
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  fontSize: "14px",
-                  fontWeight: 900,
+                  fontSize: "12px",
+                  fontWeight: 400,
                   borderTop: "1.5px solid #000000",
                   paddingTop: "6px",
                   marginTop: "4px",
