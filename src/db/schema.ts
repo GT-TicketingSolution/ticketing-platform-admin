@@ -466,10 +466,19 @@ export const bookings = pgTable(
       scale: 2,
     }).notNull(),
 
-    amountPaid: numeric("amount_paid", {
+    amountReceived: numeric("amount_received", {
       precision: 12,
       scale: 2,
-    }).notNull(),
+    })
+      .notNull()
+      .default("0"),
+
+    returnAmount: numeric("return_change", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
 
     createdBy: uuid("created_by").references(() => users.id, {
       onDelete: "set null",

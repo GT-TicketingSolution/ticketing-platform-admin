@@ -1,29 +1,31 @@
 import { NextRequest } from "next/server";
-
-import { and, eq } from "drizzle-orm";
-
+import { and, eq, sum } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
-
-import { bookings, transactions, bookingSeats } from "@/db/schema";
+import { bookings, transactions } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
-
-import {
-  requireModuleAccess,
-  requireAttractionAccess,
-  getAdminId,
-} from "@/lib/auth/authorization";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 import { success, failure } from "@/lib/api/response";
+
+/* =========================================================
+   ROUTE PARAMS
+========================================================= */
+
+interface RouteParams {
+  params: Promise<{
+    bookingId: string;
+  }>;
+}
 
 /* =========================================================
    VALIDATION
 ========================================================= */
 
 const paymentSchema = z.object({
-  amountPaid: z.number().nonnegative(),
+  amountReceived: z.number().positive(),
 
   payment: z.object({
     mode: z.enum(["CASH", "UPI", "CARD", "ONLINE"]),
@@ -34,14 +36,7 @@ const paymentSchema = z.object({
    POST
 ========================================================= */
 
-export async function POST(
-  request: NextRequest,
-  context: {
-    params: Promise<{
-      bookingId: string;
-    }>;
-  },
-) {
+export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     // ---------------------------------------------
     // AUTHENTICATION
@@ -51,13 +46,11 @@ export async function POST(
 
     await requireModuleAccess(auth, "TICKET_BOOKING");
 
-    const adminId = getAdminId(auth);
-
     // ---------------------------------------------
     // BOOKING ID
     // ---------------------------------------------
 
-    const { bookingId } = await context.params;
+    const { bookingId } = await params;
 
     if (!bookingId) {
       return failure("Booking ID is required.", 400, "BOOKING_ID_REQUIRED");
@@ -82,87 +75,7 @@ export async function POST(
     const data = parsed.data;
 
     // ---------------------------------------------
-    // FETCH BOOKING
-    // ---------------------------------------------
-
-    const [booking] = await db
-      .select({
-        id: bookings.id,
-        attractionId: bookings.attractionId,
-        totalAmount: bookings.totalAmount,
-        amountPaid: bookings.amountPaid,
-        status: bookings.status,
-        paymentExpiresAt: bookings.paymentExpiresAt,
-      })
-      .from(bookings)
-      .where(eq(bookings.id, bookingId))
-      .limit(1);
-
-    if (!booking) {
-      return failure("Booking not found.", 404, "BOOKING_NOT_FOUND");
-    }
-
-    // ---------------------------------------------
-    // ATTRACTION ACCESS
-    // ---------------------------------------------
-
-    try {
-      await requireAttractionAccess(auth, booking.attractionId);
-    } catch (error) {
-      if (error instanceof Error && error.message === "FORBIDDEN") {
-        return failure(
-          "You do not have permission to access this booking.",
-          403,
-          "FORBIDDEN",
-        );
-      }
-
-      throw error;
-    }
-
-    // ---------------------------------------------
-    // CHECK BOOKING STATUS
-    // ---------------------------------------------
-
-    if (booking.status !== "PENDING") {
-      return failure(
-        `Payment cannot be processed for a booking with status ${booking.status}.`,
-        400,
-        "INVALID_BOOKING_STATUS",
-      );
-    }
-
-    // ---------------------------------------------
-    // AMOUNT VALIDATION
-    // ---------------------------------------------
-
-    const totalAmount = Number(booking.totalAmount);
-    const amountPaid = Number(booking.amountPaid);
-
-    const remainingAmount = Math.max(0, totalAmount - amountPaid);
-
-    if (data.amountPaid <= 0) {
-      return failure(
-        "Payment amount must be greater than zero.",
-        400,
-        "INVALID_PAYMENT_AMOUNT",
-      );
-    }
-
-    if (data.amountPaid > remainingAmount) {
-      return failure(
-        "Payment amount cannot exceed the remaining amount.",
-        400,
-        "INVALID_PAYMENT_AMOUNT",
-      );
-    }
-
-    // ---------------------------------------------
-    // CREATE PAYMENT + UPDATE BOOKING
-    // ---------------------------------------------
-
-    // ---------------------------------------------
-    // CREATE PAYMENT + UPDATE BOOKING
+    // TRANSACTION
     // ---------------------------------------------
 
     const result = await db.transaction(async (tx) => {
@@ -170,93 +83,115 @@ export async function POST(
       // LOCK BOOKING
       // -------------------------------------------
 
-      const [lockedBooking] = await tx
+      const [booking] = await tx
         .select({
           id: bookings.id,
+          bookingNumber: bookings.bookingNumber,
           attractionId: bookings.attractionId,
-          totalAmount: bookings.totalAmount,
-          amountPaid: bookings.amountPaid,
           status: bookings.status,
+          totalAmount: bookings.totalAmount,
+          amountReceived: bookings.amountReceived,
+          returnAmount: bookings.returnAmount,
+          paymentMode: bookings.paymentMode,
           paymentExpiresAt: bookings.paymentExpiresAt,
         })
         .from(bookings)
         .where(eq(bookings.id, bookingId))
         .for("update");
 
-      if (!lockedBooking) {
+      if (!booking) {
         throw new Error("BOOKING_NOT_FOUND");
       }
 
       // -------------------------------------------
-      // CHECK BOOKING STATUS
+      // CHECK STATUS
       // -------------------------------------------
 
-      if (lockedBooking.status !== "PENDING") {
+      if (booking.status === "CONFIRMED") {
+        throw new Error("ALREADY_CONFIRMED");
+      }
+
+      if (booking.status !== "PENDING") {
         throw new Error("INVALID_BOOKING_STATUS");
       }
 
       // -------------------------------------------
-      // CHECK PAYMENT EXPIRY
+      // CHECK EXPIRY
       // -------------------------------------------
 
-      console.log("========== LOCKED BOOKING DEBUG ==========");
-      console.log("lockedBooking.id:", lockedBooking.id);
-      console.log(
-        "lockedBooking.paymentExpiresAt:",
-        lockedBooking.paymentExpiresAt,
-      );
-      console.log("current time:", new Date());
-
-      if (
-        lockedBooking.paymentExpiresAt &&
-        new Date() > lockedBooking.paymentExpiresAt
-      ) {
-        // Expired booking must actually be cancelled
+      if (booking.paymentExpiresAt && new Date() > booking.paymentExpiresAt) {
         await tx
           .update(bookings)
           .set({
             status: "CANCELLED",
+            updatedAt: new Date(),
           })
           .where(
-            and(
-              eq(bookings.id, lockedBooking.id),
-              eq(bookings.status, "PENDING"),
-            ),
+            and(eq(bookings.id, bookingId), eq(bookings.status, "PENDING")),
           );
 
-        // Release reserved seats
-        await tx
-          .delete(bookingSeats)
-          .where(eq(bookingSeats.bookingId, lockedBooking.id));
-
-        // Throw AFTER the updates are logically complete.
-        // IMPORTANT: this would still rollback the transaction.
-        // Therefore we return an expiry result instead.
-        return {
-          expired: true as const,
-        };
+        throw new Error("PAYMENT_EXPIRED");
       }
 
       // -------------------------------------------
-      // CALCULATE REMAINING AMOUNT
+      // TOTAL BOOKING AMOUNT
       // -------------------------------------------
 
-      const totalAmount = Number(lockedBooking.totalAmount);
-      const amountPaid = Number(lockedBooking.amountPaid);
-
-      const remainingAmount = Math.max(0, totalAmount - amountPaid);
+      const totalAmount = Number(booking.totalAmount || 0);
 
       // -------------------------------------------
-      // VALIDATE PAYMENT AMOUNT
+      // GET PREVIOUS SUCCESSFUL PAYMENTS
       // -------------------------------------------
 
-      if (data.amountPaid <= 0) {
+      const [paymentTotal] = await tx
+        .select({
+          totalPaid: sum(transactions.amount),
+        })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.bookingId, bookingId),
+            eq(transactions.status, "SUCCESSFUL"),
+          ),
+        );
+
+      const previousPaid = Number(paymentTotal?.totalPaid || 0);
+
+      // -------------------------------------------
+      // REMAINING AMOUNT
+      // -------------------------------------------
+
+      const remainingAmount = Math.max(0, totalAmount - previousPaid);
+
+      // -------------------------------------------
+      // CUSTOMER RECEIVED AMOUNT
+      // -------------------------------------------
+
+      const amountReceived = Number(data.amountReceived);
+
+      if (amountReceived <= 0) {
         throw new Error("INVALID_PAYMENT_AMOUNT");
       }
 
-      if (data.amountPaid > remainingAmount) {
-        throw new Error("INVALID_PAYMENT_AMOUNT");
+      // -------------------------------------------
+      // CUSTOMER MUST PAY AT LEAST REMAINING
+      // -------------------------------------------
+
+      if (amountReceived < remainingAmount) {
+        throw new Error("PAYMENT_NOT_COMPLETED");
       }
+
+      // -------------------------------------------
+      // ACTUAL PAYMENT AMOUNT
+      // -------------------------------------------
+
+      const paymentAmount = remainingAmount;
+
+      // -------------------------------------------
+      // RETURN CHANGE
+      // -------------------------------------------
+
+      const returnAmount = Math.max(0, amountReceived - paymentAmount);
 
       // -------------------------------------------
       // GENERATE TRANSACTION NUMBER
@@ -265,7 +200,7 @@ export async function POST(
       const transactionNumber = await generateTransactionNumber(tx);
 
       // -------------------------------------------
-      // CREATE PAYMENT TRANSACTION
+      // INSERT TRANSACTION
       // -------------------------------------------
 
       const [transaction] = await tx
@@ -273,9 +208,9 @@ export async function POST(
         .values({
           transactionNumber,
 
-          bookingId: lockedBooking.id,
+          bookingId: bookingId,
 
-          amount: data.amountPaid.toFixed(2),
+          amount: paymentAmount.toFixed(2),
 
           paymentMode: data.payment.mode,
 
@@ -283,21 +218,23 @@ export async function POST(
         })
         .returning({
           id: transactions.id,
+
           transactionNumber: transactions.transactionNumber,
+
+          bookingId: transactions.bookingId,
+
           amount: transactions.amount,
+
           paymentMode: transactions.paymentMode,
+
           status: transactions.status,
+
           createdAt: transactions.createdAt,
         });
 
-      // -------------------------------------------
-      // CALCULATE NEW PAYMENT TOTAL
-      // -------------------------------------------
-
-      const newAmountPaid = amountPaid + data.amountPaid;
-
-      const newBookingStatus =
-        newAmountPaid >= totalAmount ? "CONFIRMED" : "PENDING";
+      if (!transaction) {
+        throw new Error("TRANSACTION_CREATE_FAILED");
+      }
 
       // -------------------------------------------
       // UPDATE BOOKING
@@ -306,25 +243,39 @@ export async function POST(
       const [updatedBooking] = await tx
         .update(bookings)
         .set({
-          amountPaid: newAmountPaid.toFixed(2),
+          amountReceived: amountReceived.toFixed(2),
 
-          status: newBookingStatus,
+          returnAmount: returnAmount.toFixed(2),
 
           paymentMode: data.payment.mode,
+
+          status: "CONFIRMED",
+
+          updatedAt: new Date(),
         })
-        .where(
-          and(
-            eq(bookings.id, lockedBooking.id),
-            eq(bookings.status, "PENDING"),
-          ),
-        )
+        .where(and(eq(bookings.id, bookingId), eq(bookings.status, "PENDING")))
         .returning({
           id: bookings.id,
+
           bookingNumber: bookings.bookingNumber,
-          totalAmount: bookings.totalAmount,
-          amountPaid: bookings.amountPaid,
+
+          attractionId: bookings.attractionId,
+
           status: bookings.status,
+
+          totalAmount: bookings.totalAmount,
+
+          amountReceived: bookings.amountReceived,
+
+          returnAmount: bookings.returnAmount,
+
+          paymentMode: bookings.paymentMode,
+
           paymentExpiresAt: bookings.paymentExpiresAt,
+
+          createdAt: bookings.createdAt,
+
+          updatedAt: bookings.updatedAt,
         });
 
       if (!updatedBooking) {
@@ -332,11 +283,23 @@ export async function POST(
       }
 
       return {
-        expired: false as const,
-
         booking: updatedBooking,
 
         transaction,
+
+        payment: {
+          amountReceived,
+
+          amountPaid: paymentAmount,
+
+          previousPaid,
+
+          remainingAmount,
+
+          returnAmount,
+
+          paymentMode: data.payment.mode,
+        },
       };
     });
 
@@ -344,35 +307,15 @@ export async function POST(
     // RESPONSE
     // ---------------------------------------------
 
-    // ---------------------------------------------
-    // PAYMENT EXPIRED
-    // ---------------------------------------------
-
-    if (result.expired) {
-      return failure(
-        "Payment session has expired. Please create a new booking.",
-        400,
-        "PAYMENT_EXPIRED",
-      );
-    }
-
     return success(
       {
+        message: "Payment completed successfully.",
+
         booking: result.booking,
 
         transaction: result.transaction,
 
-        payment: {
-          amountPaid: data.amountPaid,
-
-          paymentMode: data.payment.mode,
-
-          remainingAmount: Math.max(
-            0,
-            Number(result.booking.totalAmount) -
-              Number(result.booking.amountPaid),
-          ),
-        },
+        payment: result.payment,
       },
       200,
     );
@@ -398,17 +341,30 @@ export async function POST(
         "USER_HAS_NO_ADMIN",
       );
     }
+
+    // ---------------------------------------------
+    // BOOKING ERRORS
+    // ---------------------------------------------
+
     if (error instanceof Error && error.message === "BOOKING_NOT_FOUND") {
       return failure("Booking not found.", 404, "BOOKING_NOT_FOUND");
+    }
+
+    if (error instanceof Error && error.message === "ALREADY_CONFIRMED") {
+      return failure("Booking is already confirmed.", 409, "ALREADY_CONFIRMED");
     }
 
     if (error instanceof Error && error.message === "INVALID_BOOKING_STATUS") {
       return failure(
         "Payment cannot be processed for this booking.",
-        400,
+        409,
         "INVALID_BOOKING_STATUS",
       );
     }
+
+    // ---------------------------------------------
+    // PAYMENT ERRORS
+    // ---------------------------------------------
 
     if (error instanceof Error && error.message === "PAYMENT_EXPIRED") {
       return failure(
@@ -418,8 +374,31 @@ export async function POST(
       );
     }
 
+    if (error instanceof Error && error.message === "PAYMENT_NOT_COMPLETED") {
+      return failure(
+        "Received amount is less than the remaining booking amount.",
+        400,
+        "PAYMENT_NOT_COMPLETED",
+      );
+    }
+
     if (error instanceof Error && error.message === "INVALID_PAYMENT_AMOUNT") {
       return failure("Invalid payment amount.", 400, "INVALID_PAYMENT_AMOUNT");
+    }
+
+    // ---------------------------------------------
+    // TRANSACTION ERRORS
+    // ---------------------------------------------
+
+    if (
+      error instanceof Error &&
+      error.message === "TRANSACTION_CREATE_FAILED"
+    ) {
+      return failure(
+        "Unable to create payment transaction.",
+        500,
+        "TRANSACTION_CREATE_FAILED",
+      );
     }
 
     if (error instanceof Error && error.message === "BOOKING_UPDATE_FAILED") {
