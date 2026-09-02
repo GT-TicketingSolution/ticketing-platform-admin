@@ -25,6 +25,27 @@ interface RouteParams {
    CREATE QR PAYLOAD
 ========================================================= */
 
+// function createQrPayload(bookingId: string, attractionId: string) {
+//   const secret = process.env.QR_SECRET;
+
+//   if (!secret) {
+//     throw new Error("QR_SECRET_NOT_CONFIGURED");
+//   }
+
+//   const data = `${bookingId}:${attractionId}`;
+
+//   const signature = crypto
+//     .createHmac("sha256", secret)
+//     .update(data)
+//     .digest("hex");
+
+//   return JSON.stringify({
+//     bookingId,
+//     attractionId,
+//     signature,
+//   });
+// }
+
 function createQrPayload(bookingId: string, attractionId: string) {
   const secret = process.env.QR_SECRET;
 
@@ -45,10 +66,6 @@ function createQrPayload(bookingId: string, attractionId: string) {
     signature,
   });
 }
-
-/* =========================================================
-   GENERATE QR
-========================================================= */
 
 async function generateBookingQRCode(bookingId: string, attractionId: string) {
   const payload = createQrPayload(bookingId, attractionId);
@@ -159,11 +176,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // GENERATE QR
     // ---------------------------------------------
 
-    const qrCode = await generateBookingQRCode(
-      booking.id,
-      booking.attractionId,
+    const qrCodes = await Promise.all(
+      booking.attractionId.map((attractionId) =>
+        generateBookingQRCode(booking.id, attractionId),
+      ),
     );
-
     // ---------------------------------------------
     // RESPONSE
     // ---------------------------------------------
@@ -174,7 +191,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
         booking,
 
-        qrCode,
+        qrCodes,
       },
       200,
     );

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
-
 import { z } from "zod";
+import QRCode from "qrcode";
+import crypto from "crypto";
 
 import { db } from "@/db";
 import { bookings } from "@/db/schema";
@@ -21,7 +22,7 @@ const createBookingSchema = z.object({
 
   gstNumber: z.string().trim().max(20).nullable().optional(),
 
-  attractionId: z.string().uuid(),
+  attractionId: z.array(z.string().uuid()).min(1),
 
   visitAt: z.string().datetime(),
 
@@ -45,8 +46,48 @@ const createBookingSchema = z.object({
 });
 
 /* =========================================================
+   QR PAYLOAD
+========================================================= */
+
+function createQrPayload(bookingId: string, attractionId: string): string {
+  const secret = process.env.QR_SECRET;
+
+  if (!secret) {
+    throw new Error("QR_SECRET_NOT_CONFIGURED");
+  }
+
+  const data = `${bookingId}:${attractionId}`;
+
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(data)
+    .digest("hex");
+
+  return JSON.stringify({
+    bookingId,
+    attractionId,
+    signature,
+  });
+}
+
+/* =========================================================
+   GENERATE QR
+========================================================= */
+
+async function generateBookingQRCode(bookingId: string, attractionId: string) {
+  const payload = createQrPayload(bookingId, attractionId);
+
+  const qrCode = await QRCode.toDataURL(payload);
+
+  return {
+    attractionId,
+    qrCode,
+  };
+}
+
+/* =========================================================
    POST
-   Create simple booking
+   CREATE BOOKING
 ========================================================= */
 
 export async function POST(request: NextRequest) {
@@ -84,7 +125,7 @@ export async function POST(request: NextRequest) {
     const bookingNumber = generateBookingNumber();
 
     /* =====================================================
-       INSERT INTO BOOKINGS ONLY
+       INSERT BOOKING
     ===================================================== */
 
     const [booking] = await db
@@ -126,7 +167,20 @@ export async function POST(request: NextRequest) {
       })
       .returning({
         id: bookings.id,
+        bookingNumber: bookings.bookingNumber,
+        attractionId: bookings.attractionId,
+        status: bookings.status,
       });
+
+    /* =====================================================
+       GENERATE QR FOR EACH ATTRACTION
+    ===================================================== */
+
+    const qrCodes = await Promise.all(
+      booking.attractionId.map((attractionId) =>
+        generateBookingQRCode(booking.id, attractionId),
+      ),
+    );
 
     /* =====================================================
        SUCCESS
@@ -135,6 +189,14 @@ export async function POST(request: NextRequest) {
     return success(
       {
         bookingId: booking.id,
+
+        bookingNumber: booking.bookingNumber,
+
+        status: booking.status,
+
+        attractionId: booking.attractionId,
+
+        qrCodes,
       },
       201,
     );
@@ -168,6 +230,25 @@ export async function POST(request: NextRequest) {
         "USER_HAS_NO_ADMIN",
       );
     }
+
+    /* =====================================================
+       QR ERRORS
+    ===================================================== */
+
+    if (
+      error instanceof Error &&
+      error.message === "QR_SECRET_NOT_CONFIGURED"
+    ) {
+      return failure(
+        "QR configuration is missing.",
+        500,
+        "QR_SECRET_NOT_CONFIGURED",
+      );
+    }
+
+    /* =====================================================
+       DEFAULT ERROR
+    ===================================================== */
 
     return failure("Unable to create booking.", 500, "INTERNAL_SERVER_ERROR");
   }

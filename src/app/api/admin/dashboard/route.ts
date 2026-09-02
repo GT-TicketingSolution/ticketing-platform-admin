@@ -1,4 +1,5 @@
 import {
+  arrayContains,
   and,
   desc,
   eq,
@@ -534,7 +535,9 @@ export async function GET(request: Request) {
     }
 
     if (attractionId) {
-      bookingConditions.push(eq(bookings.attractionId, attractionId));
+      bookingConditions.push(
+        arrayContains(bookings.attractionId, [attractionId]),
+      );
     }
 
     if (from) {
@@ -576,7 +579,9 @@ export async function GET(request: Request) {
     }
 
     if (attractionId) {
-      transactionConditions.push(eq(bookings.attractionId, attractionId));
+      bookingConditions.push(
+        arrayContains(bookings.attractionId, [attractionId]),
+      );
     }
 
     if (from) {
