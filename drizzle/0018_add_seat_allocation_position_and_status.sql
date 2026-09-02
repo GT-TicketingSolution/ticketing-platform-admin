@@ -1,2 +1,0 @@
-ALTER TABLE "attraction_management_seat_layouts" ADD COLUMN "position" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
-ALTER TABLE "attraction_management_seat_layouts" ADD COLUMN "is_enabled" boolean DEFAULT true NOT NULL;
