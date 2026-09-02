@@ -109,18 +109,32 @@ const EMPTY_QTY: Record<CategoryKey, number> = { adult: 0, child: 0, senior: 0, 
 const GST_RATE = 0.18;
 
 function calcEntry(entry: CartEntry) {
-  const subtotal = VISITOR_CATEGORIES.reduce(
-    (s, c) => s + (entry.quantities[c.key] || 0) * (entry.attraction.pricing[c.key] ?? c.defaultPrice), 0
+  const subtotal = parseFloat(
+    VISITOR_CATEGORIES.reduce(
+      (s, c) => s + (entry.quantities[c.key] || 0) * (entry.attraction.pricing[c.key] ?? c.defaultPrice), 0
+    ).toFixed(2)
   );
-  const gst = parseFloat((subtotal * GST_RATE).toFixed(2));
-  const rawTotal = parseFloat((subtotal + gst).toFixed(2));
-  return { subtotal, gst, gstAdj: 0, roundOff: 0, total: rawTotal };
+  const roundedSubtotal = Math.ceil(subtotal);
+  const roundOff = Math.max(0, parseFloat((roundedSubtotal - subtotal).toFixed(2)));
+  const gst = Math.round(subtotal * GST_RATE);
+  const gstAdj = 0;
+  const total = parseFloat((subtotal + gst + gstAdj + roundOff).toFixed(2));
+  return { subtotal, gst, gstAdj, roundOff, total };
+}
+
+function formatRoundedPrice(price: number): number {
+  if (price <= 0) return 0;
+  // If price has decimals, round up to next 10 (e.g. 98.5/98.7 -> 100, 12.3 -> 20, 50 -> 50)
+  return price % 10 !== 0 ? Math.ceil(price / 10) * 10 : price;
 }
 
 function getAttractionBaseRate(attraction: Attraction) {
-  const prices = Object.values(attraction.pricing).filter((p) => p > 0);
+  const prices = Object.values(attraction.pricing)
+    .filter((p) => p > 0)
+    .map((p) => formatRoundedPrice(p));
   const minP = prices.length > 0 ? Math.min(...prices) : 0;
-  const adultP = attraction.pricing.adult || (prices.length > 0 ? Math.max(...prices) : 0);
+  const rawAdultP = attraction.pricing.adult || (prices.length > 0 ? Math.max(...prices) : 0);
+  const adultP = formatRoundedPrice(rawAdultP);
   return `₹${minP}–₹${adultP} / person`;
 }
 
@@ -466,7 +480,7 @@ function VerticalAttractionCard({
       </div>
 
       {/* Name and Category */}
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" }}>
+      <div className="vert-card-text" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" }}>
         <h4
           style={{
             margin: 0,
@@ -478,6 +492,7 @@ function VerticalAttractionCard({
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
           }}
+          title={attraction.name}
         >
           {attraction.name}
         </h4>
@@ -1170,6 +1185,7 @@ export default function TicketBookingView() {
       >
         {/* ── COLUMN 1: ATTRACTIONS (Vertical Compact List) ── */}
         <div
+          className="tbv-col-attractions"
           style={{
             background: "#FFFFFF",
             borderRadius: "12px",
@@ -1206,6 +1222,7 @@ export default function TicketBookingView() {
               Attractions
             </h3>
             <span
+              className="att-selected-badge"
               style={{
                 background: selectedAttractionIds.size > 0 ? "rgba(244,188,67,0.15)" : "#F1F5F9",
                 color: selectedAttractionIds.size > 0 ? "#173F63" : "#64748B",
@@ -1255,6 +1272,7 @@ export default function TicketBookingView() {
 
         {/* ── COLUMN 2: VISITOR CATEGORIES (For Active Attraction) ── */}
         <div
+          className="tbv-col-categories"
           style={{
             background: "#FFFFFF",
             borderRadius: "12px",
@@ -1492,6 +1510,7 @@ export default function TicketBookingView() {
         {/* ── COLUMN 3: CATEGORIES & QUANTITY + CART & BILLING ── */}
         {showBillingColumn && (
           <div
+            className="tbv-col-billing"
             style={{
               display: "flex",
               flexDirection: "column",
@@ -1825,7 +1844,7 @@ export default function TicketBookingView() {
                           >
                             <div style={{ display: "flex", justifyContent: "space-between" }}>
                               <span style={{ color: "#64748B", fontWeight: 600 }}>Subtotal</span>
-                              <span style={{ fontWeight: 700, color: "#1E293B" }}>₹{calc.subtotal}</span>
+                              <span style={{ fontWeight: 700, color: "#1E293B" }}>₹{calc.subtotal.toFixed(2)}</span>
                             </div>
                             <div style={{ display: "flex", justifyContent: "space-between" }}>
                               <span style={{ color: "#64748B", fontWeight: 600 }}>GST (18%)</span>
@@ -1836,12 +1855,14 @@ export default function TicketBookingView() {
                                 Round-off GST Adj.
                               </span>
                               <span style={{ color: "#94A3B8", fontWeight: 500, fontSize: "9px" }}>
-                                ₹{calc.gstAdj.toFixed(2)}
+                                {calc.gstAdj >= 0 ? (calc.gstAdj > 0 ? `+₹${calc.gstAdj.toFixed(2)}` : `₹0.00`) : `-₹${Math.abs(calc.gstAdj).toFixed(2)}`}
                               </span>
                             </div>
                             <div style={{ display: "flex", justifyContent: "space-between" }}>
                               <span style={{ color: "#64748B", fontWeight: 600 }}>Round-Off</span>
-                              <span style={{ fontWeight: 700, color: "#1E293B" }}>₹{calc.roundOff.toFixed(2)}</span>
+                              <span style={{ fontWeight: 700, color: "#1E293B" }}>
+                                {calc.roundOff > 0 ? `+₹${calc.roundOff.toFixed(2)}` : `₹0.00`}
+                              </span>
                             </div>
                           </div>
 
@@ -1934,7 +1955,7 @@ export default function TicketBookingView() {
       <style jsx global>{`
         .tbv-layout-two-col {
           display: grid;
-          grid-template-columns: minmax(260px, 1fr) minmax(0, 3fr);
+          grid-template-columns: minmax(240px, 1fr) minmax(0, 3fr);
           gap: 16px;
           align-items: start;
           width: 100%;
@@ -1942,7 +1963,7 @@ export default function TicketBookingView() {
 
         .tbv-layout-three-col {
           display: grid;
-          grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 2fr);
+          grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr) minmax(0, 2fr);
           gap: 16px;
           align-items: start;
           width: 100%;
@@ -1978,19 +1999,60 @@ export default function TicketBookingView() {
           background: transparent;
         }
 
-        @media (max-width: 1100px) {
+        @media (max-width: 1100px) and (min-width: 768px) {
           .tbv-layout-three-col {
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 180px minmax(0, 1.2fr) minmax(260px, 1.1fr);
+            gap: 12px;
           }
           .tbv-layout-two-col {
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 180px minmax(0, 1fr);
+            gap: 12px;
           }
         }
 
-        @media (max-width: 680px) {
-          .tbv-layout-three-col,
+        @media (max-width: 767px) {
+          .tbv-layout-three-col {
+            grid-template-columns: 78px minmax(0, 1.2fr) minmax(230px, 1fr);
+            gap: 8px;
+          }
           .tbv-layout-two-col {
-            grid-template-columns: 1fr;
+            grid-template-columns: 80px minmax(0, 1fr);
+            gap: 8px;
+          }
+          .tbv-col-attractions {
+            padding: 10px 5px !important;
+          }
+          .tbv-col-attractions h3 {
+            display: none !important;
+          }
+          .tbv-col-attractions .att-selected-badge {
+            width: 100% !important;
+            text-align: center !important;
+            font-size: 9px !important;
+            padding: 2px 4px !important;
+          }
+          .attraction-vert-card {
+            flex-direction: column !important;
+            padding: 6px 3px !important;
+            gap: 4px !important;
+            text-align: center !important;
+          }
+          .vert-card-text {
+            text-align: center !important;
+            align-items: center !important;
+          }
+          .vert-card-text h4 {
+            font-size: 10.5px !important;
+            line-height: 12px !important;
+          }
+          .vert-card-text p {
+            display: none !important;
+          }
+          .tbv-col-categories {
+            padding: 12px 10px !important;
+          }
+          .tbv-col-billing {
+            padding: 0 !important;
           }
         }
       `}</style>

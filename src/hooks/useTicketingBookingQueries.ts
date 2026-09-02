@@ -384,16 +384,12 @@ export interface AttractionSeatBookingResponse {
  * POST /api/admin/ticketing-booking/attraction-seat-booking
  */
 export function useCreateAttractionSeatBooking() {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: AttractionSeatBookingRequest) =>
       postData<AttractionSeatBookingResponse, AttractionSeatBookingRequest>(
         AppUrl.ticketingBooking.attractionSeatBooking,
         payload
       ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ticketingBookingKeys.all });
-    },
     onError: (err: any) => {
       showErrorOnce(err?.error?.message || err?.message || "Failed to create seat booking.");
     },

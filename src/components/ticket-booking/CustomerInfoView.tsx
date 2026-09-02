@@ -738,17 +738,21 @@ function TicketGeneratedModal({
 
   const halfGst = Number((calculatedGst / 2).toFixed(2));
 
-  // Build items strictly from bookingSummary
-  const itemsList = bookingSummary.flatMap((b) =>
-    b.passengers
-      .filter((p) => p.qty > 0)
-      .map((p, idx) => ({
-        sNo: idx + 1,
-        name: p.label || "-",
-        qty: p.qty,
-        amount: Number(((((p as any).unitPrice || (p as any).price || (calculatedSubtotal / (totalPax || 1)))) * p.qty).toFixed(2)),
-      }))
-  );
+  // Build items strictly from bookingSummary with continuous sequential S.No (1, 2, 3, 4...)
+  const itemsList = bookingSummary
+    .flatMap((b) =>
+      b.passengers
+        .filter((p) => p.qty > 0)
+        .map((p) => ({
+          name: bookingSummary.length > 1 ? `${b.attractionName ? `${b.attractionName} - ` : ""}${p.label}` : (p.label || "-"),
+          qty: p.qty,
+          amount: Number(((((p as any).unitPrice || (p as any).price || (calculatedSubtotal / (totalPax || 1)))) * p.qty).toFixed(2)),
+        }))
+    )
+    .map((item, idx) => ({
+      ...item,
+      sNo: idx + 1,
+    }));
 
   const seatText = selectedSeats && selectedSeats.length > 0 ? selectedSeats.join(", ") : "-";
 
@@ -2459,7 +2463,7 @@ export default function CustomerInfoView({
     () => seatingAttractions.map((a) => ({ attractionId: a.attractionId!, currentTripNo: 1 })),
     [seatingAttractions]
   );
-  const { data: tripNoData } = useAttractionTripNo(tripNoQuery, seatingAttractions.length > 0 && !showPaymentModal);
+  const { data: tripNoData } = useAttractionTripNo(tripNoQuery, seatingAttractions.length > 0 && !showPaymentModal && !showTicketModal);
 
   useEffect(() => {
     if (tripNoData && tripNoData.length > 0) {
@@ -2490,14 +2494,56 @@ export default function CustomerInfoView({
     isLoading: isLoadingSeats,
     isFetching: isFetchingSeats,
     refetch: refetchSeats,
-  } = useAttractionSeatAvailability(seatAvailabilityPayload, seatingAttractions.length > 0 && !showPaymentModal);
+  } = useAttractionSeatAvailability(seatAvailabilityPayload, seatingAttractions.length > 0 && !showPaymentModal && !showTicketModal);
 
   // ── Auto-select seats for ALL seating attractions once seatAvailData loads ──
-  // Starts sequentially from section 1 ("Seat 1"), fills up to section capacity,
-  // then proceeds to section 2 ("Seat 2") if more visitor seats are needed.
+  // If the current trip is fully booked (0 available seats or fewer than required pax),
+  // automatically advance to next trip number to fetch the new trip seats from API.
   useEffect(() => {
     if (!seatAvailData || seatAvailData.length === 0) return;
     if (seatingAttractions.length === 0) return;
+
+    // Check if any seating attraction is fully booked on its current trip
+    let tripChanged = false;
+    const nextTripMap = { ...tripMap };
+
+    seatingAttractions.forEach((att) => {
+      const attId = att.attractionId!;
+      const totalPax = att.passengers.reduce((s, p) => s + (p.qty || 0), 0);
+      if (totalPax <= 0) return;
+
+      const attData = seatAvailData.find((d) => d.attractionId === attId);
+      if (!attData) return;
+
+      const sections: AttractionSeatItem[] = (attData.seatLayout?.seats || attData.seats || []).slice().sort((a, b) => a.seatOrder - b.seatOrder);
+      const rows = attData.seatLayout?.rows || 0;
+      const cols = attData.seatLayout?.cols || 0;
+      const totalSecSeats = (rows > 0 && cols > 0) ? (rows * cols) : (sections.length > 0 ? 4 : 0);
+
+      // Calculate available unbooked seats
+      let availableSeats = 0;
+      for (const sec of sections) {
+        const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
+        const secCap = totalSecSeats || 4;
+        for (let order = 1; order <= secCap; order++) {
+          if (!booked.includes(order)) {
+            availableSeats++;
+          }
+        }
+      }
+
+      if (availableSeats < totalPax && sections.length > 0) {
+        const currentTrip = nextTripMap[attId] || 1;
+        const nextTrip = currentTrip + 1;
+        nextTripMap[attId] = nextTrip;
+        tripChanged = true;
+      }
+    });
+
+    if (tripChanged) {
+      setTripMap(nextTripMap);
+      return; // Will automatically trigger useAttractionSeatAvailability and useAttractionTripNo with next trip number
+    }
 
     let combinedObjs = [...selectedSeatObjs];
     const nextAsgn: Record<string, string> = { ...paxAssignment };

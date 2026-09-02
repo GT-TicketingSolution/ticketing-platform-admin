@@ -619,16 +619,21 @@ function TicketGeneratedModal({
   const calculatedGst = gstAmount > 0 ? gstAmount : Number((finalTotal - calculatedSubtotal).toFixed(2));
   const halfGst = Number((calculatedGst / 2).toFixed(2));
 
-  const itemsList = bookingSummary.flatMap((b) =>
-    b.passengers
-      .filter((p) => p.qty > 0)
-      .map((p, idx) => ({
-        sNo: idx + 1,
-        name: p.label || "-",
-        qty: p.qty,
-        amount: Number(((((p as any).unitPrice || (p as any).price || (calculatedSubtotal / (totalPax || 1)))) * p.qty).toFixed(2)),
-      }))
-  );
+  // Build items strictly from bookingSummary with continuous sequential S.No (1, 2, 3, 4...)
+  const itemsList = bookingSummary
+    .flatMap((b) =>
+      b.passengers
+        .filter((p) => p.qty > 0)
+        .map((p) => ({
+          name: bookingSummary.length > 1 ? `${b.attractionName ? `${b.attractionName} - ` : ""}${p.label}` : (p.label || "-"),
+          qty: p.qty,
+          amount: Number(((((p as any).unitPrice || (p as any).price || (calculatedSubtotal / (totalPax || 1)))) * p.qty).toFixed(2)),
+        }))
+    )
+    .map((item, idx) => ({
+      ...item,
+      sNo: idx + 1,
+    }));
 
   const seatText = selectedSeats && selectedSeats.length > 0 ? selectedSeats.join(", ") : "-";
 
