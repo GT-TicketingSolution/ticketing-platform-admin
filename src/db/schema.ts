@@ -466,6 +466,13 @@ export const bookings = pgTable(
       scale: 2,
     }).notNull(),
 
+    amountPaid: numeric("amount_paid", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+
     amountReceived: numeric("amount_received", {
       precision: 12,
       scale: 2,
