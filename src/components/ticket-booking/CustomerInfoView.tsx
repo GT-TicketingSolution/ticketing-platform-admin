@@ -2564,8 +2564,12 @@ export default function CustomerInfoView({
 
   // Fetch real trip numbers from API for all seating attractions
   const tripNoQuery = useMemo(
-    () => seatingAttractions.map((a) => ({ attractionId: a.attractionId!, currentTripNo: 1 })),
-    [seatingAttractions]
+    () =>
+      seatingAttractions.map((a) => ({
+        attractionId: a.attractionId!,
+        currentTripNo: tripMap[a.attractionId!] || (initialTripMap && initialTripMap[a.attractionId!]) || 1,
+      })),
+    [seatingAttractions, tripMap, initialTripMap]
   );
   const { data: tripNoData } = useAttractionTripNo(tripNoQuery, seatingAttractions.length > 0 && !showPaymentModal && !showTicketModal);
 
@@ -2577,7 +2581,7 @@ export default function CustomerInfoView({
         tripNoData.forEach((item) => {
           if (item.attractionId) {
             const newVal = item.newTripNo || 1;
-            if (next[item.attractionId] === undefined || (prev[item.attractionId] === 1 && newVal !== 1)) {
+            if (next[item.attractionId] === undefined) {
               next[item.attractionId] = newVal;
               changed = true;
             }
@@ -2850,19 +2854,20 @@ export default function CustomerInfoView({
   }
 
   async function handleTripChange(attId: string, currentTripNo?: number) {
-    // Call get-attraction-trip-no API with the current trip number to get the server-assigned next trip
-    let resolvedNextTrip = (currentTripNo ?? (tripMap[attId] ?? 1)) + 1;
+    // Call get-attraction-trip-no API with currentTripNo + 1 to request the next trip
+    const ongoingTrip = currentTripNo ?? (tripMap[attId] ?? 1);
+    const nextTripPayload = ongoingTrip + 1;
+    let resolvedNextTrip = nextTripPayload;
     try {
       const res = await postData<any, { attractions: { attractionId: string; currentTripNo: number }[] }>(
         AppUrl.ticketingBooking.getAttractionTripNo,
-        { attractions: [{ attractionId: attId, currentTripNo: currentTripNo ?? (tripMap[attId] ?? 1) }] }
+        { attractions: [{ attractionId: attId, currentTripNo: nextTripPayload }] }
       );
       const payload = res?.data ?? res;
       const items = Array.isArray(payload) ? payload : [];
       const item = items.find((i: any) => i.attractionId === attId);
       if (item && item.newTripNo) {
-        // newTripNo from API is the max existing trip; next trip = newTripNo + 1
-        resolvedNextTrip = item.newTripNo + 1;
+        resolvedNextTrip = Math.max(nextTripPayload, item.newTripNo > ongoingTrip ? item.newTripNo + 1 : nextTripPayload);
       }
     } catch {
       // fallback to local increment
