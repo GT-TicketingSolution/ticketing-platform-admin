@@ -114,12 +114,13 @@ function calcEntry(entry: CartEntry) {
       (s, c) => s + (entry.quantities[c.key] || 0) * (entry.attraction.pricing[c.key] ?? c.defaultPrice), 0
     ).toFixed(2)
   );
-  const roundedSubtotal = Math.ceil(subtotal);
-  const roundOff = Math.max(0, parseFloat((roundedSubtotal - subtotal).toFixed(2)));
-  const gst = Math.round(subtotal * GST_RATE);
-  const gstAdj = 0;
-  const total = parseFloat((subtotal + gst + gstAdj + roundOff).toFixed(2));
-  return { subtotal, gst, gstAdj, roundOff, total };
+  const roundedSubtotal = Math.round(subtotal);
+  const roundOff = parseFloat((roundedSubtotal - subtotal).toFixed(2));
+  const rawGst = parseFloat((subtotal * GST_RATE).toFixed(2));
+  const roundedGst = Math.round(rawGst);
+  const gstAdj = parseFloat((roundedGst - rawGst).toFixed(2));
+  const total = parseFloat((subtotal + rawGst + gstAdj + roundOff).toFixed(2));
+  return { subtotal, gst: rawGst, gstAdj, roundOff, total };
 }
 
 function formatRoundedPrice(price: number): number {
@@ -1037,6 +1038,7 @@ export default function TicketBookingView() {
     return (
       <CustomerInfoView
         bookingSummary={bookingSummary}
+        initialTripMap={tripNoMap}
         onBack={() => setMode("booking")}
         onContinue={(customer) => {
           // Decrement available trips for each attraction in cart
@@ -1603,7 +1605,7 @@ export default function TicketBookingView() {
                         {visibleCats.map((cat, idx) => {
                           const qty = cartEntry?.quantities[cat.key] || 0;
                           const price = attr.pricing[cat.key] ?? cat.defaultPrice;
-                          const lineTotal = qty * price;
+                          const lineTotal = Number((qty * price).toFixed(2));
 
                           return (
                             <div
@@ -1808,7 +1810,7 @@ export default function TicketBookingView() {
                                   {c.label} × {qty}
                                 </span>
                                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                  <span style={{ fontWeight: 700 }}>₹{qty * price}</span>
+                                  <span style={{ fontWeight: 700 }}>₹{Number((qty * price).toFixed(2))}</span>
                                   <button
                                     onClick={() => {
                                       setQuantity(c.key, 0, entry.attraction);
@@ -1861,7 +1863,7 @@ export default function TicketBookingView() {
                             <div style={{ display: "flex", justifyContent: "space-between" }}>
                               <span style={{ color: "#64748B", fontWeight: 600 }}>Round-Off</span>
                               <span style={{ fontWeight: 700, color: "#1E293B" }}>
-                                {calc.roundOff > 0 ? `+₹${calc.roundOff.toFixed(2)}` : `₹0.00`}
+                                {calc.roundOff >= 0 ? (calc.roundOff > 0 ? `+₹${calc.roundOff.toFixed(2)}` : `₹0.00`) : `-₹${Math.abs(calc.roundOff).toFixed(2)}`}
                               </span>
                             </div>
                           </div>

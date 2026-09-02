@@ -56,6 +56,7 @@ interface CustomerInfoViewProps {
   onBack: () => void;
   onContinue: (customer: { name: string; mobile: string; gstn?: string }) => void;
   bookingSummary: BookingSummaryItem[];
+  initialTripMap?: Record<string, number>;
 }
 
 export type CustomerRecord = TicketingCustomer;
@@ -1308,6 +1309,7 @@ interface SeatAllocationPanelProps {
     newSeatObjs: SelectedSeatObj[],
     newPaxAssignment?: Record<string, string>
   ) => void;
+  onManualEdit?: (attId: string) => void;
   paxAssignment: Record<string, string>;
   seatAvailData: AttractionSeatAvailabilityData[];
   isLoadingSeats: boolean;
@@ -1327,6 +1329,7 @@ function SeatAllocationPanel({
   onTripChange,
   selectedSeatObjs,
   onSelectedSeatsChange,
+  onManualEdit,
   paxAssignment,
   seatAvailData,
   isLoadingSeats,
@@ -1540,6 +1543,7 @@ function SeatAllocationPanel({
       }
     });
 
+    onManualEdit?.(activeAttId);
     onSelectedSeatsChange(nextAllObjs, nextAsgn);
   };
 
@@ -2363,6 +2367,7 @@ export default function CustomerInfoView({
   onBack,
   onContinue,
   bookingSummary,
+  initialTripMap,
 }: CustomerInfoViewProps) {
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -2446,13 +2451,17 @@ export default function CustomerInfoView({
   }, [seatingAttractions, activeAttractionId]);
 
   // Per-attraction Trip numbers map: { [attractionId]: tripNumber }
-  const [tripMap, setTripMap] = useState<Record<string, number>>({});
+  const [tripMap, setTripMap] = useState<Record<string, number>>(() => ({ ...(initialTripMap || {}) }));
 
   // Seat allocation state across all attractions
   const [selectedSeatObjs, setSelectedSeatObjs] = useState<SelectedSeatObj[]>([]);
   const [paxAssignment, setPaxAssignment] = useState<Record<string, string>>({});
   const [timeSlot, setTimeSlot] = useState("10:00 AM – 10:20 AM");
   const [seatValidationError, setSeatValidationError] = useState<string | null>(null);
+
+  // Track if user manually modified seats for an attraction
+  const manuallyEditedAttractionsRef = useRef<Record<string, boolean>>({});
+  const lastAllocatedTripRef = useRef<Record<string, number>>({});
 
   // Today's formatted date for the slot
   const slotDate = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -2468,13 +2477,18 @@ export default function CustomerInfoView({
   useEffect(() => {
     if (tripNoData && tripNoData.length > 0) {
       setTripMap((prev) => {
+        let changed = false;
         const next = { ...prev };
         tripNoData.forEach((item) => {
-          if (item.attractionId && (next[item.attractionId] === undefined || prev[item.attractionId] === 1)) {
-            next[item.attractionId] = item.newTripNo || 1;
+          if (item.attractionId) {
+            const newVal = item.newTripNo || 1;
+            if (next[item.attractionId] === undefined || (prev[item.attractionId] === 1 && newVal !== 1)) {
+              next[item.attractionId] = newVal;
+              changed = true;
+            }
           }
         });
-        return next;
+        return changed ? next : prev;
       });
     }
   }, [tripNoData]);
@@ -2484,21 +2498,31 @@ export default function CustomerInfoView({
     () =>
       seatingAttractions.map((att) => ({
         attractionId: att.attractionId!,
-        currentTripNo: tripMap[att.attractionId!] || 1,
+        currentTripNo: tripMap[att.attractionId!] || (initialTripMap && initialTripMap[att.attractionId!]) || 1,
       })),
-    [seatingAttractions, tripMap]
+    [seatingAttractions, tripMap, initialTripMap]
   );
-
   const {
     data: seatAvailData = [],
     isLoading: isLoadingSeats,
     isFetching: isFetchingSeats,
-    refetch: refetchSeats,
+    refetch: refetchSeatsQuery,
   } = useAttractionSeatAvailability(seatAvailabilityPayload, seatingAttractions.length > 0 && !showPaymentModal && !showTicketModal);
 
+  const refetchSeats = () => {
+    seatingAttractions.forEach((att) => {
+      if (att.attractionId) {
+        manuallyEditedAttractionsRef.current[att.attractionId] = false;
+        delete lastAllocatedTripRef.current[att.attractionId];
+      }
+    });
+    refetchSeatsQuery();
+  };
+
+  // Track trip numbers that have already auto-advanced to prevent infinite looping
+  const autoAdvancedTripsRef = useRef<Record<string, number>>({});
+
   // ── Auto-select seats for ALL seating attractions once seatAvailData loads ──
-  // If the current trip is fully booked (0 available seats or fewer than required pax),
-  // automatically advance to next trip number to fetch the new trip seats from API.
   useEffect(() => {
     if (!seatAvailData || seatAvailData.length === 0) return;
     if (seatingAttractions.length === 0) return;
@@ -2506,6 +2530,7 @@ export default function CustomerInfoView({
     // Check if any seating attraction is fully booked on its current trip
     let tripChanged = false;
     const nextTripMap = { ...tripMap };
+    const attIdsToReset: string[] = [];
 
     seatingAttractions.forEach((att) => {
       const attId = att.attractionId!;
@@ -2515,34 +2540,57 @@ export default function CustomerInfoView({
       const attData = seatAvailData.find((d) => d.attractionId === attId);
       if (!attData) return;
 
+      const currentTrip = nextTripMap[attId] || 1;
+      // If we already advanced from this trip, don't advance again to prevent loops
+      if (autoAdvancedTripsRef.current[attId] === currentTrip) return;
+
       const sections: AttractionSeatItem[] = (attData.seatLayout?.seats || attData.seats || []).slice().sort((a, b) => a.seatOrder - b.seatOrder);
       const rows = attData.seatLayout?.rows || 0;
       const cols = attData.seatLayout?.cols || 0;
       const totalSecSeats = (rows > 0 && cols > 0) ? (rows * cols) : (sections.length > 0 ? 4 : 0);
 
-      // Calculate available unbooked seats
+      // Calculate available unbooked seats across all sections
       let availableSeats = 0;
+      let totalBookedCount = 0;
       for (const sec of sections) {
         const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
-        const secCap = totalSecSeats || 4;
-        for (let order = 1; order <= secCap; order++) {
+        totalBookedCount += booked.length;
+        for (let order = 1; order <= totalSecSeats; order++) {
           if (!booked.includes(order)) {
             availableSeats++;
           }
         }
       }
 
-      if (availableSeats < totalPax && sections.length > 0) {
-        const currentTrip = nextTripMap[attId] || 1;
+      // Only auto-advance if the trip already has bookings AND does not have enough available seats
+      if (totalBookedCount > 0 && availableSeats < totalPax && sections.length > 0) {
+        autoAdvancedTripsRef.current[attId] = currentTrip;
         const nextTrip = currentTrip + 1;
         nextTripMap[attId] = nextTrip;
         tripChanged = true;
+        attIdsToReset.push(attId);
       }
     });
 
     if (tripChanged) {
       setTripMap(nextTripMap);
-      return; // Will automatically trigger useAttractionSeatAvailability and useAttractionTripNo with next trip number
+      if (attIdsToReset.length > 0) {
+        attIdsToReset.forEach((id) => {
+          manuallyEditedAttractionsRef.current[id] = false;
+          delete lastAllocatedTripRef.current[id];
+        });
+        setSelectedSeatObjs((prev) => prev.filter((s) => !attIdsToReset.includes(s.attractionId)));
+        setPaxAssignment((prev) => {
+          const next = { ...prev };
+          Object.keys(next).forEach((k) => {
+            if (attIdsToReset.some((id) => k.startsWith(`${id}_`))) {
+              delete next[k];
+            }
+          });
+          return next;
+        });
+      }
+      return;
     }
 
     let combinedObjs = [...selectedSeatObjs];
@@ -2554,7 +2602,6 @@ export default function CustomerInfoView({
       const totalPax = att.passengers.reduce((s, p) => s + (p.qty || 0), 0);
       if (totalPax <= 0) return;
 
-      // Build pax label list for this attraction
       const paxList: { label: string; idx: number }[] = [];
       const cnt: Record<string, number> = {};
       att.passengers.forEach((p) => {
@@ -2566,68 +2613,120 @@ export default function CustomerInfoView({
         }
       });
 
-      // Find seat data for this attraction
       const attData = seatAvailData.find((d) => d.attractionId === attId);
       if (!attData) return;
 
+      const currentTripNo = attData.currentTripNo || tripMap[attId] || 1;
       const sections: AttractionSeatItem[] = (attData.seatLayout?.seats || attData.seats || []).slice().sort((a, b) => a.seatOrder - b.seatOrder);
       const rows = attData.seatLayout?.rows || 0;
       const cols = attData.seatLayout?.cols || 0;
       const totalSecSeats = (rows > 0 && cols > 0) ? (rows * cols) : (sections.length > 0 ? 4 : 0);
 
-      // Filter valid currently selected seats for this attraction that are still available
+      const isManuallyEdited = Boolean(manuallyEditedAttractionsRef.current[attId]);
+      const tripHasChanged = lastAllocatedTripRef.current[attId] !== currentTripNo;
+
       const existingForAtt = combinedObjs.filter((s) => s.attractionId === attId);
       const validCurrent = existingForAtt.filter((so) => {
         const sec = sections.find((sc) => (sc.attractionSeatId && sc.attractionSeatId === so.attractionSeatId) || (sc.name || `Seat ${sc.seatOrder}`) === so.sectionName);
         if (!sec) return false;
         const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
-        return !booked.includes(so.seatOrder) && (totalSecSeats === 0 || so.seatOrder <= totalSecSeats);
+        return !booked.includes(so.seatOrder) && so.seatOrder >= 1 && so.seatOrder <= totalSecSeats;
       });
 
-      if (validCurrent.length >= totalPax) {
-        return; // already fully allocated
-      }
+      // If user has NOT manually edited seats, or if the trip has changed, perform fresh sequential allocation
+      if (!isManuallyEdited || tripHasChanged) {
+        const newObjs: SelectedSeatObj[] = [];
 
-      // Sequentially fill missing seats: start at section 1, then proceed to section 2 if needed
-      const newObjs: SelectedSeatObj[] = [...validCurrent];
-
-      for (const sec of sections) {
-        if (newObjs.length >= totalPax) break;
-        const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
-        const secCap = totalSecSeats || 4;
-        const secName = sec.name || `Seat ${sec.seatOrder}`;
-
-        for (let order = 1; order <= secCap; order++) {
+        for (const sec of sections) {
           if (newObjs.length >= totalPax) break;
-          if (booked.includes(order)) continue;
+          const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
+          const secName = sec.name || `Seat ${sec.seatOrder}`;
 
-          const alreadyInSec = newObjs.some(
-            (o) =>
-              ((sec.attractionSeatId && o.attractionSeatId === sec.attractionSeatId) || o.sectionName === secName) &&
-              o.seatOrder === order
-          );
-          if (alreadyInSec) continue;
+          for (let order = 1; order <= totalSecSeats; order++) {
+            if (newObjs.length >= totalPax) break;
+            if (booked.includes(order)) continue;
 
-          newObjs.push({
-            attractionId: attId,
-            attractionSeatId: sec.attractionSeatId || null,
-            sectionName: secName,
-            seatOrder: order,
-            name: `${secName} - ${String(order).padStart(2, "0")}`,
+            newObjs.push({
+              attractionId: attId,
+              attractionSeatId: sec.attractionSeatId || null,
+              sectionName: secName,
+              seatOrder: order,
+              name: `${secName} - ${String(order).padStart(2, "0")}`,
+            });
+          }
+        }
+
+        const isIdentical =
+          newObjs.length === existingForAtt.length &&
+          newObjs.every((no, idx) => {
+            const eo = existingForAtt[idx];
+            return (
+              eo &&
+              ((eo.attractionSeatId && no.attractionSeatId && eo.attractionSeatId === no.attractionSeatId) ||
+                eo.sectionName === no.sectionName) &&
+              eo.seatOrder === no.seatOrder
+            );
           });
+
+        if (!isIdentical) {
+          Object.keys(nextAsgn).forEach((k) => {
+            if (k.startsWith(`${attId}_`)) delete nextAsgn[k];
+          });
+          newObjs.forEach((o, idx) => {
+            if (paxList[idx]) {
+              nextAsgn[`${attId}_${o.name}`] = `${paxList[idx].label} ${paxList[idx].idx}`;
+            }
+          });
+          combinedObjs = combinedObjs.filter((so) => so.attractionId !== attId);
+          combinedObjs.push(...newObjs);
+          changed = true;
+        }
+
+        lastAllocatedTripRef.current[attId] = currentTripNo;
+      } else {
+        // If user manually edited, keep validCurrent and fill remaining if needed
+        if (validCurrent.length < totalPax) {
+          const newObjs: SelectedSeatObj[] = [...validCurrent];
+
+          for (const sec of sections) {
+            if (newObjs.length >= totalPax) break;
+            const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
+            const secName = sec.name || `Seat ${sec.seatOrder}`;
+
+            for (let order = 1; order <= totalSecSeats; order++) {
+              if (newObjs.length >= totalPax) break;
+              if (booked.includes(order)) continue;
+
+              const alreadyInSec = newObjs.some(
+                (o) =>
+                  ((sec.attractionSeatId && o.attractionSeatId === sec.attractionSeatId) || o.sectionName === secName) &&
+                  o.seatOrder === order
+              );
+              if (alreadyInSec) continue;
+
+              newObjs.push({
+                attractionId: attId,
+                attractionSeatId: sec.attractionSeatId || null,
+                sectionName: secName,
+                seatOrder: order,
+                name: `${secName} - ${String(order).padStart(2, "0")}`,
+              });
+            }
+          }
+
+          Object.keys(nextAsgn).forEach((k) => {
+            if (k.startsWith(`${attId}_`)) delete nextAsgn[k];
+          });
+          newObjs.forEach((o, idx) => {
+            if (paxList[idx]) {
+              nextAsgn[`${attId}_${o.name}`] = `${paxList[idx].label} ${paxList[idx].idx}`;
+            }
+          });
+          combinedObjs = combinedObjs.filter((so) => so.attractionId !== attId);
+          combinedObjs.push(...newObjs);
+          changed = true;
         }
       }
-
-      newObjs.forEach((o, idx) => {
-        if (paxList[idx]) {
-          nextAsgn[`${attId}_${o.name}`] = `${paxList[idx].label} ${paxList[idx].idx}`;
-        }
-      });
-
-      // Replace existing entries for this attraction
-      combinedObjs = combinedObjs.filter((so) => so.attractionId !== attId);
-      combinedObjs.push(...newObjs);
-      changed = true;
     });
 
     if (changed) {
@@ -2635,14 +2734,15 @@ export default function CustomerInfoView({
       setPaxAssignment(nextAsgn);
       setSeatValidationError(null);
     }
-    // Run whenever seat availability data changes (i.e., loads/refetches)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seatAvailData]);
+  }, [seatAvailData, seatingAttractions, tripMap]);
 
   function handleSelectedSeatsChange(
     newSeatObjs: SelectedSeatObj[],
     newPaxAssignment?: Record<string, string>
   ) {
+    if (activeAttractionId) {
+      manuallyEditedAttractionsRef.current[activeAttractionId] = true;
+    }
     setSelectedSeatObjs(newSeatObjs);
     if (newPaxAssignment) {
       setPaxAssignment(newPaxAssignment);
@@ -2650,8 +2750,24 @@ export default function CustomerInfoView({
     setSeatValidationError(null);
   }
 
+  function handleManualEdit(attId: string) {
+    if (attId) {
+      manuallyEditedAttractionsRef.current[attId] = true;
+    }
+  }
+
   function handleTripChange(attId: string, nextTrip: number) {
+    manuallyEditedAttractionsRef.current[attId] = false;
+    delete lastAllocatedTripRef.current[attId];
     setTripMap((prev) => ({ ...prev, [attId]: nextTrip }));
+    setSelectedSeatObjs((prev) => prev.filter((s) => s.attractionId !== attId));
+    setPaxAssignment((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((k) => {
+        if (k.startsWith(`${attId}_`)) delete next[k];
+      });
+      return next;
+    });
   }
 
   const grandTotal = Number(bookingSummary.reduce((s, b) => s + b.totalAmount, 0).toFixed(2));
@@ -3725,6 +3841,7 @@ export default function CustomerInfoView({
               onTripChange={handleTripChange}
               selectedSeatObjs={selectedSeatObjs}
               onSelectedSeatsChange={handleSelectedSeatsChange}
+              onManualEdit={handleManualEdit}
               paxAssignment={paxAssignment}
               seatAvailData={seatAvailData}
               isLoadingSeats={isLoadingSeats}
