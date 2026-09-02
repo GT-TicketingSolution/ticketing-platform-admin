@@ -1,5 +1,4 @@
 import {
-  arrayContains,
   and,
   desc,
   eq,
@@ -25,10 +24,7 @@ import {
 
 import { requireAuth } from "@/lib/auth/require-auth";
 import { success, failure } from "@/lib/api/response";
-import {
-  requireModuleAccess,
-  requireAttractionAccess,
-} from "@/lib/auth/authorization";
+import { requireModuleAccess } from "@/lib/auth/authorization";
 
 /* =========================================================
    DATE RANGE
@@ -60,7 +56,10 @@ function getDateRange(period: string, dateFrom?: string, dateTo?: string) {
     const to = new Date(now);
     to.setHours(23, 59, 59, 999);
 
-    return { from, to };
+    return {
+      from,
+      to,
+    };
   }
 
   // -------------------------------------------------------
@@ -133,15 +132,10 @@ export async function GET(request: Request) {
 
     await requireModuleAccess(auth, "DASHBOARD");
 
-    /*
-     * Tenant boundary
-     *
-     * ADMIN:
-     *   adminId = authenticated admin's own ID
-     *
-     * MANAGER:
-     *   adminId = manager's parent admin ID
-     */
+    // =====================================================
+    // TENANT BOUNDARY
+    // =====================================================
+
     const adminId =
       auth.user.role === "ADMIN" ? auth.user.id : auth.user.adminId;
 
@@ -184,12 +178,9 @@ export async function GET(request: Request) {
     }[] = [];
 
     if (isAdmin) {
-      /*
-       * ADMIN
-       * -----
-       * Admin can see every active attraction
-       * belonging to their tenant.
-       */
+      // ---------------------------------------------------
+      // ADMIN
+      // ---------------------------------------------------
 
       attractionList = await db
         .select({
@@ -205,12 +196,9 @@ export async function GET(request: Request) {
         )
         .orderBy(attractions.name);
     } else {
-      /*
-       * MANAGER
-       * -------
-       * Manager can only see attractions explicitly
-       * assigned through managerAttractionPermissions.
-       */
+      // ---------------------------------------------------
+      // MANAGER
+      // ---------------------------------------------------
 
       attractionList = await db
         .select({
@@ -248,19 +236,18 @@ export async function GET(request: Request) {
       }
     }
 
-    /*
-     * These are the attractions the authenticated user
-     * is allowed to access.
-     */
+    // =====================================================
+    // ACCESSIBLE ATTRACTION IDS
+    // =====================================================
+
     const accessibleAttractionIds = attractionList.map(
       (attraction) => attraction.id,
     );
 
-    /*
-     * If a manager has no attractions assigned,
-     * return an empty dashboard rather than exposing
-     * tenant-wide data.
-     */
+    // =====================================================
+    // MANAGER WITH NO ATTRACTIONS
+    // =====================================================
+
     if (isManager && accessibleAttractionIds.length === 0) {
       return success({
         summary: {
@@ -332,7 +319,9 @@ export async function GET(request: Request) {
 
     const [managerCount] = await db
       .select({
-        count: sql<number>`count(distinct ${users.id})`,
+        count: sql<number>`
+          count(distinct ${users.id})
+        `,
       })
       .from(users)
       .leftJoin(
@@ -350,14 +339,6 @@ export async function GET(request: Request) {
         and(
           ...managerConditions,
 
-          /*
-           * ADMIN:
-           *   all managers in tenant
-           *
-           * MANAGER:
-           *   only managers who share at least one
-           *   attraction accessible to current manager.
-           */
           ...(isManager
             ? [
                 inArray(
@@ -379,7 +360,9 @@ export async function GET(request: Request) {
 
     const [activeManagerCount] = await db
       .select({
-        count: sql<number>`count(distinct ${users.id})`,
+        count: sql<number>`
+          count(distinct ${users.id})
+        `,
       })
       .from(users)
       .leftJoin(
@@ -439,7 +422,9 @@ export async function GET(request: Request) {
 
     const [staffCount] = await db
       .select({
-        count: sql<number>`count(distinct ${users.id})`,
+        count: sql<number>`
+          count(distinct ${users.id})
+        `,
       })
       .from(users)
       .leftJoin(
@@ -457,11 +442,6 @@ export async function GET(request: Request) {
         and(
           ...staffConditions,
 
-          /*
-           * MANAGER:
-           * only staff assigned to an attraction
-           * accessible by this manager.
-           */
           ...(isManager
             ? [
                 inArray(
@@ -483,7 +463,9 @@ export async function GET(request: Request) {
 
     const [activeStaffCount] = await db
       .select({
-        count: sql<number>`count(distinct ${users.id})`,
+        count: sql<number>`
+          count(distinct ${users.id})
+        `,
       })
       .from(users)
       .leftJoin(
@@ -527,18 +509,33 @@ export async function GET(request: Request) {
       eq(attractions.adminId, adminId),
     ];
 
-    /*
-     * Restrict manager to their permitted attractions.
-     */
+    // -----------------------------------------------------
+    // MANAGER ACCESS
+    // -----------------------------------------------------
+
     if (isManager) {
       bookingConditions.push(accessibleAttractionCondition);
     }
 
+    // -----------------------------------------------------
+    // ATTRACTION FILTER
+    //
+    // OLD:
+    // arrayContains(bookings.attractionId, [attractionId])
+    //
+    // NEW:
+    // attractions.id = attractionId
+    //
+    // because the booking is joined using ANY().
+    // -----------------------------------------------------
+
     if (attractionId) {
-      bookingConditions.push(
-        arrayContains(bookings.attractionId, [attractionId]),
-      );
+      bookingConditions.push(eq(attractions.id, attractionId));
     }
+
+    // -----------------------------------------------------
+    // DATE FILTER
+    // -----------------------------------------------------
 
     if (from) {
       bookingConditions.push(gte(bookings.visitAt, from));
@@ -554,10 +551,19 @@ export async function GET(request: Request) {
 
     const [bookingCount] = await db
       .select({
-        count: sql<number>`count(*)`,
+        count: sql<number>`
+          count(distinct ${bookings.id})
+        `,
       })
       .from(bookings)
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+
+      // IMPORTANT:
+      // bookings.attractionIds is UUID[]
+      .innerJoin(
+        attractions,
+        sql`${attractions.id} = ANY(${bookings.attractionId})`,
+      )
+
       .where(and(...bookingConditions));
 
     // =====================================================
@@ -570,19 +576,25 @@ export async function GET(request: Request) {
       eq(attractions.adminId, adminId),
     ];
 
-    /*
-     * Manager can only see revenue from permitted
-     * attractions.
-     */
+    // -----------------------------------------------------
+    // MANAGER ACCESS
+    // -----------------------------------------------------
+
     if (isManager) {
       transactionConditions.push(accessibleAttractionCondition);
     }
 
+    // -----------------------------------------------------
+    // ATTRACTION FILTER
+    // -----------------------------------------------------
+
     if (attractionId) {
-      bookingConditions.push(
-        arrayContains(bookings.attractionId, [attractionId]),
-      );
+      transactionConditions.push(eq(attractions.id, attractionId));
     }
+
+    // -----------------------------------------------------
+    // DATE FILTER
+    // -----------------------------------------------------
 
     if (from) {
       transactionConditions.push(gte(transactions.createdAt, from));
@@ -596,18 +608,36 @@ export async function GET(request: Request) {
     // TOTAL EARNINGS
     // =====================================================
 
+    /*
+     * IMPORTANT:
+     *
+     * A transaction belongs to a booking.
+     *
+     * A booking can contain multiple attractions.
+     *
+     * Joining transactions -> booking -> attractions
+     * can therefore duplicate the transaction.
+     *
+     * DISTINCT transaction ID is used here.
+     */
+
     const [earnings] = await db
       .select({
         total: sql<string>`
           COALESCE(
-            SUM(${transactions.amount}),
+            SUM(
+              DISTINCT ${transactions.amount}
+            ),
             0
           )
         `,
       })
       .from(transactions)
       .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+      .innerJoin(
+        attractions,
+        sql`${attractions.id} = ANY(${bookings.attractionId})`,
+      )
       .where(and(...transactionConditions, isNull(bookings.deletedAt)));
 
     // =====================================================
@@ -624,14 +654,19 @@ export async function GET(request: Request) {
 
         revenue: sql<string>`
           COALESCE(
-            SUM(${transactions.amount}),
+            SUM(
+              DISTINCT ${transactions.amount}
+            ),
             0
           )
         `,
       })
       .from(transactions)
       .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+      .innerJoin(
+        attractions,
+        sql`${attractions.id} = ANY(${bookings.attractionId})`,
+      )
       .where(and(...transactionConditions, isNull(bookings.deletedAt)))
       .groupBy(
         sql`
@@ -661,11 +696,14 @@ export async function GET(request: Request) {
         `,
 
         bookings: sql<number>`
-          COUNT(*)
+          COUNT(DISTINCT ${bookings.id})
         `,
       })
       .from(bookings)
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+      .innerJoin(
+        attractions,
+        sql`${attractions.id} = ANY(${bookings.attractionId})`,
+      )
       .where(and(...bookingConditions))
       .groupBy(
         sql`
@@ -737,7 +775,7 @@ export async function GET(request: Request) {
       .innerJoin(
         attractions,
         and(
-          eq(bookings.attractionId, attractions.id),
+          sql`${attractions.id} = ANY(${bookings.attractionId})`,
           eq(attractions.adminId, adminId),
         ),
       )
@@ -779,10 +817,15 @@ export async function GET(request: Request) {
     const managerRows = await db
       .select({
         id: users.id,
+
         name: users.name,
+
         email: users.email,
+
         phone: users.phone,
+
         status: users.status,
+
         joinedDate: users.createdAt,
 
         attractionId: managerAttractionPermissions.attractionId,
@@ -806,10 +849,6 @@ export async function GET(request: Request) {
           eq(users.role, "MANAGER"),
           eq(users.adminId, adminId),
 
-          /*
-           * Manager can only see managers sharing
-           * an attraction that they can access.
-           */
           ...(isManager
             ? [
                 inArray(
@@ -861,11 +900,17 @@ export async function GET(request: Request) {
       if (!managerMap.has(row.id)) {
         managerMap.set(row.id, {
           id: row.id,
+
           name: row.name,
+
           email: row.email,
+
           mobile: row.phone,
+
           status: row.status,
+
           joinedDate: row.joinedDate,
+
           attractions: [],
         });
       }
@@ -873,10 +918,6 @@ export async function GET(request: Request) {
       if (row.attractionId && row.attractionName) {
         const manager = managerMap.get(row.id)!;
 
-        /*
-         * Prevent duplicate attractions if
-         * the permission table contains duplicates.
-         */
         const alreadyExists = manager.attractions.some(
           (attraction) => attraction.id === row.attractionId,
         );
@@ -884,6 +925,7 @@ export async function GET(request: Request) {
         if (!alreadyExists) {
           manager.attractions.push({
             id: row.attractionId,
+
             name: row.attractionName,
           });
         }
@@ -905,10 +947,6 @@ export async function GET(request: Request) {
 
         joinedDate: manager.joinedDate,
 
-        /*
-         * bookings currently do not have
-         * managerId / processedBy.
-         */
         totalBookings: 0,
 
         status: manager.status,
@@ -959,27 +997,34 @@ export async function GET(request: Request) {
         dateTo: dateTo || null,
       },
 
-      /*
-       * Useful for frontend permission handling.
-       */
       viewer: {
         role: auth.user.role,
+
         adminId,
       },
     });
   } catch (error) {
     if (error instanceof Error) {
+      // ---------------------------------------------------
       // Authentication
+      // ---------------------------------------------------
+
       if (error.message === "UNAUTHORIZED") {
         return failure("Authentication required.", 401, "UNAUTHORIZED");
       }
 
+      // ---------------------------------------------------
       // Account status
+      // ---------------------------------------------------
+
       if (error.message === "ACCOUNT_NOT_ACTIVE") {
         return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
       }
 
+      // ---------------------------------------------------
       // Module authorization
+      // ---------------------------------------------------
+
       if (
         error.message === "MODULE_ACCESS_DENIED" ||
         error.message === "FORBIDDEN"
@@ -991,7 +1036,10 @@ export async function GET(request: Request) {
         );
       }
 
-      // Admin/tenant context
+      // ---------------------------------------------------
+      // Admin / tenant context
+      // ---------------------------------------------------
+
       if (error.message === "ADMIN_CONTEXT_REQUIRED") {
         return failure(
           "Admin ownership could not be determined.",
