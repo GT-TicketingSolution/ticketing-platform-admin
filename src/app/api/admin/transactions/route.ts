@@ -86,15 +86,12 @@ export async function GET(request: NextRequest) {
     // 5. ACCESSIBLE ATTRACTIONS
     // =====================================================
 
-    let accessibleAttractionIds: string[];
+    let accessibleAttractionIds: string[] = [];
 
     if (auth.user.role === "ADMIN") {
-      // Admin can access all attractions belonging
-      // to their own tenant.
       const adminAttractions = await db
         .select({
           id: attractions.id,
-          name: attractions.name,
         })
         .from(attractions)
         .where(
@@ -108,7 +105,6 @@ export async function GET(request: NextRequest) {
         (attraction) => attraction.id,
       );
     } else {
-      // Manager / Staff
       accessibleAttractionIds = await getAccessibleAttractionIds(auth);
     }
 
@@ -119,9 +115,7 @@ export async function GET(request: NextRequest) {
     if (accessibleAttractionIds.length === 0) {
       return success({
         items: [],
-
         attractions: [],
-
         pagination: {
           page,
           limit,
@@ -152,6 +146,14 @@ export async function GET(request: NextRequest) {
 
     // =====================================================
     // 8. BASE CONDITIONS
+    //
+    // IMPORTANT:
+    //
+    // We DO NOT join:
+    //
+    // bookings.attractionId = attractions.id
+    //
+    // because bookings.attractionId is uuid[].
     // =====================================================
 
     const conditions = [
@@ -159,19 +161,39 @@ export async function GET(request: NextRequest) {
 
       isNull(bookings.deletedAt),
 
-      // Tenant boundary
-      eq(attractions.adminId, adminId),
+      // Make sure booking belongs to this admin.
+      sql`EXISTS (
+        SELECT 1
+        FROM ${attractions}
+        WHERE
+          ${attractions.id} = ANY(${bookings.attractionId})
+          AND ${attractions.adminId} = ${adminId}
+      )`,
 
-      // User attraction access
-      inArray(attractions.id, accessibleAttractionIds),
+      // Make sure booking contains at least one
+      // attraction accessible to this user.
+      sql`EXISTS (
+        SELECT 1
+        FROM ${attractions}
+        WHERE
+          ${attractions.id} = ANY(${bookings.attractionId})
+          AND ${inArray(attractions.id, accessibleAttractionIds)}
+      )`,
     ];
 
     // =====================================================
     // 9. ATTRACTION FILTER
+    //
+    // bookings.attractionId = uuid[]
+    //
+    // Check whether attraction UUID exists
+    // inside the array.
     // =====================================================
 
     if (attractionId) {
-      conditions.push(eq(attractions.id, attractionId));
+      conditions.push(
+        sql`${attractionId}::uuid = ANY(${bookings.attractionId})`,
+      );
     }
 
     // =====================================================
@@ -179,15 +201,23 @@ export async function GET(request: NextRequest) {
     // =====================================================
 
     if (search) {
+      const searchValue = `%${search}%`;
+
       conditions.push(
         or(
-          ilike(transactions.transactionNumber, `%${search}%`),
+          ilike(transactions.transactionNumber, searchValue),
 
-          ilike(bookings.bookingNumber, `%${search}%`),
+          ilike(bookings.bookingNumber, searchValue),
 
-          ilike(bookings.customerName, `%${search}%`),
+          ilike(bookings.customerName, searchValue),
 
-          ilike(attractions.name, `%${search}%`),
+          sql`EXISTS (
+            SELECT 1
+            FROM ${attractions}
+            WHERE
+              ${attractions.id} = ANY(${bookings.attractionId})
+              AND ${attractions.name} ILIKE ${searchValue}
+          )`,
         )!,
       );
     }
@@ -246,25 +276,35 @@ export async function GET(request: NextRequest) {
       conditions.push(lte(transactions.createdAt, endDate));
     }
 
+    // =====================================================
+    // 15. WHERE CLAUSE
+    // =====================================================
+
     const whereClause = and(...conditions);
 
     // =====================================================
-    // 15. TOTAL COUNT
+    // 16. TOTAL COUNT
+    //
+    // NO ATTRACTION JOIN.
     // =====================================================
 
-    const [{ count }] = await db
+    const [{ count: totalCount }] = await db
       .select({
         count: sql<number>`count(*)`,
       })
       .from(transactions)
       .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
       .where(whereClause);
 
-    const total = Number(count);
+    const total = Number(totalCount || 0);
 
     // =====================================================
-    // 16. TRANSACTIONS
+    // 17. TRANSACTIONS
+    //
+    // IMPORTANT:
+    //
+    // Only transactions -> bookings is joined.
+    // Attractions are loaded separately.
     // =====================================================
 
     const transactionRows = await db
@@ -277,9 +317,7 @@ export async function GET(request: NextRequest) {
 
         bookingId: bookings.bookingNumber,
 
-        attractionId: attractions.id,
-
-        attractionName: attractions.name,
+        attractionIds: bookings.attractionId,
 
         amount: transactions.amount,
 
@@ -291,48 +329,110 @@ export async function GET(request: NextRequest) {
       })
       .from(transactions)
       .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
       .where(whereClause)
       .orderBy(desc(transactions.createdAt))
       .limit(limit)
       .offset(offset);
 
     // =====================================================
-    // 17. RESPONSE ITEMS
+    // 18. GET ALL ATTRACTION IDS
     // =====================================================
 
-    const items = transactionRows.map((transaction) => ({
-      id: transaction.id,
-
-      transactionId: transaction.transactionId,
-
-      customerName: transaction.customerName,
-
-      transactionDate: transaction.transactionDate,
-
-      bookingId: transaction.bookingId,
-
-      attraction: {
-        id: transaction.attractionId,
-        name: transaction.attractionName,
-      },
-
-      amount: Number(transaction.amount),
-
-      paymentMode: transaction.paymentMode,
-
-      status: transaction.status,
-    }));
+    const allAttractionIds = Array.from(
+      new Set(
+        transactionRows.flatMap(
+          (transaction) => transaction.attractionIds || [],
+        ),
+      ),
+    );
 
     // =====================================================
-    // 18. RESPONSE
+    // 19. GET ATTRACTIONS
+    // =====================================================
+
+    const transactionAttractions =
+      allAttractionIds.length > 0
+        ? await db
+            .select({
+              id: attractions.id,
+              name: attractions.name,
+            })
+            .from(attractions)
+            .where(
+              and(
+                eq(attractions.adminId, adminId),
+
+                inArray(attractions.id, allAttractionIds),
+
+                inArray(attractions.id, accessibleAttractionIds),
+              ),
+            )
+        : [];
+
+    // =====================================================
+    // 20. ATTRACTION MAP
+    // =====================================================
+
+    const attractionMap = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+      }
+    >();
+
+    for (const attraction of transactionAttractions) {
+      attractionMap.set(attraction.id, attraction);
+    }
+
+    // =====================================================
+    // 21. RESPONSE ITEMS
+    // =====================================================
+
+    const items = transactionRows.map((transaction) => {
+      const transactionAttractionList = (transaction.attractionIds || [])
+        .map((id) => attractionMap.get(id))
+        .filter(
+          (
+            attraction,
+          ): attraction is {
+            id: string;
+            name: string;
+          } => Boolean(attraction),
+        );
+
+      return {
+        id: transaction.id,
+
+        transactionId: transaction.transactionId,
+
+        customerName: transaction.customerName,
+
+        transactionDate: transaction.transactionDate,
+
+        bookingId: transaction.bookingId,
+
+        // Multiple attractions
+        attractions: transactionAttractionList,
+
+        // Keep IDs too
+        attractionIds: transaction.attractionIds,
+
+        amount: Number(transaction.amount),
+
+        paymentMode: transaction.paymentMode,
+
+        status: transaction.status,
+      };
+    });
+
+    // =====================================================
+    // 22. RESPONSE
     // =====================================================
 
     return success({
       items,
 
-      // Used by frontend:
-      // Attraction dropdown
       attractions: attractionRows,
 
       pagination: {

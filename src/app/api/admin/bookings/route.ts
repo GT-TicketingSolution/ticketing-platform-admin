@@ -12,6 +12,7 @@ import {
   or,
   sql,
   arrayContains,
+  count,
 } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -38,6 +39,482 @@ import { success, failure } from "@/lib/api/response";
 // =====================================================
 // GET BOOKINGS
 // =====================================================
+
+// export async function GET(request: NextRequest) {
+//   try {
+//     // =====================================================
+//     // 1. AUTHENTICATION
+//     // =====================================================
+
+//     const auth = await requireAuth(request);
+
+//     // =====================================================
+//     // 2. MODULE AUTHORIZATION
+//     // =====================================================
+
+//     await requireModuleAccess(auth, "BOOKINGS");
+
+//     // =====================================================
+//     // 3. TENANT / ADMIN
+//     // =====================================================
+
+//     const adminId = getAdminId(auth);
+
+//     // =====================================================
+//     // 4. QUERY PARAMS
+//     // =====================================================
+
+//     const { searchParams } = new URL(request.url);
+
+//     const page = Math.max(Number(searchParams.get("page") || "1"), 1);
+
+//     const limit = Math.min(
+//       Math.max(Number(searchParams.get("limit") || "10"), 1),
+//       100,
+//     );
+
+//     const search = searchParams.get("search")?.trim() || "";
+
+//     const attractionId = searchParams.get("attractionId")?.trim() || "";
+
+//     const status = searchParams.get("status")?.trim().toUpperCase() || "";
+
+//     const fromDate = searchParams.get("fromDate")?.trim() || "";
+
+//     const toDate = searchParams.get("toDate")?.trim() || "";
+
+//     const offset = (page - 1) * limit;
+
+//     // =====================================================
+//     // 5. BASE SECURITY CONDITIONS
+//     // =====================================================
+
+//     const conditions = [
+//       isNull(bookings.deletedAt),
+
+//       eq(bookings.isDeleted, false),
+
+//       eq(attractions.adminId, adminId),
+//     ];
+
+//     // =====================================================
+//     // 6. MANAGER / STAFF ATTRACTION ACCESS
+//     // =====================================================
+
+//     if (auth.user.role !== "ADMIN") {
+//       const accessibleAttractionIds = await getAccessibleAttractionIds(auth);
+
+//       if (accessibleAttractionIds.length === 0) {
+//         return success({
+//           items: [],
+//           pagination: {
+//             page,
+//             limit,
+//             total: 0,
+//             totalPages: 0,
+//           },
+//         });
+//       }
+
+//       conditions.push(inArray(attractions.id, accessibleAttractionIds));
+//     }
+
+//     // =====================================================
+//     // 7. SEARCH
+//     // =====================================================
+
+//     if (search) {
+//       conditions.push(
+//         or(
+//           ilike(bookings.bookingNumber, `%${search}%`),
+
+//           ilike(bookings.customerName, `%${search}%`),
+
+//           ilike(bookings.mobileNumber, `%${search}%`),
+
+//           ilike(attractions.name, `%${search}%`),
+
+//           sql`${bookings.totalAmount}::text ILIKE ${`%${search}%`}`,
+//         )!,
+//       );
+//     }
+
+//     // =====================================================
+//     // 8. ATTRACTION FILTER
+//     // =====================================================
+
+//     if (attractionId) {
+//       conditions.push(arrayContains(bookings.attractionId, [attractionId]));
+//     }
+
+//     // =====================================================
+//     // 9. STATUS FILTER
+//     // =====================================================
+
+//     if (
+//       status === "PENDING" ||
+//       status === "CONFIRMED" ||
+//       status === "CANCELLED"
+//     ) {
+//       conditions.push(eq(bookings.status, status));
+//     }
+
+//     // =====================================================
+//     // 10. FROM DATE
+//     // =====================================================
+
+//     if (fromDate) {
+//       const startDate = new Date(`${fromDate}T00:00:00.000Z`);
+
+//       if (Number.isNaN(startDate.getTime())) {
+//         return failure("Invalid fromDate.", 400, "INVALID_FROM_DATE");
+//       }
+
+//       conditions.push(gte(bookings.visitAt, startDate));
+//     }
+
+//     // =====================================================
+//     // 11. TO DATE
+//     // =====================================================
+
+//     if (toDate) {
+//       const endDate = new Date(`${toDate}T23:59:59.999Z`);
+
+//       if (Number.isNaN(endDate.getTime())) {
+//         return failure("Invalid toDate.", 400, "INVALID_TO_DATE");
+//       }
+
+//       conditions.push(lte(bookings.visitAt, endDate));
+//     }
+
+//     // =====================================================
+//     // 12. WHERE
+//     // =====================================================
+
+//     const whereClause = and(...conditions);
+
+//     // =====================================================
+//     // 13. TOTAL COUNT
+//     // =====================================================
+
+//     const [{ count }] = await db
+//       .select({
+//         count: sql<number>`
+//           count(distinct ${bookings.id})
+//         `,
+//       })
+//       .from(bookings)
+//       .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+//       .where(whereClause);
+
+//     const total = Number(count);
+
+//     // =====================================================
+//     // 14. BOOKING LIST
+//     // =====================================================
+
+//     /*
+//      * Do NOT join bookingItems here.
+//      *
+//      * We fetch bookingItems separately below so that
+//      * visitor category information can be returned
+//      * without grouping the booking query.
+//      */
+
+//     const bookingRows = await db
+//       .select({
+//         id: bookings.id,
+
+//         bookingId: bookings.bookingNumber,
+
+//         customerName: bookings.customerName,
+
+//         mobileNumber: bookings.mobileNumber,
+
+//         gstNumber: bookings.gstNumber,
+
+//         bookingDate: bookings.visitAt,
+
+//         attractionId: attractions.id,
+
+//         attractionName: attractions.name,
+
+//         subtotal: bookings.subtotal,
+
+//         gstAmount: bookings.gstAmount,
+
+//         gstAdjustment: bookings.gstAdjustment,
+
+//         roundOff: bookings.roundOff,
+
+//         discountAmount: bookings.discountAmount,
+
+//         totalAmount: bookings.totalAmount,
+
+//         amountPaid: bookings.amountPaid,
+
+//         paymentMode: bookings.paymentMode,
+
+//         status: bookings.status,
+
+//         createdAt: bookings.createdAt,
+
+//         updatedAt: bookings.updatedAt,
+//       })
+//       .from(bookings)
+//       .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+//       .where(whereClause)
+//       .orderBy(desc(bookings.visitAt))
+//       .limit(limit)
+//       .offset(offset);
+
+//     // =====================================================
+//     // 15. GET BOOKING ITEMS
+//     // =====================================================
+
+//     const bookingIds = bookingRows.map((booking) => booking.id);
+
+//     const ticketRows =
+//       bookingIds.length > 0
+//         ? await db
+//             .select({
+//               id: bookingItems.id,
+
+//               bookingId: bookingItems.bookingId,
+
+//               attractionId: bookingItems.attractionId,
+
+//               category: bookingItems.category,
+
+//               quantity: bookingItems.quantity,
+
+//               unitPrice: bookingItems.unitPrice,
+
+//               totalPrice: bookingItems.totalPrice,
+//             })
+//             .from(bookingItems)
+//             .where(inArray(bookingItems.bookingId, bookingIds))
+//         : [];
+
+//     // =====================================================
+//     // 16. GROUP TICKETS BY BOOKING
+//     // =====================================================
+
+//     const ticketsByBooking = new Map<
+//       string,
+//       Array<{
+//         id: string;
+//         attractionId: string;
+//         category: string;
+//         quantity: number;
+//         unitPrice: number;
+//         totalPrice: number;
+//       }>
+//     >();
+
+//     for (const ticket of ticketRows) {
+//       const existing = ticketsByBooking.get(ticket.bookingId) || [];
+
+//       existing.push({
+//         id: ticket.id,
+
+//         attractionId: ticket.attractionId,
+
+//         category: ticket.category,
+
+//         quantity: Number(ticket.quantity),
+
+//         unitPrice: Number(ticket.unitPrice),
+
+//         totalPrice: Number(ticket.totalPrice),
+//       });
+
+//       ticketsByBooking.set(ticket.bookingId, existing);
+//     }
+
+//     // =====================================================
+//     // 17. FORMAT RESPONSE
+//     // =====================================================
+
+//     const items = bookingRows.map((booking) => {
+//       const ticketItems = ticketsByBooking.get(booking.id) || [];
+
+//       // -------------------------------------------------
+//       // Aggregate same category
+//       // -------------------------------------------------
+
+//       const breakdownMap = new Map<string, number>();
+
+//       for (const ticket of ticketItems) {
+//         const current = breakdownMap.get(ticket.category) || 0;
+
+//         breakdownMap.set(ticket.category, current + ticket.quantity);
+//       }
+
+//       const visitorBreakdown = Array.from(breakdownMap.entries()).map(
+//         ([category, quantity]) => ({
+//           category,
+//           quantity,
+//         }),
+//       );
+
+//       // -------------------------------------------------
+//       // Total visitors
+//       // -------------------------------------------------
+
+//       const totalVisitors = visitorBreakdown.reduce(
+//         (sum, visitor) => sum + visitor.quantity,
+//         0,
+//       );
+
+//       // -------------------------------------------------
+//       // Financial values
+//       // -------------------------------------------------
+
+//       const totalAmount = Number(booking.totalAmount) || 0;
+
+//       const amountPaid = Number(booking.amountPaid) || 0;
+
+//       const amountDue = totalAmount - amountPaid;
+
+//       return {
+//         id: booking.id,
+
+//         bookingId: booking.bookingId,
+
+//         customer: {
+//           name: booking.customerName,
+
+//           mobileNumber: booking.mobileNumber,
+
+//           gstNumber: booking.gstNumber,
+//         },
+
+//         dateTime: booking.bookingDate,
+
+//         attraction: {
+//           id: booking.attractionId,
+
+//           name: booking.attractionName,
+//         },
+
+//         visitors: {
+//           total: totalVisitors,
+
+//           breakdown: visitorBreakdown,
+//         },
+
+//         tickets: ticketItems,
+
+//         amount: {
+//           subtotal: Number(booking.subtotal) || 0,
+
+//           gstAmount: Number(booking.gstAmount) || 0,
+
+//           gstAdjustment: Number(booking.gstAdjustment) || 0,
+
+//           roundOff: Number(booking.roundOff) || 0,
+
+//           discountAmount: Number(booking.discountAmount) || 0,
+
+//           total: totalAmount,
+
+//           paid: amountPaid,
+
+//           due: amountDue,
+//         },
+
+//         paymentMode: booking.paymentMode,
+
+//         status: booking.status,
+
+//         createdAt: booking.createdAt,
+
+//         updatedAt: booking.updatedAt,
+//       };
+//     });
+
+//     // =====================================================
+//     // 18. GET ACCESSIBLE ATTRACTIONS FOR FILTER
+//     // =====================================================
+
+//     let attractionConditions = [eq(attractions.adminId, adminId)];
+
+//     if (auth.user.role !== "ADMIN") {
+//       const accessibleAttractionIds = await getAccessibleAttractionIds(auth);
+
+//       if (accessibleAttractionIds.length === 0) {
+//         return success({
+//           items,
+
+//           attractions: [],
+
+//           pagination: {
+//             page,
+//             limit,
+//             total,
+//             totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+//           },
+//         });
+//       }
+
+//       attractionConditions.push(
+//         inArray(attractions.id, accessibleAttractionIds),
+//       );
+//     }
+
+//     const availableAttractions = await db
+//       .select({
+//         id: attractions.id,
+//         name: attractions.name,
+//       })
+//       .from(attractions)
+//       .where(and(...attractionConditions));
+
+//     // =====================================================
+//     // 18. RESPONSE
+//     // =====================================================
+
+//     return success({
+//       items,
+
+//       attractions: availableAttractions,
+
+//       pagination: {
+//         page,
+//         limit,
+//         total,
+//         totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+//       },
+//     });
+//   } catch (error) {
+//     if (error instanceof Error && error.message === "UNAUTHORIZED") {
+//       return failure("Authentication required.", 401, "UNAUTHORIZED");
+//     }
+
+//     if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+//       return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+//     }
+
+//     if (error instanceof Error && error.message === "FORBIDDEN") {
+//       return failure(
+//         "You do not have permission to access bookings.",
+//         403,
+//         "FORBIDDEN",
+//       );
+//     }
+
+//     if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+//       return failure(
+//         "User is not associated with an admin.",
+//         403,
+//         "USER_HAS_NO_ADMIN",
+//       );
+//     }
+
+//     return failure("Unable to fetch bookings.", 500, "INTERNAL_SERVER_ERROR");
+//   }
+// }
 
 export async function GET(request: NextRequest) {
   try {
@@ -85,27 +562,18 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
 
     // =====================================================
-    // 5. BASE SECURITY CONDITIONS
+    // 5. ACCESSIBLE ATTRACTIONS
     // =====================================================
 
-    const conditions = [
-      isNull(bookings.deletedAt),
-
-      eq(bookings.isDeleted, false),
-
-      eq(attractions.adminId, adminId),
-    ];
-
-    // =====================================================
-    // 6. MANAGER / STAFF ATTRACTION ACCESS
-    // =====================================================
+    let accessibleAttractionIds: string[] = [];
 
     if (auth.user.role !== "ADMIN") {
-      const accessibleAttractionIds = await getAccessibleAttractionIds(auth);
+      accessibleAttractionIds = await getAccessibleAttractionIds(auth);
 
       if (accessibleAttractionIds.length === 0) {
         return success({
           items: [],
+          attractions: [],
           pagination: {
             page,
             limit,
@@ -114,40 +582,104 @@ export async function GET(request: NextRequest) {
           },
         });
       }
-
-      conditions.push(inArray(attractions.id, accessibleAttractionIds));
     }
 
     // =====================================================
-    // 7. SEARCH
+    // 6. BASE CONDITIONS
+    //
+    // IMPORTANT:
+    //
+    // bookings.attractionId is uuid[]
+    //
+    // We DO NOT join:
+    //
+    // eq(bookings.attractionId, attractions.id)
+    //
+    // because uuid[] != uuid.
+    // =====================================================
+
+    const conditions = [
+      isNull(bookings.deletedAt),
+      eq(bookings.isDeleted, false),
+
+      // Booking must contain at least one attraction
+      // belonging to this admin.
+      sql`EXISTS (
+        SELECT 1
+        FROM ${attractions}
+        WHERE
+          ${attractions.id} = ANY(${bookings.attractionId})
+          AND ${attractions.adminId} = ${adminId}
+      )`,
+    ];
+
+    // =====================================================
+    // 7. MANAGER / STAFF ACCESS
+    // =====================================================
+
+    if (auth.user.role !== "ADMIN") {
+      conditions.push(
+        sql`EXISTS (
+          SELECT 1
+          FROM ${attractions}
+          WHERE
+            ${attractions.id} = ANY(${bookings.attractionId})
+            AND ${inArray(attractions.id, accessibleAttractionIds)}
+        )`,
+      );
+    }
+
+    // =====================================================
+    // 8. SEARCH
     // =====================================================
 
     if (search) {
+      const searchValue = `%${search}%`;
+
       conditions.push(
         or(
-          ilike(bookings.bookingNumber, `%${search}%`),
+          ilike(bookings.bookingNumber, searchValue),
 
-          ilike(bookings.customerName, `%${search}%`),
+          ilike(bookings.customerName, searchValue),
 
-          ilike(bookings.mobileNumber, `%${search}%`),
+          ilike(bookings.mobileNumber, searchValue),
 
-          ilike(attractions.name, `%${search}%`),
+          sql`${bookings.totalAmount}::text ILIKE ${searchValue}`,
 
-          sql`${bookings.totalAmount}::text ILIKE ${`%${search}%`}`,
+          // Search attraction name
+          sql`EXISTS (
+            SELECT 1
+            FROM ${attractions}
+            WHERE
+              ${attractions.id} = ANY(${bookings.attractionId})
+              AND ${attractions.name} ILIKE ${searchValue}
+          )`,
         )!,
       );
     }
 
     // =====================================================
-    // 8. ATTRACTION FILTER
+    // 9. ATTRACTION FILTER
+    //
+    // bookings.attractionId is uuid[]
+    //
+    // Example:
+    //
+    // attractionId =
+    // "f72cd0d0-6f56-4e85-..."
+    //
+    // Checks whether that UUID exists inside
+    // bookings.attraction_ids.
     // =====================================================
 
     if (attractionId) {
-      conditions.push(arrayContains(bookings.attractionId, [attractionId]));
+      conditions.push(
+        sql`${attractionId}::uuid = ANY(${bookings.attractionId})`,
+      );
     }
 
     // =====================================================
-    // 9. STATUS FILTER
+    // 10. STATUS FILTER
     // =====================================================
 
     if (
@@ -159,7 +691,7 @@ export async function GET(request: NextRequest) {
     }
 
     // =====================================================
-    // 10. FROM DATE
+    // 11. FROM DATE
     // =====================================================
 
     if (fromDate) {
@@ -173,7 +705,7 @@ export async function GET(request: NextRequest) {
     }
 
     // =====================================================
-    // 11. TO DATE
+    // 12. TO DATE
     // =====================================================
 
     if (toDate) {
@@ -187,38 +719,38 @@ export async function GET(request: NextRequest) {
     }
 
     // =====================================================
-    // 12. WHERE
+    // 13. WHERE CLAUSE
     // =====================================================
 
     const whereClause = and(...conditions);
 
     // =====================================================
-    // 13. TOTAL COUNT
+    // 14. TOTAL COUNT
+    //
+    // IMPORTANT:
+    //
+    // No bookingItems JOIN here.
+    //
+    // Every row in bookings can now be counted directly.
     // =====================================================
 
-    const [{ count }] = await db
+    const [{ count: totalCount }] = await db
       .select({
-        count: sql<number>`
-          count(distinct ${bookings.id})
-        `,
+        count: count(),
       })
       .from(bookings)
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
       .where(whereClause);
 
-    const total = Number(count);
+    const total = Number(totalCount || 0);
 
     // =====================================================
-    // 14. BOOKING LIST
+    // 15. GET PAGINATED BOOKINGS
+    //
+    // IMPORTANT:
+    //
+    // Directly from bookings.
+    // No INNER JOIN.
     // =====================================================
-
-    /*
-     * Do NOT join bookingItems here.
-     *
-     * We fetch bookingItems separately below so that
-     * visitor category information can be returned
-     * without grouping the booking query.
-     */
 
     const bookingRows = await db
       .select({
@@ -232,11 +764,9 @@ export async function GET(request: NextRequest) {
 
         gstNumber: bookings.gstNumber,
 
+        attractionIds: bookings.attractionId,
+
         bookingDate: bookings.visitAt,
-
-        attractionId: attractions.id,
-
-        attractionName: attractions.name,
 
         subtotal: bookings.subtotal,
 
@@ -252,23 +782,67 @@ export async function GET(request: NextRequest) {
 
         amountPaid: bookings.amountPaid,
 
+        amountReceived: bookings.amountReceived,
+
+        returnAmount: bookings.returnAmount,
+
         paymentMode: bookings.paymentMode,
 
         status: bookings.status,
+
+        createdBy: bookings.createdBy,
 
         createdAt: bookings.createdAt,
 
         updatedAt: bookings.updatedAt,
       })
       .from(bookings)
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
       .where(whereClause)
       .orderBy(desc(bookings.visitAt))
       .limit(limit)
       .offset(offset);
 
     // =====================================================
-    // 15. GET BOOKING ITEMS
+    // 16. NO BOOKINGS
+    // =====================================================
+
+    if (bookingRows.length === 0) {
+      const attractionConditions = [eq(attractions.adminId, adminId)];
+
+      if (auth.user.role !== "ADMIN") {
+        attractionConditions.push(
+          inArray(attractions.id, accessibleAttractionIds),
+        );
+      }
+
+      const availableAttractions = await db
+        .select({
+          id: attractions.id,
+          name: attractions.name,
+        })
+        .from(attractions)
+        .where(and(...attractionConditions));
+
+      return success({
+        items: [],
+
+        attractions: availableAttractions,
+
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+        },
+      });
+    }
+
+    // =====================================================
+    // 17. GET BOOKING ITEMS
+    //
+    // This is ONLY for ticket/visitor breakdown.
+    //
+    // It does NOT control whether a booking exists.
     // =====================================================
 
     const bookingIds = bookingRows.map((booking) => booking.id);
@@ -296,7 +870,54 @@ export async function GET(request: NextRequest) {
         : [];
 
     // =====================================================
-    // 16. GROUP TICKETS BY BOOKING
+    // 18. GET ALL ATTRACTIONS USED BY BOOKINGS
+    // =====================================================
+
+    const allAttractionIds = Array.from(
+      new Set(bookingRows.flatMap((booking) => booking.attractionIds || [])),
+    );
+
+    const attractionConditions = [eq(attractions.adminId, adminId)];
+
+    if (allAttractionIds.length > 0) {
+      attractionConditions.push(inArray(attractions.id, allAttractionIds));
+    }
+
+    if (auth.user.role !== "ADMIN") {
+      attractionConditions.push(
+        inArray(attractions.id, accessibleAttractionIds),
+      );
+    }
+
+    const bookingAttractions =
+      allAttractionIds.length > 0
+        ? await db
+            .select({
+              id: attractions.id,
+              name: attractions.name,
+            })
+            .from(attractions)
+            .where(and(...attractionConditions))
+        : [];
+
+    // =====================================================
+    // 19. ATTRACTION MAP
+    // =====================================================
+
+    const attractionMap = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+      }
+    >();
+
+    for (const attraction of bookingAttractions) {
+      attractionMap.set(attraction.id, attraction);
+    }
+
+    // =====================================================
+    // 20. GROUP TICKETS BY BOOKING
     // =====================================================
 
     const ticketsByBooking = new Map<
@@ -332,14 +953,33 @@ export async function GET(request: NextRequest) {
     }
 
     // =====================================================
-    // 17. FORMAT RESPONSE
+    // 21. FORMAT RESPONSE
     // =====================================================
 
     const items = bookingRows.map((booking) => {
+      // -------------------------------------------------
+      // Attractions
+      // -------------------------------------------------
+
+      const bookingAttractionsList = (booking.attractionIds || [])
+        .map((id) => attractionMap.get(id))
+        .filter(
+          (
+            attraction,
+          ): attraction is {
+            id: string;
+            name: string;
+          } => Boolean(attraction),
+        );
+
+      // -------------------------------------------------
+      // Tickets
+      // -------------------------------------------------
+
       const ticketItems = ticketsByBooking.get(booking.id) || [];
 
       // -------------------------------------------------
-      // Aggregate same category
+      // Visitor breakdown
       // -------------------------------------------------
 
       const breakdownMap = new Map<string, number>();
@@ -370,11 +1010,29 @@ export async function GET(request: NextRequest) {
       // Financial values
       // -------------------------------------------------
 
+      const subtotal = Number(booking.subtotal) || 0;
+
+      const gstAmount = Number(booking.gstAmount) || 0;
+
+      const gstAdjustment = Number(booking.gstAdjustment) || 0;
+
+      const roundOff = Number(booking.roundOff) || 0;
+
+      const discountAmount = Number(booking.discountAmount) || 0;
+
       const totalAmount = Number(booking.totalAmount) || 0;
 
       const amountPaid = Number(booking.amountPaid) || 0;
 
+      const amountReceived = Number(booking.amountReceived) || 0;
+
+      const returnAmount = Number(booking.returnAmount) || 0;
+
       const amountDue = totalAmount - amountPaid;
+
+      // -------------------------------------------------
+      // Final booking
+      // -------------------------------------------------
 
       return {
         id: booking.id,
@@ -391,11 +1049,9 @@ export async function GET(request: NextRequest) {
 
         dateTime: booking.bookingDate,
 
-        attraction: {
-          id: booking.attractionId,
+        attractionIds: booking.attractionIds,
 
-          name: booking.attractionName,
-        },
+        attractions: bookingAttractionsList,
 
         visitors: {
           total: totalVisitors,
@@ -406,26 +1062,32 @@ export async function GET(request: NextRequest) {
         tickets: ticketItems,
 
         amount: {
-          subtotal: Number(booking.subtotal) || 0,
+          subtotal,
 
-          gstAmount: Number(booking.gstAmount) || 0,
+          gstAmount,
 
-          gstAdjustment: Number(booking.gstAdjustment) || 0,
+          gstAdjustment,
 
-          roundOff: Number(booking.roundOff) || 0,
+          roundOff,
 
-          discountAmount: Number(booking.discountAmount) || 0,
+          discountAmount,
 
           total: totalAmount,
 
           paid: amountPaid,
 
+          received: amountReceived,
+
           due: amountDue,
+
+          returnAmount,
         },
 
         paymentMode: booking.paymentMode,
 
         status: booking.status,
+
+        createdBy: booking.createdBy,
 
         createdAt: booking.createdAt,
 
@@ -434,30 +1096,13 @@ export async function GET(request: NextRequest) {
     });
 
     // =====================================================
-    // 18. GET ACCESSIBLE ATTRACTIONS FOR FILTER
+    // 22. AVAILABLE ATTRACTIONS FOR FILTER
     // =====================================================
 
-    let attractionConditions = [eq(attractions.adminId, adminId)];
+    const availableAttractionConditions = [eq(attractions.adminId, adminId)];
 
     if (auth.user.role !== "ADMIN") {
-      const accessibleAttractionIds = await getAccessibleAttractionIds(auth);
-
-      if (accessibleAttractionIds.length === 0) {
-        return success({
-          items,
-
-          attractions: [],
-
-          pagination: {
-            page,
-            limit,
-            total,
-            totalPages: total === 0 ? 0 : Math.ceil(total / limit),
-          },
-        });
-      }
-
-      attractionConditions.push(
+      availableAttractionConditions.push(
         inArray(attractions.id, accessibleAttractionIds),
       );
     }
@@ -468,10 +1113,10 @@ export async function GET(request: NextRequest) {
         name: attractions.name,
       })
       .from(attractions)
-      .where(and(...attractionConditions));
+      .where(and(...availableAttractionConditions));
 
     // =====================================================
-    // 18. RESPONSE
+    // 23. FINAL RESPONSE
     // =====================================================
 
     return success({
@@ -481,12 +1126,17 @@ export async function GET(request: NextRequest) {
 
       pagination: {
         page,
+
         limit,
+
         total,
+
         totalPages: total === 0 ? 0 : Math.ceil(total / limit),
       },
     });
   } catch (error) {
+    console.error("GET /api/admin/bookings error:", error);
+
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
       return failure("Authentication required.", 401, "UNAUTHORIZED");
     }

@@ -24,6 +24,8 @@ import {
   Users,
 } from "lucide-react";
 import { showToast } from "@/components/ui/Toast";
+import { postData } from "@/lib/api/apiService";
+import AppUrl from "@/lib/api/endpoints";
 import AddNewCustomerModal, { NewCustomer } from "./AddNewCustomerModal";
 import {
   useTicketingCustomers,
@@ -1303,7 +1305,7 @@ interface SeatAllocationPanelProps {
   activeAttractionId: string;
   onActiveAttractionChange: (id: string) => void;
   tripMap: Record<string, number>;
-  onTripChange: (attractionId: string, trip: number) => void;
+  onTripChange: (attractionId: string, trip?: number) => Promise<void> | void;
   selectedSeatObjs: SelectedSeatObj[];
   onSelectedSeatsChange: (
     newSeatObjs: SelectedSeatObj[],
@@ -1547,12 +1549,19 @@ function SeatAllocationPanel({
     onSelectedSeatsChange(nextAllObjs, nextAsgn);
   };
 
-  const newTrip = () => {
-    const nextTrip = currentTrip + 1;
-    onTripChange(activeAttId, nextTrip);
-    // Clear selections for this specific attraction
-    const otherAttObjs = selectedSeatObjs.filter((s) => s.attractionId !== activeAttId);
-    onSelectedSeatsChange(otherAttObjs);
+  const [isMakingNewTrip, setIsMakingNewTrip] = React.useState(false);
+
+  const newTrip = async () => {
+    if (isMakingNewTrip) return;
+    setIsMakingNewTrip(true);
+    try {
+      await onTripChange(activeAttId, currentTrip);
+      // Clear selections for this specific attraction
+      const otherAttObjs = selectedSeatObjs.filter((s) => s.attractionId !== activeAttId);
+      onSelectedSeatsChange(otherAttObjs);
+    } finally {
+      setIsMakingNewTrip(false);
+    }
   };
 
   const formatSeatLabel = (num: number) => {
@@ -1643,6 +1652,21 @@ function SeatAllocationPanel({
               const attAllocated = selectedSeatObjs.filter((s) => s.attractionId === att.attractionId).length;
               const isComplete = attAllocated >= attPax && attPax > 0;
 
+              // Calculate available seats for this attraction on current trip
+              const attData = seatAvailData.find((d) => d.attractionId === att.attractionId);
+              const attSecs: AttractionSeatItem[] = (attData?.seatLayout?.seats || attData?.seats || []).slice();
+              const r = attData?.seatLayout?.rows || 0;
+              const c = attData?.seatLayout?.cols || 0;
+              const tSecSeats = (r > 0 && c > 0) ? (r * c) : (attSecs.length > 0 ? 4 : 0);
+              let attAvail = 0;
+              attSecs.forEach((sec) => {
+                const b = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
+                for (let o = 1; o <= tSecSeats; o++) {
+                  if (!b.includes(o)) attAvail++;
+                }
+              });
+              const isAttInsufficient = attAvail < attPax;
+
               return (
                 <button
                   key={att.attractionId}
@@ -1651,9 +1675,21 @@ function SeatAllocationPanel({
                   style={{
                     padding: "10px 18px",
                     borderRadius: "10px",
-                    border: isActive ? "2px solid #002A45" : "1.5px solid #CBD5E1",
-                    background: isActive ? "#002A45" : "#FFFFFF",
-                    color: isActive ? "#FFFFFF" : "#011B2F",
+                    border: isActive
+                      ? isAttInsufficient
+                        ? "2px solid #D97706"
+                        : "2px solid #002A45"
+                      : isAttInsufficient
+                        ? "1.5px solid #F59E0B"
+                        : "1.5px solid #CBD5E1",
+                    background: isActive
+                      ? isAttInsufficient
+                        ? "#78350F"
+                        : "#002A45"
+                      : isAttInsufficient
+                        ? "#FFFBEB"
+                        : "#FFFFFF",
+                    color: isActive ? "#FFFFFF" : isAttInsufficient ? "#92400E" : "#011B2F",
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
@@ -1676,19 +1712,31 @@ function SeatAllocationPanel({
                         ? isActive
                           ? "#16A34A"
                           : "#DCFCE7"
-                        : isActive
-                          ? "#D97706"
-                          : "#FEF3C7",
+                        : isAttInsufficient
+                          ? isActive
+                            ? "#DC2626"
+                            : "#FEE2E2"
+                          : isActive
+                            ? "#D97706"
+                            : "#FEF3C7",
                       color: isComplete
                         ? isActive
                           ? "#FFFFFF"
                           : "#166534"
-                        : isActive
-                          ? "#FFFFFF"
-                          : "#92400E",
+                        : isAttInsufficient
+                          ? isActive
+                            ? "#FFFFFF"
+                            : "#991B1B"
+                          : isActive
+                            ? "#FFFFFF"
+                            : "#92400E",
                     }}
                   >
-                    {isComplete ? `✓ ${attAllocated}/${attPax} Seats` : `${attAllocated}/${attPax} Seats`}
+                    {isComplete
+                      ? `✓ ${attAllocated}/${attPax} Seats`
+                      : isAttInsufficient
+                        ? `⚠️ ${attAllocated}/${attPax} Seats (Only ${attAvail} left)`
+                        : `${attAllocated}/${attPax} Seats`}
                   </span>
                 </button>
               );
@@ -1917,108 +1965,115 @@ function SeatAllocationPanel({
             </div>
 
             {/* Available Seats */}
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <div
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  borderRadius: "8px",
-                  background: "rgba(34, 197, 94, 0.12)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <Users size={15} color="#16A34A" />
-              </div>
-              <div>
-                <div
-                  style={{
-                    fontSize: "9px",
-                    fontWeight: 600,
-                    color: "#64748B",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.4px",
-                  }}
-                >
-                  Available Seats
-                </div>
-                <div style={{ fontSize: "12px", fontWeight: 700, color: "#15803D" }}>
-                  {totalAvailSeatsAllSections} / {totalCapacityAllSections} Seats
-                </div>
-              </div>
-            </div>
+            {(() => {
+              const isInsufficientSeats = totalPaxForActiveAttraction > totalAvailSeatsAllSections;
+              return (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div
+                      style={{
+                        width: "32px",
+                        height: "32px",
+                        borderRadius: "8px",
+                        background: isInsufficientSeats ? "rgba(239, 68, 68, 0.12)" : "rgba(34, 197, 94, 0.12)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Users size={15} color={isInsufficientSeats ? "#DC2626" : "#16A34A"} />
+                    </div>
+                    <div>
+                      <div
+                        style={{
+                          fontSize: "9px",
+                          fontWeight: 600,
+                          color: isInsufficientSeats ? "#DC2626" : "#64748B",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.4px",
+                        }}
+                      >
+                        Available Seats {isInsufficientSeats ? "(Low)" : ""}
+                      </div>
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: isInsufficientSeats ? "#DC2626" : "#15803D" }}>
+                        {totalAvailSeatsAllSections} / {totalCapacityAllSections} Seats
+                      </div>
+                    </div>
+                  </div>
 
-            {/* Trip Progress */}
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <div
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  borderRadius: "8px",
-                  background: "rgba(244, 188, 67, 0.18)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <RotateCcw size={15} color="#B45309" />
-              </div>
-              <div>
-                <div
-                  style={{
-                    fontSize: "9px",
-                    fontWeight: 600,
-                    color: "#64748B",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.4px",
-                  }}
-                >
-                  Current Trip
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#011B2F" }}>
-                    Trip #{currentTrip}
-                  </span>
-                </div>
-              </div>
-            </div>
+                  {/* Trip Progress */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div
+                      style={{
+                        width: "32px",
+                        height: "32px",
+                        borderRadius: "8px",
+                        background: "rgba(244, 188, 67, 0.18)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <RotateCcw size={15} color="#B45309" />
+                    </div>
+                    <div>
+                      <div
+                        style={{
+                          fontSize: "9px",
+                          fontWeight: 600,
+                          color: "#64748B",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.4px",
+                        }}
+                      >
+                        Current Trip
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                        <span style={{ fontSize: "12px", fontWeight: 700, color: "#011B2F" }}>
+                          Trip #{currentTrip}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
 
-            {/* Required Pax for this attraction */}
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <div
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  borderRadius: "8px",
-                  background: "rgba(23, 63, 99, 0.08)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <Users size={15} color="#173F63" />
-              </div>
-              <div>
-                <div
-                  style={{
-                    fontSize: "9px",
-                    fontWeight: 600,
-                    color: "#64748B",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.4px",
-                  }}
-                >
-                  Visitors ({activeAttName})
-                </div>
-                <div style={{ fontSize: "12px", fontWeight: 700, color: "#011B2F" }}>
-                  {activeAttractionSelectedSeatObjs.length} / {totalPaxForActiveAttraction} Allocated
-                </div>
-              </div>
-            </div>
+                  {/* Required Pax for this attraction */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div
+                      style={{
+                        width: "32px",
+                        height: "32px",
+                        borderRadius: "8px",
+                        background: isInsufficientSeats ? "rgba(245, 158, 11, 0.15)" : "rgba(23, 63, 99, 0.08)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Users size={15} color={isInsufficientSeats ? "#D97706" : "#173F63"} />
+                    </div>
+                    <div>
+                      <div
+                        style={{
+                          fontSize: "9px",
+                          fontWeight: 600,
+                          color: "#64748B",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.4px",
+                        }}
+                      >
+                        Visitors ({activeAttName})
+                      </div>
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: isInsufficientSeats ? "#D97706" : "#011B2F" }}>
+                        {activeAttractionSelectedSeatObjs.length} / {totalPaxForActiveAttraction} Allocated
+                      </div>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           {/* Header Row: Title & Action Buttons */}
@@ -2047,6 +2102,7 @@ function SeatAllocationPanel({
             <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
               <button
                 type="button"
+                disabled={isMakingNewTrip}
                 onClick={(e) => {
                   e.stopPropagation();
                   newTrip();
@@ -2054,21 +2110,30 @@ function SeatAllocationPanel({
                 style={{
                   width: "158px",
                   height: "35px",
-                  background: "#FFFFFF",
-                  border: "1.5px solid #2576AB",
+                  background: totalPaxForActiveAttraction > totalAvailSeatsAllSections ? "#D97706" : "#FFFFFF",
+                  border: totalPaxForActiveAttraction > totalAvailSeatsAllSections ? "1.5px solid #D97706" : "1.5px solid #2576AB",
                   borderRadius: "6px",
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 600,
+                  fontWeight: 700,
                   fontSize: "12px",
-                  color: "#173F63",
-                  cursor: "pointer",
+                  color: totalPaxForActiveAttraction > totalAvailSeatsAllSections ? "#FFFFFF" : "#173F63",
+                  cursor: isMakingNewTrip ? "not-allowed" : "pointer",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   gap: "6px",
+                  opacity: isMakingNewTrip ? 0.7 : 1,
+                  boxShadow: totalPaxForActiveAttraction > totalAvailSeatsAllSections ? "0 2px 6px rgba(217, 119, 6, 0.3)" : "none",
                 }}
               >
-                <Plus size={16} strokeWidth={2.5} /> Make New Trip
+                {isMakingNewTrip ? (
+                  <>
+                    <span style={{ width: "14px", height: "14px", border: "2px solid currentColor", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }} />
+                    Creating…
+                  </>
+                ) : (
+                  <><Plus size={16} strokeWidth={2.5} /> Make New Trip</>
+                )}
               </button>
 
               <button
@@ -2105,25 +2170,55 @@ function SeatAllocationPanel({
             </div>
           </div>
 
-          {/* Info Banner */}
-          <div
-            style={{
-              background: "#DEF2FF",
-              border: "1px solid rgba(23, 63, 99, 0.4)",
-              borderRadius: "7px",
-              padding: "8px 14px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-            }}
-          >
-            <span style={{ fontSize: "13px" }}>ℹ️</span>
-            <span style={{ fontSize: "11.5px", color: "#173F63", fontWeight: 600 }}>
-              {activeAttractionSelectedSeatObjs.length < totalPaxForActiveAttraction
-                ? `Allocating seats for ${activeAttName}. Please select ${totalPaxForActiveAttraction - activeAttractionSelectedSeatObjs.length} more seat(s).`
-                : `All ${totalPaxForActiveAttraction} seat(s) allocated for ${activeAttName}. Click any seat to reallocate.`}
-            </span>
-          </div>
+          {/* Insufficient Seats Warning Banner / Standard Info Banner */}
+          {totalPaxForActiveAttraction > totalAvailSeatsAllSections ? (
+            <div
+              style={{
+                background: "#FFFBEB",
+                border: "1.5px solid #F59E0B",
+                borderRadius: "8px",
+                padding: "10px 14px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", flex: 1, minWidth: "260px" }}>
+                <AlertTriangle size={18} color="#D97706" style={{ flexShrink: 0, marginTop: "2px" }} />
+                <div>
+                  <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#92400E", marginBottom: "2px" }}>
+                    Insufficient Seats in Trip #{currentTrip} ({totalPaxForActiveAttraction} Visitors vs {totalAvailSeatsAllSections} Available Seats)
+                  </div>
+                  <div style={{ fontSize: "11.5px", color: "#78350F", lineHeight: "16px" }}>
+                    {totalAvailSeatsAllSections === 0
+                      ? `Trip #${currentTrip} has no seats available. Please click "Make New Trip" to book for this group in the next trip.`
+                      : `Only ${totalAvailSeatsAllSections} seat(s) available in Trip #${currentTrip}, but this booking is for ${totalPaxForActiveAttraction} visitors. You can click "Make New Trip" to allocate this group to the next trip, or book the remaining ${totalAvailSeatsAllSections} seat(s) for another visitor.`}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                background: "#DEF2FF",
+                border: "1px solid rgba(23, 63, 99, 0.4)",
+                borderRadius: "7px",
+                padding: "8px 14px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <span style={{ fontSize: "13px" }}>ℹ️</span>
+              <span style={{ fontSize: "11.5px", color: "#173F63", fontWeight: 600 }}>
+                {activeAttractionSelectedSeatObjs.length < totalPaxForActiveAttraction
+                  ? `Allocating seats for ${activeAttName}. Please select ${totalPaxForActiveAttraction - activeAttractionSelectedSeatObjs.length} more seat(s).`
+                  : `All ${totalPaxForActiveAttraction} seat(s) allocated for ${activeAttName}. Click any seat to reallocate.`}
+              </span>
+            </div>
+          )}
 
           {/* Visual Interactive Seat Grid Container */}
           {isLoadingSeats ? (
@@ -2469,8 +2564,12 @@ export default function CustomerInfoView({
 
   // Fetch real trip numbers from API for all seating attractions
   const tripNoQuery = useMemo(
-    () => seatingAttractions.map((a) => ({ attractionId: a.attractionId!, currentTripNo: 1 })),
-    [seatingAttractions]
+    () =>
+      seatingAttractions.map((a) => ({
+        attractionId: a.attractionId!,
+        currentTripNo: tripMap[a.attractionId!] || (initialTripMap && initialTripMap[a.attractionId!]) || 1,
+      })),
+    [seatingAttractions, tripMap, initialTripMap]
   );
   const { data: tripNoData } = useAttractionTripNo(tripNoQuery, seatingAttractions.length > 0 && !showPaymentModal && !showTicketModal);
 
@@ -2482,7 +2581,7 @@ export default function CustomerInfoView({
         tripNoData.forEach((item) => {
           if (item.attractionId) {
             const newVal = item.newTripNo || 1;
-            if (next[item.attractionId] === undefined || (prev[item.attractionId] === 1 && newVal !== 1)) {
+            if (next[item.attractionId] === undefined) {
               next[item.attractionId] = newVal;
               changed = true;
             }
@@ -2519,79 +2618,51 @@ export default function CustomerInfoView({
     refetchSeatsQuery();
   };
 
-  // Track trip numbers that have already auto-advanced to prevent infinite looping
-  const autoAdvancedTripsRef = useRef<Record<string, number>>({});
+  // Ref to track attractions that already had auto-new-trip triggered so we don't loop
+  const autoNewTripDoneRef = useRef<Record<string, number>>({});
 
-  // ── Auto-select seats for ALL seating attractions once seatAvailData loads ──
+  // ── Auto-make new trip when ALL seats in current trip are fully booked ──
   useEffect(() => {
     if (!seatAvailData || seatAvailData.length === 0) return;
     if (seatingAttractions.length === 0) return;
 
-    // Check if any seating attraction is fully booked on its current trip
-    let tripChanged = false;
-    const nextTripMap = { ...tripMap };
-    const attIdsToReset: string[] = [];
-
     seatingAttractions.forEach((att) => {
       const attId = att.attractionId!;
-      const totalPax = att.passengers.reduce((s, p) => s + (p.qty || 0), 0);
-      if (totalPax <= 0) return;
-
       const attData = seatAvailData.find((d) => d.attractionId === attId);
       if (!attData) return;
 
-      const currentTrip = nextTripMap[attId] || 1;
-      // If we already advanced from this trip, don't advance again to prevent loops
-      if (autoAdvancedTripsRef.current[attId] === currentTrip) return;
+      const currentTripNo = attData.currentTripNo || tripMap[attId] || 1;
+      // Only trigger once per trip
+      if (autoNewTripDoneRef.current[attId] === currentTripNo) return;
 
-      const sections: AttractionSeatItem[] = (attData.seatLayout?.seats || attData.seats || []).slice().sort((a, b) => a.seatOrder - b.seatOrder);
+      const sections: AttractionSeatItem[] = (attData.seatLayout?.seats || attData.seats || []).slice();
       const rows = attData.seatLayout?.rows || 0;
       const cols = attData.seatLayout?.cols || 0;
       const totalSecSeats = (rows > 0 && cols > 0) ? (rows * cols) : (sections.length > 0 ? 4 : 0);
 
-      // Calculate available unbooked seats across all sections
-      let availableSeats = 0;
-      let totalBookedCount = 0;
+      if (sections.length === 0 || totalSecSeats === 0) return;
+
+      let totalCapacity = 0;
+      let totalBooked = 0;
       for (const sec of sections) {
+        totalCapacity += totalSecSeats;
         const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
-        totalBookedCount += booked.length;
-        for (let order = 1; order <= totalSecSeats; order++) {
-          if (!booked.includes(order)) {
-            availableSeats++;
-          }
-        }
+        totalBooked += booked.length;
       }
 
-      // Only auto-advance if the trip already has bookings AND does not have enough available seats
-      if (totalBookedCount > 0 && availableSeats < totalPax && sections.length > 0) {
-        autoAdvancedTripsRef.current[attId] = currentTrip;
-        const nextTrip = currentTrip + 1;
-        nextTripMap[attId] = nextTrip;
-        tripChanged = true;
-        attIdsToReset.push(attId);
+      // All seats fully booked on this trip and trip has actual bookings
+      if (totalCapacity > 0 && totalBooked >= totalCapacity) {
+        autoNewTripDoneRef.current[attId] = currentTripNo;
+        handleTripChange(attId, currentTripNo);
       }
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seatAvailData]);
 
-    if (tripChanged) {
-      setTripMap(nextTripMap);
-      if (attIdsToReset.length > 0) {
-        attIdsToReset.forEach((id) => {
-          manuallyEditedAttractionsRef.current[id] = false;
-          delete lastAllocatedTripRef.current[id];
-        });
-        setSelectedSeatObjs((prev) => prev.filter((s) => !attIdsToReset.includes(s.attractionId)));
-        setPaxAssignment((prev) => {
-          const next = { ...prev };
-          Object.keys(next).forEach((k) => {
-            if (attIdsToReset.some((id) => k.startsWith(`${id}_`))) {
-              delete next[k];
-            }
-          });
-          return next;
-        });
-      }
-      return;
-    }
+
+  useEffect(() => {
+    if (!seatAvailData || seatAvailData.length === 0) return;
+    if (seatingAttractions.length === 0) return;
 
     let combinedObjs = [...selectedSeatObjs];
     const nextAsgn: Record<string, string> = { ...paxAssignment };
@@ -2622,8 +2693,34 @@ export default function CustomerInfoView({
       const cols = attData.seatLayout?.cols || 0;
       const totalSecSeats = (rows > 0 && cols > 0) ? (rows * cols) : (sections.length > 0 ? 4 : 0);
 
+      // Calculate available unbooked seats across all sections in this attraction
+      let availableSeats = 0;
+      for (const sec of sections) {
+        const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
+        for (let order = 1; order <= totalSecSeats; order++) {
+          if (!booked.includes(order)) {
+            availableSeats++;
+          }
+        }
+      }
+
       const isManuallyEdited = Boolean(manuallyEditedAttractionsRef.current[attId]);
       const tripHasChanged = lastAllocatedTripRef.current[attId] !== currentTripNo;
+
+      // When more visitors than available seats in current trip: DO NOT auto-select seats
+      if (availableSeats < totalPax) {
+        const existingForAtt = combinedObjs.filter((s) => s.attractionId === attId);
+        // Clear any previous auto-allocation for this attraction
+        if (existingForAtt.length > 0 && !isManuallyEdited) {
+          combinedObjs = combinedObjs.filter((s) => s.attractionId !== attId);
+          Object.keys(nextAsgn).forEach((k) => {
+            if (k.startsWith(`${attId}_`)) delete nextAsgn[k];
+          });
+          changed = true;
+        }
+        lastAllocatedTripRef.current[attId] = currentTripNo;
+        return;
+      }
 
       const existingForAtt = combinedObjs.filter((s) => s.attractionId === attId);
       const validCurrent = existingForAtt.filter((so) => {
@@ -2756,10 +2853,28 @@ export default function CustomerInfoView({
     }
   }
 
-  function handleTripChange(attId: string, nextTrip: number) {
+  async function handleTripChange(attId: string, currentTripNo?: number) {
+    // Call get-attraction-trip-no API with currentTripNo + 1 to request the next trip
+    const ongoingTrip = currentTripNo ?? (tripMap[attId] ?? 1);
+    const nextTripPayload = ongoingTrip + 1;
+    let resolvedNextTrip = nextTripPayload;
+    try {
+      const res = await postData<any, { attractions: { attractionId: string; currentTripNo: number }[] }>(
+        AppUrl.ticketingBooking.getAttractionTripNo,
+        { attractions: [{ attractionId: attId, currentTripNo: nextTripPayload }] }
+      );
+      const payload = res?.data ?? res;
+      const items = Array.isArray(payload) ? payload : [];
+      const item = items.find((i: any) => i.attractionId === attId);
+      if (item && item.newTripNo) {
+        resolvedNextTrip = Math.max(nextTripPayload, item.newTripNo > ongoingTrip ? item.newTripNo + 1 : nextTripPayload);
+      }
+    } catch {
+      // fallback to local increment
+    }
     manuallyEditedAttractionsRef.current[attId] = false;
     delete lastAllocatedTripRef.current[attId];
-    setTripMap((prev) => ({ ...prev, [attId]: nextTrip }));
+    setTripMap((prev) => ({ ...prev, [attId]: resolvedNextTrip }));
     setSelectedSeatObjs((prev) => prev.filter((s) => s.attractionId !== attId));
     setPaxAssignment((prev) => {
       const next = { ...prev };
@@ -2854,9 +2969,30 @@ export default function CustomerInfoView({
         const req = missingAttraction.passengers.reduce((s, p) => s + (p.qty || 0), 0);
         const allocated = selectedSeatObjs.filter((s) => s.attractionId === missingAttraction.attractionId).length;
         const diff = req - allocated;
-        const errMsg = allocated === 0
-          ? `Seat allocation is required for ${missingAttraction.attractionName}. Please select ${req} seat${req > 1 ? "s" : ""} before continuing.`
-          : `Please select ${diff} more seat${diff > 1 ? "s" : ""} for ${missingAttraction.attractionName} (${allocated}/${req} selected) before continuing.`;
+        const attId = missingAttraction.attractionId!;
+        const attCurTrip = tripMap[attId] || 1;
+        const attData = seatAvailData.find((d) => d.attractionId === attId);
+        const secList = attData?.seatLayout?.seats || attData?.seats || [];
+        const rows = attData?.seatLayout?.rows || 0;
+        const cols = attData?.seatLayout?.cols || 0;
+        const totalSecSeats = (rows > 0 && cols > 0) ? (rows * cols) : (secList.length > 0 ? 4 : 0);
+        let availSeats = 0;
+        secList.forEach((sec) => {
+          const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
+          for (let order = 1; order <= totalSecSeats; order++) {
+            if (!booked.includes(order)) availSeats++;
+          }
+        });
+
+        let errMsg = "";
+        if (availSeats < req) {
+          errMsg = `${missingAttraction.attractionName} has only ${availSeats} seat(s) available in Trip #${attCurTrip}, but ${req} visitor(s) are in this booking. Please click "Make New Trip" to allocate for this group, or adjust the visitor count.`;
+        } else if (allocated === 0) {
+          errMsg = `Seat allocation is required for ${missingAttraction.attractionName}. Please select ${req} seat${req > 1 ? "s" : ""} before continuing.`;
+        } else {
+          errMsg = `Please select ${diff} more seat${diff > 1 ? "s" : ""} for ${missingAttraction.attractionName} (${allocated}/${req} selected) before continuing.`;
+        }
+
         setSeatValidationError(errMsg);
         setActiveAttractionId(missingAttraction.attractionId || "");
         setIsSeatAllocExpanded(true);

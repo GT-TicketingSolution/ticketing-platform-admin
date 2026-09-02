@@ -72,25 +72,35 @@ export async function GET(request: NextRequest) {
     const dateTo = searchParams.get("dateTo")?.trim();
 
     // =====================================================
-    // BASE CONDITIONS
+    // ACCESSIBLE ATTRACTIONS
     // =====================================================
 
-    const conditions = [
-      // Transaction not deleted
-      isNull(transactions.deletedAt),
+    let accessibleAttractionIds: string[] = [];
 
-      // Booking not deleted
-      isNull(bookings.deletedAt),
+    // -----------------------------------------------------
+    // ADMIN
+    // -----------------------------------------------------
 
-      // Tenant isolation
-      eq(attractions.adminId, adminId),
-    ];
+    if (auth.user.role === "ADMIN") {
+      const adminAttractions = await db
+        .select({
+          id: attractions.id,
+        })
+        .from(attractions)
+        .where(
+          and(
+            eq(attractions.adminId, adminId),
+            eq(attractions.status, "ACTIVE"),
+          ),
+        );
 
-    // =====================================================
-    // MANAGER ATTRACTION ACCESS
-    // =====================================================
+      accessibleAttractionIds = adminAttractions.map((item) => item.id);
+    }
 
-    if (auth.user.role === "MANAGER") {
+    // -----------------------------------------------------
+    // MANAGER
+    // -----------------------------------------------------
+    else if (auth.user.role === "MANAGER") {
       const managerAttractions = await db
         .select({
           attractionId: managerAttractionPermissions.attractionId,
@@ -108,50 +118,128 @@ export async function GET(request: NextRequest) {
           ),
         );
 
-      const allowedAttractionIds = managerAttractions.map(
+      accessibleAttractionIds = managerAttractions.map(
         (item) => item.attractionId,
       );
-
-      if (allowedAttractionIds.length === 0) {
-        return success({
-          summary: {
-            totalRevenue: 0,
-            totalInvoices: 0,
-            paidInvoices: 0,
-          },
-
-          items: [],
-
-          pagination: {
-            page,
-            limit,
-            total: 0,
-            totalPages: 0,
-          },
-        });
-      }
-
-      conditions.push(inArray(attractions.id, allowedAttractionIds));
     }
+
+    // -----------------------------------------------------
+    // STAFF
+    // -----------------------------------------------------
+    // Keep the same behavior as your existing route:
+    // staff can access active attractions under their admin.
+    // -----------------------------------------------------
+    else {
+      const staffAttractions = await db
+        .select({
+          id: attractions.id,
+        })
+        .from(attractions)
+        .where(
+          and(
+            eq(attractions.adminId, adminId),
+            eq(attractions.status, "ACTIVE"),
+          ),
+        );
+
+      accessibleAttractionIds = staffAttractions.map((item) => item.id);
+    }
+
+    // =====================================================
+    // NO ACCESS
+    // =====================================================
+
+    if (accessibleAttractionIds.length === 0) {
+      return success({
+        summary: {
+          totalRevenue: 0,
+          totalInvoices: 0,
+          paidInvoices: 0,
+        },
+
+        items: [],
+
+        pagination: {
+          page,
+          limit,
+          total: 0,
+          totalPages: 0,
+        },
+      });
+    }
+
+    // =====================================================
+    // BASE CONDITIONS
+    // =====================================================
+
+    const conditions = [
+      // Transaction not deleted
+      isNull(transactions.deletedAt),
+
+      // Booking not deleted
+      isNull(bookings.deletedAt),
+
+      // Booking soft-delete flag
+      eq(bookings.isDeleted, false),
+
+      // ---------------------------------------------------
+      // TENANT ISOLATION
+      //
+      // bookings.attractionId = uuid[]
+      //
+      // attractions.id = uuid
+      //
+      // Therefore we MUST use ANY().
+      // ---------------------------------------------------
+
+      sql`EXISTS (
+        SELECT 1
+        FROM ${attractions}
+        WHERE
+          ${attractions.id} = ANY(${bookings.attractionId})
+          AND ${attractions.adminId} = ${adminId}
+      )`,
+
+      // ---------------------------------------------------
+      // USER ATTRACTION ACCESS
+      // ---------------------------------------------------
+
+      sql`EXISTS (
+        SELECT 1
+        FROM ${attractions}
+        WHERE
+          ${attractions.id} = ANY(${bookings.attractionId})
+          AND ${inArray(attractions.id, accessibleAttractionIds)}
+      )`,
+    ];
 
     // =====================================================
     // SEARCH
     // =====================================================
 
     if (search) {
+      const searchValue = `%${search}%`;
+
       conditions.push(
         or(
-          ilike(transactions.invoiceNumber, `%${search}%`),
+          ilike(transactions.invoiceNumber, searchValue),
 
-          ilike(transactions.transactionNumber, `%${search}%`),
+          ilike(transactions.transactionNumber, searchValue),
 
-          ilike(bookings.bookingNumber, `%${search}%`),
+          ilike(bookings.bookingNumber, searchValue),
 
-          ilike(bookings.customerName, `%${search}%`),
+          ilike(bookings.customerName, searchValue),
 
-          ilike(bookings.mobileNumber, `%${search}%`),
+          ilike(bookings.mobileNumber, searchValue),
 
-          ilike(attractions.name, `%${search}%`),
+          // Search attraction name
+          sql`EXISTS (
+            SELECT 1
+            FROM ${attractions}
+            WHERE
+              ${attractions.id} = ANY(${bookings.attractionId})
+              AND ${attractions.name} ILIKE ${searchValue}
+          )`,
         )!,
       );
     }
@@ -206,6 +294,18 @@ export async function GET(request: NextRequest) {
       conditions.push(lte(transactions.createdAt, endDate));
     }
 
+    // =====================================================
+    // ATTRACTION FILTER
+    // =====================================================
+
+    const attractionFilter = searchParams.get("attractionId")?.trim();
+
+    if (attractionFilter) {
+      conditions.push(
+        sql`${attractionFilter}::uuid = ANY(${bookings.attractionId})`,
+      );
+    }
+
     const whereClause = and(...conditions);
 
     // =====================================================
@@ -214,11 +314,10 @@ export async function GET(request: NextRequest) {
 
     const [countResult] = await db
       .select({
-        count: sql<number>`COUNT(${transactions.id})`,
+        count: sql<number>`COUNT(DISTINCT ${transactions.id})`,
       })
       .from(transactions)
       .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
       .where(whereClause);
 
     const totalInvoices = Number(countResult?.count || 0);
@@ -238,7 +337,6 @@ export async function GET(request: NextRequest) {
       })
       .from(transactions)
       .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
       .where(and(...conditions, eq(transactions.status, "SUCCESSFUL")));
 
     const totalRevenue = Number(revenueResult?.totalRevenue || 0);
@@ -249,11 +347,10 @@ export async function GET(request: NextRequest) {
 
     const [paidResult] = await db
       .select({
-        count: sql<number>`COUNT(${transactions.id})`,
+        count: sql<number>`COUNT(DISTINCT ${transactions.id})`,
       })
       .from(transactions)
       .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
       .where(and(...conditions, eq(transactions.status, "SUCCESSFUL")));
 
     const paidInvoices = Number(paidResult?.count || 0);
@@ -289,9 +386,9 @@ export async function GET(request: NextRequest) {
 
         visitAt: bookings.visitAt,
 
-        attractionId: attractions.id,
-
-        attractionName: attractions.name,
+        // IMPORTANT:
+        // This is uuid[]
+        attractionIds: bookings.attractionId,
 
         amount: transactions.amount,
 
@@ -301,11 +398,46 @@ export async function GET(request: NextRequest) {
       })
       .from(transactions)
       .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
       .where(whereClause)
       .orderBy(desc(transactions.createdAt))
       .limit(limit)
       .offset(offset);
+
+    // =====================================================
+    // GET ALL ATTRACTION IDS
+    // =====================================================
+
+    const allAttractionIds = Array.from(
+      new Set(invoiceRows.flatMap((row) => row.attractionIds || [])),
+    );
+
+    // =====================================================
+    // FETCH ATTRACTION DETAILS
+    // =====================================================
+
+    const attractionRows =
+      allAttractionIds.length > 0
+        ? await db
+            .select({
+              id: attractions.id,
+              name: attractions.name,
+            })
+            .from(attractions)
+            .where(
+              and(
+                inArray(attractions.id, allAttractionIds),
+                eq(attractions.adminId, adminId),
+              ),
+            )
+        : [];
+
+    // =====================================================
+    // CREATE ATTRACTION MAP
+    // =====================================================
+
+    const attractionMap = new Map(
+      attractionRows.map((attraction) => [attraction.id, attraction]),
+    );
 
     // =====================================================
     // BOOKING ITEMS
@@ -363,42 +495,82 @@ export async function GET(request: NextRequest) {
             .join(" + ")
         : "0";
 
+      // Resolve all attractions
+      const invoiceAttractions = (invoice.attractionIds || [])
+        .map((id) => attractionMap.get(id))
+        .filter(
+          (
+            attraction,
+          ): attraction is {
+            id: string;
+            name: string;
+          } => Boolean(attraction),
+        );
+
       return {
         sNo: offset + index + 1,
 
-        // Invoice number
+        // -------------------------------------------------
+        // Invoice
+        // -------------------------------------------------
+
         invoiceId: invoice.invoiceId || invoice.transactionId,
 
+        // -------------------------------------------------
         // Customer
+        // -------------------------------------------------
+
         customerName: invoice.customerName,
 
         mobileNumber: invoice.mobileNumber,
 
         gstNumber: invoice.gstNumber,
 
+        // -------------------------------------------------
         // Date
+        // -------------------------------------------------
+
         dateTime: invoice.dateTime,
 
         visitAt: invoice.visitAt,
 
-        // Attraction
-        attraction: {
-          id: invoice.attractionId,
+        // -------------------------------------------------
+        // MULTIPLE ATTRACTIONS
+        // -------------------------------------------------
 
-          name: invoice.attractionName,
-        },
+        attractionIds: invoice.attractionIds || [],
 
+        attractions: invoiceAttractions,
+
+        // -------------------------------------------------
+        // BACKWARD COMPATIBILITY
+        //
+        // Existing frontend can still use:
+        // invoice.attraction
+        // -------------------------------------------------
+
+        attraction: invoiceAttractions[0] || null,
+
+        // -------------------------------------------------
         // Visitors
+        // -------------------------------------------------
+
         visitors,
 
+        // -------------------------------------------------
         // Payment
+        // -------------------------------------------------
+
         amount: Number(invoice.amount),
 
         paymentMode: invoice.paymentMode,
 
         status: invoice.status,
 
+        // -------------------------------------------------
         // References
+        // -------------------------------------------------
+
         transactionId: invoice.transactionId,
 
         bookingId: invoice.bookingId,
