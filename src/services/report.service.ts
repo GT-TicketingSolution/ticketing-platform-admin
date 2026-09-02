@@ -70,17 +70,26 @@ export async function getReportSummary(filter: ReportFilter) {
   const bookingConditions = getBookingConditions(filter);
 
   /* -------------------------------------------------------
-     Revenue + Bookings
+     Revenue
 
-     Do NOT join bookingItems here because that would
-     duplicate booking revenue for every booking item.
+     Revenue comes from successful transactions.
+
+     We use LEFT JOIN + CASE so that booking count
+     is not affected by the number of transactions.
   ------------------------------------------------------- */
 
   const bookingSummary = await db
     .select({
       revenue: sql<number>`
         COALESCE(
-          SUM(${bookings.amountPaid}),
+          SUM(
+            CASE
+              WHEN ${transactions.status} = 'SUCCESSFUL'
+               AND ${transactions.isDeleted} = false
+              THEN ${transactions.amount}
+              ELSE 0
+            END
+          ),
           0
         )
       `,
@@ -91,6 +100,7 @@ export async function getReportSummary(filter: ReportFilter) {
     })
     .from(bookings)
     .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+    .leftJoin(transactions, eq(transactions.bookingId, bookings.id))
     .where(and(...bookingConditions));
 
   /* -------------------------------------------------------
@@ -118,18 +128,13 @@ export async function getReportSummary(filter: ReportFilter) {
   const topAttraction = await getTopAttraction(filter);
 
   /* -------------------------------------------------------
-     Attraction-wise Reports
-
-     IMPORTANT:
-     Do NOT name this variable `attractions`
-     because `attractions` is already the imported
-     Drizzle table.
+     Attraction Reports
   ------------------------------------------------------- */
 
   const attractionReports = await getAttractionReports(filter);
 
   /* -------------------------------------------------------
-     FINAL RESPONSE
+     Final Response
   ------------------------------------------------------- */
 
   return {
@@ -142,7 +147,9 @@ export async function getReportSummary(filter: ReportFilter) {
     topAttraction: topAttraction
       ? {
           id: topAttraction.id,
+
           name: topAttraction.name,
+
           revenue: Number(topAttraction.revenue ?? 0),
         }
       : null,
@@ -166,19 +173,34 @@ async function getTopAttraction(filter: ReportFilter) {
 
       revenue: sql<number>`
         COALESCE(
-          SUM(${bookings.amountPaid}),
+          SUM(
+            CASE
+              WHEN ${transactions.status} = 'SUCCESSFUL'
+               AND ${transactions.isDeleted} = false
+              THEN ${transactions.amount}
+              ELSE 0
+            END
+          ),
           0
         )
       `,
     })
     .from(bookings)
     .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+    .leftJoin(transactions, eq(transactions.bookingId, bookings.id))
     .where(and(...conditions))
     .groupBy(attractions.id, attractions.name)
     .orderBy(
       sql`
         COALESCE(
-          SUM(${bookings.amountPaid}),
+          SUM(
+            CASE
+              WHEN ${transactions.status} = 'SUCCESSFUL'
+               AND ${transactions.isDeleted} = false
+              THEN ${transactions.amount}
+              ELSE 0
+            END
+          ),
           0
         ) DESC
       `,
@@ -206,7 +228,8 @@ export async function getAttractionReports(filter: ReportFilter) {
   /* -------------------------------------------------------
      Attraction Master Data
 
-     Timing + prices come from attractionManagement.
+     Timing + prices come from
+     attractionManagement.
   ------------------------------------------------------- */
 
   const attractionRows = await db
@@ -247,7 +270,7 @@ export async function getAttractionReports(filter: ReportFilter) {
   /* -------------------------------------------------------
      Revenue + Booking Count
 
-     Do NOT join bookingItems here.
+     Revenue comes from successful transactions.
   ------------------------------------------------------- */
 
   const bookingConditions = getBookingConditions(filter);
@@ -258,7 +281,14 @@ export async function getAttractionReports(filter: ReportFilter) {
 
       revenue: sql<number>`
         COALESCE(
-          SUM(${bookings.amountPaid}),
+          SUM(
+            CASE
+              WHEN ${transactions.status} = 'SUCCESSFUL'
+               AND ${transactions.isDeleted} = false
+              THEN ${transactions.amount}
+              ELSE 0
+            END
+          ),
           0
         )
       `,
@@ -269,6 +299,7 @@ export async function getAttractionReports(filter: ReportFilter) {
     })
     .from(bookings)
     .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+    .leftJoin(transactions, eq(transactions.bookingId, bookings.id))
     .where(and(...bookingConditions))
     .groupBy(bookings.attractionId);
 
@@ -373,7 +404,7 @@ export async function getAttractionReports(filter: ReportFilter) {
      CANCELLED
      FAILED
 
-     Latest 6 per attraction are returned below.
+     Latest 6 per attraction.
   ------------------------------------------------------- */
 
   const transactionConditions: SQL[] = [
@@ -407,6 +438,10 @@ export async function getAttractionReports(filter: ReportFilter) {
   /* =======================================================
      BUILD MAPS
   ======================================================= */
+
+  /* -------------------------------------------------------
+     Revenue Map
+  ------------------------------------------------------- */
 
   const revenueMap = new Map<
     string,
@@ -511,12 +546,12 @@ export async function getAttractionReports(filter: ReportFilter) {
     const existing = transactionMap.get(row.attractionId) ?? [];
 
     /*
-     * Keep latest 6 transactions
-     * for each attraction.
-     *
      * transactionRows is already ordered
      * newest -> oldest.
+     *
+     * Keep latest 6 per attraction.
      */
+
     if (existing.length < 6) {
       existing.push({
         transactionId: row.transactionId,
