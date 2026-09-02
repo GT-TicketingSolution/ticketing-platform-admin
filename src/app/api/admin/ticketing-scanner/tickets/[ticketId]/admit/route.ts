@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/db";
 
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // ---------------------------------------------
 
     try {
-      await requireAttractionAccess(auth, booking.attractionId);
+      await requireAttractionAccess(auth, booking.attractionId[0]);
     } catch (error) {
       if (error instanceof Error && error.message === "FORBIDDEN") {
         return failure(
@@ -262,7 +262,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       )
       .where(
         and(
-          eq(attractions.id, booking.attractionId),
+          inArray(attractions.id, booking.attractionId),
           eq(attractions.adminId, adminId),
           eq(attractionManagement.adminId, adminId),
         ),

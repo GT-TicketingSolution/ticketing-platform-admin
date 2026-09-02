@@ -72,7 +72,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // ---------------------------------------------
 
     try {
-      await requireAttractionAccess(auth, booking.attractionId);
+      await requireAttractionAccess(auth, booking.attractionId[0]);
     } catch (error) {
       if (error instanceof Error && error.message === "FORBIDDEN") {
         return failure(

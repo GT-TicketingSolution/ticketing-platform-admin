@@ -11,6 +11,7 @@ import {
   lte,
   or,
   sql,
+  arrayContains,
 } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -142,7 +143,7 @@ export async function GET(request: NextRequest) {
     // =====================================================
 
     if (attractionId) {
-      conditions.push(eq(bookings.attractionId, attractionId));
+      conditions.push(arrayContains(bookings.attractionId, [attractionId]));
     }
 
     // =====================================================
