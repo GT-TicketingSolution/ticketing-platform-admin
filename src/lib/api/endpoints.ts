@@ -138,7 +138,6 @@ export const AppUrl = {
     create: "/admin/ticketing-booking",
     payment: (bookingId: string) => `/admin/ticketing-booking/${bookingId}/payment`,
     confirm: (bookingId: string) => `/admin/ticketing-booking/${bookingId}/confirm`,
-    cancel: (bookingId: string) => `/admin/ticketing-booking/${bookingId}/cancel`,
     get: (bookingId: string) => `/admin/ticketing-booking/${bookingId}`,
     getAttractionTripNo: "/admin/ticketing-booking/get-attraction-trip-no",
     attractionSeatAvailability: "/admin/ticketing-booking/attraction-seat-availability",
