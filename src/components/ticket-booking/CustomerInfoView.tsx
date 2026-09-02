@@ -91,6 +91,7 @@ function ProcessPaymentModal({
   const [payMethod, setPayMethod] = useState<"cash" | "card" | "upi">("cash");
   const [amtRcv, setAmtRcv] = useState("");
   const [selectedNotes, setSelectedNotes] = useState<number[]>([]);
+  const defaultCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
   const isOnline = payMethod === "upi" || payMethod === "card";
   const numAmtRcv = parseFloat(amtRcv || "0");
   const change = isOnline ? 0 : (amtRcv ? Math.max(0, numAmtRcv - grandTotal) : 0);
@@ -99,31 +100,36 @@ function ProcessPaymentModal({
   useEffect(() => {
     if (isOpen) {
       setPayMethod("cash");
-      setAmtRcv("");
+      const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+      setAmtRcv(initialCash);
       setSelectedNotes([]);
     }
-  }, [isOpen]);
+  }, [isOpen, grandTotal]);
 
   useEffect(() => {
     if (payMethod === "upi" || payMethod === "card") {
       setAmtRcv(grandTotal.toFixed(2));
       setSelectedNotes([]);
     } else if (payMethod === "cash") {
-      setAmtRcv("");
+      const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+      setAmtRcv(initialCash);
       setSelectedNotes([]);
     }
   }, [payMethod, grandTotal]);
 
   const handleQuickNoteClick = (noteVal: number) => {
-    const next = [...selectedNotes, noteVal];
-    setSelectedNotes(next);
-    const total = next.reduce((a, b) => a + b, 0);
-    setAmtRcv(total.toString());
+    const defaultBase = grandTotal > 0 ? Math.ceil(grandTotal / 10) * 10 : 0;
+    const currentAmt = amtRcv.trim() !== "" ? parseFloat(amtRcv) : defaultBase;
+    const base = isNaN(currentAmt) ? defaultBase : currentAmt;
+    const nextAmt = base + noteVal;
+    setAmtRcv(nextAmt.toString());
+    setSelectedNotes((prev) => [...prev, noteVal]);
   };
 
   const handleClearNotes = () => {
     setSelectedNotes([]);
-    setAmtRcv("");
+    const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+    setAmtRcv(initialCash);
   };
 
   if (!isOpen) return null;
@@ -292,7 +298,7 @@ function ProcessPaymentModal({
                 <p style={{ margin: 0, fontWeight: 700, fontSize: "12px", color: "rgba(81,82,82,0.85)" }}>
                   QUICK CASH / NOTES
                 </p>
-                {selectedNotes.length > 0 && (
+                {(selectedNotes.length > 0 || amtRcv !== defaultCash) && (
                   <button
                     type="button"
                     onClick={handleClearNotes}
@@ -309,7 +315,7 @@ function ProcessPaymentModal({
                       transition: "background 0.15s",
                     }}
                   >
-                    ✕ Clear
+                    ✕ Reset
                   </button>
                 )}
               </div>
@@ -1132,6 +1138,7 @@ function TicketGeneratedModalWithProfile(props: Parameters<typeof TicketGenerate
 export interface SelectedSeatObj {
   attractionId: string;
   attractionSeatId: string | null;
+  sectionName?: string;
   seatOrder: number;
   name: string;
 }
@@ -1222,131 +1229,148 @@ function SeatAllocationPanel({
     () => currentSeatData?.seatLayout || null,
     [currentSeatData]
   );
-  const seatsList: AttractionSeatItem[] = useMemo(
-    () => currentSeatData?.seatLayout?.seats || currentSeatData?.seats || [],
-    [currentSeatData]
-  );
-  const bookedSeats: number[] = useMemo(() => {
-    if (Array.isArray(currentSeatData?.bookedSeats) && currentSeatData.bookedSeats.length > 0) {
-      return currentSeatData.bookedSeats;
-    }
-    const fromSeats: number[] = [];
-    seatsList.forEach((s) => {
-      if (Array.isArray(s.bookedSeats) && s.bookedSeats.length > 0) {
-        fromSeats.push(...s.bookedSeats);
-        fromSeats.push(s.seatOrder);
-      }
-    });
-    return [...new Set(fromSeats)];
-  }, [currentSeatData, seatsList]);
+
+  // Sections (e.g. "Seat 1", "Seat 2" coaches/compartments)
+  const sectionsList: AttractionSeatItem[] = useMemo(() => {
+    const raw = currentSeatData?.seatLayout?.seats || currentSeatData?.seats || [];
+    return raw.slice().sort((a, b) => a.seatOrder - b.seatOrder);
+  }, [currentSeatData]);
+
+  // Active section selected on the left Layout Overview
+  const [activeSectionId, setActiveSectionId] = useState<string>("");
 
   const rowsCount = seatLayout?.rows || 0;
   const colsCount = seatLayout?.cols || 0;
-  const hasAisle = seatLayout?.hasAisle ?? false;
-  const aisleAfterCol = seatLayout?.aisleAfterCol ?? null;
+  const hasAisle = Boolean(seatLayout?.hasAisle);
+  const aisleAfterCol = typeof seatLayout?.aisleAfterCol === "number" ? seatLayout.aisleAfterCol : null;
+  // aisleAfterCol === 0 means aisle is at the very START (no left seats, all seats on right)
+  // aisleAfterCol > 0  means aisle splits left/right at that column position
+  const isAisleActive = Boolean(hasAisle && aisleAfterCol !== null && aisleAfterCol >= 0 && colsCount > aisleAfterCol);
 
-  const totalLayoutSeats = (rowsCount > 0 && colsCount > 0) ? (rowsCount * colsCount) : (seatsList.length || 0);
+  // Grid capacity per section
+  const totalSectionSeats = (rowsCount > 0 && colsCount > 0) ? (rowsCount * colsCount) : (sectionsList.length > 0 ? 4 : 0);
 
-  // Full list of seats spanning rowsCount * colsCount (uses exact attractionSeatId or null)
-  const fullSeatsList: AttractionSeatItem[] = useMemo(() => {
-    if (rowsCount <= 0 || colsCount <= 0) return seatsList;
-    const total = rowsCount * colsCount;
-    const map = new Map<number, AttractionSeatItem>();
-    seatsList.forEach((s) => map.set(s.seatOrder, s));
-    const full: AttractionSeatItem[] = [];
-    for (let order = 1; order <= total; order++) {
-      if (map.has(order)) {
-        full.push(map.get(order)!);
+  // Automatically select the first available section (or section with allocated seats), skipping fully booked ones
+  useEffect(() => {
+    if (sectionsList.length > 0) {
+      const isCurrentValid = sectionsList.some(
+        (s) => (s.attractionSeatId || String(s.seatOrder)) === activeSectionId
+      );
+
+      // Section that has allocated seats for this booking
+      const sectionWithAllocated = sectionsList.find((sec) =>
+        selectedSeatObjs.some(
+          (s) =>
+            s.attractionId === activeAttId &&
+            ((sec.attractionSeatId && s.attractionSeatId === sec.attractionSeatId) ||
+              s.sectionName === (sec.name || `Seat ${sec.seatOrder}`))
+        )
+      );
+
+      // First section that is not fully booked
+      const firstAvailableSec = sectionsList.find((sec) => {
+        const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats.length : 0;
+        return (totalSectionSeats - booked) > 0;
+      });
+
+      const bestSec = sectionWithAllocated || firstAvailableSec || sectionsList[0];
+      const bestSecId = bestSec.attractionSeatId || String(bestSec.seatOrder);
+
+      if (!activeSectionId || !isCurrentValid) {
+        setActiveSectionId(bestSecId);
       } else {
-        full.push({
-          attractionSeatId: null as any,
-          name: `Seat ${order}`,
-          seatOrder: order,
-        });
+        // If currently active section is completely full without any allocated seats, switch to first available
+        const currentSec = sectionsList.find(
+          (s) => (s.attractionSeatId || String(s.seatOrder)) === activeSectionId
+        );
+        if (currentSec) {
+          const currentBooked = Array.isArray(currentSec.bookedSeats) ? currentSec.bookedSeats.length : 0;
+          const currentAvail = Math.max(0, totalSectionSeats - currentBooked);
+          const hasCurrentAllocated = selectedSeatObjs.some(
+            (s) =>
+              s.attractionId === activeAttId &&
+              ((currentSec.attractionSeatId && s.attractionSeatId === currentSec.attractionSeatId) ||
+                s.sectionName === (currentSec.name || `Seat ${currentSec.seatOrder}`))
+          );
+          if (currentAvail === 0 && !hasCurrentAllocated && (sectionWithAllocated || firstAvailableSec)) {
+            setActiveSectionId(bestSecId);
+          }
+        }
       }
     }
-    return full;
-  }, [seatsList, rowsCount, colsCount]);
+  }, [sectionsList, activeSectionId, activeAttId, totalSectionSeats, selectedSeatObjs]);
 
-  // List of all non-occupied seats sorted sequentially by seatOrder for this attraction
-  const availableSeatsList = useMemo(() => {
-    return fullSeatsList
-      .filter((s) => !bookedSeats.includes(s.seatOrder))
-      .sort((a, b) => a.seatOrder - b.seatOrder);
-  }, [fullSeatsList, bookedSeats]);
+  const activeSection: AttractionSeatItem | null = useMemo(() => {
+    if (sectionsList.length === 0) return null;
+    return (
+      sectionsList.find((s) => (s.attractionSeatId || String(s.seatOrder)) === activeSectionId) ||
+      sectionsList[0] ||
+      null
+    );
+  }, [sectionsList, activeSectionId]);
 
-  // Currently selected seats for the active attraction
+  // Booked seat numbers for the currently active section
+  const activeSectionBookedSeats: number[] = useMemo(() => {
+    if (!activeSection) return [];
+    return Array.isArray(activeSection.bookedSeats) ? activeSection.bookedSeats : [];
+  }, [activeSection]);
+
+  // Selected seats for the active attraction overall
   const activeAttractionSelectedSeatObjs = useMemo(() => {
     return selectedSeatObjs.filter((s) => s.attractionId === activeAttId);
   }, [selectedSeatObjs, activeAttId]);
 
-  // ── Auto Sequential Booking: keep active attraction fully allocated whenever available seats change
-  useEffect(() => {
-    if (!activeAttId || totalPaxForActiveAttraction <= 0) return;
-    if (availableSeatsList.length === 0) return;
-
-    // Filter valid currently selected seats for active attraction that are still available
-    const validCurrent = activeAttractionSelectedSeatObjs.filter((so) =>
-      availableSeatsList.some((s) => s.seatOrder === so.seatOrder)
-    );
-
-    // If already exactly matching totalPax for this attraction, nothing to do
-    if (validCurrent.length >= totalPaxForActiveAttraction) {
-      return;
-    }
-
-    // Sequentially fill missing seats for active attraction
-    const nextAttObjs: SelectedSeatObj[] = [...validCurrent];
-    for (const s of availableSeatsList) {
-      if (nextAttObjs.length >= totalPaxForActiveAttraction) break;
-      if (!nextAttObjs.some((o) => o.seatOrder === s.seatOrder)) {
-        const matched = seatsList.find((item) => item.seatOrder === s.seatOrder);
-        const exactId = matched?.attractionSeatId || (s.attractionSeatId && !s.attractionSeatId.startsWith("pos-") ? s.attractionSeatId : null);
-        nextAttObjs.push({
-          attractionId: activeAttId,
-          attractionSeatId: exactId,
-          seatOrder: s.seatOrder,
-          name: s.name,
-        });
+  // Selected seats for the active section specifically
+  const activeSectionSelectedSeats = useMemo(() => {
+    if (!activeSection) return [];
+    return activeAttractionSelectedSeatObjs.filter((s) => {
+      if (activeSection.attractionSeatId && s.attractionSeatId) {
+        return s.attractionSeatId === activeSection.attractionSeatId;
       }
-    }
-
-    // Combine with selections from other attractions
-    const otherAttObjs = selectedSeatObjs.filter((s) => s.attractionId !== activeAttId);
-    const combinedObjs = [...otherAttObjs, ...nextAttObjs];
-
-    const nextAsgn: Record<string, string> = { ...paxAssignment };
-    nextAttObjs.forEach((o, idx) => {
-      if (paxListForActiveAttraction[idx]) {
-        nextAsgn[`${activeAttId}_${o.name}`] = `${paxListForActiveAttraction[idx].label} ${paxListForActiveAttraction[idx].idx}`;
-      }
+      return s.sectionName === (activeSection.name || `Seat ${activeSection.seatOrder}`);
     });
+  }, [activeAttractionSelectedSeatObjs, activeSection]);
 
-    onSelectedSeatsChange(combinedObjs, nextAsgn);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [availableSeatsList, totalPaxForActiveAttraction, activeAttId, currentTrip]);
+  // Total capacity and available across ALL sections in this attraction
+  const { totalCapacityAllSections, totalAvailSeatsAllSections } = useMemo(() => {
+    if (sectionsList.length === 0) {
+      return { totalCapacityAllSections: totalSectionSeats, totalAvailSeatsAllSections: totalSectionSeats };
+    }
+    let totalCap = 0;
+    let totalAvail = 0;
+    sectionsList.forEach((sec) => {
+      const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats.length : 0;
+      const cap = totalSectionSeats || 1;
+      totalCap += cap;
+      totalAvail += Math.max(0, cap - booked);
+    });
+    return { totalCapacityAllSections: totalCap, totalAvailSeatsAllSections: totalAvail };
+  }, [sectionsList, totalSectionSeats]);
 
-  // Handle clicking a seat for active attraction
-  const handleSeatToggle = (seat: AttractionSeatItem) => {
-    const isOccupied = bookedSeats.includes(seat.seatOrder);
+  // Handle clicking a seat button in the active section grid
+  const handleSeatToggle = (seatOrder: number) => {
+    if (!activeSection) return;
+    const isOccupied = activeSectionBookedSeats.includes(seatOrder);
     if (isOccupied) return;
 
-    const isAlreadySelected = activeAttractionSelectedSeatObjs.some((s) => s.seatOrder === seat.seatOrder);
-    const otherAttObjs = selectedSeatObjs.filter((s) => s.attractionId !== activeAttId);
-
-    const matched = seatsList.find((item) => item.seatOrder === seat.seatOrder);
-    const exactId = matched?.attractionSeatId || (seat.attractionSeatId && !seat.attractionSeatId.startsWith("pos-") ? seat.attractionSeatId : null);
+    const isAlreadySelected = activeSectionSelectedSeats.some((s) => s.seatOrder === seatOrder);
+    const secName = activeSection.name || `Seat ${activeSection.seatOrder}`;
+    const secId = activeSection.attractionSeatId || null;
 
     let updatedAttObjs: SelectedSeatObj[] = [];
     if (isAlreadySelected) {
       // Deselect clicked seat
-      updatedAttObjs = activeAttractionSelectedSeatObjs.filter((s) => s.seatOrder !== seat.seatOrder);
+      updatedAttObjs = activeAttractionSelectedSeatObjs.filter((s) => {
+        const matchesSection = (secId && s.attractionSeatId === secId) || s.sectionName === secName;
+        return !(matchesSection && s.seatOrder === seatOrder);
+      });
     } else {
       const newSeatObj: SelectedSeatObj = {
         attractionId: activeAttId,
-        attractionSeatId: exactId,
-        seatOrder: seat.seatOrder,
-        name: seat.name,
+        attractionSeatId: secId,
+        sectionName: secName,
+        seatOrder,
+        name: `${secName} - ${String(seatOrder).padStart(2, "0")}`,
       };
       if (activeAttractionSelectedSeatObjs.length < totalPaxForActiveAttraction) {
         updatedAttObjs = [...activeAttractionSelectedSeatObjs, newSeatObj];
@@ -1356,7 +1380,9 @@ function SeatAllocationPanel({
       }
     }
 
+    const otherAttObjs = selectedSeatObjs.filter((s) => s.attractionId !== activeAttId);
     const nextAllObjs = [...otherAttObjs, ...updatedAttObjs];
+
     const nextAsgn: Record<string, string> = { ...paxAssignment };
     updatedAttObjs.forEach((s, i) => {
       if (paxListForActiveAttraction[i]) {
@@ -1375,39 +1401,26 @@ function SeatAllocationPanel({
     onSelectedSeatsChange(otherAttObjs);
   };
 
-  const formatSeatLabel = (seat: AttractionSeatItem) => {
-    if (!seat.name) return String(seat.seatOrder).padStart(2, "0");
-    const match = seat.name.match(/^Seat\s*(\d+)$/i);
-    if (match) {
-      const num = parseInt(match[1], 10);
-      return num < 100 ? String(num).padStart(2, "0") : String(num);
-    }
-    const numericOnly = seat.name.trim().match(/^\d+$/);
-    if (numericOnly) {
-      const num = parseInt(seat.name.trim(), 10);
-      return num < 100 ? String(num).padStart(2, "0") : String(num);
-    }
-    return seat.name;
+  const formatSeatLabel = (num: number) => {
+    return num < 100 ? String(num).padStart(2, "0") : String(num);
   };
 
   // Render individual seat button
-  const renderSeatButton = (
-    seat: AttractionSeatItem & { status: "available" | "occupied" }
-  ) => {
-    const isOccupied = seat.status === "occupied";
-    const isSelected = activeAttractionSelectedSeatObjs.some((s) => s.seatOrder === seat.seatOrder);
+  const renderSeatButton = (seatOrder: number) => {
+    const isOccupied = activeSectionBookedSeats.includes(seatOrder);
+    const isSelected = activeSectionSelectedSeats.some((s) => s.seatOrder === seatOrder);
     const seatBtnWidth = colsCount >= 10 ? "44px" : colsCount >= 8 ? "48px" : "52px";
 
     return (
       <button
-        key={seat.attractionSeatId || seat.seatOrder}
+        key={seatOrder}
         type="button"
         disabled={isOccupied}
         onClick={(e) => {
           e.stopPropagation();
-          handleSeatToggle(seat);
+          handleSeatToggle(seatOrder);
         }}
-        title={`Seat ${seat.name || seat.seatOrder}${isOccupied ? " (Occupied)" : isSelected ? " (Selected)" : " (Available)"}`}
+        title={`Seat ${formatSeatLabel(seatOrder)}${isOccupied ? " (Occupied)" : isSelected ? " (Selected)" : " (Available)"}`}
         style={{
           width: seatBtnWidth,
           minWidth: seatBtnWidth,
@@ -1431,14 +1444,14 @@ function SeatAllocationPanel({
           fontSize: colsCount >= 10 ? "11.5px" : "12.5px",
           fontFamily: "'Plus Jakarta Sans', sans-serif",
           fontWeight: 700,
-          color: isOccupied ? "#64748B" : "#011B2F",
+          color: isOccupied ? "#64748B" : isSelected ? "#011B2F" : "#011B2F",
           transition: "all 0.12s ease",
           userSelect: "none",
           boxSizing: "border-box",
           flexShrink: 0,
         }}
       >
-        {formatSeatLabel(seat)}
+        {formatSeatLabel(seatOrder)}
       </button>
     );
   };
@@ -1537,7 +1550,7 @@ function SeatAllocationPanel({
           alignItems: "flex-start",
         }}
       >
-        {/* ── Left Container: Layout Overview — Bogie-Progress Card Style ── */}
+        {/* ── Left Container: Layout Overview — Section / Coach Cards ── */}
         <div
           style={{
             width: "224px",
@@ -1555,7 +1568,7 @@ function SeatAllocationPanel({
             Layout Overview
           </p>
 
-          {/* Seat cards — each seat is a card styled like Bogie A/B/C */}
+          {/* Section cards — each section in seatLayout.seats */}
           <div
             style={{
               display: "flex",
@@ -1567,70 +1580,107 @@ function SeatAllocationPanel({
               paddingRight: "2px",
             }}
           >
-            {seatsList.length === 0 ? (
+            {sectionsList.length === 0 ? (
               <p style={{ margin: "12px 0", fontSize: "12px", color: "#94A3B8", textAlign: "center" }}>
-                No seats found
+                No sections found
               </p>
             ) : (
-              seatsList
-                .slice()
-                .sort((a, b) => a.seatOrder - b.seatOrder)
-                .map((seat) => {
-                  const isOccupied = bookedSeats.includes(seat.seatOrder);
-                  const isSelected = activeAttractionSelectedSeatObjs.some((s) => s.seatOrder === seat.seatOrder);
-                  const statusLabel = isOccupied ? "Booked" : isSelected ? "Selected" : "Available";
-                  const statusBg = isOccupied
-                    ? "rgba(179,175,175,0.33)"
-                    : isSelected
-                    ? "rgba(244,188,67,0.61)"
-                    : "rgba(34,197,94,0.15)";
-                  const statusColor = isOccupied
-                    ? "rgba(23,63,99,0.87)"
-                    : isSelected
-                    ? "#173F63"
-                    : "#15803D";
-                  return (
-                    <div
-                      key={seat.attractionSeatId || seat.seatOrder}
-                      style={{
-                        background: "#FFFFFF",
-                        border: isSelected
-                          ? "1.5px solid #173F63"
-                          : "1.5px solid rgba(179,175,175,0.51)",
-                        borderRadius: "13px",
-                        padding: "10px 14px",
-                        opacity: isOccupied ? 0.6 : 1,
-                        transition: "all 0.15s ease",
-                        boxSizing: "border-box",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                        <span style={{ fontWeight: 600, fontSize: "13px", color: "#011B2F" }}>
-                          {seat.name || `Seat ${seat.seatOrder}`}
-                        </span>
-                        <span style={{ background: statusBg, color: statusColor, fontSize: "8px", fontWeight: 700, padding: "2px 6px", borderRadius: "5px" }}>
-                          {statusLabel}
-                        </span>
-                      </div>
-                      <p style={{ margin: "1px 0", fontSize: "10px", fontWeight: 600, color: "#6B7280" }}>
-                        Seat No:&nbsp;{seat.seatOrder.toString().padStart(2, "0")}
-                        &nbsp;&nbsp;
-                        {isOccupied ? "Occupied" : isSelected ? "Allocated" : "Open"}
-                      </p>
-                      <p style={{ margin: 0, fontSize: "10px", fontWeight: 600, color: "#6B7280" }}>
-                        {isOccupied
-                          ? "This seat is already booked"
-                          : isSelected
-                          ? "Assigned to passenger"
-                          : "Click seat grid to assign"}
-                      </p>
+              sectionsList.map((section) => {
+                const isSecActive = (section.attractionSeatId || String(section.seatOrder)) === activeSectionId;
+                const bookedList = Array.isArray(section.bookedSeats) ? section.bookedSeats : [];
+                const bookedCount = bookedList.length;
+                const totalSecSeats = totalSectionSeats || 1;
+                const availCount = Math.max(0, totalSecSeats - bookedCount);
+                const isFull = availCount === 0;
+
+                const secAllocatedSeats = activeAttractionSelectedSeatObjs.filter((s) => {
+                  if (section.attractionSeatId && s.attractionSeatId) {
+                    return s.attractionSeatId === section.attractionSeatId;
+                  }
+                  return s.sectionName === (section.name || `Seat ${section.seatOrder}`);
+                });
+                const allocatedCount = secAllocatedSeats.length;
+                const hasAllocated = allocatedCount > 0;
+                const isCardDisabled = isFull && !hasAllocated;
+
+                const statusLabel = isFull && !hasAllocated
+                  ? "Booked"
+                  : isSecActive
+                  ? "Selected"
+                  : isFull
+                  ? "Booked"
+                  : hasAllocated
+                  ? `Selected`
+                  : "Available";
+
+                const statusBg = isFull && !hasAllocated
+                  ? "rgba(179,175,175,0.4)"
+                  : isSecActive || hasAllocated
+                  ? "rgba(244,188,67,0.61)"
+                  : "rgba(34,197,94,0.15)";
+
+                const statusColor = isFull && !hasAllocated
+                  ? "#475569"
+                  : isSecActive || hasAllocated
+                  ? "#173F63"
+                  : "#15803D";
+
+                return (
+                  <div
+                    key={section.attractionSeatId || section.seatOrder}
+                    onClick={() => {
+                      if (!isCardDisabled) {
+                        setActiveSectionId(section.attractionSeatId || String(section.seatOrder));
+                      }
+                    }}
+                    style={{
+                      background: isCardDisabled ? "#F8FAFC" : "#FFFFFF",
+                      border: isSecActive
+                        ? "1.5px solid #173F63"
+                        : hasAllocated
+                        ? "1.5px solid #D99B1E"
+                        : isCardDisabled
+                        ? "1.5px solid #E2E8F0"
+                        : "1.5px solid rgba(179,175,175,0.51)",
+                      borderRadius: "13px",
+                      padding: "10px 14px",
+                      cursor: isCardDisabled ? "not-allowed" : "pointer",
+                      opacity: isCardDisabled ? 0.6 : 1,
+                      transition: "all 0.15s ease",
+                      boxSizing: "border-box",
+                      boxShadow: isSecActive ? "0 2px 8px rgba(0, 42, 69, 0.1)" : "none",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                      <span style={{ fontWeight: 600, fontSize: "13px", color: isCardDisabled ? "#64748B" : "#011B2F" }}>
+                        {section.name || `Seat ${section.seatOrder}`}
+                      </span>
+                      <span style={{ background: statusBg, color: statusColor, fontSize: "8px", fontWeight: 700, padding: "2px 6px", borderRadius: "5px" }}>
+                        {statusLabel}
+                      </span>
                     </div>
-                  );
-                })
+                    <p style={{ margin: "1px 0", fontSize: "10px", fontWeight: 600, color: isCardDisabled ? "#94A3B8" : "#6B7280" }}>
+                      Available: {availCount} / {totalSecSeats} Seats
+                      &nbsp;&nbsp;
+                      Booked: {bookedCount}
+                    </p>
+                    <p style={{ margin: "1px 0 0", fontSize: "10px", fontWeight: 600, color: hasAllocated ? "#92400E" : isCardDisabled ? "#94A3B8" : "#6B7280" }}>
+                      {hasAllocated
+                        ? `Seat No: ${secAllocatedSeats.map((s) => String(s.seatOrder).padStart(2, "0")).join(", ")} Allocated`
+                        : isFull
+                        ? "All seats booked"
+                        : "Click to view and allocate"}
+                    </p>
+                    <p style={{ margin: 0, fontSize: "9.5px", fontWeight: 500, color: "#94A3B8" }}>
+                      {hasAllocated ? "Assigned to passenger" : isFull ? "Section is full" : isSecActive ? "Currently viewing section" : "Section available"}
+                    </p>
+                  </div>
+                );
+              })
             )}
           </div>
 
-          {/* Yellow info box — same as Bogie Progress bottom hint */}
+          {/* Yellow info box */}
           <div
             style={{
               background: "#FFFBEB",
@@ -1741,7 +1791,7 @@ function SeatAllocationPanel({
                   Available Seats
                 </div>
                 <div style={{ fontSize: "12px", fontWeight: 700, color: "#15803D" }}>
-                  {availableSeatsList.length} / {totalLayoutSeats} Seats
+                  {totalAvailSeatsAllSections} / {totalCapacityAllSections} Seats
                 </div>
               </div>
             </div>
@@ -1837,6 +1887,7 @@ function SeatAllocationPanel({
               }}
             >
               Select Seats – {activeAttName} {seatLayout?.name ? `(${seatLayout.name})` : ""}
+              {activeSection?.name ? ` – ${activeSection.name}` : ""}
             </h4>
 
             <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
@@ -1971,128 +2022,122 @@ function SeatAllocationPanel({
                     gap: "12px",
                   }}
                 >
-                  <div style={{ display: "inline-flex", gap: hasAisle && aisleAfterCol ? "16px" : "10px", alignItems: "flex-start" }}>
-                    {/* Left Side Section */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
-                      {hasAisle && aisleAfterCol && (
-                        <div
-                          style={{
-                            width: "100%",
-                            textAlign: "center",
-                            fontSize: "11.5px",
-                            fontWeight: 700,
-                            color: "#173F63",
-                            background: "rgba(23, 63, 99, 0.08)",
-                            padding: "4px 8px",
-                            borderRadius: "6px",
-                            letterSpacing: "0.3px",
-                          }}
-                        >
-                          Left Side
-                        </div>
-                      )}
-                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                        {Array.from({ length: rowsCount || 1 }, (_, i) => i + 1).map((r) => {
-                          const leftColsCount = hasAisle && aisleAfterCol ? aisleAfterCol : colsCount || seatsList.length || 1;
-                          const leftCells = Array.from({ length: leftColsCount }, (_, ci) => {
-                            const order = (r - 1) * (colsCount || leftColsCount) + (ci + 1);
-                            const seat = fullSeatsList.find((s) => s.seatOrder === order) || {
-                              attractionSeatId: `pos-${order}`,
-                              name: `Seat ${order}`,
-                              seatOrder: order,
-                            };
-                            return { order, col: ci + 1, seat };
-                          });
-
-                          return (
-                            <div key={r} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                              {leftCells.map(({ order, seat }) =>
-                                renderSeatButton({
-                                  ...seat,
-                                  status: bookedSeats.includes(seat.seatOrder) ? "occupied" : "available",
-                                })
-                              )}
+                  <div style={{ display: "inline-flex", gap: isAisleActive ? "16px" : "10px", alignItems: "flex-start" }}>
+                    {/* Left Side Section — hidden when aisleAfterCol === 0 (aisle at start) */}
+                    {(() => {
+                      const leftColsCount = isAisleActive && aisleAfterCol !== null ? aisleAfterCol : (!isAisleActive ? colsCount || 1 : 0);
+                      if (leftColsCount === 0) return null;
+                      return (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
+                          {isAisleActive && (
+                            <div
+                              style={{
+                                width: "100%",
+                                textAlign: "center",
+                                fontSize: "11.5px",
+                                fontWeight: 700,
+                                color: "#173F63",
+                                background: "rgba(23, 63, 99, 0.08)",
+                                padding: "4px 8px",
+                                borderRadius: "6px",
+                                letterSpacing: "0.3px",
+                              }}
+                            >
+                              Left Side
                             </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+                          )}
+                          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                            {Array.from({ length: rowsCount || 1 }, (_, i) => i + 1).map((r) => {
+                              const leftCells = Array.from({ length: leftColsCount }, (_, ci) => {
+                                const order = (r - 1) * (colsCount || leftColsCount) + (ci + 1);
+                                return { order, col: ci + 1 };
+                              });
+                              return (
+                                <div key={r} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                  {leftCells.map(({ order }) => renderSeatButton(order))}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
-                    {/* Center AISLE (Vertical container spanning full height of rows) */}
-                    {hasAisle && aisleAfterCol && colsCount > aisleAfterCol && (
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          alignSelf: "stretch",
-                          paddingTop: "27px",
-                        }}
-                      >
+                    {/* Center AISLE — height matches seat grid exactly */}
+                    {isAisleActive && (() => {
+                      // Seat button height = 34px, row gap = 6px
+                      const seatRowH = 34;
+                      const rowGap = 6;
+                      const aisleHeight = (rowsCount || 1) * seatRowH + Math.max(0, (rowsCount || 1) - 1) * rowGap;
+                      // paddingTop accounts for the "Left Side" / "Right Side" label (only when aisleAfterCol > 0)
+                      const labelPaddingTop = aisleAfterCol !== null && aisleAfterCol > 0 ? 27 : 0;
+                      return (
                         <div
                           style={{
-                            width: "44px",
-                            flex: 1,
-                            minHeight: `${(rowsCount || 1) * 40}px`,
-                            border: "1.5px dashed #CBD5E1",
-                            borderRadius: "6px",
-                            background: "rgba(241, 245, 249, 0.8)",
                             display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: "11px",
-                            fontWeight: 800,
-                            color: "#64748B",
-                            letterSpacing: "4px",
-                            writingMode: "vertical-rl",
-                            textTransform: "uppercase",
-                            boxSizing: "border-box",
-                            userSelect: "none",
+                            flexDirection: "column",
+                            paddingTop: `${labelPaddingTop}px`,
                           }}
                         >
-                          AISLE
+                          <div
+                            style={{
+                              width: "44px",
+                              height: `${aisleHeight}px`,
+                              border: "1.5px dashed #CBD5E1",
+                              borderRadius: "6px",
+                              background: "rgba(241, 245, 249, 0.8)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "11px",
+                              fontWeight: 800,
+                              color: "#64748B",
+                              letterSpacing: "4px",
+                              writingMode: "vertical-rl",
+                              textTransform: "uppercase",
+                              boxSizing: "border-box",
+                              userSelect: "none",
+                              flexShrink: 0,
+                            }}
+                          >
+                            AISLE
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Right Side Section if aisle exists */}
-                    {hasAisle && aisleAfterCol && colsCount > aisleAfterCol && (
+                    {isAisleActive && aisleAfterCol !== null && (colsCount - aisleAfterCol) > 0 && (
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
-                        <div
-                          style={{
-                            width: "100%",
-                            textAlign: "center",
-                            fontSize: "11.5px",
-                            fontWeight: 700,
-                            color: "#173F63",
-                            background: "rgba(23, 63, 99, 0.08)",
-                            padding: "4px 8px",
-                            borderRadius: "6px",
-                            letterSpacing: "0.3px",
-                          }}
-                        >
-                          Right Side
-                        </div>
+                        {/* Only show "Right Side" label when there's also a left side (i.e., aisleAfterCol > 0) */}
+                        {aisleAfterCol > 0 && (
+                          <div
+                            style={{
+                              width: "100%",
+                              textAlign: "center",
+                              fontSize: "11.5px",
+                              fontWeight: 700,
+                              color: "#173F63",
+                              background: "rgba(23, 63, 99, 0.08)",
+                              padding: "4px 8px",
+                              borderRadius: "6px",
+                              letterSpacing: "0.3px",
+                            }}
+                          >
+                            Right Side
+                          </div>
+                        )}
                         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                           {Array.from({ length: rowsCount }, (_, i) => i + 1).map((r) => {
                             const rightColsCount = colsCount - aisleAfterCol;
                             const rightCells = Array.from({ length: rightColsCount }, (_, ci) => {
                               const order = (r - 1) * colsCount + (aisleAfterCol + ci + 1);
-                              const seat = fullSeatsList.find((s) => s.seatOrder === order) || {
-                                attractionSeatId: `pos-${order}`,
-                                name: `Seat ${order}`,
-                                seatOrder: order,
-                              };
-                              return { order, col: aisleAfterCol + ci + 1, seat };
+                              return { order, col: aisleAfterCol + ci + 1 };
                             });
 
                             return (
                               <div key={r} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                                {rightCells.map(({ order, seat }) =>
-                                  renderSeatButton({
-                                    ...seat,
-                                    status: bookedSeats.includes(seat.seatOrder) ? "occupied" : "available",
-                                  })
-                                )}
+                                {rightCells.map(({ order }) => renderSeatButton(order))}
                               </div>
                             );
                           })}
@@ -2228,11 +2273,8 @@ export default function CustomerInfoView({
     refPost: "",
   });
 
-  // Seat allocation accordion — start expanded when there are seating attractions
-  const hasSeatingAtStart = bookingSummary.some(
-    (b) => !!b.attractionId && b.hasSeating !== false && (b.hasSeating || !!b.seatLayoutId)
-  );
-  const [isSeatAllocExpanded, setIsSeatAllocExpanded] = useState(hasSeatingAtStart);
+  // Seat allocation accordion — start collapsed by default
+  const [isSeatAllocExpanded, setIsSeatAllocExpanded] = useState(false);
 
   // Filter all attractions in bookingSummary that require seat allocation
   const seatingAttractions = useMemo(() => {
@@ -2304,7 +2346,8 @@ export default function CustomerInfoView({
   } = useAttractionSeatAvailability(seatAvailabilityPayload, seatingAttractions.length > 0);
 
   // ── Auto-select seats for ALL seating attractions once seatAvailData loads ──
-  // This ensures every attraction (not just the active tab) gets seats pre-assigned.
+  // Starts sequentially from section 1 ("Seat 1"), fills up to section capacity,
+  // then proceeds to section 2 ("Seat 2") if more visitor seats are needed.
   useEffect(() => {
     if (!seatAvailData || seatAvailData.length === 0) return;
     if (seatingAttractions.length === 0) return;
@@ -2334,52 +2377,51 @@ export default function CustomerInfoView({
       const attData = seatAvailData.find((d) => d.attractionId === attId);
       if (!attData) return;
 
-      const seatsList: AttractionSeatItem[] = attData.seatLayout?.seats || attData.seats || [];
-      const bookedSeatOrders: number[] = (() => {
-        if (Array.isArray(attData.bookedSeats) && attData.bookedSeats.length > 0) return attData.bookedSeats;
-        const fromSeats: number[] = [];
-        seatsList.forEach((s) => {
-          if (Array.isArray(s.bookedSeats) && s.bookedSeats.length > 0) {
-            fromSeats.push(...s.bookedSeats, s.seatOrder);
-          }
-        });
-        return [...new Set(fromSeats)];
-      })();
-
-      // Build full seat list including gap positions
+      const sections: AttractionSeatItem[] = (attData.seatLayout?.seats || attData.seats || []).slice().sort((a, b) => a.seatOrder - b.seatOrder);
       const rows = attData.seatLayout?.rows || 0;
       const cols = attData.seatLayout?.cols || 0;
-      let fullSeats: AttractionSeatItem[];
-      if (rows > 0 && cols > 0) {
-        const total = rows * cols;
-        const map = new Map<number, AttractionSeatItem>();
-        seatsList.forEach((s) => map.set(s.seatOrder, s));
-        fullSeats = [];
-        for (let order = 1; order <= total; order++) {
-          fullSeats.push(map.get(order) || { attractionSeatId: `pos-${order}` as any, name: `Seat ${order}`, seatOrder: order });
-        }
-      } else {
-        fullSeats = seatsList;
+      const totalSecSeats = (rows > 0 && cols > 0) ? (rows * cols) : (sections.length > 0 ? 4 : 0);
+
+      // Filter valid currently selected seats for this attraction that are still available
+      const existingForAtt = combinedObjs.filter((s) => s.attractionId === attId);
+      const validCurrent = existingForAtt.filter((so) => {
+        const sec = sections.find((sc) => (sc.attractionSeatId && sc.attractionSeatId === so.attractionSeatId) || (sc.name || `Seat ${sc.seatOrder}`) === so.sectionName);
+        if (!sec) return false;
+        const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
+        return !booked.includes(so.seatOrder) && (totalSecSeats === 0 || so.seatOrder <= totalSecSeats);
+      });
+
+      if (validCurrent.length >= totalPax) {
+        return; // already fully allocated
       }
 
-      const availableSeats = fullSeats
-        .filter((s) => !bookedSeatOrders.includes(s.seatOrder))
-        .sort((a, b) => a.seatOrder - b.seatOrder);
-
-      // Current valid selections for this attraction
-      const validCurrent = combinedObjs.filter(
-        (so) => so.attractionId === attId && availableSeats.some((s) => s.seatOrder === so.seatOrder)
-      );
-      if (validCurrent.length >= totalPax) return; // already fully allocated
-
-      // Fill missing seats sequentially
+      // Sequentially fill missing seats: start at section 1, then proceed to section 2 if needed
       const newObjs: SelectedSeatObj[] = [...validCurrent];
-      for (const s of availableSeats) {
+
+      for (const sec of sections) {
         if (newObjs.length >= totalPax) break;
-        if (!newObjs.some((o) => o.seatOrder === s.seatOrder)) {
-          const matched = seatsList.find((item) => item.seatOrder === s.seatOrder);
-          const exactId = matched?.attractionSeatId || (s.attractionSeatId && !String(s.attractionSeatId).startsWith("pos-") ? s.attractionSeatId : null);
-          newObjs.push({ attractionId: attId, attractionSeatId: exactId, seatOrder: s.seatOrder, name: s.name });
+        const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
+        const secCap = totalSecSeats || 4;
+        const secName = sec.name || `Seat ${sec.seatOrder}`;
+
+        for (let order = 1; order <= secCap; order++) {
+          if (newObjs.length >= totalPax) break;
+          if (booked.includes(order)) continue;
+
+          const alreadyInSec = newObjs.some(
+            (o) =>
+              ((sec.attractionSeatId && o.attractionSeatId === sec.attractionSeatId) || o.sectionName === secName) &&
+              o.seatOrder === order
+          );
+          if (alreadyInSec) continue;
+
+          newObjs.push({
+            attractionId: attId,
+            attractionSeatId: sec.attractionSeatId || null,
+            sectionName: secName,
+            seatOrder: order,
+            name: `${secName} - ${String(order).padStart(2, "0")}`,
+          });
         }
       }
 
@@ -2568,7 +2610,7 @@ export default function CustomerInfoView({
       seats: selectedSeatObjs.map((seatObj) => ({
         slotId: null,
         visitDate: passDetails.date || todayDateStr,
-        bogie: bookingSummary.find((b) => b.attractionId === seatObj.attractionId)?.attractionName || "Bogie A",
+        bogie: seatObj.sectionName || bookingSummary.find((b) => b.attractionId === seatObj.attractionId)?.attractionName || "Seat 1",
         seatNumber: seatObj.name,
       })),
       subtotal: localSubtotal,
@@ -2593,22 +2635,29 @@ export default function CustomerInfoView({
           const attId = att.attractionId!;
           const tripNo = tripMap[attId] || 1;
           const attAvail = seatAvailData?.find((d) => d.attractionId === attId);
-          const realSeats = attAvail?.seatLayout?.seats || attAvail?.seats || [];
-          const attractionSeatId = realSeats[0]?.attractionSeatId || "";
+          const sections: AttractionSeatItem[] = attAvail?.seatLayout?.seats || attAvail?.seats || [];
 
-          const seatNumbers = selectedSeatObjs
-            .filter((s) => s.attractionId === attId)
-            .map((s) => s.seatOrder)
-            .sort((a, b) => a - b);
+          sections.forEach((sec) => {
+            const secSeatObjs = selectedSeatObjs.filter(
+              (s) =>
+                s.attractionId === attId &&
+                ((sec.attractionSeatId && s.attractionSeatId === sec.attractionSeatId) ||
+                  (!s.attractionSeatId && s.sectionName === (sec.name || `Seat ${sec.seatOrder}`)))
+            );
 
-          if (seatNumbers.length > 0 && attractionSeatId) {
-            bookings.push({
-              attractionId: attId,
-              tripNo,
-              attractionSeatId,
-              seatNo: seatNumbers,
-            });
-          }
+            const seatNumbers = secSeatObjs
+              .map((s) => s.seatOrder)
+              .sort((a, b) => a - b);
+
+            if (seatNumbers.length > 0 && sec.attractionSeatId) {
+              bookings.push({
+                attractionId: attId,
+                tripNo,
+                attractionSeatId: sec.attractionSeatId,
+                seatNo: seatNumbers,
+              });
+            }
+          });
         });
 
         if (bookings.length > 0) {
@@ -3459,7 +3508,7 @@ export default function CustomerInfoView({
                       )}
                       {attSeats.map((sk) => (
                         <span
-                          key={`${sk.attractionId}-${sk.seatOrder}`}
+                          key={`${sk.attractionId}-${sk.attractionSeatId || sk.sectionName || ""}-${sk.seatOrder}`}
                           style={{
                             background: "rgba(255, 220, 145, 0.61)",
                             border: "1.5px solid rgba(244, 188, 67, 0.7)",
