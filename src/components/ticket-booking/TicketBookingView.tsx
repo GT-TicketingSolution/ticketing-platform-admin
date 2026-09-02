@@ -11,7 +11,12 @@ import {
   X,
   User,
 } from "lucide-react";
-import { useTicketingAttractions, useTicketingSlots, useTicketingSeats, TicketingAttraction } from "@/hooks/useTicketingBookingQueries";
+import {
+  useTicketingAttractions,
+  useAttractionTripNo,
+  useAttractionSeatAvailability,
+  TicketingAttraction,
+} from "@/hooks/useTicketingBookingQueries";
 import CustomerInfoView from "./CustomerInfoView";
 
 export const SIDEBAR_COLLAPSE_EVENT = "tbv:sidebar-collapse";
@@ -794,52 +799,80 @@ export default function TicketBookingView() {
     [allAttractions, activeAttractionId, selectedAttractionIds]
   );
 
-  // Today's date string for slot/seats API
-  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+  // Selected attractions that have seating
+  const selectedSeatingAttractions = useMemo(() => {
+    const idSet = new Set<string>(selectedAttractionIds);
+    if (activeAttractionId) idSet.add(activeAttractionId);
+    cart.forEach((c) => {
+      if (c.attraction?.id) idSet.add(c.attraction.id);
+    });
 
-  // Fetch slots for the active attraction
-  const { data: activeSlots } = useTicketingSlots(
-    activeAttractionId ?? "",
-    todayStr,
-    !!activeAttractionId
+    return allAttractions.filter(
+      (a) => idSet.has(a.id) && a.hasSeating !== false && (a.hasSeating || !!a.seatLayoutId)
+    );
+  }, [selectedAttractionIds, activeAttractionId, cart, allAttractions]);
+
+  // Fetch real trip numbers for all selected seating attractions
+  const tripNoPayload = useMemo(
+    () =>
+      selectedSeatingAttractions.map((a) => ({
+        attractionId: a.id,
+        currentTripNo: 1,
+      })),
+    [selectedSeatingAttractions]
+  );
+  const { data: tripNoData } = useAttractionTripNo(
+    tripNoPayload,
+    selectedSeatingAttractions.length > 0
   );
 
-  // Use first slot to get seat info
-  const firstSlotId = activeSlots?.[0]?.id ?? "";
-  const { data: activeSeatsData } = useTicketingSeats(
-    activeAttractionId ?? "",
-    firstSlotId,
-    todayStr,
-    !!activeAttractionId && !!firstSlotId
+  const tripNoMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    tripNoData?.forEach((item) => {
+      if (item.attractionId) {
+        map[item.attractionId] = item.newTripNo ?? 1;
+      }
+    });
+    return map;
+  }, [tripNoData]);
+
+  const activeTripNo = (activeAttractionId ? tripNoMap[activeAttractionId] : undefined) ?? 1;
+
+  // Fetch real seat availability for all selected seating attractions
+  const seatAvailPayload = useMemo(
+    () =>
+      selectedSeatingAttractions.map((a) => ({
+        attractionId: a.id,
+        currentTripNo: tripNoMap[a.id] ?? 1,
+      })),
+    [selectedSeatingAttractions, tripNoMap]
+  );
+  const { data: seatAvailData } = useAttractionSeatAvailability(
+    seatAvailPayload,
+    selectedSeatingAttractions.length > 0
   );
 
-  // Derive duration from attraction duration/durationUnit or first slot's displayTime fallback
+  // Derive duration from attraction duration/durationUnit
   const derivedDuration = useMemo(() => {
     if (activeAttraction?.duration != null) {
       const formatted = formatAttractionDuration(activeAttraction.duration, activeAttraction.durationUnit);
       if (formatted) return formatted;
     }
-    if (!activeSlots || activeSlots.length === 0) return null;
-    const displayTime = (activeSlots[0] as any).slotTime ?? "";
-    return parseDurationFromDisplayTime(displayTime);
-  }, [activeAttraction, activeSlots]);
-
-  // Derived seats from seats API
-  const derivedSeats = useMemo(() => {
-    if (activeSeatsData?.totalSeats != null) return String(activeSeatsData.totalSeats);
     return null;
-  }, [activeSeatsData]);
+  }, [activeAttraction]);
 
-  // Initialize availableTripsMap from slots API (slot count = available trips today)
-  useEffect(() => {
-    if (activeAttractionId && activeSlots && activeSlots.length > 0) {
-      setAvailableTripsMap((prev) => {
-        // Only set from API if not already manually edited by staff
-        if (prev[activeAttractionId] !== undefined) return prev;
-        return { ...prev, [activeAttractionId]: activeSlots.length };
-      });
+  // Derived seats from seat availability API for the active attraction
+  const derivedSeats = useMemo(() => {
+    if (!activeAttractionId) return null;
+    const dataItem =
+      seatAvailData?.find((d) => d.attractionId === activeAttractionId) ||
+      seatAvailData?.[0];
+    if (dataItem?.seats && dataItem.seats.length > 0) return String(dataItem.seats.length);
+    if (dataItem?.seatLayout?.rows && dataItem?.seatLayout?.cols) {
+      return String(dataItem.seatLayout.rows * dataItem.seatLayout.cols);
     }
-  }, [activeAttractionId, activeSlots]);
+    return null;
+  }, [seatAvailData, activeAttractionId]);
 
 
   const selectedAttractionsList = useMemo(
@@ -1238,7 +1271,7 @@ export default function TicketBookingView() {
         >
           {activeAttraction && (() => {
             const meta = { baseRate: getAttractionBaseRate(activeAttraction) };
-            const tripsToday =  1;
+            const tripsToday = activeTripNo;
             return (
               <div
                 style={{
@@ -1324,13 +1357,6 @@ export default function TicketBookingView() {
                           <span>Ongoing Trips: </span>
                           <span style={{ color: "#0E4E7A", fontWeight: 700 }}>{tripsToday}</span>
                         </div>
-
-                        {derivedSeats && (
-                          <div>
-                            <span>Seats per trip: </span>
-                            <span style={{ color: "#0E4E7A", fontWeight: 700 }}>{derivedSeats}</span>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>

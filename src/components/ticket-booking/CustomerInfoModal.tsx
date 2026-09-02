@@ -68,6 +68,7 @@ function ProcessPaymentModal({
   const [payMethod, setPayMethod] = useState<"cash" | "card" | "upi">("cash");
   const [amtRcv, setAmtRcv] = useState("");
   const [selectedNotes, setSelectedNotes] = useState<number[]>([]);
+  const defaultCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
   const isOnline = payMethod === "upi" || payMethod === "card";
   const numAmtRcv = parseFloat(amtRcv || "0");
   const change = isOnline ? 0 : (amtRcv ? Math.max(0, numAmtRcv - grandTotal) : 0);
@@ -76,31 +77,36 @@ function ProcessPaymentModal({
   useEffect(() => {
     if (isOpen) {
       setPayMethod("cash");
-      setAmtRcv("");
+      const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+      setAmtRcv(initialCash);
       setSelectedNotes([]);
     }
-  }, [isOpen]);
+  }, [isOpen, grandTotal]);
 
   useEffect(() => {
     if (payMethod === "upi" || payMethod === "card") {
       setAmtRcv(grandTotal.toFixed(2));
       setSelectedNotes([]);
     } else if (payMethod === "cash") {
-      setAmtRcv("");
+      const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+      setAmtRcv(initialCash);
       setSelectedNotes([]);
     }
   }, [payMethod, grandTotal]);
 
   const handleQuickNoteClick = (noteVal: number) => {
-    const next = [...selectedNotes, noteVal];
-    setSelectedNotes(next);
-    const total = next.reduce((a, b) => a + b, 0);
-    setAmtRcv(total.toString());
+    const defaultBase = grandTotal > 0 ? Math.ceil(grandTotal / 10) * 10 : 0;
+    const currentAmt = amtRcv.trim() !== "" ? parseFloat(amtRcv) : defaultBase;
+    const base = isNaN(currentAmt) ? defaultBase : currentAmt;
+    const nextAmt = base + noteVal;
+    setAmtRcv(nextAmt.toString());
+    setSelectedNotes((prev) => [...prev, noteVal]);
   };
 
   const handleClearNotes = () => {
     setSelectedNotes([]);
-    setAmtRcv("");
+    const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+    setAmtRcv(initialCash);
   };
 
   if (!isOpen) return null;
@@ -230,7 +236,7 @@ function ProcessPaymentModal({
                 <p style={{ margin: 0, fontWeight: 700, fontSize: "12px", color: "rgba(81,82,82,0.85)" }}>
                   QUICK CASH / NOTES
                 </p>
-                {selectedNotes.length > 0 && (
+                {(selectedNotes.length > 0 || amtRcv !== defaultCash) && (
                   <button
                     type="button"
                     onClick={handleClearNotes}
@@ -247,7 +253,7 @@ function ProcessPaymentModal({
                       transition: "background 0.15s",
                     }}
                   >
-                    ✕ Clear
+                    ✕ Reset
                   </button>
                 )}
               </div>
