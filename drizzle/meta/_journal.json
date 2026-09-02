@@ -8,6 +8,13 @@
       "when": 1788285465908,
       "tag": "0000_melodic_mentallo",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788331662855,
+      "tag": "0001_strange_the_fallen",
+      "breakpoints": true
     }
   ]
 }
