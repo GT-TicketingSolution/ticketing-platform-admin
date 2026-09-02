@@ -9,6 +9,7 @@ import {
   lte,
   ne,
   sql,
+  arrayOverlaps,
 } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -283,41 +284,42 @@ export async function getInventory(filters: InventoryFilters) {
     attractionIds.length > 0 && inventoryDates.length > 0
       ? await db
           .select({
-            attractionId: bookings.attractionId,
-
+            attractionId: sql<string>`unnest(${bookings.attractionId})`,
             visitDate: sql<string>`
-              DATE(${bookings.visitAt})
-            `,
-
+            DATE(${bookings.visitAt})
+          `,
             booked: sql<number>`
-              COALESCE(
-                SUM(${bookingItems.quantity}),
-                0
-              )
-            `,
+            COALESCE(
+              SUM(${bookingItems.quantity}),
+              0
+            )
+          `,
           })
           .from(bookingItems)
           .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
           .where(
             and(
-              inArray(bookings.attractionId, attractionIds),
+              arrayOverlaps(bookings.attractionId, attractionIds),
 
               sql`
-                DATE(${bookings.visitAt})
-                IN (
-                  ${sql.join(
-                    inventoryDates.map((date) => sql`${date}`),
-                    sql`, `,
-                  )}
-                )
-              `,
+              DATE(${bookings.visitAt})
+              IN (
+                ${sql.join(
+                  inventoryDates.map((date) => sql`${date}`),
+                  sql`, `,
+                )}
+              )
+            `,
 
               ne(bookings.status, "CANCELLED"),
 
               eq(bookings.isDeleted, false),
             ),
           )
-          .groupBy(bookings.attractionId, sql`DATE(${bookings.visitAt})`)
+          .groupBy(
+            sql`unnest(${bookings.attractionId})`,
+            sql`DATE(${bookings.visitAt})`,
+          )
       : [];
 
   /* =======================================================

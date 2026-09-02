@@ -9,6 +9,8 @@ import {
   lte,
   ne,
   sql,
+  arrayContains,
+  arrayOverlaps,
 } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -252,36 +254,31 @@ export async function getInventory(filters: InventoryFilters) {
 
   const bookedRows = await db
     .select({
-      attractionId: bookings.attractionId,
+      attractionId: sql<string>`unnest(${bookings.attractionId})`,
 
       booked: sql<number>`
-        COALESCE(
-          SUM(${bookingItems.quantity}),
-          0
-        )
-      `,
+      COALESCE(
+        SUM(${bookingItems.quantity}),
+        0
+      )
+    `,
     })
     .from(bookingItems)
     .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
     .where(
       and(
-        inArray(bookings.attractionId, attractionIds),
+        arrayOverlaps(bookings.attractionId, attractionIds),
 
         /*
          * Booking visit date must match
          * the inventory date.
-         *
-         * For a range query we still calculate
-         * against each displayed inventory date
-         * below. Therefore this aggregate is only
-         * appropriate for a single date.
          */
         sql`DATE(${bookings.visitAt}) = ${filters.dateFrom || today}`,
 
         ne(bookings.status, "CANCELLED"),
       ),
     )
-    .groupBy(bookings.attractionId);
+    .groupBy(sql`unnest(${bookings.attractionId})`);
 
   const bookedMap = new Map<string, number>();
 

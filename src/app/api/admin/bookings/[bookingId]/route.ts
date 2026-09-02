@@ -347,10 +347,13 @@ export async function PATCH(
     // 7. ATTRACTION AUTHORIZATION
     // =====================================================
 
-    const hasAccess = await hasAttractionAccess(
-      auth,
-      existingBooking.attractionId,
-    );
+    const hasAccess = (
+      await Promise.all(
+        existingBooking.attractionId.map((attractionId: string) =>
+          hasAttractionAccess(auth, attractionId),
+        ),
+      )
+    ).every(Boolean);
 
     if (!hasAccess) {
       return failure(
@@ -489,10 +492,13 @@ export async function DELETE(
     // 6. ATTRACTION AUTHORIZATION
     // =====================================================
 
-    const hasAccess = await hasAttractionAccess(
-      auth,
-      existingBooking.attractionId,
-    );
+    const hasAccess = (
+      await Promise.all(
+        existingBooking.attractionId.map((attractionId: string) =>
+          hasAttractionAccess(auth, attractionId),
+        ),
+      )
+    ).every(Boolean);
 
     if (!hasAccess) {
       return failure(
