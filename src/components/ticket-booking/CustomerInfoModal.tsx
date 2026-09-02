@@ -20,6 +20,7 @@ import {
   X,
   Printer,
 } from "lucide-react";
+import { showToast } from "@/components/ui/Toast";
 import AddNewCustomerModal, { NewCustomer } from "./AddNewCustomerModal";
 
 export interface BookingSummaryItem {
@@ -423,11 +424,12 @@ function ProcessPaymentModal({
 }
 
 // ── Isolated Iframe Receipt Printer (Clean 1-page thermal/ticket output) ──
-function printReceiptViaIframe(elementId: string) {
+function printReceiptViaIframe(elementId: string, onDone?: () => void) {
   if (typeof window === "undefined") return;
   const element = document.getElementById(elementId);
   if (!element) {
     window.print();
+    onDone?.();
     return;
   }
 
@@ -451,6 +453,7 @@ function printReceiptViaIframe(elementId: string) {
   const doc = iframe.contentWindow?.document || iframe.contentDocument;
   if (!doc) {
     window.print();
+    onDone?.();
     return;
   }
 
@@ -503,15 +506,30 @@ function printReceiptViaIframe(elementId: string) {
   `);
   doc.close();
 
+  let hasDone = false;
+  const finish = () => {
+    if (!hasDone) {
+      hasDone = true;
+      onDone?.();
+    }
+  };
+
   setTimeout(() => {
     try {
+      if (iframe.contentWindow) {
+        iframe.contentWindow.onafterprint = () => {
+          finish();
+        };
+      }
       iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
+      setTimeout(finish, 600);
     } catch (err) {
       console.error("Iframe print error:", err);
       window.print();
+      finish();
     }
-  }, 200);
+  }, 250);
 }
 
 // ── Ticket Generated Modal (Thermal Receipt Layout) ──
@@ -614,17 +632,25 @@ function TicketGeneratedModal({
 
   const seatText = selectedSeats && selectedSeats.length > 0 ? selectedSeats.join(", ") : "-";
 
+  const hasAutoPrintedRef = useRef(false);
+
   const handlePrint = () => {
-    printReceiptViaIframe("printable-ticket-receipt");
+    printReceiptViaIframe("printable-ticket-receipt", () => {
+      showToast("Ticket printed successfully", "success");
+    });
   };
 
-  // Directly trigger print as soon as ticket popup opens
+  // Directly trigger automatic print as soon as ticket popup opens
   useEffect(() => {
-    if (isOpen && typeof window !== "undefined") {
+    if (isOpen && typeof window !== "undefined" && !hasAutoPrintedRef.current) {
+      hasAutoPrintedRef.current = true;
       const t = setTimeout(() => {
-        printReceiptViaIframe("printable-ticket-receipt");
-      }, 250);
+        handlePrint();
+      }, 300);
       return () => clearTimeout(t);
+    }
+    if (!isOpen) {
+      hasAutoPrintedRef.current = false;
     }
   }, [isOpen]);
 
@@ -721,10 +747,11 @@ function TicketGeneratedModal({
             }}
           >
             {/* Header: Attraction Name + CIN & GST */}
+            {/* Header: Attraction Name + Business Name + CIN & GST */}
             <div style={{ textAlign: "center", borderBottom: "1px dashed #000000", paddingBottom: "10px" }}>
               <h3
                 style={{
-                  margin: "0 0 4px 0",
+                  margin: "0 0 2px 0",
                   fontWeight: 900,
                   fontSize: "18px",
                   color: "#000000",
@@ -736,6 +763,23 @@ function TicketGeneratedModal({
               >
                 {attractionName || "ATTRACTION"}
               </h3>
+
+              {/* Business Name (from /api/auth/profile response) if available */}
+              {Boolean(businessName && businessName.trim()) && (
+                <div
+                  style={{
+                    fontSize: "12.5px",
+                    fontWeight: 800,
+                    color: "#000000",
+                    margin: "2px 0 4px 0",
+                    letterSpacing: "0.02em",
+                    textTransform: "uppercase",
+                    fontFamily: "'Plus Jakarta Sans', Arial, sans-serif",
+                  }}
+                >
+                  {businessName.trim()}
+                </div>
+              )}
 
               {/* CIN & GST info */}
               <div
@@ -751,29 +795,7 @@ function TicketGeneratedModal({
               >
                 <div>CIN: U15532RJ1998PLC015036</div>
                 <div>GST: 08AAKCS3004M1Z7</div>
-                <div style={{ fontSize: "10px", fontWeight: 700, marginTop: "2px" }}>
-                  Phone: 73000-95-806, 73000-95-807, 73000-95-808
-                </div>
               </div>
-
-              {/* Seat Information if applicable */}
-              {selectedSeats && selectedSeats.length > 0 && (
-                <div
-                  style={{
-                    margin: "6px auto 0 auto",
-                    padding: "3px 8px",
-                    background: "#F1F5F9",
-                    borderRadius: "4px",
-                    display: "inline-block",
-                    fontSize: "11px",
-                    fontWeight: 800,
-                    color: "#000000",
-                    border: "1px solid #000000",
-                  }}
-                >
-                  <div>Seats: {seatText}</div>
-                </div>
-              )}
             </div>
 
             {/* Prominent Total Header */}
@@ -1055,7 +1077,12 @@ function TicketGeneratedModal({
 // ── Profile-aware wrapper — reads businessName from the auth cache and injects it
 function TicketGeneratedModalWithProfile(props: Parameters<typeof TicketGeneratedModal>[0]) {
   const { data: profileData } = useProfileQuery();
-  const businessName = profileData?.profile?.businessName || "";
+  const businessName =
+    profileData?.profile?.businessName ||
+    (profileData as any)?.businessName ||
+    (profileData as any)?.data?.profile?.businessName ||
+    (profileData as any)?.data?.businessName ||
+    "";
   return <TicketGeneratedModal {...props} businessName={businessName} />;
 }
 

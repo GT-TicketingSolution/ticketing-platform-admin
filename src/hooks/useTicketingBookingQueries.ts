@@ -70,42 +70,54 @@ export interface TicketingBookingSeat {
 }
 
 export interface CreateTicketingBookingPayload {
-  customer: {
-    id?: string | null;
-    name: string;
-    mobile: string;
-    gstn?: string | null;
-  };
-  attractionId: string;
+  customerName?: string | null;
+  mobileNumber?: string | null;
+  gstNumber?: string | null;
   visitAt: string;
-  items: TicketingBookingItem[];
-  seats?: TicketingBookingSeat[];
   subtotal: number;
   gstAmount: number;
   gstAdjustment: number;
   roundOff: number;
   discountAmount: number;
+  paymentMode?: "CASH" | "UPI" | "CARD" | "ONLINE";
   totalAmount: number;
+  amountReceived?: number;
+  returnAmount?: number;
+  attractionId: string[];
 }
 
 export interface CreateTicketingBookingResponse {
-  booking: {
+  success?: boolean;
+  data?: {
+    bookingId?: string;
+    bookingNumber?: string;
+    status?: string;
+    attractionId?: string[];
+    qrCodes?: Array<{
+      attractionId?: string;
+      qrCode: string;
+      [key: string]: unknown;
+    }>;
+    [key: string]: unknown;
+  };
+  booking?: {
     id: string;
     bookingNumber: string;
     status: string;
-    customerId: string;
-    attractionId: string;
-    attractionName: string;
-    visitAt: string;
-    totalAmount: number;
-    amountPaid: number;
+    customerId?: string;
+    attractionId?: string | string[];
+    attractionName?: string;
+    visitAt?: string;
+    totalAmount?: number;
+    amountPaid?: number;
     seats?: TicketingBookingSeat[];
   };
-  paymentRequired: boolean;
+  paymentRequired?: boolean;
 }
 
 export interface TicketingPaymentPayload {
-  amountPaid: number;
+  amountReceived?: number;
+  amountPaid?: number;
   payment: {
     mode: "CASH" | "UPI" | "CARD" | "ONLINE";
   };
@@ -456,9 +468,6 @@ export function useConfirmTicketingBooking() {
       postData<TicketingConfirmResponse>(
         AppUrl.ticketingBooking.confirm(bookingId)
       ),
-    onSuccess: () => {
-      showSuccessNotify("Booking confirmed successfully.");
-    },
     onError: (err: any) => {
       showErrorOnce(err?.error?.message || err?.message || "Failed to confirm booking.");
     },

@@ -823,7 +823,7 @@ export default function TicketBookingView() {
   );
   const { data: tripNoData } = useAttractionTripNo(
     tripNoPayload,
-    selectedSeatingAttractions.length > 0
+    mode === "booking" && selectedSeatingAttractions.length > 0
   );
 
   const tripNoMap = useMemo(() => {
@@ -849,7 +849,7 @@ export default function TicketBookingView() {
   );
   const { data: seatAvailData } = useAttractionSeatAvailability(
     seatAvailPayload,
-    selectedSeatingAttractions.length > 0
+    mode === "booking" && selectedSeatingAttractions.length > 0
   );
 
   // Derive duration from attraction duration/durationUnit

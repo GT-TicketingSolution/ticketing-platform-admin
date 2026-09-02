@@ -23,13 +23,12 @@ import {
   Clock,
   Users,
 } from "lucide-react";
+import { showToast } from "@/components/ui/Toast";
 import AddNewCustomerModal, { NewCustomer } from "./AddNewCustomerModal";
 import {
   useTicketingCustomers,
   useCreateTicketingCustomer,
   useCreateTicketingBooking,
-  useTicketingPayment,
-  useConfirmTicketingBooking,
   useAttractionTripNo,
   useAttractionSeatAvailability,
   useCreateAttractionSeatBooking,
@@ -37,6 +36,7 @@ import {
   AttractionSeatItem,
   AttractionSeatLayout,
   AttractionSeatAvailabilityData,
+  CreateTicketingBookingPayload,
 } from "@/hooks/useTicketingBookingQueries";
 
 export interface BookingSummaryItem {
@@ -490,11 +490,12 @@ function ProcessPaymentModal({
 }
 
 // ── Isolated Iframe Receipt Printer (Clean 1-page thermal/ticket output) ──
-function printReceiptViaIframe(elementId: string) {
+function printReceiptViaIframe(elementId: string, onDone?: () => void) {
   if (typeof window === "undefined") return;
   const element = document.getElementById(elementId);
   if (!element) {
     window.print();
+    onDone?.();
     return;
   }
 
@@ -518,6 +519,7 @@ function printReceiptViaIframe(elementId: string) {
   const doc = iframe.contentWindow?.document || iframe.contentDocument;
   if (!doc) {
     window.print();
+    onDone?.();
     return;
   }
 
@@ -570,15 +572,30 @@ function printReceiptViaIframe(elementId: string) {
   `);
   doc.close();
 
+  let hasDone = false;
+  const finish = () => {
+    if (!hasDone) {
+      hasDone = true;
+      onDone?.();
+    }
+  };
+
   setTimeout(() => {
     try {
+      if (iframe.contentWindow) {
+        iframe.contentWindow.onafterprint = () => {
+          finish();
+        };
+      }
       iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
+      setTimeout(finish, 600);
     } catch (err) {
       console.error("Iframe print error:", err);
       window.print();
+      finish();
     }
-  }, 200);
+  }, 250);
 }
 
 // ── Ticket Generated Modal (Thermal Receipt Layout matching real POS receipt) ──
@@ -597,6 +614,7 @@ function TicketGeneratedModal({
   roundOff = 0,
   businessName = "",
   timeSlot = "",
+  seatDetails = [],
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -637,37 +655,87 @@ function TicketGeneratedModal({
   gstAmount?: number;
   roundOff?: number;
   timeSlot?: string;
+  seatDetails?: {
+    attractionId: string;
+    attractionName: string;
+    sections: { name: string; seats: number[] }[];
+  }[];
 }) {
-  const booking = confirmedData?.booking;
-  const qrCodes = confirmedData?.qrCodes || [];
+  const booking =
+    (confirmedData as any)?.data?.booking ||
+    (confirmedData as any)?.booking ||
+    (confirmedData as any)?.data ||
+    confirmedData;
+  const rawQr =
+    (confirmedData as any)?.data?.qrCodes ||
+    (confirmedData as any)?.data?.qrCode ||
+    (confirmedData as any)?.qrCodes ||
+    (confirmedData as any)?.qrCode ||
+    booking?.qrCodes ||
+    booking?.qrCode;
 
-  const ticketNo = booking?.bookingNumber || "-";
+  const qrCodes: Array<{ attractionId?: string; qrCode: string }> = Array.isArray(rawQr)
+    ? rawQr
+    : rawQr && typeof rawQr === "object" && rawQr.qrCode
+    ? [rawQr]
+    : typeof rawQr === "string"
+    ? [{ qrCode: rawQr }]
+    : [];
+
+  const ticketNo =
+    booking?.bookingNumber ||
+    booking?.bookingId ||
+    (confirmedData as any)?.data?.bookingNumber ||
+    (confirmedData as any)?.bookingNumber ||
+    "-";
   const finalTotal = booking?.totalAmount ? parseFloat(String(booking.totalAmount)) : grandTotal;
-  const payMode = booking?.paymentMode || "CASH";
-  const rawDate = booking?.visitAt || booking?.createdAt;
+  const payMode = booking?.paymentMode || (confirmedData as any)?.paymentMode || "CASH";
+  const rawDate = booking?.visitAt || booking?.createdAt || new Date().toISOString();
   const dateObj = rawDate ? new Date(rawDate) : null;
 
   const formattedDate = dateObj && !isNaN(dateObj.getTime())
     ? dateObj.toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    })
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
     : "-";
 
   const formattedTime = dateObj && !isNaN(dateObj.getTime())
     ? dateObj.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    })
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      })
     : "-";
 
-  const custName = (booking?.customerName || customerInfo.name || "").trim() || "Guest";
-  const custMobile = (booking?.mobileNumber || customerInfo.mobile || "").trim() || "-";
+  const custName = (booking?.customerName || (customerInfo?.name !== "Guest" ? customerInfo?.name : "") || "").trim() || "Guest";
+  const custMobile = (booking?.mobileNumber || customerInfo?.mobile || "").trim() || "-";
 
-  const calculatedSubtotal = subtotal > 0 ? subtotal : Number((finalTotal / 1.18).toFixed(2));
-  const calculatedGst = gstAmount > 0 ? gstAmount : Number((finalTotal - calculatedSubtotal).toFixed(2));
+  const calculatedSubtotal = booking?.subtotal
+    ? parseFloat(String(booking.subtotal))
+    : subtotal > 0
+    ? subtotal
+    : Number((finalTotal / 1.18).toFixed(2));
+
+  const calculatedGst = booking?.gstAmount
+    ? parseFloat(String(booking.gstAmount))
+    : gstAmount > 0
+    ? gstAmount
+    : Number((finalTotal - calculatedSubtotal).toFixed(2));
+
+  const calculatedRoundOff = booking?.roundOff !== undefined && booking?.roundOff !== null
+    ? parseFloat(String(booking.roundOff))
+    : roundOff;
+
+  const calculatedAmountReceived = booking?.amountReceived !== undefined && booking?.amountReceived !== null
+    ? parseFloat(String(booking.amountReceived))
+    : undefined;
+
+  const calculatedReturnAmount = booking?.returnAmount !== undefined && booking?.returnAmount !== null
+    ? parseFloat(String(booking.returnAmount))
+    : undefined;
+
   const halfGst = Number((calculatedGst / 2).toFixed(2));
 
   // Build items strictly from bookingSummary
@@ -684,17 +752,25 @@ function TicketGeneratedModal({
 
   const seatText = selectedSeats && selectedSeats.length > 0 ? selectedSeats.join(", ") : "-";
 
+  const hasAutoPrintedRef = useRef(false);
+
   const handlePrint = () => {
-    printReceiptViaIframe("printable-ticket-receipt");
+    printReceiptViaIframe("printable-ticket-receipt", () => {
+      showToast("Ticket printed successfully", "success");
+    });
   };
 
-  // Directly trigger print as soon as ticket popup opens
+  // Directly trigger automatic print as soon as ticket modal opens
   useEffect(() => {
-    if (isOpen && typeof window !== "undefined") {
+    if (isOpen && typeof window !== "undefined" && !hasAutoPrintedRef.current) {
+      hasAutoPrintedRef.current = true;
       const t = setTimeout(() => {
-        printReceiptViaIframe("printable-ticket-receipt");
-      }, 250);
+        handlePrint();
+      }, 300);
       return () => clearTimeout(t);
+    }
+    if (!isOpen) {
+      hasAutoPrintedRef.current = false;
     }
   }, [isOpen]);
 
@@ -790,11 +866,11 @@ function TicketGeneratedModal({
               fontWeight: 700,
             }}
           >
-            {/* Header: Attraction Name + CIN & GST */}
+            {/* Header: Attraction Name + Business Name + CIN & GST */}
             <div style={{ textAlign: "center", borderBottom: "1px dashed #000000", paddingBottom: "10px" }}>
               <h3
                 style={{
-                  margin: "0 0 4px 0",
+                  margin: "0 0 2px 0",
                   fontWeight: 900,
                   fontSize: "18px",
                   color: "#000000",
@@ -806,6 +882,23 @@ function TicketGeneratedModal({
               >
                 {attractionName || "-"}
               </h3>
+
+              {/* Business Name (from /api/auth/profile response) if available */}
+              {Boolean(businessName && businessName.trim()) && (
+                <div
+                  style={{
+                    fontSize: "12.5px",
+                    fontWeight: 800,
+                    color: "#000000",
+                    margin: "2px 0 4px 0",
+                    letterSpacing: "0.02em",
+                    textTransform: "uppercase",
+                    fontFamily: "'Plus Jakarta Sans', Arial, sans-serif",
+                  }}
+                >
+                  {businessName.trim()}
+                </div>
+              )}
 
               {/* CIN & GST info */}
               <div
@@ -821,27 +914,67 @@ function TicketGeneratedModal({
               >
                 <div>CIN: U15532RJ1998PLC015036</div>
                 <div>GST: 08AAKCS3004M1Z7</div>
-                <div style={{ fontSize: "10px", fontWeight: 700, marginTop: "2px" }}>
-                  Phone: 73000-95-806, 73000-95-807, 73000-95-808
-                </div>
               </div>
 
-              {/* Slot & Seat Information if applicable */}
-              {selectedSeats && selectedSeats.length > 0 && (
+              {/* Seat Allocation Info – shown below GST number */}
+              {seatDetails && seatDetails.length > 0 && (
                 <div
                   style={{
-                    margin: "6px auto 0 auto",
-                    padding: "3px 8px",
-                    background: "#F1F5F9",
-                    borderRadius: "4px",
-                    display: "inline-block",
+                    marginTop: "8px",
+                    paddingTop: "7px",
+                    borderTop: "1px dashed #000000",
+                    textAlign: "left",
                     fontSize: "11px",
                     fontWeight: 800,
                     color: "#000000",
-                    border: "1px solid #000000",
+                    fontFamily: "'Courier New', Courier, monospace",
                   }}
                 >
-                  <div>Seats: {seatText}</div>
+                  <div
+                    style={{
+                      fontWeight: 900,
+                      fontSize: "11px",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                      marginBottom: "4px",
+                      textAlign: "center",
+                    }}
+                  >
+                    SEAT ALLOCATION
+                  </div>
+                  {seatDetails.map((att, i) => (
+                    <div key={att.attractionId} style={{ marginBottom: i < seatDetails.length - 1 ? "6px" : 0 }}>
+                      {seatDetails.length > 1 && (
+                        <div
+                          style={{
+                            fontWeight: 900,
+                            fontSize: "10.5px",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.03em",
+                            marginBottom: "3px",
+                            textDecoration: "underline",
+                          }}
+                        >
+                          {att.attractionName}
+                        </div>
+                      )}
+                      {att.sections.map((sec) => (
+                        <div
+                          key={sec.name}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            marginBottom: "2px",
+                          }}
+                        >
+                          <span style={{ fontWeight: 800 }}>{sec.name}:</span>
+                          <span style={{ fontWeight: 700 }}>
+                            Seat {sec.seats.join(", ")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -923,8 +1056,23 @@ function TicketGeneratedModal({
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
                 <span>Round Off</span>
-                <span>{roundOff >= 0 ? `+₹${roundOff.toFixed(2)}` : `-₹${Math.abs(roundOff).toFixed(2)}`}</span>
+                <span>{calculatedRoundOff >= 0 ? `+₹${calculatedRoundOff.toFixed(2)}` : `-₹${Math.abs(calculatedRoundOff).toFixed(2)}`}</span>
               </div>
+
+              {calculatedAmountReceived !== undefined && calculatedAmountReceived > 0 && (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px", fontSize: "11px" }}>
+                    <span>Amount Received ({payMode})</span>
+                    <span>₹{calculatedAmountReceived.toFixed(2)}</span>
+                  </div>
+                  {calculatedReturnAmount !== undefined && calculatedReturnAmount > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px", fontSize: "11px" }}>
+                      <span>Change Return</span>
+                      <span>₹{calculatedReturnAmount.toFixed(2)}</span>
+                    </div>
+                  )}
+                </>
+              )}
 
               <div
                 style={{
@@ -1125,7 +1273,12 @@ function TicketGeneratedModal({
 // ── Profile-aware wrapper — reads businessName from the auth cache and injects it
 function TicketGeneratedModalWithProfile(props: Parameters<typeof TicketGeneratedModal>[0]) {
   const { data: profileData } = useProfileQuery();
-  const businessName = profileData?.profile?.businessName || "";
+  const businessName =
+    profileData?.profile?.businessName ||
+    (profileData as any)?.businessName ||
+    (profileData as any)?.data?.profile?.businessName ||
+    (profileData as any)?.data?.businessName ||
+    "";
   return <TicketGeneratedModal {...props} businessName={businessName} />;
 }
 
@@ -2231,8 +2384,6 @@ export default function CustomerInfoView({
   const { data: searchedCustomers = [], isLoading: isCustomersLoading } = useTicketingCustomers(debouncedSearchQuery, showDropdown);
   const createCustomerMutation = useCreateTicketingCustomer();
   const createBookingMutation = useCreateTicketingBooking();
-  const paymentMutation = useTicketingPayment();
-  const confirmBookingMutation = useConfirmTicketingBooking();
   const createSeatBookingMutation = useCreateAttractionSeatBooking();
 
   // Close dropdown on outside click
@@ -2308,7 +2459,7 @@ export default function CustomerInfoView({
     () => seatingAttractions.map((a) => ({ attractionId: a.attractionId!, currentTripNo: 1 })),
     [seatingAttractions]
   );
-  const { data: tripNoData } = useAttractionTripNo(tripNoQuery, seatingAttractions.length > 0);
+  const { data: tripNoData } = useAttractionTripNo(tripNoQuery, seatingAttractions.length > 0 && !showPaymentModal);
 
   useEffect(() => {
     if (tripNoData && tripNoData.length > 0) {
@@ -2339,7 +2490,7 @@ export default function CustomerInfoView({
     isLoading: isLoadingSeats,
     isFetching: isFetchingSeats,
     refetch: refetchSeats,
-  } = useAttractionSeatAvailability(seatAvailabilityPayload, seatingAttractions.length > 0);
+  } = useAttractionSeatAvailability(seatAvailabilityPayload, seatingAttractions.length > 0 && !showPaymentModal);
 
   // ── Auto-select seats for ALL seating attractions once seatAvailData loads ──
   // Starts sequentially from section 1 ("Seat 1"), fills up to section capacity,
@@ -2564,7 +2715,7 @@ export default function CustomerInfoView({
     const mobileNumber = (selectedCustomer?.mobile || guestDetails.mobile || "").trim() || null;
     const gstNumber = (selectedCustomer?.gstn || "").trim() || null;
 
-    // Build base payload (paymentMode / amountReceived / returnAmount added later in handleConfirmPayment)
+    // Build base payload with attractionId as array of string IDs
     const basePayload: Record<string, unknown> = {
       customerName,
       mobileNumber,
@@ -2576,14 +2727,10 @@ export default function CustomerInfoView({
       roundOff: localRoundOff,
       discountAmount: 0,
       totalAmount: grandTotal,
+      attractionId: bookingSummary
+        .map((b) => b.attractionId || "")
+        .filter(Boolean),
     };
-
-    // Conditional attraction structure
-    if (bookingSummary.length > 1) {
-      basePayload.attractions = bookingSummary.map((b) => ({ attractionId: b.attractionId || "" }));
-    } else {
-      basePayload.attractionId = firstAttraction.attractionId || "";
-    }
 
     setPendingBookingPayload(basePayload);
     setShowPaymentModal(true);
@@ -2591,40 +2738,23 @@ export default function CustomerInfoView({
 
   async function handleConfirmPayment(payMethod: "CASH" | "UPI" | "CARD" | "ONLINE", amtRcv: number, amountReceived: number, returnAmount: number) {
     try {
-      let bId = createdBookingId;
-
-      // 1. Create Booking when Confirm Payment is clicked
-      if (!bId && pendingBookingPayload) {
-        // Merge payment-time fields into the booking payload
-        const finalPayload = {
+      // 1. Create Booking via POST /api/admin/ticketing-booking
+      if (pendingBookingPayload) {
+        const finalPayload: CreateTicketingBookingPayload = {
           ...pendingBookingPayload,
           paymentMode: payMethod,
-          amountReceived,
-          returnAmount,
+          amountReceived: amountReceived !== undefined && amountReceived !== null ? amountReceived : amtRcv,
+          returnAmount: returnAmount !== undefined && returnAmount !== null ? returnAmount : 0,
+          attractionId: Array.isArray(pendingBookingPayload.attractionId)
+            ? pendingBookingPayload.attractionId
+            : [pendingBookingPayload.attractionId].filter(Boolean),
         };
-        const createRes = await createBookingMutation.mutateAsync(finalPayload as any);
-        const bookingData = (createRes as any)?.data?.booking || (createRes as any)?.booking || (createRes as any)?.data || createRes;
-        if (bookingData?.id) {
-          bId = bookingData.id;
-          setCreatedBookingId(bookingData.id);
-        }
-      }
-
-      // 2. Process Payment & 3. Confirm Booking to generate ticket
-      if (bId) {
-        await paymentMutation.mutateAsync({
-          bookingId: bId,
-          payload: {
-            amountPaid: amtRcv,
-            payment: { mode: payMethod },
-          },
-        });
-        const confirmRes = await confirmBookingMutation.mutateAsync(bId);
-        const data = (confirmRes as any)?.data || confirmRes;
+        const createRes = await createBookingMutation.mutateAsync(finalPayload);
+        const data = (createRes as any)?.data || createRes;
         setConfirmedTicketData(data);
       }
 
-      // 4. If seating is required and seats were selected, call attraction-seat-booking API for all attractions
+      // 2. If seating is required and seats were selected, call attraction-seat-booking API for all attractions
       if (hasSeatingRequired && selectedSeatObjs.length > 0) {
         const bookings: { attractionId: string; tripNo: number; attractionSeatId: string; seatNo: number[] }[] = [];
 
@@ -3638,7 +3768,7 @@ export default function CustomerInfoView({
         onClose={() => setShowPaymentModal(false)}
         grandTotal={grandTotal}
         attractionName={allAttractionsText}
-        isSubmitting={createBookingMutation.isPending || paymentMutation.isPending || confirmBookingMutation.isPending || createSeatBookingMutation.isPending}
+        isSubmitting={createBookingMutation.isPending || createSeatBookingMutation.isPending}
         onConfirm={handleConfirmPayment}
       />
 
@@ -3664,6 +3794,32 @@ export default function CustomerInfoView({
           gstn: selectedCustomer?.gstn || "",
         }}
         selectedSeats={selectedSeatObjs.map((s) => s.name)}
+        seatDetails={
+          bookingSummary
+            .filter((b) => b.hasSeating && b.attractionId)
+            .map((b) => {
+              const attSeats = selectedSeatObjs.filter(
+                (s) => s.attractionId === b.attractionId
+              );
+              const sectionMap = new Map<string, number[]>();
+              attSeats.forEach((s) => {
+                const secName = s.sectionName || "Coach";
+                if (!sectionMap.has(secName)) sectionMap.set(secName, []);
+                sectionMap.get(secName)!.push(s.seatOrder);
+              });
+              return {
+                attractionId: b.attractionId!,
+                attractionName: b.attractionName,
+                sections: Array.from(sectionMap.entries()).map(
+                  ([name, seats]) => ({
+                    name,
+                    seats: seats.slice().sort((a, b) => a - b),
+                  })
+                ),
+              };
+            })
+            .filter((d) => d.sections.length > 0)
+        }
         subtotal={subtotal}
         gstAmount={gstAmount}
         roundOff={roundOff}
