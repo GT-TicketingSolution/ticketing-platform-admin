@@ -87,6 +87,8 @@ export async function PATCH(
       | {
           seatLayoutId: string;
           quantity: number;
+          name?: string;
+          position?: number;
         }[]
       | null = null;
 
@@ -114,27 +116,7 @@ export async function PATCH(
         );
       }
 
-      // IMPORTANT:
-      // assignments contains unique layout + quantity
-      //
-      // Example input:
-      // ["layout-1", "layout-1", "layout-2"]
-      //
-      // assignments:
-      // [
-      //   { seatLayoutId: "layout-1", quantity: 2 },
-      //   { seatLayoutId: "layout-2", quantity: 1 }
-      // ]
-
       seatLayoutAssignments = resolvedSeatLayouts.assignments;
-
-      // Expanded form:
-      //
-      // [
-      //   "layout-1",
-      //   "layout-1",
-      //   "layout-2"
-      // ]
 
       expandedSeatLayoutIds = resolvedSeatLayouts.expandedIds;
 
@@ -350,37 +332,6 @@ export async function PATCH(
           .delete(attractionSeats)
           .where(eq(attractionSeats.attractionId, existing.attractionId));
 
-        // ---------------------------------------------
-        // CREATE NEW SEATS
-        // ---------------------------------------------
-        //
-        // IMPORTANT:
-        //
-        // seatLayoutAssignments already contains
-        // quantity information.
-        //
-        // Example:
-        //
-        // [
-        //   {
-        //     seatLayoutId: "layout-1",
-        //     quantity: 3
-        //   },
-        //   {
-        //     seatLayoutId: "layout-2",
-        //     quantity: 1
-        //   }
-        // ]
-        //
-        // This creates:
-        //
-        // layout-1 -> Seat 1
-        // layout-1 -> Seat 2
-        // layout-1 -> Seat 3
-        // layout-2 -> Seat 4
-        //
-        // ---------------------------------------------
-
         const attractionSeatRows: {
           attractionId: string;
           seatLayoutId: string;
@@ -390,27 +341,20 @@ export async function PATCH(
 
         let seatOrder = 1;
 
-        for (const assignment of seatLayoutAssignments) {
+        for (const [index, assignment] of seatLayoutAssignments.entries()) {
           const quantity = assignment.quantity ?? 1;
 
-          const layout = resolvedSeatLayouts?.fullObjects.find(
-            (layout) => layout.id === assignment.seatLayoutId,
-          );
+          const layout = resolvedSeatLayouts?.fullObjects[index];
 
           if (!layout) {
-            throw new Error(
-              `Seat layout not found: ${assignment.seatLayoutId}`,
-            );
+            throw new Error(`Seat layout not found at position ${index + 1}`);
           }
 
           for (let i = 0; i < quantity; i++) {
             attractionSeatRows.push({
               attractionId: existing.attractionId,
-
               seatLayoutId: assignment.seatLayoutId,
-
               name: layout.name ?? "",
-
               seatOrder,
             });
 

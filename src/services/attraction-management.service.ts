@@ -388,7 +388,13 @@ export function resolveSeatLayoutIds(input: {
       /** Expanded ID list (ID repeated `quantity` times) for FE chips */
       expandedIds: string[];
       /** Full objects with position and status info for persistence */
-      fullObjects: Array<{ id: string; position: number; isEnabled: boolean; name?: string; status?: string }>;
+      fullObjects: Array<{
+        id: string;
+        position: number;
+        isEnabled: boolean;
+        name?: string;
+        status?: string;
+      }>;
     }
   | { ok: false; message: string } {
   const { hasSeating, seatLayoutIds } = input;
@@ -401,20 +407,37 @@ export function resolveSeatLayoutIds(input: {
     ? ((seatLayoutIds as unknown[] | undefined) ?? [])
     : [];
 
-  // Extract IDs from both string and object formats
-  // Only count ENABLED seats toward quantity; keep disabled for validation
   const cleaned = rawIds
     .map((item) => {
       if (typeof item === "string") {
-        return { id: item.trim(), status: "active" };
-      } else if (item && typeof item === "object" && "id" in item) {
-        const obj = item as { id?: unknown; status?: string };
         return {
-          id: String(obj.id || "").trim(),
-          status: obj.status || "active",
+          id: item.trim(),
+          name: undefined,
+          status: "active",
         };
       }
-      return { id: String(item).trim(), status: "active" };
+
+      if (item && typeof item === "object" && "id" in item) {
+        const obj = item as {
+          id?: unknown;
+          name?: unknown;
+          status?: string;
+          position?: number;
+        };
+
+        return {
+          id: String(obj.id || "").trim(),
+          name: obj.name,
+          status: obj.status || "active",
+          position: obj.position,
+        };
+      }
+
+      return {
+        id: String(item).trim(),
+        name: undefined,
+        status: "active",
+      };
     })
     .filter((item) => item.id.length > 0);
 
@@ -424,8 +447,7 @@ export function resolveSeatLayoutIds(input: {
   if (hasSeating && enabledItems.length === 0) {
     return {
       ok: false,
-      message:
-        "At least one seat layout is required when seating is enabled",
+      message: "At least one seat layout is required when seating is enabled",
     };
   }
 
@@ -486,9 +508,7 @@ export async function validateSeatLayoutsForAdmin(
       ),
     );
 
-  const existingIds = new Set(
-    existingSeatLayouts.map((layout) => layout.id),
-  );
+  const existingIds = new Set(existingSeatLayouts.map((layout) => layout.id));
 
   const invalidSeatLayoutIds = seatLayoutIds.filter(
     (id) => !existingIds.has(id),
@@ -531,16 +551,18 @@ export async function replaceAttractionSeatLayouts(
   // Build values with position and isEnabled from fullObjects
   // IMPORTANT: Match by index order, not by ID, since multiple allocations
   // of same layout need different position/isEnabled values
-  const valuesToInsert = assignments.map(({ seatLayoutId, quantity }, index) => {
-    const fullObj = fullObjects?.[index]; // Match by index, not by ID
-    return {
-      attractionManagementId,
-      seatLayoutId,
-      quantity: Math.max(1, quantity),
-      position: fullObj?.position ?? index + 1,
-      isEnabled: fullObj?.isEnabled ?? true,
-    };
-  });
+  const valuesToInsert = assignments.map(
+    ({ seatLayoutId, quantity }, index) => {
+      const fullObj = fullObjects?.[index]; // Match by index, not by ID
+      return {
+        attractionManagementId,
+        seatLayoutId,
+        quantity: Math.max(1, quantity),
+        position: fullObj?.position ?? index + 1,
+        isEnabled: fullObj?.isEnabled ?? true,
+      };
+    },
+  );
 
   return executor
     .insert(attractionManagementSeatLayouts)
