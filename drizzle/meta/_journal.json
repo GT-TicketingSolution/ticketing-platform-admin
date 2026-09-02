@@ -29,6 +29,13 @@
       "when": 1788341324375,
       "tag": "0003_chief_stingray",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788355666330,
+      "tag": "0004_fix_booking_attraction_ids",
+      "breakpoints": true
     }
   ]
 }
