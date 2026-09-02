@@ -2237,6 +2237,9 @@ export default function CustomerInfoView({
   // API Hooks
   const { data: searchedCustomers = [], isLoading: isCustomersLoading } = useTicketingCustomers(debouncedSearchQuery, showDropdown);
   const createCustomerMutation = useCreateTicketingCustomer();
+  const createBookingMutation = useCreateTicketingBooking();
+  const paymentMutation = useTicketingPayment();
+  const confirmBookingMutation = useConfirmTicketingBooking();
   const createSeatBookingMutation = useCreateAttractionSeatBooking();
 
   // Close dropdown on outside click
@@ -2607,12 +2610,7 @@ export default function CustomerInfoView({
         unitPrice: grandTotal,
         totalPrice: grandTotal,
       }],
-      seats: selectedSeatObjs.map((seatObj) => ({
-        slotId: null,
-        visitDate: passDetails.date || todayDateStr,
-        bogie: seatObj.sectionName || bookingSummary.find((b) => b.attractionId === seatObj.attractionId)?.attractionName || "Seat 1",
-        seatNumber: seatObj.name,
-      })),
+      seats: [],
       subtotal: localSubtotal,
       gstAmount: localGstAmount,
       gstAdjustment,
@@ -2627,7 +2625,33 @@ export default function CustomerInfoView({
 
   async function handleConfirmPayment(payMethod: "CASH" | "UPI" | "CARD" | "ONLINE", amtRcv: number) {
     try {
-      // If seating is required and seats were selected, call attraction-seat-booking API for all attractions
+      let bId = createdBookingId;
+
+      // 1. Create Booking when Confirm Payment is clicked
+      if (!bId && pendingBookingPayload) {
+        const createRes = await createBookingMutation.mutateAsync(pendingBookingPayload as any);
+        const bookingData = (createRes as any)?.data?.booking || (createRes as any)?.booking || (createRes as any)?.data || createRes;
+        if (bookingData?.id) {
+          bId = bookingData.id;
+          setCreatedBookingId(bookingData.id);
+        }
+      }
+
+      // 2. Process Payment & 3. Confirm Booking to generate ticket
+      if (bId) {
+        await paymentMutation.mutateAsync({
+          bookingId: bId,
+          payload: {
+            amountPaid: amtRcv,
+            payment: { mode: payMethod },
+          },
+        });
+        const confirmRes = await confirmBookingMutation.mutateAsync(bId);
+        const data = (confirmRes as any)?.data || confirmRes;
+        setConfirmedTicketData(data);
+      }
+
+      // 4. If seating is required and seats were selected, call attraction-seat-booking API for all attractions
       if (hasSeatingRequired && selectedSeatObjs.length > 0) {
         const bookings: { attractionId: string; tripNo: number; attractionSeatId: string; seatNo: number[] }[] = [];
 
@@ -3641,7 +3665,7 @@ export default function CustomerInfoView({
         onClose={() => setShowPaymentModal(false)}
         grandTotal={grandTotal}
         attractionName={allAttractionsText}
-        isSubmitting={createSeatBookingMutation.isPending}
+        isSubmitting={createBookingMutation.isPending || paymentMutation.isPending || confirmBookingMutation.isPending || createSeatBookingMutation.isPending}
         onConfirm={handleConfirmPayment}
       />
 
