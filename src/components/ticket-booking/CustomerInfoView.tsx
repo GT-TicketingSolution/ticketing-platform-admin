@@ -30,7 +30,6 @@ import {
   useCreateTicketingBooking,
   useTicketingPayment,
   useConfirmTicketingBooking,
-  useCancelTicketingBooking,
   useAttractionTripNo,
   useAttractionSeatAvailability,
   useCreateAttractionSeatBooking,
@@ -83,7 +82,7 @@ function ProcessPaymentModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (payMethod: "CASH" | "UPI" | "CARD" | "ONLINE", amtRcv: number) => void;
+  onConfirm: (payMethod: "CASH" | "UPI" | "CARD" | "ONLINE", amtRcv: number, amountReceived: number, returnAmount: number) => void;
   grandTotal: number;
   attractionName: string;
   isSubmitting?: boolean;
@@ -457,7 +456,9 @@ function ProcessPaymentModal({
               // For cash: amountPaid = Amount Received − Change Return (net amount paid)
               // For online: amountPaid = grandTotal
               const netAmountPaid = isOnline ? grandTotal : (numAmtRcv - change);
-              onConfirm(mode, netAmountPaid);
+              const receivedAmt = isOnline ? grandTotal : numAmtRcv;
+              const returnAmt = isOnline ? 0 : change;
+              onConfirm(mode, netAmountPaid, receivedAmt, returnAmt);
             }}
             disabled={isSubmitting || !isCashAmountValid}
             className="pay-confirm-btn"
@@ -525,15 +526,15 @@ function printReceiptViaIframe(elementId: string) {
     <!DOCTYPE html>
     <html>
       <head>
-        <title>Ticket Receipt</title>
+        <title>Ticket Bill</title>
         <meta charset="utf-8" />
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800;900&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800;900&display=swap" rel="stylesheet">
         <style>
           @page {
             size: auto;
-            margin: 2mm 0mm;
+            margin: 0;
           }
           * {
             box-sizing: border-box;
@@ -541,15 +542,16 @@ function printReceiptViaIframe(elementId: string) {
             padding: 0;
           }
           body {
-            font-family: 'Courier New', Courier, monospace;
-            color: #0F172A;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Courier New', Courier, monospace;
+            color: #000000;
             background: #FFFFFF;
             width: 80mm;
-            max-width: 100%;
+            max-width: 80mm;
             margin: 0 auto;
-            padding: 4mm 3mm;
+            padding: 2mm 1.5mm;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            font-weight: 700;
           }
           table {
             width: 100%;
@@ -576,7 +578,7 @@ function printReceiptViaIframe(elementId: string) {
       console.error("Iframe print error:", err);
       window.print();
     }
-  }, 250);
+  }, 200);
 }
 
 // ── Ticket Generated Modal (Thermal Receipt Layout matching real POS receipt) ──
@@ -661,7 +663,7 @@ function TicketGeneratedModal({
     })
     : "-";
 
-  const custName = (booking?.customerName || customerInfo.name || "").trim() || "-";
+  const custName = (booking?.customerName || customerInfo.name || "").trim() || "Guest";
   const custMobile = (booking?.mobileNumber || customerInfo.mobile || "").trim() || "-";
 
   const calculatedSubtotal = subtotal > 0 ? subtotal : Number((finalTotal / 1.18).toFixed(2));
@@ -686,12 +688,12 @@ function TicketGeneratedModal({
     printReceiptViaIframe("printable-ticket-receipt");
   };
 
-  // Auto-print when modal opens using isolated clean receipt iframe
+  // Directly trigger print as soon as ticket popup opens
   useEffect(() => {
     if (isOpen && typeof window !== "undefined") {
       const t = setTimeout(() => {
         printReceiptViaIframe("printable-ticket-receipt");
-      }, 400);
+      }, 250);
       return () => clearTimeout(t);
     }
   }, [isOpen]);
@@ -719,12 +721,12 @@ function TicketGeneratedModal({
         className="ticket-modal-content"
         style={{
           background: "#FFFFFF",
-          borderRadius: "24px",
-          width: "520px",
+          borderRadius: "20px",
+          width: "480px",
           maxWidth: "96vw",
           boxShadow: "0 24px 80px rgba(0,0,0,0.28)",
           fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-          padding: "28px 24px 28px",
+          padding: "24px 20px",
           boxSizing: "border-box",
           position: "relative",
           maxHeight: "92vh",
@@ -734,51 +736,41 @@ function TicketGeneratedModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div style={{ textAlign: "center", marginBottom: "16px", flexShrink: 0 }}>
+        <div style={{ textAlign: "center", marginBottom: "12px", flexShrink: 0 }}>
           <div
             style={{
-              width: "40px",
-              height: "40px",
+              width: "36px",
+              height: "36px",
               borderRadius: "50%",
-              border: "3px solid #1FA35A",
+              border: "2.5px solid #1FA35A",
               background: "#E8F8EE",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              margin: "0 auto 8px auto",
+              margin: "0 auto 6px auto",
             }}
           >
-            <Check size={24} color="#1FA35A" strokeWidth={3.5} />
+            <Check size={20} color="#1FA35A" strokeWidth={3.5} />
           </div>
           <h2
             style={{
               margin: 0,
               fontWeight: 800,
-              fontSize: "22px",
-              lineHeight: "28px",
+              fontSize: "20px",
+              lineHeight: "24px",
               color: "#011B2F",
             }}
           >
-            Ticket Generated!
+            Ticket Generated
           </h2>
-          <p
-            style={{
-              margin: "3px 0 0 0",
-              fontWeight: 600,
-              fontSize: "12px",
-              color: "#64748B",
-            }}
-          >
-            Your ticket is ready. You can print it or close this window.
-          </p>
         </div>
 
         {/* Scrollable Receipt Area */}
         <div
           style={{
             overflowY: "auto",
-            paddingRight: "4px",
-            marginBottom: "18px",
+            paddingRight: "2px",
+            marginBottom: "14px",
             flexGrow: 1,
           }}
         >
@@ -787,53 +779,66 @@ function TicketGeneratedModal({
             id="printable-ticket-receipt"
             style={{
               background: "#FFFFFF",
-              border: "1.5px solid #CBD5E1",
-              borderRadius: "14px",
-              padding: "20px 18px",
-              fontFamily: "'Courier New', Courier, monospace",
-              color: "#0F172A",
+              border: "1.5px solid #000000",
+              borderRadius: "10px",
+              padding: "16px 14px",
+              fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Courier New', Courier, monospace",
+              color: "#000000",
               fontSize: "12px",
               lineHeight: "1.35",
               boxShadow: "0 4px 14px rgba(0,0,0,0.06)",
+              fontWeight: 700,
             }}
           >
-            {/* Business / Organization Name */}
-            <div style={{ textAlign: "center", borderBottom: "1px dashed #94A3B8", paddingBottom: "12px" }}>
-              {businessName && (
-                <p style={{ margin: "0 0 2px 0", fontSize: "11px", fontWeight: 700, color: "#475569", letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                  {businessName}
-                </p>
-              )}
+            {/* Header: Attraction Name + CIN & GST */}
+            <div style={{ textAlign: "center", borderBottom: "1px dashed #000000", paddingBottom: "10px" }}>
               <h3
                 style={{
-                  margin: "0 0 3px 0",
+                  margin: "0 0 4px 0",
                   fontWeight: 900,
-                  fontSize: "16px",
-                  color: "#0F172A",
-                  letterSpacing: "0.02em",
+                  fontSize: "18px",
+                  color: "#000000",
+                  letterSpacing: "0.03em",
                   textTransform: "uppercase",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontFamily: "'Plus Jakarta Sans', Arial, sans-serif",
+                  lineHeight: "1.2",
                 }}
               >
                 {attractionName || "-"}
               </h3>
-              <p style={{ margin: "2px 0", fontSize: "11px", fontWeight: 700, color: "#64748B" }}>
-                Booking Confirmation Receipt
-              </p>
+
+              {/* CIN & GST info */}
+              <div
+                style={{
+                  margin: "3px 0 2px 0",
+                  fontSize: "11.5px",
+                  fontWeight: 800,
+                  lineHeight: "1.4",
+                  color: "#000000",
+                  fontFamily: "'Courier New', Courier, monospace",
+                  letterSpacing: "0.02em",
+                }}
+              >
+                <div>CIN: U15532RJ1998PLC015036</div>
+                <div>GST: 08AAKCS3004M1Z7</div>
+                <div style={{ fontSize: "10px", fontWeight: 700, marginTop: "2px" }}>
+                  Phone: 73000-95-806, 73000-95-807, 73000-95-808
+                </div>
+              </div>
 
               {/* Slot & Seat Information if applicable */}
               {selectedSeats && selectedSeats.length > 0 && (
                 <div
                   style={{
-                    margin: "8px auto 0 auto",
-                    padding: "4px 10px",
+                    margin: "6px auto 0 auto",
+                    padding: "3px 8px",
                     background: "#F1F5F9",
-                    borderRadius: "6px",
+                    borderRadius: "4px",
                     display: "inline-block",
                     fontSize: "11px",
-                    fontWeight: 700,
-                    color: "#0F172A",
-                    border: "1px solid #CBD5E1",
+                    fontWeight: 800,
+                    color: "#000000",
+                    border: "1px solid #000000",
                   }}
                 >
                   <div>Seats: {seatText}</div>
@@ -842,36 +847,32 @@ function TicketGeneratedModal({
             </div>
 
             {/* Prominent Total Header */}
-            <div style={{ textAlign: "center", padding: "12px 0", borderBottom: "1px dashed #94A3B8" }}>
-              <div style={{ fontSize: "24px", fontWeight: 900, color: "#0F172A", letterSpacing: "0.02em" }}>
+            <div style={{ textAlign: "center", padding: "10px 0", borderBottom: "1px dashed #000000" }}>
+              <div style={{ fontSize: "28px", fontWeight: 900, color: "#000000", letterSpacing: "0.01em", lineHeight: "1.1" }}>
                 ₹{finalTotal.toFixed(2)}
               </div>
-              <div style={{ fontSize: "12px", fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>
+              <div style={{ fontSize: "12px", fontWeight: 800, color: "#000000", textTransform: "uppercase", marginTop: "2px" }}>
                 Total Amount Paid ({payMode || "-"})
               </div>
             </div>
 
             {/* Invoice & Customer Meta */}
-            <div style={{ padding: "10px 0", borderBottom: "1px dashed #94A3B8", fontSize: "11px" }}>
+            <div style={{ padding: "8px 0", borderBottom: "1px dashed #000000", fontSize: "11.5px", fontWeight: 700, color: "#000000" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
                 <span><strong>Invoice:</strong> {ticketNo}</span>
                 <span><strong>Bill To:</strong> {custName}</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span><strong>Date:</strong> {formattedDate}</span>
                 <span><strong>Time:</strong> {formattedTime}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span><strong>Mobile:</strong> {custMobile}</span>
-                <span><strong>Status:</strong> {booking?.status || "CONFIRMED"}</span>
               </div>
             </div>
 
             {/* Items Table */}
-            <div style={{ padding: "10px 0", borderBottom: "1px dashed #94A3B8" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+            <div style={{ padding: "8px 0", borderBottom: "1px dashed #000000" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11.5px", color: "#000000" }}>
                 <thead>
-                  <tr style={{ borderBottom: "1px solid #CBD5E1", textAlign: "left" }}>
+                  <tr style={{ borderBottom: "1.5px solid #000000", textAlign: "left", fontWeight: 900 }}>
                     <th style={{ paddingBottom: "4px", width: "12%" }}>S.No.</th>
                     <th style={{ paddingBottom: "4px", width: "50%" }}>Category / Item</th>
                     <th style={{ paddingBottom: "4px", width: "15%", textAlign: "center" }}>Qty</th>
@@ -881,7 +882,7 @@ function TicketGeneratedModal({
                 <tbody>
                   {itemsList.length > 0 ? (
                     itemsList.map((item, idx) => (
-                      <tr key={idx}>
+                      <tr key={idx} style={{ fontWeight: 700 }}>
                         <td style={{ paddingTop: "5px", verticalAlign: "top" }}>{item.sNo}</td>
                         <td style={{ paddingTop: "5px" }}>{item.name}</td>
                         <td style={{ paddingTop: "5px", textAlign: "center", verticalAlign: "top" }}>{item.qty}</td>
@@ -891,7 +892,7 @@ function TicketGeneratedModal({
                       </tr>
                     ))
                   ) : (
-                    <tr>
+                    <tr style={{ fontWeight: 700 }}>
                       <td style={{ paddingTop: "5px" }}>1</td>
                       <td style={{ paddingTop: "5px" }}>{attractionName || "-"}</td>
                       <td style={{ paddingTop: "5px", textAlign: "center" }}>{totalPax || 1}</td>
@@ -903,16 +904,16 @@ function TicketGeneratedModal({
             </div>
 
             {/* Tax and Adjustment Breakdown */}
-            <div style={{ padding: "10px 0", borderBottom: "1px dashed #94A3B8", fontSize: "11px" }}>
+            <div style={{ padding: "8px 0", borderBottom: "1px dashed #000000", fontSize: "11.5px", fontWeight: 700, color: "#000000" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
                 <span>Sub-Total</span>
                 <span>₹{calculatedSubtotal.toFixed(2)}</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px", color: "#64748B" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
                 <span>SGST (9%)</span>
                 <span>₹{halfGst.toFixed(2)}</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px", color: "#64748B" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
                 <span>CGST (9%)</span>
                 <span>₹{halfGst.toFixed(2)}</span>
               </div>
@@ -920,7 +921,7 @@ function TicketGeneratedModal({
                 <span>Effective GST (18%)</span>
                 <span>₹{calculatedGst.toFixed(2)}</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px", color: "#64748B" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
                 <span>Round Off</span>
                 <span>{roundOff >= 0 ? `+₹${roundOff.toFixed(2)}` : `-₹${Math.abs(roundOff).toFixed(2)}`}</span>
               </div>
@@ -929,9 +930,9 @@ function TicketGeneratedModal({
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  fontSize: "13px",
+                  fontSize: "14px",
                   fontWeight: 900,
-                  borderTop: "1px solid #0F172A",
+                  borderTop: "1.5px solid #000000",
                   paddingTop: "6px",
                   marginTop: "4px",
                 }}
@@ -941,114 +942,106 @@ function TicketGeneratedModal({
               </div>
             </div>
 
-            {/* QR Codes Section (Supports Single or Multiple Attractions/QR Codes) */}
-            <div style={{ padding: "14px 0 12px 0", borderBottom: "1px dashed #94A3B8" }}>
-              {qrCodes && qrCodes.length > 0 ? (
-                <div>
-                  {qrCodes.length > 1 && (
-                    <p style={{ margin: "0 0 10px 0", fontSize: "11px", fontWeight: 700, color: "#475569", textAlign: "center" }}>
-                      ENTRY QR CODES ({qrCodes.length} ATTRACTIONS)
-                    </p>
-                  )}
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: qrCodes.length > 2 ? "column" : "row",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      gap: "14px",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    {qrCodes.map((qrItem, idx) => {
-                      const matchedAttraction = bookingSummary.find((b) => b.attractionId === qrItem.attractionId);
-                      const attractionLabel = matchedAttraction?.attractionName || (qrCodes.length > 1 ? `Attraction ${idx + 1}` : attractionName || "Entry Gate");
+            {/* QR Codes Section */}
+            {qrCodes && qrCodes.length > 0 && (
+              <div style={{ padding: "12px 0 10px 0", borderBottom: "1px dashed #000000" }}>
+                {qrCodes.length > 1 && (
+                  <p style={{ margin: "0 0 8px 0", fontSize: "11px", fontWeight: 800, color: "#000000", textAlign: "center", textTransform: "uppercase" }}>
+                    ENTRY QR CODES ({qrCodes.length} ATTRACTIONS)
+                  </p>
+                )}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: qrCodes.length > 2 ? "column" : "row",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    gap: "12px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  {qrCodes.map((qrItem, idx) => {
+                    const matchedAttraction = bookingSummary.find((b) => b.attractionId === qrItem.attractionId);
+                    const attractionLabel = matchedAttraction?.attractionName || (qrCodes.length > 1 ? `Station ${idx + 1}` : "Scan for Entry");
 
-                      return (
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          padding: "8px 10px",
+                          background: "#FFFFFF",
+                          border: "1.5px solid #000000",
+                          borderRadius: "8px",
+                          minWidth: qrCodes.length > 1 ? "140px" : "160px",
+                          maxWidth: "190px",
+                          boxSizing: "border-box",
+                        }}
+                      >
                         <div
-                          key={idx}
                           style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            padding: "10px 12px",
-                            background: "#F8FAFC",
-                            border: "1px solid #CBD5E1",
-                            borderRadius: "10px",
-                            minWidth: qrCodes.length > 1 ? "170px" : "190px",
-                            flex: qrCodes.length === 2 ? "1 1 170px" : undefined,
-                            maxWidth: "230px",
-                            boxSizing: "border-box",
+                            fontSize: "11px",
+                            fontWeight: 900,
+                            color: "#000000",
+                            marginBottom: "5px",
+                            textAlign: "center",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.02em",
+                            lineHeight: 1.2,
                           }}
                         >
-                          <div
-                            style={{
-                              fontSize: "11px",
-                              fontWeight: 800,
-                              color: "#0F172A",
-                              marginBottom: "6px",
-                              textAlign: "center",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.02em",
-                              lineHeight: 1.25,
-                            }}
-                          >
-                            {attractionLabel}
-                          </div>
-                          <img
-                            src={qrItem.qrCode}
-                            alt={`${attractionLabel} QR Code`}
-                            style={{
-                              width: "125px",
-                              height: "125px",
-                              objectFit: "contain",
-                              background: "#FFFFFF",
-                              border: "1px solid #CBD5E1",
-                              borderRadius: "6px",
-                              padding: "4px",
-                            }}
-                          />
-                          <span
-                            style={{
-                              fontSize: "10px",
-                              fontWeight: 700,
-                              color: "#64748B",
-                              marginTop: "6px",
-                              textAlign: "center",
-                            }}
-                          >
-                            Scan for Entry
-                          </span>
+                          {attractionLabel}
                         </div>
-                      );
-                    })}
-                  </div>
+                        <img
+                          src={qrItem.qrCode}
+                          alt={`${attractionLabel} QR Code`}
+                          style={{
+                            width: "115px",
+                            height: "115px",
+                            objectFit: "contain",
+                            background: "#FFFFFF",
+                            display: "block",
+                          }}
+                        />
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 800,
+                            color: "#000000",
+                            marginTop: "5px",
+                            textAlign: "center",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Scan for Entry
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
-              ) : (
-                <div style={{ textAlign: "center", padding: "10px", color: "#64748B", fontSize: "11px" }}>
-                  QR Code will be scanned at the turnstile.
-                </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Clean Terms / Notice */}
-            <div style={{ padding: "10px 0 4px 0", fontSize: "11px", color: "#475569", lineHeight: "1.45", textAlign: "center" }}>
-              <div style={{ fontWeight: 700, marginBottom: "2px" }}>Thank you for visiting!</div>
-              <div style={{ fontSize: "10px", color: "#64748B" }}>
-                Please present this QR code at the entrance gate. Keep this ticket safe during your visit.
+            <div style={{ padding: "8px 0 2px 0", fontSize: "11px", color: "#000000", lineHeight: "1.4", textAlign: "center", fontWeight: 700 }}>
+              <div style={{ fontWeight: 900, marginBottom: "2px", letterSpacing: "0.04em" }}>THANKS FOR VISIT</div>
+              <div style={{ fontSize: "10px", fontWeight: 600 }}>
+                Please present this QR code at the entrance gate. Keep this ticket safe.
               </div>
             </div>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div style={{ display: "flex", gap: "12px", alignItems: "center", flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexShrink: 0 }}>
           <button
             type="button"
             onClick={handlePrint}
             style={{
               flex: 1,
-              height: "46px",
+              height: "44px",
               background: "#FFFFFF",
               border: "1.5px solid #002A45",
               borderRadius: "10px",
@@ -1064,7 +1057,7 @@ function TicketGeneratedModal({
               transition: "all 0.15s ease",
             }}
           >
-            <Printer size={18} color="#002A45" /> Print Receipt
+            <Printer size={18} color="#002A45" /> Print Ticket
           </button>
 
           <button
@@ -1072,7 +1065,7 @@ function TicketGeneratedModal({
             onClick={onClose}
             style={{
               flex: 1,
-              height: "46px",
+              height: "44px",
               background: "#F4BC43",
               borderRadius: "10px",
               border: "none",
@@ -1104,12 +1097,14 @@ function TicketGeneratedModal({
             left: 0 !important;
             top: 0 !important;
             width: 80mm !important;
-            max-width: 100% !important;
+            max-width: 80mm !important;
             margin: 0 auto !important;
-            padding: 8px !important;
+            padding: 4px !important;
             box-shadow: none !important;
             border: none !important;
             font-size: 11px !important;
+            font-weight: 700 !important;
+            color: #000000 !important;
           }
           .ticket-modal-overlay {
             background: transparent !important;
@@ -1134,7 +1129,7 @@ function TicketGeneratedModalWithProfile(props: Parameters<typeof TicketGenerate
   return <TicketGeneratedModal {...props} businessName={businessName} />;
 }
 
-// ── Selected Seat Object Type ────────────────────────────────────────────────
+// ── Selected Seat Object Type 
 export interface SelectedSeatObj {
   attractionId: string;
   attractionSeatId: string | null;
@@ -1180,8 +1175,6 @@ function SeatAllocationPanel({
   isLoadingSeats,
   isFetchingSeats,
   refetchSeats,
-  timeSlot,
-  onTimeSlotChange,
   slotDate,
 }: SeatAllocationPanelProps) {
   // Find currently active attraction
@@ -1523,15 +1516,15 @@ function SeatAllocationPanel({
                           ? "#16A34A"
                           : "#DCFCE7"
                         : isActive
-                        ? "#D97706"
-                        : "#FEF3C7",
+                          ? "#D97706"
+                          : "#FEF3C7",
                       color: isComplete
                         ? isActive
                           ? "#FFFFFF"
                           : "#166534"
                         : isActive
-                        ? "#FFFFFF"
-                        : "#92400E",
+                          ? "#FFFFFF"
+                          : "#92400E",
                     }}
                   >
                     {isComplete ? `✓ ${attAllocated}/${attPax} Seats` : `${attAllocated}/${attPax} Seats`}
@@ -1606,24 +1599,24 @@ function SeatAllocationPanel({
                 const statusLabel = isFull && !hasAllocated
                   ? "Booked"
                   : isSecActive
-                  ? "Selected"
-                  : isFull
-                  ? "Booked"
-                  : hasAllocated
-                  ? `Selected`
-                  : "Available";
+                    ? "Selected"
+                    : isFull
+                      ? "Booked"
+                      : hasAllocated
+                        ? `Selected`
+                        : "Available";
 
                 const statusBg = isFull && !hasAllocated
                   ? "rgba(179,175,175,0.4)"
                   : isSecActive || hasAllocated
-                  ? "rgba(244,188,67,0.61)"
-                  : "rgba(34,197,94,0.15)";
+                    ? "rgba(244,188,67,0.61)"
+                    : "rgba(34,197,94,0.15)";
 
                 const statusColor = isFull && !hasAllocated
                   ? "#475569"
                   : isSecActive || hasAllocated
-                  ? "#173F63"
-                  : "#15803D";
+                    ? "#173F63"
+                    : "#15803D";
 
                 return (
                   <div
@@ -1638,10 +1631,10 @@ function SeatAllocationPanel({
                       border: isSecActive
                         ? "1.5px solid #173F63"
                         : hasAllocated
-                        ? "1.5px solid #D99B1E"
-                        : isCardDisabled
-                        ? "1.5px solid #E2E8F0"
-                        : "1.5px solid rgba(179,175,175,0.51)",
+                          ? "1.5px solid #D99B1E"
+                          : isCardDisabled
+                            ? "1.5px solid #E2E8F0"
+                            : "1.5px solid rgba(179,175,175,0.51)",
                       borderRadius: "13px",
                       padding: "10px 14px",
                       cursor: isCardDisabled ? "not-allowed" : "pointer",
@@ -1668,8 +1661,8 @@ function SeatAllocationPanel({
                       {hasAllocated
                         ? `Seat No: ${secAllocatedSeats.map((s) => String(s.seatOrder).padStart(2, "0")).join(", ")} Allocated`
                         : isFull
-                        ? "All seats booked"
-                        : "Click to view and allocate"}
+                          ? "All seats booked"
+                          : "Click to view and allocate"}
                     </p>
                     <p style={{ margin: 0, fontSize: "9.5px", fontWeight: 500, color: "#94A3B8" }}>
                       {hasAllocated ? "Assigned to passenger" : isFull ? "Section is full" : isSecActive ? "Currently viewing section" : "Section available"}
@@ -2445,8 +2438,8 @@ export default function CustomerInfoView({
       setPaxAssignment(nextAsgn);
       setSeatValidationError(null);
     }
-  // Run whenever seat availability data changes (i.e., loads/refetches)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Run whenever seat availability data changes (i.e., loads/refetches)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seatAvailData]);
 
   function handleSelectedSeatsChange(
@@ -2561,56 +2554,22 @@ export default function CustomerInfoView({
     setSeatValidationError(null);
 
     const firstAttraction = bookingSummary[0];
-    const items = bookingSummary.flatMap((b) =>
-      b.passengers
-        .filter((p) => p.qty > 0)
-        .map((p) => ({
-          attractionId: b.attractionId || "",
-          category: p.key || p.label,
-          quantity: p.qty,
-          unitPrice: p.unitPrice ?? (p.qty > 0 ? b.totalAmount / p.qty : 0),
-          totalPrice: (p.unitPrice ?? (p.qty > 0 ? b.totalAmount / p.qty : 0)) * p.qty,
-        }))
-    );
 
     const localSubtotal = subtotal;
     const localGstAmount = gstAmount;
     const gstAdjustment = bookingSummary.reduce((s, b) => s + (b.gstAdjustment ?? 0), 0);
     const localRoundOff = roundOff;
 
-    const hasCustomerInput = !!(
-      selectedCustomer ||
-      searchQuery.trim() ||
-      guestDetails.guestName.trim() ||
-      guestDetails.mobile.trim()
-    );
+    const customerName = (selectedCustomer?.name || searchQuery || guestDetails.guestName || "").trim() || null;
+    const mobileNumber = (selectedCustomer?.mobile || guestDetails.mobile || "").trim() || null;
+    const gstNumber = (selectedCustomer?.gstn || "").trim() || null;
 
-    const customerPayload = hasCustomerInput
-      ? {
-        id: selectedCustomer?.id || null,
-        name: (selectedCustomer?.name || searchQuery || guestDetails.guestName || "").trim() || null,
-        mobile: (selectedCustomer?.mobile || guestDetails.mobile || "").trim() || null,
-        gstn: (selectedCustomer?.gstn || "").trim() || null,
-      }
-      : {
-        id: null,
-        name: null,
-        mobile: null,
-        gstn: null,
-      };
-
-    const payload = {
-      customer: customerPayload,
-      attractionId: firstAttraction.attractionId || "attraction-id",
+    // Build base payload (paymentMode / amountReceived / returnAmount added later in handleConfirmPayment)
+    const basePayload: Record<string, unknown> = {
+      customerName,
+      mobileNumber,
+      gstNumber,
       visitAt: new Date().toISOString(),
-      items: items.length > 0 ? items : [{
-        attractionId: firstAttraction.attractionId || "attraction-id",
-        category: "Adult",
-        quantity: 1,
-        unitPrice: grandTotal,
-        totalPrice: grandTotal,
-      }],
-      seats: [],
       subtotal: localSubtotal,
       gstAmount: localGstAmount,
       gstAdjustment,
@@ -2619,17 +2578,31 @@ export default function CustomerInfoView({
       totalAmount: grandTotal,
     };
 
-    setPendingBookingPayload(payload);
+    // Conditional attraction structure
+    if (bookingSummary.length > 1) {
+      basePayload.attractions = bookingSummary.map((b) => ({ attractionId: b.attractionId || "" }));
+    } else {
+      basePayload.attractionId = firstAttraction.attractionId || "";
+    }
+
+    setPendingBookingPayload(basePayload);
     setShowPaymentModal(true);
   }
 
-  async function handleConfirmPayment(payMethod: "CASH" | "UPI" | "CARD" | "ONLINE", amtRcv: number) {
+  async function handleConfirmPayment(payMethod: "CASH" | "UPI" | "CARD" | "ONLINE", amtRcv: number, amountReceived: number, returnAmount: number) {
     try {
       let bId = createdBookingId;
 
       // 1. Create Booking when Confirm Payment is clicked
       if (!bId && pendingBookingPayload) {
-        const createRes = await createBookingMutation.mutateAsync(pendingBookingPayload as any);
+        // Merge payment-time fields into the booking payload
+        const finalPayload = {
+          ...pendingBookingPayload,
+          paymentMode: payMethod,
+          amountReceived,
+          returnAmount,
+        };
+        const createRes = await createBookingMutation.mutateAsync(finalPayload as any);
         const bookingData = (createRes as any)?.data?.booking || (createRes as any)?.booking || (createRes as any)?.data || createRes;
         if (bookingData?.id) {
           bId = bookingData.id;

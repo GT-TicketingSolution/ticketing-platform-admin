@@ -159,16 +159,6 @@ export interface TicketingConfirmResponse {
   }>;
 }
 
-export interface TicketingCancelResponse {
-  message: string;
-  booking: {
-    id: string;
-    bookingNumber: string;
-    status: string;
-    [key: string]: unknown;
-  };
-}
-
 export interface CreateTicketingCustomerPayload {
   name: string;
   mobile: string;
@@ -475,24 +465,3 @@ export function useConfirmTicketingBooking() {
   });
 }
 
-/**
- * Cancel a PENDING booking (releases all reserved seats).
- * POST /api/admin/ticketing-booking/:bookingId/cancel
- */
-export function useCancelTicketingBooking() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (bookingId: string) =>
-      postData<TicketingCancelResponse, {}>(
-        AppUrl.ticketingBooking.cancel(bookingId),
-        {}
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ticketingBookingKeys.all });
-      showSuccessNotify("Booking cancelled successfully.");
-    },
-    onError: (err: any) => {
-      showErrorOnce(err?.error?.message || err?.message || "Failed to cancel booking.");
-    },
-  });
-}
