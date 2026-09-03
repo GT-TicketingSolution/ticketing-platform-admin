@@ -71,7 +71,7 @@ export const updateProfileSchema = z
 
     profileLink: z.string().optional().or(z.literal("")),
 
-    invoiceNumberForUserInitialPart: z
+    invoiceNumberForUsersInitialPart: z
       .string()
       .trim()
       .max(11, "Invoice number initial part cannot exceed 11 characters")
