@@ -64,6 +64,9 @@ export function useSeatLayouts(params?: SeatQueryParams) {
   return useQuery<SeatLayoutListResponse>({
     queryKey: seatKeys.list(params),
 
+    // Skip the API call entirely when enabled is explicitly false (e.g. edit mode)
+    enabled: params?.enabled !== false,
+
     queryFn: async () => {
       const searchParams = new URLSearchParams();
 

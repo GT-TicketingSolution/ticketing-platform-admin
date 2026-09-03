@@ -302,15 +302,82 @@ export default function AttractionManagementPage() {
       const durationVal = data.durationValue ? Number(data.durationValue) : data.duration ?? null;
       const durationUnitVal = data.durationUnit ?? "minutes";
 
+      const rawCategories = data.categories || data.visitorCategories || [];
+      const categoriesPayload = rawCategories.map((cat: any) => {
+        const numFuture =
+          cat.futurePrice !== undefined &&
+          cat.futurePrice !== null &&
+          cat.futurePrice !== "" &&
+          cat.futurePrice !== "00.00" &&
+          cat.futurePrice !== "0"
+            ? Number(cat.futurePrice)
+            : null;
+        const futurePrice =
+          numFuture !== null && !isNaN(numFuture) && numFuture > 0
+            ? numFuture
+            : null;
+
+        const effectiveFrom =
+          cat.effectiveFrom && String(cat.effectiveFrom).trim()
+            ? String(cat.effectiveFrom).trim()
+            : null;
+
+        const noOfSeats =
+          Number(cat.noOfSeats ?? cat.numberOfSeats) >= 1
+            ? Number(cat.noOfSeats ?? cat.numberOfSeats)
+            : 1;
+
+        // imageLink is set explicitly on CategoryItem when user uploads an image.
+        // cat.image holds the display image (could be local /Assets/... placeholder — exclude those).
+        const uploadedImg = cat.imageLink ?? null;
+        const imageLink = uploadedImg && typeof uploadedImg === "string" && uploadedImg.trim().length > 0
+          ? uploadedImg.trim()
+          : null;
+
+        return {
+          name: cat.name,
+          basePrice: Number(cat.basePrice) || 0,
+          futurePrice,
+          effectiveFrom,
+          noOfSeats,
+          imageLink,
+        };
+      });
+
+      const rawSeatLayouts = data.seatLayoutIds ?? [];
+      const seatLayoutIdsPayload = hasSeating
+        ? Array.isArray(rawSeatLayouts)
+          ? rawSeatLayouts.map((seat: any, idx: number) => {
+              if (typeof seat === "string") {
+                return {
+                  id: seat,
+                  name: `Seat Layout ${idx + 1}`,
+                  status: "active",
+                  position: idx + 1,
+                };
+              }
+              return {
+                id: seat.id || seat.layoutId,
+                name: seat.name || seat.displayName || `Seat ${idx + 1}`,
+                status: seat.status || (seat.isDisabled ? "inactive" : "active"),
+                position: Number(seat.position) || idx + 1,
+              };
+            })
+          : []
+        : [];
+
       if (viewMode === "edit" && attractionToEdit) {
         const payload: UpdateAttractionPayload = {
           name: data.name,
           category: data.category,
-          image: data.image ?? null,
-          description: data.description ?? null,
-          timing: data.timing ?? null,
+          image: data.image ?? "",
+          description: data.description ?? "",
+          timing: data.timing ?? "",
           duration: durationVal,
           durationUnit: durationUnitVal,
+          categories: categoriesPayload,
+          hasSeating,
+          seatLayoutIds: seatLayoutIdsPayload,
           adultPrice: data.pricing?.adult ?? data.adultPrice ?? 0,
           childPrice: data.pricing?.child ?? data.childPrice ?? 0,
           studentPrice: data.pricing?.student ?? data.studentPrice ?? 0,
@@ -321,8 +388,6 @@ export default function AttractionManagementPage() {
           studentSeats,
           seniorSeats,
           foreignerSeats,
-          hasSeating,
-          seatLayoutIds: selectedSeats,
         };
         console.log("UpdatePayload:", JSON.stringify(payload, null, 2));
         await updateMutation.mutateAsync({ id: attractionToEdit.id, data: payload });
@@ -330,26 +395,17 @@ export default function AttractionManagementPage() {
         const payload: CreateAttractionPayload = {
           name: data.name,
           category: data.category,
-          image: data.image ?? null,
-          description: data.description ?? null,
-          timing: data.timing ?? null,
-          duration: durationVal,
-          durationUnit: durationUnitVal,
-          adultPrice: data.pricing?.adult ?? data.adultPrice ?? 0,
-          childPrice: data.pricing?.child ?? data.childPrice ?? 0,
-          studentPrice: data.pricing?.student ?? data.studentPrice ?? 0,
-          seniorPrice: data.pricing?.senior ?? data.seniorPrice ?? 0,
-          foreignerPrice: data.pricing?.foreigner ?? data.foreignerPrice ?? 0,
-          adultSeats,
-          childSeats,
-          studentSeats,
-          seniorSeats,
-          foreignerSeats,
+          image: data.image ?? "",
+          description: data.description ?? "",
+          timing: data.timing ?? "",
+          duration: durationVal ? Number(durationVal) : null,
+          durationUnit: durationUnitVal || "minutes",
+          categories: categoriesPayload,
           hasSeating,
-          seatLayoutIds: selectedSeats,
+          seatLayoutIds: seatLayoutIdsPayload,
         };
-        await createMutation.mutateAsync(payload);
         console.log("CreatePayload:", JSON.stringify(payload, null, 2));
+        await createMutation.mutateAsync(payload);
       }
       setViewMode("list");
       window.scrollTo({ top: 0, behavior: "smooth" });

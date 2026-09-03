@@ -25,6 +25,8 @@ export interface CategoryItem {
   name: string;
   /** local public path or data-URL from user upload */
   image: string;
+  /** Only set when user uploads a real image (data: URL or http/https URL). Used as imageLink in the API payload. */
+  imageLink?: string | null;
   basePrice: string;
   futurePrice: string;
   effectiveFrom: string;
@@ -341,34 +343,55 @@ function VisitorCategoryAvatar({ src, name }: { src?: string; name: string }) {
 
 // ── Default categories using local /Assets/Visitors/ images 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
-  { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", basePrice: "100.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
+  { id: "adult", name: "Adult", image: "/Assests/Visitors/Adult.jpg", basePrice: "100.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
   { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", basePrice: "50.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
   { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", basePrice: "60.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
   { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.jpg", basePrice: "75.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
   { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", basePrice: "500.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
 ];
 
-// ── Helper: derive category list from an existing Attraction's pricing ─────
-function pricingToCategories(attraction: Attraction): CategoryItem[] {
-  const pricing = attraction?.pricing || ({} as any);
-  const seating = (attraction as any)?.seating || ({} as any);
-  const base = [
-    { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", price: pricing.adult, seats: seating.adult },
-    { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", price: pricing.child, seats: seating.child },
-    { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", price: pricing.student, seats: seating.student },
-    { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.jpg", price: pricing.senior, seats: seating.senior },
-    { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", price: pricing.foreigner, seats: seating.foreigner },
-  ];
-  return base.map((c) => ({
-    id: c.id,
-    name: c.name,
-    image: c.image,
-    basePrice: String(c.price != null ? c.price : "00.00"),
-    futurePrice: "00.00",
-    effectiveFrom: "",
-    numberOfSeats:
-      c.seats != null && Number(c.seats) >= 1 ? String(Number(c.seats)) : "1",
-  }));
+// ── Default image map per category name key ────────────────────────────────
+const DEFAULT_CATEGORY_IMAGES: Record<string, string> = {
+  adult: "/Assests/Visitors/Adult.jpg",
+  child: "/Assets/Visitors/Child.jpg",
+  student: "/Assets/Visitors/Student.jpg",
+  senior: "/Assets/Visitors/Senior.jpg",
+  foreigner: "/Assets/Visitors/Foreigner.jpg",
+};
+
+// ── Helper: build CategoryItem list from attraction.categories API array ────
+function apiCategoriesToCategoryItems(apiCats: any[]): CategoryItem[] {
+  if (!Array.isArray(apiCats) || apiCats.length === 0) return DEFAULT_CATEGORIES;
+  return apiCats.map((c) => {
+    const key = (c.name || "").toLowerCase();
+    const defaultImg = DEFAULT_CATEGORY_IMAGES[key] || "";
+    const imageUrl =
+      c.imageLink && typeof c.imageLink === "string" && c.imageLink.trim()
+        ? c.imageLink.trim()
+        : defaultImg;
+    return {
+      id: c.id || key,
+      name: c.name || "",
+      image: imageUrl,
+      imageLink:
+        c.imageLink && typeof c.imageLink === "string" && c.imageLink.trim()
+          ? c.imageLink.trim()
+          : null,
+      basePrice:
+        c.basePrice != null && !isNaN(Number(c.basePrice))
+          ? Number(c.basePrice).toFixed(2)
+          : "00.00",
+      futurePrice:
+        c.futurePrice != null && !isNaN(Number(c.futurePrice))
+          ? Number(c.futurePrice).toFixed(2)
+          : "00.00",
+      effectiveFrom: c.effectiveFrom || "",
+      numberOfSeats:
+        c.noOfSeats != null && Number(c.noOfSeats) >= 1
+          ? String(Number(c.noOfSeats))
+          : "1",
+    };
+  });
 }
 
 export default function AddEditAttractionForm({
@@ -443,8 +466,10 @@ export default function AddEditAttractionForm({
   const [openTime, setOpenTime] = useState("09:00");
   const [closeTime, setCloseTime] = useState("18:00");
 
-  // ── Fetch active seat layouts from backend API ────────────────────────────
-  const { data: seatData, isLoading: isSeatsLoading } = useSeatLayouts();
+  // ── Fetch active seat layouts from backend API (skipped during edit — seat data comes from the attraction GET response) ────
+  const { data: seatData, isLoading: isSeatsLoading } = useSeatLayouts({
+    enabled: !attractionToEdit, // disable API call in edit mode; use embedded seatLayouts instead
+  });
   const availableSeats: SeatConfigData[] = useMemo(() => {
     if (!seatData?.items || !Array.isArray(seatData.items)) return [];
     return seatData.items
@@ -467,15 +492,39 @@ export default function AddEditAttractionForm({
     return availableSeats.filter((s) => s.name.toLowerCase().includes(q));
   }, [availableSeats, seatSearchQuery]);
 
-  // ── Decorated allocated seats: maintain fixed suffix on instances (Garo - A, Garo - B) even when reordered
+  // ── Decorated allocated seats: resolve names from availableSeats OR embedded seatLayouts in the edit payload
   const decoratedAllocatedSeats = useMemo(() => {
+    // Merge API-fetched seats with any seatLayouts already embedded in the attraction GET response
+    const embeddedLayouts: SeatConfigData[] = Array.isArray(
+      (attractionToEdit as any)?.seatLayouts
+    )
+      ? (attractionToEdit as any).seatLayouts.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          rows: s.rows ?? 0,
+          cols: s.cols ?? 0,
+          hasAisle: !!s.hasAisle,
+          aisleAfterCol: s.aisleAfterCol ?? null,
+          status: s.status ?? "ACTIVE",
+          totalSeats: (s.rows ?? 0) * (s.cols ?? 0),
+        }))
+      : [];
+
+    // Combined source: prefer already-fetched seats, append any embedded ones not yet present
+    const combinedSeats = [...availableSeats];
+    embeddedLayouts.forEach((el) => {
+      if (!combinedSeats.find((s) => s.id === el.id)) {
+        combinedSeats.push(el);
+      }
+    });
+
     const totalCounts: Record<string, number> = {};
     allocatedSeats.forEach((item) => {
       totalCounts[item.layoutId] = (totalCounts[item.layoutId] || 0) + 1;
     });
 
     return allocatedSeats.map((item, index) => {
-      const seat = availableSeats.find((s) => s.id === item.layoutId);
+      const seat = combinedSeats.find((s) => s.id === item.layoutId);
       const baseName = seat ? seat.name : "Seat Layout";
       const totalForThisLayout = totalCounts[item.layoutId] || 0;
 
@@ -500,7 +549,7 @@ export default function AddEditAttractionForm({
         hasAisle: !!seat?.hasAisle,
       };
     });
-  }, [allocatedSeats, availableSeats]);
+  }, [allocatedSeats, availableSeats, attractionToEdit]);
 
   // ── Close Seat Dropdown on outside click 
   useEffect(() => {
@@ -591,7 +640,8 @@ export default function AddEditAttractionForm({
       }
 
       setImagePreview(attractionToEdit.image || null);
-      setCategories(pricingToCategories(attractionToEdit));
+      // Use categories array from GET response directly (includes basePrice, noOfSeats, imageLink)
+      setCategories(apiCategoriesToCategoryItems((attractionToEdit as any).categories || []));
       // Parse existing duration string (e.g. "20min / trip" or "1hr / trip") or numeric value back to value + unit safely
       const durProp = (attractionToEdit as any).duration;
       const durMinsProp = (attractionToEdit as any).durationMins;
@@ -669,8 +719,9 @@ export default function AddEditAttractionForm({
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
       setCategories((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, image: ev.target?.result as string } : c))
+        prev.map((c) => (c.id === id ? { ...c, image: dataUrl, imageLink: dataUrl } : c))
       );
     };
     reader.readAsDataURL(file);
@@ -950,7 +1001,14 @@ export default function AddEditAttractionForm({
         studentSeats: getSeatsByName("student"),
         seniorSeats: getSeatsByName("senior"),
         foreignerSeats: getSeatsByName("foreigner"),
-        visitorCategories: categories,
+        visitorCategories: categories.map((c) => ({
+          ...c,
+          imageLink: c.imageLink && c.imageLink.trim() ? c.imageLink.trim() : null,
+        })),
+        categories: categories.map((c) => ({
+          ...c,
+          imageLink: c.imageLink && c.imageLink.trim() ? c.imageLink.trim() : null,
+        })),
         assignedSeatIds: activeLayoutIds,
         seatLayoutIds: seatLayoutIdsAsObjects,
         assignedSeatNames: assignedSeatNames,
