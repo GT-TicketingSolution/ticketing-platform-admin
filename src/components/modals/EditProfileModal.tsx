@@ -248,6 +248,9 @@ export const validateInvoicePrefix = (prefix: string): string => {
   // Optional field: valid if empty
   if (!value) return "";
 
+  if (value.length < 4) {
+    return "Invoice prefix must be at least 4 characters";
+  }
   if (value.length > 11) {
     return "Invoice prefix cannot exceed 11 characters";
   }
@@ -651,7 +654,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
           </div>
         ) : (
           /* ── Form ── */
-          <form onSubmit={handleSubmit} style={{ padding: "18px 22px 22px" }}>
+          <form noValidate onSubmit={handleSubmit} style={{ padding: "18px 22px 22px" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               {/* ── Full Name & Email Address — side by side ── */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -789,7 +792,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                         color: "#9CA3AF",
                       }}
                     >
-                      Prefix max 11 characters
+                      Prefix 4-11 characters
                     </span>
                   </div>
 
@@ -820,11 +823,18 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                       value={formData.invoiceNumberForUsersInitialPart}
                       maxLength={11}
                       disabled={isSubmitting}
+                      onBlur={() => {
+                        const err = validateInvoicePrefix(formData.invoiceNumberForUsersInitialPart);
+                        if (err) {
+                          setErrors((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: err }));
+                        }
+                      }}
                       onChange={(e) => {
                         const val = e.target.value.toUpperCase().replace(/\s+/g, "");
                         setFormData((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: val }));
                         if (errors.invoiceNumberForUsersInitialPart) {
-                          setErrors((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: "" }));
+                          const err = validateInvoicePrefix(val);
+                          setErrors((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: err }));
                         }
                       }}
                       style={{
@@ -873,20 +883,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                     </span>
                   </div>
 
-                  {/* Helper text below input */}
-                  <span
-                    style={{
-                      fontSize: "11.5px",
-                      color: "#6B7280",
-                      fontFamily: typography.fontFamily.sans,
-                      lineHeight: "15px",
-                      marginTop: "2px",
-                    }}
-                  >
-                    The number after / auto-increments: INV-2026/001, INV-2026/002
-                  </span>
-
-                  {/* Error (prefix only) */}
+                  {/* Error directly below the field */}
                   {errors.invoiceNumberForUsersInitialPart ? (
                     <span
                       style={{
@@ -903,6 +900,19 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                       {errors.invoiceNumberForUsersInitialPart}
                     </span>
                   ) : null}
+
+                  {/* Helper text below input */}
+                  <span
+                    style={{
+                      fontSize: "11.5px",
+                      color: "#6B7280",
+                      fontFamily: typography.fontFamily.sans,
+                      lineHeight: "15px",
+                      marginTop: "2px",
+                    }}
+                  >
+                    The number after / auto-increments: INV-2026/001, INV-2026/002
+                  </span>
                 </div>
               )}
 
