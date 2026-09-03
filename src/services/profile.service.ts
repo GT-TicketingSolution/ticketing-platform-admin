@@ -17,6 +17,11 @@ export async function getProfile(userId: string) {
       status: users.status,
       phone: users.phone,
       businessName: users.businessName,
+      gst: users.gst,
+      cin: users.cin,
+      profileLink: users.profileLink,
+      invoiceNumberForUserInitialPart: users.invoiceNumberForUsersInitialPart,
+
       lastLoginAt: users.lastLoginAt,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
@@ -47,6 +52,10 @@ export async function updateProfile(
     email: string;
     phone?: string;
     businessName?: string;
+    gst?: string;
+    cin?: string;
+    profileLink?: string;
+    invoiceNumberForUserInitialPart?: string;
   },
 ) {
   /*
@@ -59,6 +68,10 @@ export async function updateProfile(
       role: users.role,
       status: users.status,
       businessName: users.businessName,
+      gst: users.gst,
+      cin: users.cin,
+      profileLink: users.profileLink,
+      invoiceNumberForUsersInitialPart: users.invoiceNumberForUsersInitialPart,
     })
     .from(users)
     .where(eq(users.id, userId))
@@ -102,6 +115,10 @@ export async function updateProfile(
     email: string;
     phone: string | null;
     businessName?: string;
+    gst?: string | null;
+    cin?: string | null;
+    profileLink?: string | null;
+    invoiceNumberForUserInitialPart?: string | null;
     updatedAt: Date;
   } = {
     name: data.name.trim(),
@@ -109,6 +126,10 @@ export async function updateProfile(
     phone:
       data.phone && data.phone.trim().length > 0 ? data.phone.trim() : null,
     updatedAt: new Date(),
+
+    gst: data.gst && data.gst.trim().length > 0 ? data.gst.trim() : null,
+
+    cin: data.cin && data.cin.trim().length > 0 ? data.cin.trim() : null,
   };
 
   /*
@@ -149,6 +170,11 @@ export async function updateProfile(
           status: users.status,
           phone: users.phone,
           businessName: users.businessName,
+          gst: users.gst,
+          cin: users.cin,
+          profileLink: users.profileLink,
+          invoiceNumberForUsersInitialPart:
+            users.invoiceNumberForUsersInitialPart,
           lastLoginAt: users.lastLoginAt,
           createdAt: users.createdAt,
           updatedAt: users.updatedAt,
@@ -194,6 +220,10 @@ export async function updateProfile(
       status: users.status,
       phone: users.phone,
       businessName: users.businessName,
+      gst: users.gst,
+      cin: users.cin,
+      profileLink: users.profileLink,
+      invoiceNumberForUsersInitialPart: users.invoiceNumberForUsersInitialPart,
       lastLoginAt: users.lastLoginAt,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,

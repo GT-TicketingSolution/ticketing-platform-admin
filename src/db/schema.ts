@@ -78,6 +78,11 @@ export const aisleDirectionEnum = pgEnum("aisle_direction", [
   "HORIZONTAL",
 ]);
 
+export const scannerInvoiceStatusEnum = pgEnum("scanner_invoice_status", [
+  "UNSCANNED",
+  "SCANNED",
+]);
+
 /* =========================================================
    USERS
 ========================================================= */
@@ -120,6 +125,23 @@ export const users = pgTable(
     phone: varchar("phone", {
       length: 20,
     }),
+
+    gst: varchar("gst", {
+      length: 15,
+    }),
+
+    cin: varchar("cin", {
+      length: 21,
+    }),
+
+    profileLink: text("profile_link"),
+
+    invoiceNumberForUsersInitialPart: varchar(
+      "invoice_number_for_user_initial_part",
+      {
+        length: 11,
+      },
+    ),
 
     lastLoginAt: timestamp("last_login_at", {
       withTimezone: true,
@@ -901,12 +923,6 @@ export const transactions = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
-    transactionNumber: varchar("transaction_number", {
-      length: 50,
-    })
-      .notNull()
-      .unique(),
-
     bookingId: uuid("booking_id")
       .notNull()
       .references(() => bookings.id, {
@@ -950,21 +966,7 @@ export const transactions = pgTable(
   },
 
   (table) => ({
-    transactionNumberIdx: index("transactions_transaction_number_idx").on(
-      table.transactionNumber,
-    ),
-
     bookingIdx: index("transactions_booking_idx").on(table.bookingId),
-
-    paymentModeIdx: index("transactions_payment_mode_idx").on(
-      table.paymentMode,
-    ),
-
-    statusIdx: index("transactions_status_idx").on(table.status),
-
-    createdAtIdx: index("transactions_created_at_idx").on(table.createdAt),
-
-    deletedAtIdx: index("transactions_deleted_at_idx").on(table.deletedAt),
   }),
 );
 
@@ -1933,6 +1935,112 @@ export const seatBookingHistory = pgTable(
     attractionTripIdx: index("seat_booking_history_attraction_trip_idx").on(
       table.attractionId,
       table.tripNo,
+    ),
+  }),
+);
+
+export const attractionCategory = pgTable(
+  "attraction_category",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    attractionManagementId: uuid("attraction_management_id")
+      .notNull()
+      .references(() => attractionManagement.id, {
+        onDelete: "cascade",
+      }),
+
+    name: text("name").notNull(),
+
+    basePrice: numeric("base_price", {
+      precision: 10,
+      scale: 5,
+    }).notNull(),
+
+    futurePrice: numeric("future_price", {
+      precision: 10,
+      scale: 5,
+    }),
+
+    effectiveFrom: date("effective_from"),
+
+    noOfSeats: integer("no_of_seats").notNull(),
+
+    imageLink: text("image_link"),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    attractionCategoryNameUnique: unique().on(
+      table.attractionManagementId,
+      table.name,
+    ),
+  }),
+);
+
+export const scannerInvoices = pgTable(
+  "scanner_invoice",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    invoiceNumber: varchar("invoice_number", {
+      length: 50,
+    })
+      .notNull()
+      .unique(),
+
+    scannerInvoiceStatus: scannerInvoiceStatusEnum("scanner_invoice_status")
+      .notNull()
+      .default("UNSCANNED"),
+
+    scannedByStaffId: uuid("scanned_by_staff_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+
+    scannedAt: timestamp("scanned_at", {
+      withTimezone: true,
+    }),
+
+    deletedAt: timestamp("deleted_at", {
+      withTimezone: true,
+    }),
+
+    deletedBy: uuid("deleted_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+
+    isDeleted: boolean("is_deleted").notNull().default(false),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+
+  (table) => ({
+    invoiceNumberIdx: index("scanner_invoices_invoice_number_idx").on(
+      table.invoiceNumber,
+    ),
+
+    scannedByStaffIdx: index("scanner_invoices_scanned_by_staff_idx").on(
+      table.scannedByStaffId,
     ),
   }),
 );

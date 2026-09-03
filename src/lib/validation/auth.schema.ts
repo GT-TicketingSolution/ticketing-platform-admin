@@ -54,5 +54,28 @@ export const updateProfileSchema = z
       .max(255, "Business name cannot exceed 255 characters")
       .optional()
       .or(z.literal("")),
+
+    gst: z
+      .string()
+      .trim()
+      .max(15, "GST cannot exceed 15 characters")
+      .optional()
+      .or(z.literal("")),
+
+    cin: z
+      .string()
+      .trim()
+      .max(21, "CIN cannot exceed 21 characters")
+      .optional()
+      .or(z.literal("")),
+
+    profileLink: z.string().optional().or(z.literal("")),
+
+    invoiceNumberForUserInitialPart: z
+      .string()
+      .trim()
+      .max(11, "Invoice number initial part cannot exceed 11 characters")
+      .optional()
+      .or(z.literal("")),
   })
   .strict();
