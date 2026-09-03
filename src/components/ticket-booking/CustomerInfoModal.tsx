@@ -26,7 +26,7 @@ import AddNewCustomerModal, { NewCustomer } from "./AddNewCustomerModal";
 export interface BookingSummaryItem {
   attractionId?: string;
   attractionName: string;
-  passengers: { label: string; qty: number }[];
+  passengers: { label: string; qty: number; noOfSeats?: number | null }[];
   totalAmount: number;
 }
 
@@ -567,10 +567,25 @@ function TicketGeneratedModal({
   gstAmount?: number;
   roundOff?: number;
 }) {
-  const booking = confirmedData?.booking;
-  const qrCodes = confirmedData?.qrCodes || [];
+  const booking = confirmedData?.booking || (confirmedData as any)?.data || (confirmedData as any);
+  const qrCodes: Array<{ attractionId?: string; qrCode: string; [key: string]: unknown }> =
+    confirmedData?.qrCodes || (confirmedData as any)?.data?.qrCodes || [];
 
-  const ticketNo = booking?.bookingNumber || "-";
+  const invoiceNum =
+    (booking as any)?.invoiceNumber ||
+    (confirmedData as any)?.data?.invoiceNumber ||
+    (confirmedData as any)?.invoiceNumber ||
+    (booking as any)?.transaction?.invoiceNumber ||
+    (confirmedData as any)?.data?.transaction?.invoiceNumber;
+
+  const ticketNo =
+    invoiceNum ||
+    booking?.bookingNumber ||
+    (confirmedData as any)?.data?.bookingNumber ||
+    (confirmedData as any)?.bookingNumber ||
+    (booking as any)?.bookingId ||
+    (confirmedData as any)?.data?.bookingId ||
+    "-";
   const finalTotal = booking?.totalAmount ? parseFloat(String(booking.totalAmount)) : grandTotal;
   const payMode = booking?.paymentMode || "CASH";
   const rawDate = booking?.visitAt || booking?.createdAt;
@@ -578,18 +593,18 @@ function TicketGeneratedModal({
 
   const formattedDate = dateObj && !isNaN(dateObj.getTime())
     ? dateObj.toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      })
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    })
     : "-";
 
   const formattedTime = dateObj && !isNaN(dateObj.getTime())
     ? dateObj.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      })
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    })
     : "-";
 
   const custName = (booking?.customerName || customerInfo.name || "").trim() || "Guest";
@@ -1073,11 +1088,20 @@ function TicketGeneratedModalWithProfile(props: Parameters<typeof TicketGenerate
 
 // ── Bogie Seat Allocation Panel ────────────────────────────────────────────────
 function SeatAllocationPanel({ bookingSummary }: { bookingSummary: import("./CustomerInfoModal").BookingSummaryItem[] }) {
-  const totalPax = bookingSummary.reduce((s, b) => s + b.passengers.reduce((x, p) => x + p.qty, 0), 0);
+  const totalPax = bookingSummary.reduce((s, b) => s + b.passengers.reduce((x, p) => x + (p.qty || 0) * (p.noOfSeats && p.noOfSeats > 0 ? p.noOfSeats : 1), 0), 0);
   const paxList: { label: string; idx: number }[] = [];
   bookingSummary.forEach(b => {
     const cnt: Record<string, number> = {};
-    b.passengers.forEach(p => { if (p.qty > 0) { for (let i = 1; i <= p.qty; i++) { cnt[p.label] = (cnt[p.label] || 0) + 1; paxList.push({ label: p.label, idx: cnt[p.label] }); } } });
+    b.passengers.forEach(p => {
+      if (p.qty > 0) {
+        const seatsPerTicket = p.noOfSeats && p.noOfSeats > 0 ? p.noOfSeats : 1;
+        const totalSeats = p.qty * seatsPerTicket;
+        for (let i = 1; i <= totalSeats; i++) {
+          cnt[p.label] = (cnt[p.label] || 0) + 1;
+          paxList.push({ label: p.label, idx: cnt[p.label] });
+        }
+      }
+    });
   });
   const [layouts, setLayouts] = useState<{ id: string; name: string; rows: number; cols: number; hasAisle: boolean; aisleAfterCol: number }[]>([]);
   useEffect(() => { try { const r = localStorage.getItem(SEAT_STORAGE_KEY); if (r) setLayouts(JSON.parse(r)); } catch { } }, []);

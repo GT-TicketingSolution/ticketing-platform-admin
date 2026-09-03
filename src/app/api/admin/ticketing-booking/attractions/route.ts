@@ -144,6 +144,10 @@ export async function GET(request: NextRequest) {
       return {
         id: row.id,
 
+        attractionManagementId: row.managementId,
+
+        managementId: row.managementId,
+
         name: row.name,
 
         category: row.category,
@@ -154,6 +158,8 @@ export async function GET(request: NextRequest) {
 
         categories: categories.map((category) => ({
           id: category.id,
+
+          attractionManagementId: category.attractionManagementId,
 
           name: category.name,
 

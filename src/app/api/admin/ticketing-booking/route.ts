@@ -318,6 +318,46 @@ export async function POST(request: NextRequest) {
 
       for (const attraction of data.attractions) {
         /* ===============================================
+           RESOLVE ATTRACTION DETAILS & MANAGEMENT ID
+        =============================================== */
+
+        let [mgmt] = await tx
+          .select({
+            id: attractionManagement.id,
+            attractionId: attractionManagement.attractionId,
+            attractionName: attractions.name,
+          })
+          .from(attractionManagement)
+          .innerJoin(
+            attractions,
+            eq(attractionManagement.attractionId, attractions.id),
+          )
+          .where(eq(attractionManagement.id, attraction.attractionManagementId))
+          .limit(1);
+
+        if (!mgmt) {
+          [mgmt] = await tx
+            .select({
+              id: attractionManagement.id,
+              attractionId: attractionManagement.attractionId,
+              attractionName: attractions.name,
+            })
+            .from(attractionManagement)
+            .innerJoin(
+              attractions,
+              eq(attractionManagement.attractionId, attractions.id),
+            )
+            .where(eq(attractions.id, attraction.attractionManagementId))
+            .limit(1);
+        }
+
+        if (!mgmt) {
+          throw new Error("ATTRACTION_NOT_FOUND");
+        }
+
+        const validManagementId = mgmt.id;
+
+        /* ===============================================
            INSERT ATTRACTION AGAINST BOOKING
         =============================================== */
 
@@ -326,7 +366,7 @@ export async function POST(request: NextRequest) {
           .values({
             bookingId: booking.id,
 
-            attractionManagementId: attraction.attractionManagementId,
+            attractionManagementId: validManagementId,
 
             attractionSubtotal: attraction.attractionSubtotal.toFixed(2),
 
@@ -402,33 +442,11 @@ export async function POST(request: NextRequest) {
           categoryResults.push(categoryAgainstBooking);
         }
 
-        const [attractionDetails] = await tx
-          .select({
-            attractionId: attractionManagement.attractionId,
-            attractionName: attractions.name,
-          })
-          .from(attractionManagement)
-          .innerJoin(
-            attractions,
-            eq(attractionManagement.attractionId, attractions.id),
-          )
-          .where(
-            eq(
-              attractionManagement.id,
-              attractionAgainstBooking.attractionManagementId,
-            ),
-          )
-          .limit(1);
-
-        if (!attractionDetails) {
-          throw new Error("ATTRACTION_NOT_FOUND");
-        }
-
         attractionResults.push({
           attraction: {
             ...attractionAgainstBooking,
-            attractionId: attractionDetails.attractionId,
-            attractionName: attractionDetails.attractionName,
+            attractionId: mgmt.attractionId,
+            attractionName: mgmt.attractionName,
           },
           categories: categoryResults,
         });

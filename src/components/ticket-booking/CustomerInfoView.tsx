@@ -39,19 +39,32 @@ import {
   AttractionSeatLayout,
   AttractionSeatAvailabilityData,
   CreateTicketingBookingPayload,
+  BookingAttractionPayload,
+  BookingCategoryPayload,
 } from "@/hooks/useTicketingBookingQueries";
 
 export interface BookingSummaryItem {
   attractionId?: string;
+  attractionManagementId?: string;
   attractionName: string;
   hasSeating?: boolean;
   seatLayoutId?: string | null;
-  passengers: { label: string; key?: string; qty: number; unitPrice?: number }[];
+  passengers: { label: string; key?: string; categoryId?: string; qty: number; unitPrice?: number; noOfSeats?: number | null }[];
   subtotal?: number;
   gstAmount?: number;
   gstAdjustment?: number;
+  attractionRoundOffGstAdj?: number;
   roundOff?: number;
   totalAmount: number;
+}
+
+export function getPassengerSeatCount(p: { qty: number; noOfSeats?: number | null }): number {
+  const seats = p.noOfSeats && p.noOfSeats > 0 ? p.noOfSeats : 1;
+  return (p.qty || 0) * seats;
+}
+
+export function getAttractionRequiredSeats(att: { passengers: { qty: number; noOfSeats?: number | null }[] }): number {
+  return att.passengers.reduce((s, p) => s + getPassengerSeatCount(p), 0);
 }
 
 interface CustomerInfoViewProps {
@@ -595,6 +608,7 @@ function TicketGeneratedModal({
   subtotal = 0,
   gstAmount = 0,
   roundOff = 0,
+  attractionRoundOffGstAdj = 0,
   businessName = "",
   timeSlot = "",
   seatDetails = [],
@@ -619,6 +633,8 @@ function TicketGeneratedModal({
       paymentMode?: string;
       createdAt?: string;
       updatedAt?: string;
+      attractionRoundOffGstAdj?: string | number;
+      gstAdjustment?: string | number;
       [key: string]: unknown;
     };
     qrCodes?: Array<{
@@ -637,6 +653,7 @@ function TicketGeneratedModal({
   subtotal?: number;
   gstAmount?: number;
   roundOff?: number;
+  attractionRoundOffGstAdj?: number;
   timeSlot?: string;
   seatDetails?: {
     attractionId: string;
@@ -665,11 +682,20 @@ function TicketGeneratedModal({
         ? [{ qrCode: rawQr }]
         : [];
 
+  const invoiceNum =
+    booking?.invoiceNumber ||
+    (confirmedData as any)?.data?.invoiceNumber ||
+    (confirmedData as any)?.invoiceNumber ||
+    booking?.transaction?.invoiceNumber ||
+    (confirmedData as any)?.data?.transaction?.invoiceNumber;
+
   const ticketNo =
+    invoiceNum ||
     booking?.bookingNumber ||
-    booking?.bookingId ||
     (confirmedData as any)?.data?.bookingNumber ||
     (confirmedData as any)?.bookingNumber ||
+    booking?.bookingId ||
+    (confirmedData as any)?.data?.bookingId ||
     "-";
   const finalTotal = booking?.totalAmount ? parseFloat(String(booking.totalAmount)) : grandTotal;
   const payMode = booking?.paymentMode || (confirmedData as any)?.paymentMode || "CASH";
@@ -706,6 +732,22 @@ function TicketGeneratedModal({
     : gstAmount > 0
       ? gstAmount
       : Number((finalTotal - calculatedSubtotal).toFixed(2));
+
+  const bookingGstAdj =
+    booking?.attractionRoundOffGstAdj !== undefined && booking?.attractionRoundOffGstAdj !== null
+      ? parseFloat(String(booking.attractionRoundOffGstAdj))
+      : booking?.gstAdjustment !== undefined && booking?.gstAdjustment !== null
+        ? parseFloat(String(booking.gstAdjustment))
+        : Array.isArray(booking?.attractions) && booking.attractions.length > 0
+          ? booking.attractions.reduce((sum: number, a: any) => sum + (parseFloat(String(a.attractionRoundOffGstAdj ?? a.gstAdjustment ?? 0)) || 0), 0)
+          : undefined;
+
+  const calculatedattractionRoundOffGstAdj =
+    bookingGstAdj !== undefined
+      ? bookingGstAdj
+      : attractionRoundOffGstAdj !== undefined && attractionRoundOffGstAdj !== null
+        ? attractionRoundOffGstAdj
+        : Number(bookingSummary.reduce((s, b) => s + (b.attractionRoundOffGstAdj ?? b.gstAdjustment ?? 0), 0).toFixed(2));
 
   const calculatedRoundOff = booking?.roundOff !== undefined && booking?.roundOff !== null
     ? parseFloat(String(booking.roundOff))
@@ -1041,25 +1083,21 @@ function TicketGeneratedModal({
                 <span>Effective GST (18%)</span>
                 <span>₹{calculatedGst.toFixed(2)}</span>
               </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                <span>GST Round Off</span>
+                <span>
+                  {calculatedattractionRoundOffGstAdj > 0
+                    ? `+₹${calculatedattractionRoundOffGstAdj.toFixed(2)}`
+                    : calculatedattractionRoundOffGstAdj < 0
+                      ? `-₹${Math.abs(calculatedattractionRoundOffGstAdj).toFixed(2)}`
+                      : `₹0.00`}
+                </span>
+              </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
                 <span>Round Off</span>
                 <span>{calculatedRoundOff >= 0 ? `+₹${calculatedRoundOff.toFixed(2)}` : `-₹${Math.abs(calculatedRoundOff).toFixed(2)}`}</span>
               </div>
 
-              {calculatedAmountReceived !== undefined && calculatedAmountReceived > 0 && (
-                <>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px", fontSize: "11px" }}>
-                    <span>Amount Received ({payMode})</span>
-                    <span>₹{calculatedAmountReceived.toFixed(2)}</span>
-                  </div>
-                  {calculatedReturnAmount !== undefined && calculatedReturnAmount > 0 && (
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px", fontSize: "11px" }}>
-                      <span>Change Return</span>
-                      <span>₹{calculatedReturnAmount.toFixed(2)}</span>
-                    </div>
-                  )}
-                </>
-              )}
 
               <div
                 style={{
@@ -1334,10 +1372,10 @@ function SeatAllocationPanel({
   const activeAttName = activeAttraction?.attractionName || "Attraction";
   const currentTrip = tripMap[activeAttId] || 1;
 
-  // Exact count of visitors for the currently active attraction
+  // Exact count of required seats for the currently active attraction
   const totalPaxForActiveAttraction = useMemo(() => {
     if (!activeAttraction) return 0;
-    return activeAttraction.passengers.reduce((s, p) => s + (p.qty || 0), 0);
+    return getAttractionRequiredSeats(activeAttraction);
   }, [activeAttraction]);
 
   // Dynamic list of individual passenger labels for active attraction
@@ -1347,7 +1385,9 @@ function SeatAllocationPanel({
     const cnt: Record<string, number> = {};
     activeAttraction.passengers.forEach((p) => {
       if (p.qty > 0) {
-        for (let i = 1; i <= p.qty; i++) {
+        const seatsPerTicket = p.noOfSeats && p.noOfSeats > 0 ? p.noOfSeats : 1;
+        const totalSeats = p.qty * seatsPerTicket;
+        for (let i = 1; i <= totalSeats; i++) {
           cnt[p.label] = (cnt[p.label] || 0) + 1;
           list.push({ label: p.label, idx: cnt[p.label] });
         }
@@ -1629,7 +1669,7 @@ function SeatAllocationPanel({
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
             {seatingAttractions.map((att) => {
               const isActive = att.attractionId === activeAttId;
-              const attPax = att.passengers.reduce((s, p) => s + (p.qty || 0), 0);
+              const attPax = getAttractionRequiredSeats(att);
               const attAllocated = selectedSeatObjs.filter((s) => s.attractionId === att.attractionId).length;
               const isComplete = attAllocated >= attPax && attPax > 0;
 
@@ -2651,14 +2691,16 @@ export default function CustomerInfoView({
 
     seatingAttractions.forEach((att) => {
       const attId = att.attractionId!;
-      const totalPax = att.passengers.reduce((s, p) => s + (p.qty || 0), 0);
+      const totalPax = getAttractionRequiredSeats(att);
       if (totalPax <= 0) return;
 
       const paxList: { label: string; idx: number }[] = [];
       const cnt: Record<string, number> = {};
       att.passengers.forEach((p) => {
         if (p.qty > 0) {
-          for (let i = 1; i <= p.qty; i++) {
+          const seatsPerTicket = p.noOfSeats && p.noOfSeats > 0 ? p.noOfSeats : 1;
+          const totalSeats = p.qty * seatsPerTicket;
+          for (let i = 1; i <= totalSeats; i++) {
             cnt[p.label] = (cnt[p.label] || 0) + 1;
             paxList.push({ label: p.label, idx: cnt[p.label] });
           }
@@ -2871,14 +2913,14 @@ export default function CustomerInfoView({
   const uniquePaxCount = useMemo(() => {
     if (!bookingSummary.length) return 0;
     return bookingSummary.reduce(
-      (sum, b) => sum + b.passengers.reduce((s, p) => s + (p.qty || 0), 0),
+      (sum, b) => sum + getAttractionRequiredSeats(b),
       0
     );
   }, [bookingSummary]);
 
   const totalRequiredSeatsCount = useMemo(() => {
     return seatingAttractions.reduce(
-      (sum, att) => sum + att.passengers.reduce((s, p) => s + (p.qty || 0), 0),
+      (sum, att) => sum + getAttractionRequiredSeats(att),
       0
     );
   }, [seatingAttractions]);
@@ -2888,7 +2930,7 @@ export default function CustomerInfoView({
   const areAllAttractionsAllocated = useMemo(() => {
     if (seatingAttractions.length === 0) return true;
     return seatingAttractions.every((att) => {
-      const req = att.passengers.reduce((s, p) => s + (p.qty || 0), 0);
+      const req = getAttractionRequiredSeats(att);
       const allocated = selectedSeatObjs.filter((s) => s.attractionId === att.attractionId).length;
       return allocated >= req && req > 0;
     });
@@ -2902,6 +2944,10 @@ export default function CustomerInfoView({
   const subtotal = useMemo(() => Number(bookingSummary.reduce((s, b) => s + (b.subtotal ?? b.totalAmount), 0).toFixed(2)), [bookingSummary]);
   const gstAmount = useMemo(() => Number(bookingSummary.reduce((s, b) => s + (b.gstAmount ?? 0), 0).toFixed(2)), [bookingSummary]);
   const roundOff = useMemo(() => Number(bookingSummary.reduce((s, b) => s + (b.roundOff ?? 0), 0).toFixed(2)), [bookingSummary]);
+  const attractionRoundOffGstAdj = useMemo(
+    () => Number(bookingSummary.reduce((s, b) => s + (b.attractionRoundOffGstAdj ?? b.gstAdjustment ?? 0), 0).toFixed(2)),
+    [bookingSummary]
+  );
 
   function handleSelectCustomer(c: CustomerRecord) {
     setSelectedCustomer(c);
@@ -2942,12 +2988,12 @@ export default function CustomerInfoView({
 
     if (hasSeatingRequired && !areAllAttractionsAllocated) {
       const missingAttraction = seatingAttractions.find((att) => {
-        const req = att.passengers.reduce((s, p) => s + (p.qty || 0), 0);
+        const req = getAttractionRequiredSeats(att);
         const allocated = selectedSeatObjs.filter((s) => s.attractionId === att.attractionId).length;
         return allocated < req;
       });
       if (missingAttraction) {
-        const req = missingAttraction.passengers.reduce((s, p) => s + (p.qty || 0), 0);
+        const req = getAttractionRequiredSeats(missingAttraction);
         const allocated = selectedSeatObjs.filter((s) => s.attractionId === missingAttraction.attractionId).length;
         const diff = req - allocated;
         const attId = missingAttraction.attractionId!;
@@ -2994,21 +3040,34 @@ export default function CustomerInfoView({
     const mobileNumber = (selectedCustomer?.mobile || guestDetails.mobile || "").trim() || null;
     const gstNumber = (selectedCustomer?.gstn || "").trim() || null;
 
-    // Build base payload with attractionId as array of string IDs
-    const basePayload: Record<string, unknown> = {
+    // Build attractions array with per-attraction financials & categories
+    const attractionsPayload: BookingAttractionPayload[] = bookingSummary
+      .map((b) => {
+        const categories: BookingCategoryPayload[] = (b.passengers || [])
+          .filter((p) => (p.qty || 0) > 0)
+          .map((p) => ({
+            categoryId: p.categoryId || p.key || "",
+            noOfVisitors: Number(p.qty || 0),
+          }));
+
+        return {
+          attractionManagementId: b.attractionManagementId || b.attractionId || "",
+          attractionSubtotal: Number(b.subtotal ?? 0),
+          attractionGst: Number(b.gstAmount ?? 0),
+          attractionRoundoff: Number(b.roundOff ?? 0),
+          attractionRoundOffGstAdj: Number(b.gstAdjustment ?? 0),
+          attractionTotalAmount: Number(b.totalAmount ?? 0),
+          categories,
+        };
+      })
+      .filter((att) => att.categories.length > 0);
+
+    const basePayload = {
       customerName,
       mobileNumber,
       gstNumber,
-      visitAt: new Date().toISOString(),
-      subtotal: localSubtotal,
-      gstAmount: localGstAmount,
-      gstAdjustment,
-      roundOff: localRoundOff,
-      discountAmount: 0,
       totalAmount: grandTotal,
-      attractionId: bookingSummary
-        .map((b) => b.attractionId || "")
-        .filter(Boolean),
+      attractions: attractionsPayload,
     };
 
     setPendingBookingPayload(basePayload);
@@ -3020,13 +3079,14 @@ export default function CustomerInfoView({
       // 1. Create Booking via POST /api/admin/ticketing-booking
       if (pendingBookingPayload) {
         const finalPayload: CreateTicketingBookingPayload = {
-          ...pendingBookingPayload,
+          customerName: pendingBookingPayload.customerName,
+          mobileNumber: pendingBookingPayload.mobileNumber,
+          gstNumber: pendingBookingPayload.gstNumber,
+          totalAmount: Number(pendingBookingPayload.totalAmount),
+          amountReceived: Number(amountReceived !== undefined && amountReceived !== null ? amountReceived : (amtRcv || 0)),
+          returnAmount: Number(returnAmount !== undefined && returnAmount !== null ? returnAmount : 0),
           paymentMode: payMethod,
-          amountReceived: amountReceived !== undefined && amountReceived !== null ? amountReceived : amtRcv,
-          returnAmount: returnAmount !== undefined && returnAmount !== null ? returnAmount : 0,
-          attractionId: Array.isArray(pendingBookingPayload.attractionId)
-            ? pendingBookingPayload.attractionId
-            : [pendingBookingPayload.attractionId].filter(Boolean),
+          attractions: pendingBookingPayload.attractions,
         };
         const createRes = await createBookingMutation.mutateAsync(finalPayload);
         const data = (createRes as any)?.data || createRes;
@@ -3081,7 +3141,10 @@ export default function CustomerInfoView({
   // Summary passengers text
   const summaryPassengersText = bookingSummary
     .flatMap((b) =>
-      b.passengers.filter((p) => p.qty > 0).map((p) => `${p.label}: ${p.qty}`)
+      b.passengers.filter((p) => p.qty > 0).map((p) => {
+        const seats = p.noOfSeats && p.noOfSeats > 1 ? ` (${p.qty * p.noOfSeats} seats)` : "";
+        return `${p.label}: ${p.qty}${seats}`;
+      })
     )
     .join(", ");
 
@@ -4103,6 +4166,7 @@ export default function CustomerInfoView({
         subtotal={subtotal}
         gstAmount={gstAmount}
         roundOff={roundOff}
+        attractionRoundOffGstAdj={attractionRoundOffGstAdj}
         timeSlot={timeSlot}
       />
 
