@@ -87,6 +87,8 @@ export async function PATCH(request: Request) {
     const parsed = updateProfileSchema.safeParse(body);
 
     if (!parsed.success) {
+      console.error("Profile validation failed:", parsed.error.issues);
+
       return failure("Invalid profile details.", 400, "VALIDATION_ERROR");
     }
 
