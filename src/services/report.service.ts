@@ -6,6 +6,7 @@ import {
   inArray,
   lte,
   sql,
+  isNotNull,
   type SQL,
 } from "drizzle-orm";
 
@@ -547,15 +548,14 @@ export async function getAttractionReports(filter: ReportFilter) {
 
   const transactionConditions: SQL[] = [
     ...bookingConditions,
-
     eq(transactions.isDeleted, false),
+    isNotNull(transactions.invoiceNumber),
   ];
-
   const transactionRows = await db
     .select({
       attractionId: bookingItems.attractionId,
 
-      transactionId: transactions.transactionNumber,
+      invoiceNumber: transactions.invoiceNumber,
 
       customerName: bookings.customerName,
 
@@ -668,9 +668,7 @@ export async function getAttractionReports(filter: ReportFilter) {
 
     existing.push({
       mode: row.mode,
-
       transactions: Number(row.transactions ?? 0),
-
       amount: Number(row.amount ?? 0),
     });
 
@@ -684,7 +682,7 @@ export async function getAttractionReports(filter: ReportFilter) {
   const transactionMap = new Map<
     string,
     Array<{
-      transactionId: string;
+      invoiceNumber: string;
       customerName: string | null;
       dateTime: Date;
       paymentMode: string;
@@ -705,16 +703,11 @@ export async function getAttractionReports(filter: ReportFilter) {
 
     if (existing.length < 6) {
       existing.push({
-        transactionId: row.transactionId,
-
+        invoiceNumber: row.invoiceNumber!,
         customerName: row.customerName,
-
         dateTime: row.dateTime,
-
         paymentMode: row.paymentMode,
-
         amount: Number(row.amount ?? 0),
-
         status: row.status,
       });
     }

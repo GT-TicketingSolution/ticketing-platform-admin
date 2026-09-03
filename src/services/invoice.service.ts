@@ -9,10 +9,17 @@ import {
   lte,
   or,
   sql,
+  isNotNull,
 } from "drizzle-orm";
 
 import { db } from "@/db";
-import { transactions, bookings, bookingItems, attractions } from "@/db/schema";
+import {
+  transactions,
+  bookings,
+  bookingItems,
+  attractions,
+  users,
+} from "@/db/schema";
 
 /* =========================================================
    TYPES
@@ -103,8 +110,6 @@ export async function getInvoices(filters: InvoiceFilters) {
     conditions.push(
       or(
         ilike(transactions.invoiceNumber, search),
-
-        ilike(transactions.transactionNumber, search),
 
         ilike(bookings.customerName, search),
 
@@ -198,9 +203,7 @@ export async function getInvoices(filters: InvoiceFilters) {
 
       bookingId: transactions.bookingId,
 
-      invoiceId: transactions.invoiceNumber,
-
-      transactionNumber: transactions.transactionNumber,
+      invoiceNumber: transactions.invoiceNumber,
 
       customerName: bookings.customerName,
 
@@ -263,7 +266,7 @@ export async function getInvoices(filters: InvoiceFilters) {
 
     id: invoice.id,
 
-    invoiceId: invoice.invoiceId || invoice.transactionNumber,
+    invoiceNumber: invoice.invoiceNumber,
 
     customerName: invoice.customerName,
 
@@ -333,8 +336,6 @@ export async function getInvoiceById(invoiceId: string, adminId: string) {
       // IMPORTANT:
       // invoiceId from invoice_number, NOT transactions.id
       invoiceId: transactions.invoiceNumber,
-
-      transactionNumber: transactions.transactionNumber,
 
       amount: transactions.amount,
 
@@ -486,4 +487,43 @@ export async function getInvoiceById(invoiceId: string, adminId: string) {
       grandTotal: Number(invoice.amount),
     },
   };
+}
+
+export async function generateInvoiceNumber(userId: string): Promise<string> {
+  const [user] = await db
+    .select({
+      invoicePrefix: users.invoiceNumberForUsersInitialPart,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user) {
+    throw new Error("USER_NOT_FOUND");
+  }
+
+  if (!user.invoicePrefix) {
+    throw new Error("INVOICE_PREFIX_NOT_CONFIGURED");
+  }
+
+  const [lastTransaction] = await db
+    .select({
+      invoiceNumber: transactions.invoiceNumber,
+    })
+    .from(transactions)
+    .where(isNotNull(transactions.invoiceNumber))
+    .orderBy(desc(transactions.createdAt))
+    .limit(1);
+
+  let nextNumber = 1;
+
+  if (lastTransaction?.invoiceNumber) {
+    const match = lastTransaction.invoiceNumber.match(/(\d+)$/);
+
+    if (match) {
+      nextNumber = Number(match[1]) + 1;
+    }
+  }
+
+  return `${user.invoicePrefix}${String(nextNumber).padStart(5, "0")}`;
 }

@@ -107,8 +107,6 @@ export async function GET(
       .select({
         id: transactions.id,
 
-        transactionId: transactions.transactionNumber,
-
         invoiceNumber: transactions.invoiceNumber,
 
         amount: transactions.amount,
@@ -160,10 +158,6 @@ export async function GET(
     return success({
       transaction: {
         id: transaction.id,
-
-        transactionRef: transaction.transactionId,
-
-        transactionId: transaction.transactionId,
 
         dateTime: transaction.transactionDate,
 
@@ -464,7 +458,7 @@ export async function DELETE(
       .select({
         id: transactions.id,
 
-        transactionId: transactions.transactionNumber,
+        transactionId: transactions.invoiceNumber,
 
         deletedAt: transactions.deletedAt,
 
@@ -536,7 +530,7 @@ export async function DELETE(
       .returning({
         id: transactions.id,
 
-        transactionId: transactions.transactionNumber,
+        transactionId: transactions.invoiceNumber,
 
         deletedAt: transactions.deletedAt,
       });

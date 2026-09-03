@@ -166,7 +166,7 @@ export async function GET(
       .select({
         id: transactions.id,
 
-        transactionNumber: transactions.transactionNumber,
+        invoiceNumber: transactions.invoiceNumber,
 
         amount: transactions.amount,
 

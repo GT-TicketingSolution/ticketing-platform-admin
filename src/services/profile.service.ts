@@ -20,7 +20,7 @@ export async function getProfile(userId: string) {
       gst: users.gst,
       cin: users.cin,
       profileLink: users.profileLink,
-      invoiceNumberForUserInitialPart: users.invoiceNumberForUsersInitialPart,
+      invoiceNumberForUsersInitialPart: users.invoiceNumberForUsersInitialPart,
 
       lastLoginAt: users.lastLoginAt,
       createdAt: users.createdAt,
@@ -55,7 +55,7 @@ export async function updateProfile(
     gst?: string;
     cin?: string;
     profileLink?: string;
-    invoiceNumberForUserInitialPart?: string;
+    invoiceNumberForUsersInitialPart?: string | null;
   },
 ) {
   /*
@@ -118,7 +118,7 @@ export async function updateProfile(
     gst?: string | null;
     cin?: string | null;
     profileLink?: string | null;
-    invoiceNumberForUserInitialPart?: string | null;
+    invoiceNumberForUsersInitialPart?: string | null;
     updatedAt: Date;
   } = {
     name: data.name.trim(),
@@ -130,6 +130,12 @@ export async function updateProfile(
     gst: data.gst && data.gst.trim().length > 0 ? data.gst.trim() : null,
 
     cin: data.cin && data.cin.trim().length > 0 ? data.cin.trim() : null,
+
+    invoiceNumberForUsersInitialPart:
+      data.invoiceNumberForUsersInitialPart &&
+      data.invoiceNumberForUsersInitialPart.trim().length > 0
+        ? data.invoiceNumberForUsersInitialPart.trim()
+        : null,
   };
 
   /*

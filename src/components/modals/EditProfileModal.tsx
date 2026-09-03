@@ -55,11 +55,11 @@ function InputField({
   prefix?: React.ReactNode;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
       <label
         htmlFor={id}
         style={{
-          fontSize: "13px",
+          fontSize: "12px",
           fontWeight: typography.fontWeight.semibold,
           color: colors.text.primary,
           fontFamily: typography.fontFamily.sans,
@@ -71,16 +71,16 @@ function InputField({
         style={{
           display: "flex",
           alignItems: "center",
-          height: "42px",
+          height: "36px",
           border: `1.5px solid ${error ? colors.status.error : colors.login.inputBorder}`,
-          borderRadius: "8px",
-          padding: "0 12px",
+          borderRadius: "7px",
+          padding: "0 10px",
           background: disabled ? "#F9FAFB" : "#FFFFFF",
           transition: "border-color 0.2s ease",
           opacity: disabled ? 0.7 : 1,
         }}
       >
-        <span style={{ display: "flex", marginRight: "10px", flexShrink: 0, color: colors.login.inputIcon }}>
+        <span style={{ display: "flex", marginRight: "8px", flexShrink: 0, color: colors.login.inputIcon }}>
           {icon}
         </span>
         {prefix && (
@@ -88,15 +88,15 @@ function InputField({
             style={{
               display: "inline-flex",
               alignItems: "center",
-              fontSize: "13px",
+              fontSize: "12px",
               fontFamily: typography.fontFamily.sans,
               fontWeight: typography.fontWeight.semibold,
               color: colors.login.inputIcon,
               userSelect: "none",
-              marginRight: "8px",
-              paddingRight: "8px",
+              marginRight: "6px",
+              paddingRight: "6px",
               borderRight: `1.5px solid ${colors.login.inputBorder}`,
-              height: "22px",
+              height: "18px",
               lineHeight: 1,
             }}
           >
@@ -115,7 +115,7 @@ function InputField({
             width: "100%",
             border: "none",
             outline: "none",
-            fontSize: "14px",
+            fontSize: "13px",
             fontFamily: typography.fontFamily.sans,
             color: colors.text.primary,
             background: "transparent",
@@ -125,15 +125,15 @@ function InputField({
       {error && (
         <span
           style={{
-            fontSize: "12px",
+            fontSize: "11px",
             color: colors.status.error,
             fontFamily: typography.fontFamily.sans,
             display: "flex",
             alignItems: "center",
-            gap: "4px",
+            gap: "3px",
           }}
         >
-          <AlertCircle size={13} />
+          <AlertCircle size={12} />
           {error}
         </span>
       )}
@@ -155,10 +155,10 @@ function ReadOnlyField({
 }) {
   const display = value || placeholder || "—";
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
       <span
         style={{
-          fontSize: "13px",
+          fontSize: "12px",
           fontWeight: typography.fontWeight.semibold,
           color: colors.text.primary,
           fontFamily: typography.fontFamily.sans,
@@ -168,15 +168,15 @@ function ReadOnlyField({
       </span>
       <div
         style={{
-          height: "42px",
+          height: "36px",
           border: `1.5px solid ${colors.login.inputBorder}`,
-          borderRadius: "8px",
-          padding: "0 12px",
+          borderRadius: "7px",
+          padding: "0 10px",
           background: "#F9FAFB",
           display: "flex",
           alignItems: "center",
-          gap: icon ? "10px" : undefined,
-          fontSize: "14px",
+          gap: icon ? "8px" : undefined,
+          fontSize: "13px",
           fontFamily: typography.fontFamily.sans,
           color: value ? colors.text.primary : colors.text.primary,
           opacity: 0.7,
@@ -231,6 +231,35 @@ export const validateGST = (gst: string): string => {
   return "";
 };
 
+export const getDefaultFinancialYear = (): string => {
+  const now = new Date();
+  const month = now.getMonth(); // 0 = Jan, 3 = Apr
+  const year = now.getFullYear();
+  // Indian Financial Year: April to March (month >= 3 is Apr-Dec: 2026 -> 2026-2027)
+  if (month >= 3) {
+    return `${year}-${year + 1}`;
+  } else {
+    return `${year - 1}-${year}`;
+  }
+};
+
+export const validateInvoicePrefix = (prefix: string): string => {
+  const value = prefix ? prefix.trim().replace(/\/+$/, "") : "";
+  // Optional field: valid if empty
+  if (!value) return "";
+
+  if (value.length < 4) {
+    return "Invoice prefix must be at least 4 characters";
+  }
+  if (value.length > 11) {
+    return "Invoice prefix cannot exceed 11 characters";
+  }
+  if (value.includes("/")) {
+    return "Prefix should not include slash (/)";
+  }
+  return "";
+};
+
 export const formatPhoneNumber = (val?: string | null): string => {
   if (!val) return "";
   let cleaned = val.trim();
@@ -251,12 +280,30 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
 
   const updateMutation = useUpdateProfileMutation();
 
-  const profile = profileData?.profile;
+  const profile = profileData?.profile || (profileData as any)?.data?.profile;
 
   // Only ADMIN users can view/edit the business name
   const isAdmin = profile?.role === "ADMIN";
 
-  const [formData, setFormData] = useState({ name: "", email: "", phone: "", businessName: "", cin: "", gst: "", businessLogo: "" });
+  const [formData, setFormData] = useState(() => {
+    const p = profileData?.profile || (profileData as any)?.data?.profile;
+    const rawInvoice =
+      p?.invoiceNumberForUsersInitialPart ||
+      (p as any)?.invoicePrefix ||
+      getDefaultFinancialYear();
+    return {
+      name: p?.name || "",
+      email: p?.email || "",
+      phone: formatPhoneNumber(p?.phone),
+      businessName: p?.businessName || "",
+      cin: p?.cin || (p as any)?.cin || "",
+      gst: p?.gst || (p as any)?.gst || "",
+      invoiceNumberForUsersInitialPart: rawInvoice
+        ? rawInvoice.replace(/\/+$/, "")
+        : getDefaultFinancialYear(),
+      profileLink: p?.profileLink || (p as any)?.businessLogo || null,
+    };
+  });
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [businessImage, setBusinessImage] = useState<File | null>(null);
   const [businessImagePreview, setBusinessImagePreview] = useState<string | null>(null);
@@ -266,21 +313,33 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
   // Seed form whenever profile loads or modal re-opens
   useEffect(() => {
     if (profile) {
+      const rawInvoice =
+        profile.invoiceNumberForUsersInitialPart ||
+        (profile as any).invoicePrefix ||
+        getDefaultFinancialYear();
+      const initialInvoicePrefix = rawInvoice
+        ? rawInvoice.replace(/\/+$/, "")
+        : getDefaultFinancialYear();
+
+      const initialProfileLink =
+        profile.profileLink ||
+        (profile as any).businessLogo ||
+        "";
+
       setFormData({
         name: profile.name || "",
         email: profile.email || "",
         phone: formatPhoneNumber(profile.phone),
         businessName: profile.businessName || "",
-        // CIN & GST will be populated from response once backend provides them
-        cin: (profile as any).cin || "",
-        gst: (profile as any).gst || "",
-        // Business logo from response
-        businessLogo: (profile as any).businessLogo || "",
+        cin: profile.cin || (profile as any).cin || "",
+        gst: profile.gst || (profile as any).gst || "",
+        invoiceNumberForUsersInitialPart: initialInvoicePrefix,
+        profileLink: initialProfileLink,
       });
-      // Seed business image preview from response if available
-      const profileImg = (profile as any).businessLogo;
-      if (profileImg) {
-        setBusinessImagePreview(profileImg);
+
+      // Seed business/profile image preview from response if available
+      if (initialProfileLink) {
+        setBusinessImagePreview(initialProfileLink);
       } else {
         setBusinessImagePreview(null);
       }
@@ -292,7 +351,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
   if (!isOpen) return null;
 
   const avatarInitials = formData.name
-    ? formData.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
+    ? formData.name.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2)
     : "??";
 
   // ── Validation ──
@@ -316,6 +375,9 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
 
       const gstError = validateGST(formData.gst);
       if (gstError) errs.gst = gstError;
+
+      const prefixError = validateInvoicePrefix(formData.invoiceNumberForUsersInitialPart);
+      if (prefixError) errs.invoiceNumberForUsersInitialPart = prefixError;
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -351,7 +413,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64String = reader.result as string;
-      setFormData((prev) => ({ ...prev, businessLogo: base64String }));
+      setFormData((prev) => ({ ...prev, profileLink: base64String }));
     };
     reader.readAsDataURL(file);
   };
@@ -360,7 +422,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
     setBusinessImage(null);
     setBusinessImagePreview(null);
     setImageError(null);
-    setFormData((prev) => ({ ...prev, businessLogo: "" }));
+    setFormData((prev) => ({ ...prev, profileLink: "" }));
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -369,7 +431,8 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
     if (!validate()) return;
 
     try {
-      await (updateMutation.mutateAsync as any)({
+      const invoicePrefix = formData.invoiceNumberForUsersInitialPart.trim();
+      await updateMutation.mutateAsync({
         name: formData.name.trim(),
         email: formData.email.trim(),
         phone: formData.phone.trim() || undefined,
@@ -377,10 +440,13 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
           businessName: formData.businessName.trim(),
           cin: formData.cin.trim().toUpperCase() || undefined,
           gst: formData.gst.trim().toUpperCase() || undefined,
-          businessLogo: formData.businessLogo || undefined,
+          profileLink: formData.profileLink ? formData.profileLink : "",
+          // Append trailing slash so backend receives e.g. "2026-2027/"
+          invoiceNumberForUsersInitialPart: invoicePrefix ? `${invoicePrefix}/` : undefined,
         } : {}),
       });
-      await refetch();
+      // Cache is already updated via setQueryData in useUpdateProfileMutation onSuccess —
+      // do NOT call refetch() here to avoid triggering an extra GET /profile request.
       setTimeout(onClose, 600);
     } catch {
       // Errors are shown via toast in useUpdateProfileMutation's onError
@@ -449,9 +515,18 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                 fontWeight: typography.fontWeight.bold,
                 fontSize: "16px",
                 flexShrink: 0,
+                overflow: "hidden",
               }}
             >
-              {avatarInitials}
+              {businessImagePreview ? (
+                <img
+                  src={businessImagePreview}
+                  alt="Profile"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
+                avatarInitials
+              )}
             </div>
             <div>
               <h3
@@ -579,8 +654,8 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
           </div>
         ) : (
           /* ── Form ── */
-          <form onSubmit={handleSubmit} style={{ padding: "24px" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <form noValidate onSubmit={handleSubmit} style={{ padding: "18px 22px 22px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               {/* ── Full Name & Email Address — side by side ── */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <InputField
@@ -692,6 +767,152 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                     disabled={isSubmitting}
                     required={false}
                   />
+                </div>
+              )}
+
+              {/* ── Invoice Number (Prefix / Serial Number) — admin only ── */}
+              {isAdmin && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <label
+                      htmlFor="ep-invoice-prefix"
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: typography.fontWeight.semibold,
+                        color: colors.text.primary,
+                        fontFamily: typography.fontFamily.sans,
+                      }}
+                    >
+                      Invoice Number
+                    </label>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontFamily: typography.fontFamily.sans,
+                        color: "#9CA3AF",
+                      }}
+                    >
+                      Prefix 4-11 characters
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      height: "36px",
+                      border: `1.5px solid ${errors.invoiceNumberForUsersInitialPart ? colors.status.error : colors.login.inputBorder}`,
+                      borderRadius: "7px",
+                      padding: "0 10px",
+                      background: isSubmitting ? "#F9FAFB" : "#FFFFFF",
+                      transition: "border-color 0.2s ease",
+                      gap: "6px",
+                      cursor: "text",
+                    }}
+                    onClick={() => document.getElementById("ep-invoice-prefix")?.focus()}
+                  >
+                    <span style={{ display: "flex", color: colors.login.inputIcon, flexShrink: 0 }}>
+                      <Receipt size={15} />
+                    </span>
+
+                    {/* Prefix Input before slash */}
+                    <input
+                      id="ep-invoice-prefix"
+                      type="text"
+                      placeholder={getDefaultFinancialYear()}
+                      value={formData.invoiceNumberForUsersInitialPart}
+                      maxLength={11}
+                      disabled={isSubmitting}
+                      onBlur={() => {
+                        const err = validateInvoicePrefix(formData.invoiceNumberForUsersInitialPart);
+                        if (err) {
+                          setErrors((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: err }));
+                        }
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase().replace(/\s+/g, "");
+                        setFormData((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: val }));
+                        if (errors.invoiceNumberForUsersInitialPart) {
+                          const err = validateInvoicePrefix(val);
+                          setErrors((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: err }));
+                        }
+                      }}
+                      style={{
+                        width: formData.invoiceNumberForUsersInitialPart
+                          ? `${Math.max(formData.invoiceNumberForUsersInitialPart.length, 9)}ch`
+                          : `${getDefaultFinancialYear().length}ch`,
+                        minWidth: "75px",
+                        maxWidth: "130px",
+                        border: "none",
+                        outline: "none",
+                        background: "transparent",
+                        fontSize: "13px",
+                        fontFamily: typography.fontFamily.sans,
+                        fontWeight: typography.fontWeight.semibold,
+                        color: colors.text.primary,
+                        padding: 0,
+                        margin: 0,
+                      }}
+                    />
+
+                    {/* Slash separator */}
+                    <span
+                      style={{
+                        color: "#9CA3AF",
+                        fontWeight: 700,
+                        fontSize: "15px",
+                        userSelect: "none",
+                        flexShrink: 0,
+                        lineHeight: 1,
+                      }}
+                    >
+                      /
+                    </span>
+
+                    {/* Placeholder text after slash */}
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        fontFamily: typography.fontFamily.sans,
+                        fontWeight: typography.fontWeight.medium,
+                        color: "#9CA3AF",
+                        userSelect: "none",
+                      }}
+                    >
+                      001
+                    </span>
+                  </div>
+
+                  {/* Error directly below the field */}
+                  {errors.invoiceNumberForUsersInitialPart ? (
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        color: colors.status.error,
+                        fontFamily: typography.fontFamily.sans,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "3px",
+                        marginTop: "2px",
+                      }}
+                    >
+                      <AlertCircle size={12} />
+                      {errors.invoiceNumberForUsersInitialPart}
+                    </span>
+                  ) : null}
+
+                  {/* Helper text below input */}
+                  <span
+                    style={{
+                      fontSize: "11.5px",
+                      color: "#6B7280",
+                      fontFamily: typography.fontFamily.sans,
+                      lineHeight: "15px",
+                      marginTop: "2px",
+                    }}
+                  >
+                    The number after / auto-increments: INV-2026/001, INV-2026/002
+                  </span>
                 </div>
               )}
 
@@ -860,7 +1081,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
             {/* Action Buttons */}
             <div
               style={{
-                marginTop: "24px",
+                marginTop: "16px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "flex-end",

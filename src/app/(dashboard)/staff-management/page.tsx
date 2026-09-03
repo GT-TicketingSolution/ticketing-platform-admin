@@ -169,6 +169,8 @@ function StaffManagementInner() {
           : "—",
       status: s.status,
       ticketsIssued: s.ticketsIssued ?? 0,
+      canViewReports: s.canViewReports ?? false,
+      reportViewDurationHours: s.reportViewDurationHours ?? null,
     };
   });
 
@@ -187,6 +189,8 @@ function StaffManagementInner() {
     role: [] as string[],
     assignedAttraction: [] as string[],
     status: "Active" as "Active" | "Inactive",
+    canViewReports: false,
+    reportViewDurationHours: "" as string | number,
   });
 
   // Validation errors from Zod
@@ -201,6 +205,8 @@ function StaffManagementInner() {
       role: [],
       assignedAttraction: [],
       status: "Active",
+      canViewReports: false,
+      reportViewDurationHours: "",
     });
     setFormErrors({});
   };
@@ -237,6 +243,8 @@ function StaffManagementInner() {
       role: [...roleArr],
       assignedAttraction: [...attrArr],
       status: isAct ? "Active" : "Inactive",
+      canViewReports: staff.canViewReports ?? false,
+      reportViewDurationHours: staff.reportViewDurationHours ?? "",
     });
     setIsEditing(true);
   };
@@ -244,8 +252,20 @@ function StaffManagementInner() {
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Prepare data for validation — normalize optional fields so empty string doesn't fail validation
+    const dataToValidate = {
+      ...formData,
+      reportViewDurationHours:
+        !formData.canViewReports ||
+          formData.reportViewDurationHours === "" ||
+          formData.reportViewDurationHours === null ||
+          formData.reportViewDurationHours === undefined
+          ? undefined
+          : formData.reportViewDurationHours,
+    };
+
     // Zod validation
-    const result = staffSchema.safeParse(formData);
+    const result = staffSchema.safeParse(dataToValidate);
     if (!result.success) {
       const errs: Record<string, string> = {};
       result.error.issues.forEach((issue) => {
@@ -282,6 +302,10 @@ function StaffManagementInner() {
         roles: formData.role.length > 0 ? formData.role : ["STAFF"],
         attractionIds: attractionIds.length > 0 ? attractionIds : [],
         status: formData.status === "Active" ? "ACTIVE" : "INACTIVE",
+        ...(formData.canViewReports !== undefined && { canViewReports: formData.canViewReports }),
+        ...(formData.canViewReports && formData.reportViewDurationHours !== ""
+          ? { reportViewDurationHours: Number(formData.reportViewDurationHours) }
+          : { reportViewDurationHours: null }),
       });
       setIsAddModalOpen(false);
       resetForm();
@@ -293,8 +317,20 @@ function StaffManagementInner() {
   const handleSaveEdit = async () => {
     if (!selectedStaff) return;
 
+    // Prepare data for validation — normalize optional fields so empty string doesn't fail validation
+    const dataToValidate = {
+      ...formData,
+      reportViewDurationHours:
+        !formData.canViewReports ||
+          formData.reportViewDurationHours === "" ||
+          formData.reportViewDurationHours === null ||
+          formData.reportViewDurationHours === undefined
+          ? undefined
+          : formData.reportViewDurationHours,
+    };
+
     // Zod validation
-    const result = staffSchema.safeParse(formData);
+    const result = staffSchema.safeParse(dataToValidate);
     if (!result.success) {
       const errs: Record<string, string> = {};
       result.error.issues.forEach((issue) => {
@@ -321,6 +357,10 @@ function StaffManagementInner() {
           roles: formData.role.length > 0 ? formData.role : ["STAFF"],
           attractionIds: attractionIds.length > 0 ? attractionIds : [],
           status: formData.status === "Active" ? "ACTIVE" : "INACTIVE",
+          canViewReports: formData.canViewReports,
+          reportViewDurationHours: formData.canViewReports && formData.reportViewDurationHours !== ""
+            ? Number(formData.reportViewDurationHours)
+            : null,
         },
       });
 
@@ -333,6 +373,10 @@ function StaffManagementInner() {
         roles: formData.role,
         assignedAttraction: formData.assignedAttraction,
         status: formData.status === "Active" ? "ACTIVE" : "INACTIVE",
+        canViewReports: formData.canViewReports,
+        reportViewDurationHours: formData.canViewReports && formData.reportViewDurationHours !== ""
+          ? Number(formData.reportViewDurationHours)
+          : null,
       });
       setIsEditing(false);
     } catch {
@@ -440,8 +484,8 @@ function StaffManagementInner() {
               Array.isArray(s.assignedAttraction) && s.assignedAttraction.length > 0
                 ? s.assignedAttraction.join(", ")
                 : Array.isArray(s.attractions) && s.attractions.length > 0
-                ? s.attractions.map((a: any) => a.name).join(", ")
-                : "-",
+                  ? s.attractions.map((a: any) => a.name).join(", ")
+                  : "-",
           },
           {
             header: "Status",
@@ -481,8 +525,8 @@ function StaffManagementInner() {
           Array.isArray(s.assignedAttraction) && s.assignedAttraction.length > 0
             ? s.assignedAttraction.join(", ")
             : Array.isArray(s.attractions) && s.attractions.length > 0
-            ? s.attractions.map((a: any) => a.name).join(", ")
-            : "-";
+              ? s.attractions.map((a: any) => a.name).join(", ")
+              : "-";
         return [
           scope === "all" ? i + 1 : (currentPage - 1) * pageSize + i + 1,
           s.name || "-",
@@ -518,6 +562,8 @@ function StaffManagementInner() {
       role: [...roleArr],
       assignedAttraction: [...attrArr],
       status: isAct ? "Active" : "Inactive",
+      canViewReports: s.canViewReports ?? false,
+      reportViewDurationHours: s.reportViewDurationHours ?? "",
     });
     setIsEditing(false);
   };
@@ -1001,12 +1047,135 @@ function StaffManagementInner() {
               />
             </div>
 
-            {/* Status Toggle — Edit Form */}
-            <StatusToggle
-              value={formData.status}
-              onChange={(status) => setFormData({ ...formData, status })}
-              error={formErrors.status}
-            />
+            {/* Status + Report Access — same row, Edit Form */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", alignItems: "start" }}>
+              {/* Status Toggle */}
+              <StatusToggle
+                value={formData.status}
+                onChange={(status) => setFormData({ ...formData, status })}
+                error={formErrors.status}
+              />
+
+              {/* Report Access */}
+              <div
+                style={{
+                  border: "1.5px solid #E2E8F0",
+                  borderRadius: "10px",
+                  padding: "12px 16px",
+                  background: formData.canViewReports ? "rgba(35,114,165,0.03)" : "#FAFBFC",
+                  transition: "background 0.2s",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+                  <div>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: colors.text.primary }}>
+                      Report Access
+                      <span
+                        style={{
+                          marginLeft: "8px",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: colors.text.muted,
+                          background: "#F1F5F9",
+                          padding: "2px 7px",
+                          borderRadius: "6px",
+                        }}
+                      >
+                        Optional
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "12px", color: colors.text.muted, marginTop: "2px" }}>
+                      Allow this staff member to view reports
+                    </div>
+                  </div>
+                  {/* Toggle */}
+                  <label
+                    style={{
+                      position: "relative",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!formData.canViewReports}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          canViewReports: e.target.checked,
+                          reportViewDurationHours: e.target.checked ? formData.reportViewDurationHours : "",
+                        })
+                      }
+                      style={{ opacity: 0, width: 0, height: 0, position: "absolute" }}
+                    />
+                    <span
+                      style={{
+                        width: "44px",
+                        height: "24px",
+                        borderRadius: "12px",
+                        background: formData.canViewReports ? colors.brand.accent : "#CBD5E1",
+                        transition: "background 0.2s",
+                        position: "relative",
+                        display: "inline-block",
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: "3px",
+                          left: formData.canViewReports ? "23px" : "3px",
+                          width: "18px",
+                          height: "18px",
+                          borderRadius: "50%",
+                          background: "#FFFFFF",
+                          boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                          transition: "left 0.2s",
+                        }}
+                      />
+                    </span>
+                  </label>
+                </div>
+                {formData.canViewReports && (
+                  <div style={{ marginTop: "12px" }}>
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary, display: "block" }}>
+                      Report View Duration (Hours)
+                      <span style={{ fontSize: "12px", fontWeight: 400, color: colors.text.muted, marginLeft: "6px" }}>
+                        — Specify how many hours of past report data this staff member can access.
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      placeholder="e.g. 8"
+                      value={formData.reportViewDurationHours}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData({ ...formData, reportViewDurationHours: val === "" ? "" : Number(val) });
+                        setFormErrors((p) => ({ ...p, reportViewDurationHours: "" }));
+                      }}
+                      style={{
+                        width: "100%",
+                        height: "40px",
+                        borderRadius: "8px",
+                        border: `1.5px solid ${formErrors.reportViewDurationHours ? "#EF4444" : "#CBD5E1"}`,
+                        padding: "0 12px",
+                        marginTop: "6px",
+                        fontSize: "14px",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                    {formErrors.reportViewDurationHours && (
+                      <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>
+                        {formErrors.reportViewDurationHours}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         ) : (
           // ── Read-Only Detail Cards ────────────────────────────────────────
@@ -1591,7 +1760,7 @@ function StaffManagementInner() {
                   <input
                     type="text"
                     maxLength={10}
-                    placeholder="9876543210"
+                    placeholder="Enter the phone number"
                     value={formData.phone}
                     onChange={(e) => {
                       setFormData({ ...formData, phone: e.target.value.replace(/\D/g, "").slice(0, 10) });
@@ -1620,7 +1789,7 @@ function StaffManagementInner() {
                   </label>
                   <input
                     type="email"
-                    placeholder="staff@gmail.com"
+                    placeholder="Enter the email address"
                     value={formData.email}
                     onChange={(e) => {
                       setFormData({ ...formData, email: e.target.value });
@@ -1730,6 +1899,126 @@ function StaffManagementInner() {
                 onChange={(status) => setFormData({ ...formData, status })}
                 error={formErrors.status}
               />
+
+              {/* Report Access — Add Modal */}
+              <div
+                style={{
+                  border: "1.5px solid #E2E8F0",
+                  borderRadius: "10px",
+                  padding: "16px 20px",
+                  background: formData.canViewReports ? "rgba(35,114,165,0.03)" : "#FAFBFC",
+                  transition: "background 0.2s",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+                  <div>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: colors.text.primary }}>
+                      Report Access
+                      <span
+                        style={{
+                          marginLeft: "8px",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: colors.text.muted,
+                          background: "#F1F5F9",
+                          padding: "2px 7px",
+                          borderRadius: "6px",
+                        }}
+                      >
+                        Optional
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "12px", color: colors.text.muted, marginTop: "2px" }}>
+                      Allow this staff member to view reports
+                    </div>
+                  </div>
+                  {/* Toggle */}
+                  <label
+                    style={{
+                      position: "relative",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!formData.canViewReports}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          canViewReports: e.target.checked,
+                          reportViewDurationHours: e.target.checked ? formData.reportViewDurationHours : "",
+                        })
+                      }
+                      style={{ opacity: 0, width: 0, height: 0, position: "absolute" }}
+                    />
+                    <span
+                      style={{
+                        width: "44px",
+                        height: "24px",
+                        borderRadius: "12px",
+                        background: formData.canViewReports ? colors.brand.accent : "#CBD5E1",
+                        transition: "background 0.2s",
+                        position: "relative",
+                        display: "inline-block",
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: "3px",
+                          left: formData.canViewReports ? "23px" : "3px",
+                          width: "18px",
+                          height: "18px",
+                          borderRadius: "50%",
+                          background: "#FFFFFF",
+                          boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                          transition: "left 0.2s",
+                        }}
+                      />
+                    </span>
+                  </label>
+                </div>
+                {formData.canViewReports && (
+                  <div style={{ marginTop: "14px" }}>
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary, display: "block" }}>
+                      Report View Duration (Hours)
+                      <span style={{ fontSize: "12px", fontWeight: 400, color: colors.text.muted, marginLeft: "6px" }}>
+                        — Specify how many hours of past report data this staff member can access.
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      placeholder="e.g. 8"
+                      value={formData.reportViewDurationHours}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData({ ...formData, reportViewDurationHours: val === "" ? "" : Number(val) });
+                        setFormErrors((p) => ({ ...p, reportViewDurationHours: "" }));
+                      }}
+                      style={{
+                        width: "100%",
+                        height: "40px",
+                        borderRadius: "8px",
+                        border: `1.5px solid ${formErrors.reportViewDurationHours ? "#EF4444" : "#CBD5E1"}`,
+                        padding: "0 12px",
+                        marginTop: "6px",
+                        fontSize: "14px",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                    {formErrors.reportViewDurationHours && (
+                      <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>
+                        {formErrors.reportViewDurationHours}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Action Buttons */}
               <div

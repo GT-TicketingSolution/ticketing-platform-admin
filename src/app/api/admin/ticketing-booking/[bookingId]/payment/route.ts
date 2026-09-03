@@ -197,7 +197,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       // GENERATE TRANSACTION NUMBER
       // -------------------------------------------
 
-      const transactionNumber = await generateTransactionNumber(tx);
+      const invoiceNumber = await generateTransactionNumber(tx);
 
       // -------------------------------------------
       // INSERT TRANSACTION
@@ -206,7 +206,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const [transaction] = await tx
         .insert(transactions)
         .values({
-          transactionNumber,
+          invoiceNumber,
 
           bookingId: bookingId,
 
@@ -219,7 +219,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         .returning({
           id: transactions.id,
 
-          transactionNumber: transactions.transactionNumber,
+          invoiceNumber: transactions.invoiceNumber,
 
           bookingId: transactions.bookingId,
 

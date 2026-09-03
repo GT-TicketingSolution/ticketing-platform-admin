@@ -25,6 +25,10 @@ export interface StaffUser {
   createdAt?: string;
   status: StaffStatus;
   ticketsIssued?: number;
+  /** Whether this staff member is allowed to view reports */
+  canViewReports?: boolean;
+  /** Number of hours the staff can access/view reports (only relevant when canViewReports is true) */
+  reportViewDurationHours?: number | null;
 }
 
 export interface StaffPagination {
@@ -55,6 +59,10 @@ export interface CreateStaffPayload {
   roles: string[];
   attractionIds: string[];
   status: "ACTIVE" | "INACTIVE";
+  /** Whether this staff member is allowed to view reports */
+  canViewReports?: boolean;
+  /** Number of hours the staff can access/view reports */
+  reportViewDurationHours?: number | null;
 }
 
 export interface UpdateStaffPayload {
@@ -65,5 +73,9 @@ export interface UpdateStaffPayload {
   roles?: string[];
   attractionIds?: string[];
   status?: "ACTIVE" | "INACTIVE";
+  /** Whether this staff member is allowed to view reports */
+  canViewReports?: boolean;
+  /** Number of hours the staff can access/view reports */
+  reportViewDurationHours?: number | null;
 }
 

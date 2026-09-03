@@ -88,7 +88,10 @@ export default function CreateSeatModal({
       setCols(initialData.cols || "");
       setHasAisle(initialData.hasAisle);
 
-      const type: AisleOrientation = initialData.aisleDirection || "VERTICAL";
+      const type: AisleOrientation =
+        initialData.aisleDirection ||
+        (initialData as { aisleType?: AisleOrientation }).aisleType ||
+        "VERTICAL";
       const position =
         type === "HORIZONTAL"
           ? (initialData.aisleAfterRow ?? 0)
