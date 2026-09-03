@@ -2,11 +2,20 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import QRCode from "qrcode";
 import crypto from "crypto";
-import { desc, eq, and, isNotNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+
 import { generateInvoiceNumber } from "@/services/invoice.service";
 
 import { db } from "@/db";
-import { bookings, transactions, users, scannerInvoices } from "@/db/schema";
+import {
+  bookings,
+  transactions,
+  scannerInvoices,
+  attractionsAgainstBooking,
+  categoryOfAttractionAgainstBooking,
+  attractionManagement,
+  attractions,
+} from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
 import { requireModuleAccess } from "@/lib/auth/authorization";
@@ -17,6 +26,28 @@ import { success, failure } from "@/lib/api/response";
    VALIDATION
 ========================================================= */
 
+const categorySchema = z.object({
+  categoryId: z.string().uuid(),
+
+  noOfVisitors: z.number().int().nonnegative(),
+});
+
+const attractionSchema = z.object({
+  attractionManagementId: z.string().uuid(),
+
+  attractionSubtotal: z.number().nonnegative(),
+
+  attractionGst: z.number().nonnegative(),
+
+  attractionRoundoff: z.number(),
+
+  attractionRoundOffGstAdj: z.number(),
+
+  attractionTotalAmount: z.number().nonnegative(),
+
+  categories: z.array(categorySchema).min(1),
+});
+
 const createBookingSchema = z.object({
   customerName: z.string().trim().min(1).max(150).nullable().optional(),
 
@@ -24,42 +55,55 @@ const createBookingSchema = z.object({
 
   gstNumber: z.string().trim().max(20).nullable().optional(),
 
-  // Multiple attractions
-  attractionId: z.array(z.string().uuid()).min(1),
-
-  visitAt: z.string().datetime(),
-
-  subtotal: z.number().nonnegative(),
-
-  gstAmount: z.number().nonnegative().default(0),
-
-  gstAdjustment: z.number().default(0),
-
-  roundOff: z.number().default(0),
-
-  discountAmount: z.number().nonnegative().default(0),
-
-  paymentMode: z.enum(["CASH", "ONLINE", "CARD", "UPI"]),
-
   totalAmount: z.number().nonnegative(),
 
   amountReceived: z.number().nonnegative().default(0),
 
   returnAmount: z.number().nonnegative().default(0),
+
+  paymentMode: z.enum(["CASH", "ONLINE", "CARD", "UPI"]),
+
+  attractions: z.array(attractionSchema).min(1),
 });
 
 /* =========================================================
    QR PAYLOAD
 ========================================================= */
-
-function createQrPayload(bookingId: string, attractionId: string): string {
+function createQrPayload({
+  bookingId,
+  invoiceNumber,
+  scannerInvoiceId,
+  attractionId,
+  attractionName,
+  categories,
+  date,
+}: {
+  bookingId: string;
+  invoiceNumber: string;
+  scannerInvoiceId: string;
+  attractionId: string;
+  attractionName: string;
+  categories: {
+    categoryId: string;
+    noOfVisitors: number;
+  }[];
+  date: string;
+}): string {
   const secret = process.env.QR_SECRET;
 
   if (!secret) {
     throw new Error("QR_SECRET_NOT_CONFIGURED");
   }
 
-  const data = `${bookingId}:${attractionId}`;
+  const data = JSON.stringify({
+    bookingId,
+    invoiceNumber,
+    scannerInvoiceId,
+    attractionId,
+    attractionName,
+    categories,
+    date,
+  });
 
   const signature = crypto
     .createHmac("sha256", secret)
@@ -68,7 +112,12 @@ function createQrPayload(bookingId: string, attractionId: string): string {
 
   return JSON.stringify({
     bookingId,
+    invoiceNumber,
+    scannerInvoiceId,
     attractionId,
+    attractionName,
+    categories,
+    date,
     signature,
   });
 }
@@ -77,20 +126,48 @@ function createQrPayload(bookingId: string, attractionId: string): string {
    GENERATE QR
 ========================================================= */
 
-async function generateBookingQRCode(bookingId: string, attractionId: string) {
-  const payload = createQrPayload(bookingId, attractionId);
+async function generateBookingQRCode({
+  bookingId,
+  invoiceNumber,
+  scannerInvoiceId,
+  attractionId,
+  attractionName,
+  categories,
+  date,
+}: {
+  bookingId: string;
+  invoiceNumber: string;
+  scannerInvoiceId: string;
+  attractionId: string;
+  attractionName: string;
+  categories: {
+    categoryId: string;
+    noOfVisitors: number;
+  }[];
+  date: string;
+}) {
+  const payload = createQrPayload({
+    bookingId,
+    invoiceNumber,
+    scannerInvoiceId,
+    attractionId,
+    attractionName,
+    categories,
+    date,
+  });
 
   const qrCode = await QRCode.toDataURL(payload);
 
   return {
     attractionId,
+    attractionName,
     qrCode,
   };
 }
-
 /* =========================================================
    POST
-   CREATE BOOKING + TRANSACTION
+   CREATE BOOKING + TRANSACTION + SCANNER INVOICE
+   + ATTRACTIONS + CATEGORIES
 ========================================================= */
 
 export async function POST(request: NextRequest) {
@@ -122,27 +199,24 @@ export async function POST(request: NextRequest) {
     const data = parsed.data;
 
     /* =====================================================
-       GENERATE NUMBERS
+       GENERATE INVOICE NUMBER
     ===================================================== */
-
-    const bookingNumber = generateBookingNumber();
 
     const invoiceNumber = await generateInvoiceNumber(auth.user.id);
 
     /* =====================================================
-       CREATE BOOKING + TRANSACTION
-       IN ONE DATABASE TRANSACTION
+       DATABASE TRANSACTION
     ===================================================== */
 
     const result = await db.transaction(async (tx) => {
-      /* ===============================================
-             INSERT BOOKING
-          =============================================== */
+      /* ===================================================
+         1. INSERT BOOKING
+      =================================================== */
 
       const [booking] = await tx
         .insert(bookings)
         .values({
-          bookingNumber,
+          invoiceNumber,
 
           customerName: data.customerName ?? null,
 
@@ -150,29 +224,9 @@ export async function POST(request: NextRequest) {
 
           gstNumber: data.gstNumber ?? null,
 
-          // uuid[]
-          attractionId: data.attractionId,
-
-          visitAt: new Date(data.visitAt),
-
-          subtotal: data.subtotal.toFixed(2),
-
-          gstAmount: data.gstAmount.toFixed(2),
-
-          gstAdjustment: data.gstAdjustment.toFixed(2),
-
-          roundOff: data.roundOff.toFixed(2),
-
-          discountAmount: data.discountAmount.toFixed(2),
-
-          paymentMode: data.paymentMode,
-
-          status: "CONFIRMED",
-
           totalAmount: data.totalAmount.toFixed(2),
 
-          // Amount paid
-          amountPaid: data.amountReceived.toFixed(2),
+          status: "CONFIRMED",
 
           amountReceived: data.amountReceived.toFixed(2),
 
@@ -183,20 +237,26 @@ export async function POST(request: NextRequest) {
         .returning({
           id: bookings.id,
 
-          bookingNumber: bookings.bookingNumber,
+          invoiceNumber: bookings.invoiceNumber,
 
-          attractionId: bookings.attractionId,
+          totalAmount: bookings.totalAmount,
 
           status: bookings.status,
+
+          amountReceived: bookings.amountReceived,
+
+          returnAmount: bookings.returnAmount,
+
+          createdAt: bookings.createdAt,
         });
 
       if (!booking) {
         throw new Error("BOOKING_CREATION_FAILED");
       }
 
-      /* ===============================================
-             INSERT TRANSACTION
-          =============================================== */
+      /* ===================================================
+         2. INSERT TRANSACTION
+      =================================================== */
 
       const [transaction] = await tx
         .insert(transactions)
@@ -227,39 +287,207 @@ export async function POST(request: NextRequest) {
         throw new Error("TRANSACTION_CREATION_FAILED");
       }
 
+      /* ===================================================
+         3. INSERT SCANNER INVOICE
+      =================================================== */
+
+      const [scannerInvoice] = await tx
+        .insert(scannerInvoices)
+        .values({
+          invoiceNumber,
+        })
+        .returning({
+          id: scannerInvoices.id,
+
+          invoiceNumber: scannerInvoices.invoiceNumber,
+
+          scannerInvoiceStatus: scannerInvoices.scannerInvoiceStatus,
+
+          isDeleted: scannerInvoices.isDeleted,
+        });
+
+      if (!scannerInvoice) {
+        throw new Error("SCANNER_INVOICE_CREATION_FAILED");
+      }
+
+      /* ===================================================
+         4. INSERT ATTRACTIONS + CATEGORIES
+      =================================================== */
+
+      const attractionResults = [];
+
+      for (const attraction of data.attractions) {
+        /* ===============================================
+           INSERT ATTRACTION AGAINST BOOKING
+        =============================================== */
+
+        const [attractionAgainstBooking] = await tx
+          .insert(attractionsAgainstBooking)
+          .values({
+            bookingId: booking.id,
+
+            attractionManagementId: attraction.attractionManagementId,
+
+            attractionSubtotal: attraction.attractionSubtotal.toFixed(2),
+
+            attractionGst: attraction.attractionGst.toFixed(2),
+
+            attractionRoundoff: attraction.attractionRoundoff.toFixed(2),
+
+            attractionRoundOffGstAdj:
+              attraction.attractionRoundOffGstAdj.toFixed(2),
+
+            attractionTotalAmount: attraction.attractionTotalAmount.toFixed(2),
+          })
+          .returning({
+            id: attractionsAgainstBooking.id,
+
+            bookingId: attractionsAgainstBooking.bookingId,
+
+            attractionManagementId:
+              attractionsAgainstBooking.attractionManagementId,
+
+            attractionSubtotal: attractionsAgainstBooking.attractionSubtotal,
+
+            attractionGst: attractionsAgainstBooking.attractionGst,
+
+            attractionRoundoff: attractionsAgainstBooking.attractionRoundoff,
+
+            attractionRoundOffGstAdj:
+              attractionsAgainstBooking.attractionRoundOffGstAdj,
+
+            attractionTotalAmount:
+              attractionsAgainstBooking.attractionTotalAmount,
+          });
+
+        if (!attractionAgainstBooking) {
+          throw new Error("ATTRACTION_BOOKING_CREATION_FAILED");
+        }
+
+        /* ===============================================
+           INSERT CATEGORIES FOR THIS ATTRACTION
+        =============================================== */
+
+        const categoryResults = [];
+
+        for (const category of attraction.categories) {
+          const [categoryAgainstBooking] = await tx
+            .insert(categoryOfAttractionAgainstBooking)
+            .values({
+              attractionAgainstBookingId: attractionAgainstBooking.id,
+
+              bookingId: booking.id,
+
+              categoryId: category.categoryId,
+
+              noOfVisitors: category.noOfVisitors,
+            })
+            .returning({
+              id: categoryOfAttractionAgainstBooking.id,
+
+              attractionAgainstBookingId:
+                categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+
+              bookingId: categoryOfAttractionAgainstBooking.bookingId,
+
+              categoryId: categoryOfAttractionAgainstBooking.categoryId,
+
+              noOfVisitors: categoryOfAttractionAgainstBooking.noOfVisitors,
+            });
+
+          if (!categoryAgainstBooking) {
+            throw new Error("CATEGORY_BOOKING_CREATION_FAILED");
+          }
+
+          categoryResults.push(categoryAgainstBooking);
+        }
+
+        const [attractionDetails] = await tx
+          .select({
+            attractionId: attractionManagement.attractionId,
+            attractionName: attractions.name,
+          })
+          .from(attractionManagement)
+          .innerJoin(
+            attractions,
+            eq(attractionManagement.attractionId, attractions.id),
+          )
+          .where(
+            eq(
+              attractionManagement.id,
+              attractionAgainstBooking.attractionManagementId,
+            ),
+          )
+          .limit(1);
+
+        if (!attractionDetails) {
+          throw new Error("ATTRACTION_NOT_FOUND");
+        }
+
+        attractionResults.push({
+          attraction: {
+            ...attractionAgainstBooking,
+            attractionId: attractionDetails.attractionId,
+            attractionName: attractionDetails.attractionName,
+          },
+          categories: categoryResults,
+        });
+      }
+
+      /* ===================================================
+         RETURN TRANSACTION RESULT
+      =================================================== */
+
       return {
         booking,
+
         transaction,
+
+        scannerInvoice,
+
+        attractions: attractionResults,
       };
     });
 
     /* =====================================================
-       GENERATE QR FOR EACH ATTRACTION
+       GENERATE QR FOR EACH BOOKED ATTRACTION
     ===================================================== */
 
     const qrCodes = await Promise.all(
-      result.booking.attractionId.map((attractionId) =>
-        generateBookingQRCode(result.booking.id, attractionId),
+      result.attractions.map(({ attraction, categories }) =>
+        generateBookingQRCode({
+          bookingId: result.booking.id,
+          invoiceNumber: result.booking.invoiceNumber,
+          scannerInvoiceId: result.scannerInvoice.id,
+          attractionId: attraction.attractionId,
+          attractionName: attraction.attractionName,
+          categories: categories.map((category) => ({
+            categoryId: category.categoryId,
+            noOfVisitors: category.noOfVisitors,
+          })),
+          date: result.booking.createdAt.toISOString().split("T")[0],
+        }),
       ),
     );
 
     /* =====================================================
-       SUCCESS
+       SUCCESS RESPONSE
     ===================================================== */
 
     return success(
       {
         bookingId: result.booking.id,
 
-        bookingNumber: result.booking.bookingNumber,
+        invoiceNumber: result.booking.invoiceNumber,
 
         status: result.booking.status,
 
-        attractionId: result.booking.attractionId,
+        totalAmount: Number(result.booking.totalAmount),
 
-        qrCodes,
+        amountReceived: Number(result.booking.amountReceived),
 
-        // Transaction information
+        returnAmount: Number(result.booking.returnAmount),
+
         transaction: {
           id: result.transaction.id,
 
@@ -271,6 +499,42 @@ export async function POST(request: NextRequest) {
 
           status: result.transaction.status,
         },
+
+        scannerInvoice: {
+          id: result.scannerInvoice.id,
+
+          invoiceNumber: result.scannerInvoice.invoiceNumber,
+
+          scannerInvoiceStatus: result.scannerInvoice.scannerInvoiceStatus,
+
+          isDeleted: result.scannerInvoice.isDeleted,
+        },
+
+        attractions: result.attractions.map(({ attraction, categories }) => ({
+          id: attraction.id,
+
+          attractionManagementId: attraction.attractionManagementId,
+
+          attractionSubtotal: Number(attraction.attractionSubtotal),
+
+          attractionGst: Number(attraction.attractionGst),
+
+          attractionRoundoff: Number(attraction.attractionRoundoff),
+
+          attractionRoundOffGstAdj: Number(attraction.attractionRoundOffGstAdj),
+
+          attractionTotalAmount: Number(attraction.attractionTotalAmount),
+
+          categories: categories.map((category) => ({
+            id: category.id,
+
+            categoryId: category.categoryId,
+
+            noOfVisitors: category.noOfVisitors,
+          })),
+        })),
+
+        qrCodes,
       },
       201,
     );
@@ -348,71 +612,54 @@ export async function POST(request: NextRequest) {
     }
 
     /* =====================================================
+       SCANNER INVOICE ERRORS
+    ===================================================== */
+
+    if (
+      error instanceof Error &&
+      error.message === "SCANNER_INVOICE_CREATION_FAILED"
+    ) {
+      return failure(
+        "Unable to create scanner invoice.",
+        500,
+        "SCANNER_INVOICE_CREATION_FAILED",
+      );
+    }
+
+    /* =====================================================
+       ATTRACTION ERRORS
+    ===================================================== */
+
+    if (
+      error instanceof Error &&
+      error.message === "ATTRACTION_BOOKING_CREATION_FAILED"
+    ) {
+      return failure(
+        "Unable to add attraction to booking.",
+        500,
+        "ATTRACTION_BOOKING_CREATION_FAILED",
+      );
+    }
+
+    /* =====================================================
+       CATEGORY ERRORS
+    ===================================================== */
+
+    if (
+      error instanceof Error &&
+      error.message === "CATEGORY_BOOKING_CREATION_FAILED"
+    ) {
+      return failure(
+        "Unable to add attraction category to booking.",
+        500,
+        "CATEGORY_BOOKING_CREATION_FAILED",
+      );
+    }
+
+    /* =====================================================
        DEFAULT ERROR
     ===================================================== */
 
     return failure("Unable to create booking.", 500, "INTERNAL_SERVER_ERROR");
   }
 }
-
-/* =========================================================
-   BOOKING NUMBER
-========================================================= */
-
-function generateBookingNumber(): string {
-  const now = new Date();
-
-  const year = String(now.getFullYear()).slice(-2);
-
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-
-  const day = String(now.getDate()).padStart(2, "0");
-
-  const random = Math.floor(1000 + Math.random() * 9000);
-
-  return `BK-${year}${month}${day}-${random}`;
-}
-
-/* =========================================================
-   INVOICE NUMBER
-========================================================= */
-
-// export async function generateInvoiceNumber(userId: string): Promise<string> {
-//   const [user] = await db
-//     .select({
-//       invoicePrefix: users.invoiceNumberForUsersInitialPart,
-//     })
-//     .from(users)
-//     .where(eq(users.id, userId))
-//     .limit(1);
-
-//   if (!user) {
-//     throw new Error("USER_NOT_FOUND");
-//   }
-
-//   if (!user.invoicePrefix) {
-//     throw new Error("INVOICE_PREFIX_NOT_CONFIGURED");
-//   }
-
-//   // Get the last invoice number
-//   const [lastTransaction] = await db
-//     .select({
-//       invoiceNumber: transactions.invoiceNumber,
-//     })
-//     .from(transactions)
-//     .where(isNotNull(transactions.invoiceNumber))
-//     .orderBy(desc(transactions.createdAt))
-//     .limit(1);
-
-//   let nextNumber = 1;
-
-//   if (lastTransaction?.invoiceNumber) {
-//     const match = lastTransaction.invoiceNumber.match(/(\d+)$/);
-
-//     if (match) {
-//       nextNumber = Number(match[1]) + 1;
-//     }
-//   }
-
-//   return `${user.invoicePrefix}${String(nextNumber).padStart(5, "0")}`;
-// }

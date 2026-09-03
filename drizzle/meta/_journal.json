@@ -47,8 +47,22 @@
     {
       "idx": 6,
       "version": "7",
-      "when": 1788450527099,
-      "tag": "0006_broad_stick",
+      "when": 1788454006949,
+      "tag": "0006_clammy_human_torch",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788454807502,
+      "tag": "0007_daily_ultragirl",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788455174581,
+      "tag": "0008_majestic_stingray",
       "breakpoints": true
     }
   ]

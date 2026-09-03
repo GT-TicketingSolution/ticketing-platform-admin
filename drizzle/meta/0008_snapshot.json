@@ -1,6 +1,6 @@
 {
-  "id": "8eddf274-5c38-4496-be0c-a5c5d06eec8b",
-  "prevId": "c87fc8c4-2ae2-4437-8724-e763ff99f338",
+  "id": "45433864-4bdc-49d8-8a5c-4c50230db156",
+  "prevId": "591d9f04-5c18-4be7-9a50-a11ce82fa0ae",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -500,12 +500,82 @@
           "primaryKey": false,
           "notNull": false
         },
+        "adult_price": {
+          "name": "adult_price",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "child_price": {
+          "name": "child_price",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "student_price": {
+          "name": "student_price",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "senior_price": {
+          "name": "senior_price",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "foreigner_price": {
+          "name": "foreigner_price",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
         "has_seating": {
           "name": "has_seating",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "adult_seats": {
+          "name": "adult_seats",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "child_seats": {
+          "name": "child_seats",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "student_seats": {
+          "name": "student_seats",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "senior_seats": {
+          "name": "senior_seats",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "foreigner_seats": {
+          "name": "foreigner_seats",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "seat_layout_id": {
           "name": "seat_layout_id",
@@ -1970,6 +2040,28 @@
           "type": "numeric(12, 2)",
           "primaryKey": false,
           "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "booking_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PENDING'"
+        },
+        "amount_received": {
+          "name": "amount_received",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "return_change": {
+          "name": "return_change",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
         },
         "created_by": {
           "name": "created_by",

@@ -412,7 +412,7 @@ export const bookings = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
-    bookingNumber: varchar("booking_number", {
+    invoiceNumber: varchar("invoice_number", {
       length: 50,
     })
       .notNull()
@@ -430,66 +430,12 @@ export const bookings = pgTable(
       length: 20,
     }),
 
-    attractionId: uuid("attraction_ids").array().notNull(),
-
-    visitAt: timestamp("visit_at", {
-      withTimezone: true,
-    }).notNull(),
-
-    subtotal: numeric("subtotal", {
-      precision: 12,
-      scale: 2,
-    })
-      .notNull()
-      .default("0"),
-
-    gstAmount: numeric("gst_amount", {
-      precision: 12,
-      scale: 2,
-    })
-      .notNull()
-      .default("0"),
-
-    gstAdjustment: numeric("gst_adjustment", {
-      precision: 12,
-      scale: 2,
-    })
-      .notNull()
-      .default("0"),
-
-    roundOff: numeric("round_off", {
-      precision: 12,
-      scale: 2,
-    })
-      .notNull()
-      .default("0"),
-
-    discountAmount: numeric("discount_amount", {
-      precision: 12,
-      scale: 2,
-    })
-      .notNull()
-      .default("0"),
-
-    paymentExpiresAt: timestamp("payment_expires_at", {
-      withTimezone: true,
-    }),
-
-    paymentMode: paymentModeEnum("payment_mode").notNull(),
-
-    status: bookingStatusEnum("status").notNull().default("PENDING"),
-
     totalAmount: numeric("total_amount", {
       precision: 12,
       scale: 2,
     }).notNull(),
 
-    amountPaid: numeric("amount_paid", {
-      precision: 12,
-      scale: 2,
-    })
-      .notNull()
-      .default("0"),
+    status: bookingStatusEnum("status").notNull().default("PENDING"),
 
     amountReceived: numeric("amount_received", {
       precision: 12,
@@ -533,17 +479,9 @@ export const bookings = pgTable(
   },
 
   (table) => ({
-    bookingNumberIdx: index("bookings_booking_number_idx").on(
-      table.bookingNumber,
+    invoiceNumberIdx: index("bookings_invoice_number_idx").on(
+      table.invoiceNumber,
     ),
-
-    customerNameIdx: index("bookings_customer_name_idx").on(table.customerName),
-
-    mobileIdx: index("bookings_mobile_idx").on(table.mobileNumber),
-
-    visitAtIdx: index("bookings_visit_at_idx").on(table.visitAt),
-
-    statusIdx: index("bookings_status_idx").on(table.status),
   }),
 );
 
@@ -1997,5 +1935,134 @@ export const scannerInvoices = pgTable(
     scannedByStaffIdx: index("scanner_invoices_scanned_by_staff_idx").on(
       table.scannedByStaffId,
     ),
+  }),
+);
+
+export const attractionsAgainstBooking = pgTable(
+  "attractions_against_booking",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, {
+        onDelete: "cascade",
+      }),
+
+    attractionManagementId: uuid("attraction_management_id")
+      .notNull()
+      .references(() => attractionManagement.id, {
+        onDelete: "cascade",
+      }),
+
+    attractionSubtotal: numeric("attraction_subtotal", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+
+    attractionGst: numeric("attraction_gst", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+
+    attractionRoundoff: numeric("attraction_roundoff", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+
+    attractionRoundOffGstAdj: numeric("attraction_round_off_gst_adj", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+
+    attractionTotalAmount: numeric("attraction_totalamount", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+
+  (table) => ({
+    bookingIdIdx: index("attractions_against_booking_booking_id_idx").on(
+      table.bookingId,
+    ),
+
+    attractionManagementIdIdx: index(
+      "attractions_against_booking_attraction_management_id_idx",
+    ).on(table.attractionManagementId),
+  }),
+);
+
+export const categoryOfAttractionAgainstBooking = pgTable(
+  "category_of_attraction_against_booking",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    attractionAgainstBookingId: uuid("attraction_against_booking_id")
+      .notNull()
+      .references(() => attractionsAgainstBooking.id, {
+        onDelete: "cascade",
+      }),
+
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, {
+        onDelete: "cascade",
+      }),
+
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => attractionCategory.id, {
+        onDelete: "cascade",
+      }),
+
+    noOfVisitors: integer("no_of_visitors").notNull().default(0),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+
+  (table) => ({
+    attractionAgainstBookingIdIdx: index(
+      "category_attraction_against_booking_attraction_against_booking_id_idx",
+    ).on(table.attractionAgainstBookingId),
+
+    bookingIdIdx: index(
+      "category_attraction_against_booking_booking_id_idx",
+    ).on(table.bookingId),
+
+    categoryIdIdx: index(
+      "category_attraction_against_booking_category_id_idx",
+    ).on(table.categoryId),
   }),
 );
