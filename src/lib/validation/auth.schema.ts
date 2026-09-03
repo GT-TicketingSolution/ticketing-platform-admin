@@ -74,7 +74,27 @@ export const updateProfileSchema = z
     invoiceNumberForUsersInitialPart: z
       .string()
       .trim()
-      .max(11, "Invoice number initial part cannot exceed 11 characters")
+      .refine(
+        (val) => {
+          if (!val) return true;
+          const clean = val.replace(/\/+$/, "");
+          return clean.length >= 4;
+        },
+        {
+          message: "Invoice prefix must be at least 4 characters",
+        }
+      )
+      .refine(
+        (val) => {
+          if (!val) return true;
+          const clean = val.replace(/\/+$/, "");
+          return clean.length <= 11;
+        },
+        {
+          message: "Invoice prefix cannot exceed 11 characters",
+        }
+      )
+      .max(12, "Invoice number initial part cannot exceed 12 characters")
       .optional()
       .or(z.literal("")),
   })

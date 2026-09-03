@@ -248,6 +248,9 @@ export const validateInvoicePrefix = (prefix: string): string => {
   // Optional field: valid if empty
   if (!value) return "";
 
+  if (value.length < 4) {
+    return "Invoice prefix must be at least 4 characters";
+  }
   if (value.length > 11) {
     return "Invoice prefix cannot exceed 11 characters";
   }
@@ -285,7 +288,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
   const [formData, setFormData] = useState(() => {
     const p = profileData?.profile || (profileData as any)?.data?.profile;
     const rawInvoice =
-      p?.invoiceNumberForUserInitialPart ||
+      p?.invoiceNumberForUsersInitialPart ||
       (p as any)?.invoicePrefix ||
       getDefaultFinancialYear();
     return {
@@ -295,7 +298,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
       businessName: p?.businessName || "",
       cin: p?.cin || (p as any)?.cin || "",
       gst: p?.gst || (p as any)?.gst || "",
-      invoiceNumberForUserInitialPart: rawInvoice
+      invoiceNumberForUsersInitialPart: rawInvoice
         ? rawInvoice.replace(/\/+$/, "")
         : getDefaultFinancialYear(),
       profileLink: p?.profileLink || (p as any)?.businessLogo || null,
@@ -311,7 +314,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
   useEffect(() => {
     if (profile) {
       const rawInvoice =
-        profile.invoiceNumberForUserInitialPart ||
+        profile.invoiceNumberForUsersInitialPart ||
         (profile as any).invoicePrefix ||
         getDefaultFinancialYear();
       const initialInvoicePrefix = rawInvoice
@@ -330,7 +333,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
         businessName: profile.businessName || "",
         cin: profile.cin || (profile as any).cin || "",
         gst: profile.gst || (profile as any).gst || "",
-        invoiceNumberForUserInitialPart: initialInvoicePrefix,
+        invoiceNumberForUsersInitialPart: initialInvoicePrefix,
         profileLink: initialProfileLink,
       });
 
@@ -373,8 +376,8 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
       const gstError = validateGST(formData.gst);
       if (gstError) errs.gst = gstError;
 
-      const prefixError = validateInvoicePrefix(formData.invoiceNumberForUserInitialPart);
-      if (prefixError) errs.invoiceNumberForUserInitialPart = prefixError;
+      const prefixError = validateInvoicePrefix(formData.invoiceNumberForUsersInitialPart);
+      if (prefixError) errs.invoiceNumberForUsersInitialPart = prefixError;
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -428,7 +431,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
     if (!validate()) return;
 
     try {
-      const invoicePrefix = formData.invoiceNumberForUserInitialPart.trim();
+      const invoicePrefix = formData.invoiceNumberForUsersInitialPart.trim();
       await updateMutation.mutateAsync({
         name: formData.name.trim(),
         email: formData.email.trim(),
@@ -437,9 +440,9 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
           businessName: formData.businessName.trim(),
           cin: formData.cin.trim().toUpperCase() || undefined,
           gst: formData.gst.trim().toUpperCase() || undefined,
-          profileLink: formData.profileLink ? formData.profileLink : "hi",
+          profileLink: formData.profileLink ? formData.profileLink : "",
           // Append trailing slash so backend receives e.g. "2026-2027/"
-          invoiceNumberForUserInitialPart: invoicePrefix ? `${invoicePrefix}/` : undefined,
+          invoiceNumberForUsersInitialPart: invoicePrefix ? `${invoicePrefix}/` : undefined,
         } : {}),
       });
       // Cache is already updated via setQueryData in useUpdateProfileMutation onSuccess —
@@ -651,7 +654,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
           </div>
         ) : (
           /* ── Form ── */
-          <form onSubmit={handleSubmit} style={{ padding: "18px 22px 22px" }}>
+          <form noValidate onSubmit={handleSubmit} style={{ padding: "18px 22px 22px" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               {/* ── Full Name & Email Address — side by side ── */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -789,7 +792,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                         color: "#9CA3AF",
                       }}
                     >
-                      Prefix max 11 characters
+                      Prefix 4-11 characters
                     </span>
                   </div>
 
@@ -798,7 +801,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                       display: "flex",
                       alignItems: "center",
                       height: "36px",
-                      border: `1.5px solid ${errors.invoiceNumberForUserInitialPart ? colors.status.error : colors.login.inputBorder}`,
+                      border: `1.5px solid ${errors.invoiceNumberForUsersInitialPart ? colors.status.error : colors.login.inputBorder}`,
                       borderRadius: "7px",
                       padding: "0 10px",
                       background: isSubmitting ? "#F9FAFB" : "#FFFFFF",
@@ -817,19 +820,26 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                       id="ep-invoice-prefix"
                       type="text"
                       placeholder={getDefaultFinancialYear()}
-                      value={formData.invoiceNumberForUserInitialPart}
+                      value={formData.invoiceNumberForUsersInitialPart}
                       maxLength={11}
                       disabled={isSubmitting}
+                      onBlur={() => {
+                        const err = validateInvoicePrefix(formData.invoiceNumberForUsersInitialPart);
+                        if (err) {
+                          setErrors((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: err }));
+                        }
+                      }}
                       onChange={(e) => {
                         const val = e.target.value.toUpperCase().replace(/\s+/g, "");
-                        setFormData((prev) => ({ ...prev, invoiceNumberForUserInitialPart: val }));
-                        if (errors.invoiceNumberForUserInitialPart) {
-                          setErrors((prev) => ({ ...prev, invoiceNumberForUserInitialPart: "" }));
+                        setFormData((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: val }));
+                        if (errors.invoiceNumberForUsersInitialPart) {
+                          const err = validateInvoicePrefix(val);
+                          setErrors((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: err }));
                         }
                       }}
                       style={{
-                        width: formData.invoiceNumberForUserInitialPart
-                          ? `${Math.max(formData.invoiceNumberForUserInitialPart.length, 9)}ch`
+                        width: formData.invoiceNumberForUsersInitialPart
+                          ? `${Math.max(formData.invoiceNumberForUsersInitialPart.length, 9)}ch`
                           : `${getDefaultFinancialYear().length}ch`,
                         minWidth: "75px",
                         maxWidth: "130px",
@@ -873,21 +883,8 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                     </span>
                   </div>
 
-                  {/* Helper text below input */}
-                  <span
-                    style={{
-                      fontSize: "11.5px",
-                      color: "#6B7280",
-                      fontFamily: typography.fontFamily.sans,
-                      lineHeight: "15px",
-                      marginTop: "2px",
-                    }}
-                  >
-                    The number after / auto-increments: INV-2026/001, INV-2026/002
-                  </span>
-
-                  {/* Error (prefix only) */}
-                  {errors.invoiceNumberForUserInitialPart ? (
+                  {/* Error directly below the field */}
+                  {errors.invoiceNumberForUsersInitialPart ? (
                     <span
                       style={{
                         fontSize: "11px",
@@ -900,9 +897,22 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                       }}
                     >
                       <AlertCircle size={12} />
-                      {errors.invoiceNumberForUserInitialPart}
+                      {errors.invoiceNumberForUsersInitialPart}
                     </span>
                   ) : null}
+
+                  {/* Helper text below input */}
+                  <span
+                    style={{
+                      fontSize: "11.5px",
+                      color: "#6B7280",
+                      fontFamily: typography.fontFamily.sans,
+                      lineHeight: "15px",
+                      marginTop: "2px",
+                    }}
+                  >
+                    The number after / auto-increments: INV-2026/001, INV-2026/002
+                  </span>
                 </div>
               )}
 
