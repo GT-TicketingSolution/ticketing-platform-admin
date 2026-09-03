@@ -10,10 +10,17 @@ export interface UserProfile {
   id: string;
   name: string;
   email: string;
-  phone: string | null;
   role: string;
   status: string;
+  phone: string | null;
   businessName: string | null;
+  gst?: string | null;
+  cin?: string | null;
+  profileLink?: string | null;
+  invoiceNumberForUserInitialPart?: string | null;
+  lastLoginAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface ProfileResponse {
@@ -25,8 +32,11 @@ export interface UpdateProfileRequest {
   email: string;
   phone?: string;
   businessName?: string;
+  gst?: string;
+  cin?: string;
+  profileLink?: string;
+  invoiceNumberForUserInitialPart?: string;
 }
-
 
 export interface UpdateProfileResponse {
   message: string;

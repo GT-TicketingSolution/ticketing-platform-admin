@@ -126,13 +126,15 @@ export default function Header({
     setMounted(true);
   }, []);
 
+  const profile = profileData?.profile || (profileData as any)?.data?.profile;
+
   const displayName = isProfileError
     ? "—"
-    : profileData?.profile?.name || "—";
+    : profile?.name || "—";
 
   const displayBusinessName = isProfileError
     ? null
-    : profileData?.profile?.businessName || null;
+    : profile?.businessName || null;
 
   /**
    * Derive the displayed role label from the authoritative profile API.
@@ -140,8 +142,8 @@ export default function Header({
    */
   const displayRole = useMemo(() => {
     if (isProfileError) return "-";
-    if (profileData?.profile?.role) {
-      const raw = String(profileData.profile.role).toUpperCase();
+    if (profile?.role) {
+      const raw = String(profile.role).toUpperCase();
       if (raw === "STAFF") return "Staff";
       if (raw === "MANAGER") return "Manager";
       if (raw === "ADMIN") return "Admin";
@@ -153,7 +155,7 @@ export default function Header({
       if (saved && saved !== "Admin" && saved !== "-") return saved;
     }
     return "-";
-  }, [isProfileError, profileData?.profile?.role, userRole, mounted]);
+  }, [isProfileError, profile?.role, userRole, mounted]);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -489,18 +491,27 @@ export default function Header({
                   alignItems: "center",
                   justifyContent: "center",
                   flexShrink: 0,
+                  overflow: "hidden",
                 }}
               >
-                <svg
-                  width="23"
-                  height="23"
-                  viewBox="0 0 24 24"
-                  fill={colors.text.white}
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z" />
-                  <path d="M12 14C7.58172 14 4 16.6863 4 20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20C20 16.6863 16.4183 14 12 14Z" />
-                </svg>
+                {profile?.profileLink ? (
+                  <img
+                    src={profile.profileLink}
+                    alt={displayName}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <svg
+                    width="23"
+                    height="23"
+                    viewBox="0 0 24 24"
+                    fill={colors.text.white}
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z" />
+                    <path d="M12 14C7.58172 14 4 16.6863 4 20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20C20 16.6863 16.4183 14 12 14Z" />
+                  </svg>
+                )}
               </div>
 
               {/* Name + Role (hidden on mobile) */}
