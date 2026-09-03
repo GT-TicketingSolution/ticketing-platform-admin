@@ -80,6 +80,9 @@ export interface SeatQueryParams {
   search?: string;
 
   status?: "ACTIVE" | "INACTIVE";
+
+  /** When false, the query will not fire. Useful to skip the API call during edit mode. */
+  enabled?: boolean;
 }
 
 export interface CreateSeatPayload {

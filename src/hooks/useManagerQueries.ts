@@ -363,8 +363,8 @@ export function useAttractions() {
       const items: any[] = Array.isArray(res)
         ? res
         : Array.isArray(res?.data)
-        ? res.data
-        : [];
+          ? res.data
+          : [];
       // Map AttractionManagement → AttractionItem using attractionId (the business UUID) as id
       return items.map((a) => ({
         id: a.attractionId || a.id,
