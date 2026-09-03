@@ -1621,8 +1621,6 @@ export async function POST(request: NextRequest) {
       const invoiceNumber = await generateInvoiceNumber(tx);
 
       await tx.insert(transactions).values({
-        transactionNumber,
-
         invoiceNumber,
 
         bookingId: booking.id,

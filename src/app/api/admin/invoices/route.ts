@@ -224,8 +224,6 @@ export async function GET(request: NextRequest) {
         or(
           ilike(transactions.invoiceNumber, searchValue),
 
-          ilike(transactions.transactionNumber, searchValue),
-
           ilike(bookings.bookingNumber, searchValue),
 
           ilike(bookings.customerName, searchValue),
@@ -365,10 +363,7 @@ export async function GET(request: NextRequest) {
         id: transactions.id,
 
         // Invoice number
-        invoiceId: transactions.invoiceNumber,
-
-        // Transaction number
-        transactionId: transactions.transactionNumber,
+        invoiceNumber: transactions.invoiceNumber,
 
         // Booking UUID
         bookingUuid: bookings.id,
@@ -514,7 +509,7 @@ export async function GET(request: NextRequest) {
         // Invoice
         // -------------------------------------------------
 
-        invoiceId: invoice.invoiceId || invoice.transactionId,
+        invoiceNumber: invoice.invoiceNumber,
 
         // -------------------------------------------------
         // Customer
@@ -570,8 +565,6 @@ export async function GET(request: NextRequest) {
         // -------------------------------------------------
         // References
         // -------------------------------------------------
-
-        transactionId: invoice.transactionId,
 
         bookingId: invoice.bookingId,
       };

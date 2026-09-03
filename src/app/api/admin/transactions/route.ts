@@ -205,7 +205,7 @@ export async function GET(request: NextRequest) {
 
       conditions.push(
         or(
-          ilike(transactions.transactionNumber, searchValue),
+          ilike(transactions.invoiceNumber, searchValue),
 
           ilike(bookings.bookingNumber, searchValue),
 
@@ -311,7 +311,7 @@ export async function GET(request: NextRequest) {
       .select({
         id: transactions.id,
 
-        transactionId: transactions.transactionNumber,
+        invoiceNumber: transactions.invoiceNumber,
 
         customerName: bookings.customerName,
 
@@ -404,7 +404,7 @@ export async function GET(request: NextRequest) {
       return {
         id: transaction.id,
 
-        transactionId: transaction.transactionId,
+        invoiceNumber: transaction.invoiceNumber,
 
         customerName: transaction.customerName,
 
@@ -485,207 +485,207 @@ export async function GET(request: NextRequest) {
 // ADMIN + MANAGER + STAFF WITH ACCESS
 // =====================================================
 
-const createTransactionSchema = z.object({
-  bookingId: z.string().uuid("Invalid booking ID."),
+// const createTransactionSchema = z.object({
+//   bookingId: z.string().uuid("Invalid booking ID."),
 
-  amount: z.number().positive("Amount must be greater than 0."),
+//   amount: z.number().positive("Amount must be greater than 0."),
 
-  paymentMode: z.enum(["CASH", "UPI", "CARD", "ONLINE"]),
+//   paymentMode: z.enum(["CASH", "UPI", "CARD", "ONLINE"]),
 
-  status: z
-    .enum(["SUCCESSFUL", "PENDING", "CANCELLED", "FAILED"])
-    .optional()
-    .default("SUCCESSFUL"),
-});
+//   status: z
+//     .enum(["SUCCESSFUL", "PENDING", "CANCELLED", "FAILED"])
+//     .optional()
+//     .default("SUCCESSFUL"),
+// });
 
-export async function POST(request: NextRequest) {
-  try {
-    // =====================================================
-    // 1. AUTHENTICATION
-    // =====================================================
+// export async function POST(request: NextRequest) {
+//   try {
+//     // =====================================================
+//     // 1. AUTHENTICATION
+//     // =====================================================
 
-    const auth = await requireAuth(request);
+//     const auth = await requireAuth(request);
 
-    // =====================================================
-    // 2. MODULE AUTHORIZATION
-    // =====================================================
+//     // =====================================================
+//     // 2. MODULE AUTHORIZATION
+//     // =====================================================
 
-    await requireModuleAccess(auth, "TRANSACTIONS");
+//     await requireModuleAccess(auth, "TRANSACTIONS");
 
-    // =====================================================
-    // 3. TENANT / ADMIN
-    // =====================================================
+//     // =====================================================
+//     // 3. TENANT / ADMIN
+//     // =====================================================
 
-    const adminId = getAdminId(auth);
+//     const adminId = getAdminId(auth);
 
-    // =====================================================
-    // 4. REQUEST BODY
-    // =====================================================
+//     // =====================================================
+//     // 4. REQUEST BODY
+//     // =====================================================
 
-    const body = await request.json();
+//     const body = await request.json();
 
-    const parsed = createTransactionSchema.safeParse(body);
+//     const parsed = createTransactionSchema.safeParse(body);
 
-    if (!parsed.success) {
-      return failure(
-        parsed.error.issues[0]?.message || "Invalid request data.",
-        400,
-        "VALIDATION_ERROR",
-      );
-    }
+//     if (!parsed.success) {
+//       return failure(
+//         parsed.error.issues[0]?.message || "Invalid request data.",
+//         400,
+//         "VALIDATION_ERROR",
+//       );
+//     }
 
-    const data = parsed.data;
+//     const data = parsed.data;
 
-    // =====================================================
-    // 5. FIND BOOKING
-    // =====================================================
+//     // =====================================================
+//     // 5. FIND BOOKING
+//     // =====================================================
 
-    const [booking] = await db
-      .select({
-        id: bookings.id,
+//     const [booking] = await db
+//       .select({
+//         id: bookings.id,
 
-        bookingNumber: bookings.bookingNumber,
+//         bookingNumber: bookings.bookingNumber,
 
-        customerName: bookings.customerName,
+//         customerName: bookings.customerName,
 
-        attractionId: bookings.attractionId,
+//         attractionId: bookings.attractionId,
 
-        attractionName: attractions.name,
-      })
-      .from(bookings)
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
-      .where(
-        and(
-          eq(bookings.id, data.bookingId),
+//         attractionName: attractions.name,
+//       })
+//       .from(bookings)
+//       .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+//       .where(
+//         and(
+//           eq(bookings.id, data.bookingId),
 
-          isNull(bookings.deletedAt),
+//           isNull(bookings.deletedAt),
 
-          eq(attractions.adminId, adminId),
-        ),
-      )
-      .limit(1);
+//           eq(attractions.adminId, adminId),
+//         ),
+//       )
+//       .limit(1);
 
-    if (!booking) {
-      return failure("Booking not found.", 404, "BOOKING_NOT_FOUND");
-    }
+//     if (!booking) {
+//       return failure("Booking not found.", 404, "BOOKING_NOT_FOUND");
+//     }
 
-    // =====================================================
-    // 6. ATTRACTION AUTHORIZATION
-    // =====================================================
+//     // =====================================================
+//     // 6. ATTRACTION AUTHORIZATION
+//     // =====================================================
 
-    try {
-      await requireAttractionAccess(auth, booking.attractionId[0]);
-    } catch (error) {
-      if (error instanceof Error && error.message === "FORBIDDEN") {
-        return failure(
-          "You do not have access to this attraction.",
-          403,
-          "ATTRACTION_ACCESS_DENIED",
-        );
-      }
+//     try {
+//       await requireAttractionAccess(auth, booking.attractionId[0]);
+//     } catch (error) {
+//       if (error instanceof Error && error.message === "FORBIDDEN") {
+//         return failure(
+//           "You do not have access to this attraction.",
+//           403,
+//           "ATTRACTION_ACCESS_DENIED",
+//         );
+//       }
 
-      throw error;
-    }
+//       throw error;
+//     }
 
-    // =====================================================
-    // 7. GENERATE TRANSACTION NUMBER
-    // =====================================================
+//     // =====================================================
+//     // 7. GENERATE TRANSACTION NUMBER
+//     // =====================================================
 
-    const transactionNumber = `TXN-${new Date().getFullYear()}-${crypto
-      .randomUUID()
-      .replace(/-/g, "")
-      .slice(0, 8)
-      .toUpperCase()}`;
+//     const invoiceNumber = `TXN-${new Date().getFullYear()}-${crypto
+//       .randomUUID()
+//       .replace(/-/g, "")
+//       .slice(0, 8)
+//       .toUpperCase()}`;
 
-    // =====================================================
-    // 8. CREATE TRANSACTION
-    // =====================================================
+//     // =====================================================
+//     // 8. CREATE TRANSACTION
+//     // =====================================================
 
-    const [transaction] = await db
-      .insert(transactions)
-      .values({
-        transactionNumber,
+//     const [transaction] = await db
+//       .insert(transactions)
+//       .values({
+//         invoiceNumber,
 
-        bookingId: data.bookingId,
+//         bookingId: data.bookingId,
 
-        amount: data.amount.toFixed(2),
+//         amount: data.amount.toFixed(2),
 
-        paymentMode: data.paymentMode,
+//         paymentMode: data.paymentMode,
 
-        status: data.status,
-      })
-      .returning({
-        transactionNumber: transactions.transactionNumber,
+//         status: data.status,
+//       })
+//       .returning({
+//         invoiceNumber: transactions.invoiceNumber,
 
-        bookingId: transactions.bookingId,
+//         bookingId: transactions.bookingId,
 
-        amount: transactions.amount,
+//         amount: transactions.amount,
 
-        paymentMode: transactions.paymentMode,
+//         paymentMode: transactions.paymentMode,
 
-        status: transactions.status,
+//         status: transactions.status,
 
-        createdAt: transactions.createdAt,
-      });
+//         createdAt: transactions.createdAt,
+//       });
 
-    // =====================================================
-    // 9. RESPONSE
-    // =====================================================
+//     // =====================================================
+//     // 9. RESPONSE
+//     // =====================================================
 
-    return success(
-      {
-        transactionId: transaction.transactionNumber,
+//     return success(
+//       {
+//         transactionId: transaction.invoiceNumber,
 
-        customerName: booking.customerName,
+//         customerName: booking.customerName,
 
-        transactionDate: transaction.createdAt,
+//         transactionDate: transaction.createdAt,
 
-        bookingId: booking.bookingNumber,
+//         bookingId: booking.bookingNumber,
 
-        attraction: {
-          id: booking.attractionId,
-          name: booking.attractionName,
-        },
+//         attraction: {
+//           id: booking.attractionId,
+//           name: booking.attractionName,
+//         },
 
-        amount: Number(transaction.amount),
+//         amount: Number(transaction.amount),
 
-        paymentMode: transaction.paymentMode,
+//         paymentMode: transaction.paymentMode,
 
-        status: transaction.status,
-      },
-      201,
-    );
-  } catch (error) {
-    console.error("Create transaction error:", error);
+//         status: transaction.status,
+//       },
+//       201,
+//     );
+//   } catch (error) {
+//     console.error("Create transaction error:", error);
 
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return failure("Authentication required.", 401, "UNAUTHORIZED");
-    }
+//     if (error instanceof Error && error.message === "UNAUTHORIZED") {
+//       return failure("Authentication required.", 401, "UNAUTHORIZED");
+//     }
 
-    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
-      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
-    }
+//     if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+//       return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+//     }
 
-    if (error instanceof Error && error.message === "FORBIDDEN") {
-      return failure(
-        "You do not have permission to create transactions.",
-        403,
-        "FORBIDDEN",
-      );
-    }
+//     if (error instanceof Error && error.message === "FORBIDDEN") {
+//       return failure(
+//         "You do not have permission to create transactions.",
+//         403,
+//         "FORBIDDEN",
+//       );
+//     }
 
-    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
-      return failure(
-        "User is not associated with an admin.",
-        403,
-        "USER_HAS_NO_ADMIN",
-      );
-    }
+//     if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+//       return failure(
+//         "User is not associated with an admin.",
+//         403,
+//         "USER_HAS_NO_ADMIN",
+//       );
+//     }
 
-    return failure(
-      "Unable to create transaction.",
-      500,
-      "INTERNAL_SERVER_ERROR",
-    );
-  }
-}
+//     return failure(
+//       "Unable to create transaction.",
+//       500,
+//       "INTERNAL_SERVER_ERROR",
+//     );
+//   }
+// }
