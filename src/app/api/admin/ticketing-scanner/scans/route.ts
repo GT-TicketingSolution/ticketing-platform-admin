@@ -1,170 +1,170 @@
-import { NextRequest } from "next/server";
+// import { NextRequest } from "next/server";
 
-import { and, desc, eq } from "drizzle-orm";
+// import { and, desc, eq } from "drizzle-orm";
 
-import { db } from "@/db";
+// import { db } from "@/db";
 
-import { ticketScanLogs, bookings, attractions } from "@/db/schema";
+// import { ticketScanLogs, bookings, attractions } from "@/db/schema";
 
-import { requireAuth } from "@/lib/auth/require-auth";
+// import { requireAuth } from "@/lib/auth/require-auth";
 
-import {
-  requireModuleAccess,
-  requireAttractionAccess,
-  getAdminId,
-} from "@/lib/auth/authorization";
+// import {
+//   requireModuleAccess,
+//   requireAttractionAccess,
+//   getAdminId,
+// } from "@/lib/auth/authorization";
 
-import { success, failure } from "@/lib/api/response";
+// import { success, failure } from "@/lib/api/response";
 
-export async function GET(request: NextRequest) {
-  try {
-    // ---------------------------------------------
-    // AUTH
-    // ---------------------------------------------
+// export async function GET(request: NextRequest) {
+//   try {
+//     // ---------------------------------------------
+//     // AUTH
+//     // ---------------------------------------------
 
-    const auth = await requireAuth(request);
+//     const auth = await requireAuth(request);
 
-    // ADMIN / MANAGER / STAFF with BOOKINGS access
-    await requireModuleAccess(auth, "SCANNER");
+//     // ADMIN / MANAGER / STAFF with BOOKINGS access
+//     await requireModuleAccess(auth, "SCANNER");
 
-    const adminId = getAdminId(auth);
+//     const adminId = getAdminId(auth);
 
-    // ---------------------------------------------
-    // QUERY PARAMS
-    // ---------------------------------------------
+//     // ---------------------------------------------
+//     // QUERY PARAMS
+//     // ---------------------------------------------
 
-    const { searchParams } = new URL(request.url);
+//     const { searchParams } = new URL(request.url);
 
-    const limitParam = Number(searchParams.get("limit") ?? "20");
+//     const limitParam = Number(searchParams.get("limit") ?? "20");
 
-    const limit = Math.min(
-      Math.max(Number.isFinite(limitParam) ? limitParam : 20, 1),
-      100,
-    );
+//     const limit = Math.min(
+//       Math.max(Number.isFinite(limitParam) ? limitParam : 20, 1),
+//       100,
+//     );
 
-    // ---------------------------------------------
-    // FETCH SCAN HISTORY
-    // ---------------------------------------------
+//     // ---------------------------------------------
+//     // FETCH SCAN HISTORY
+//     // ---------------------------------------------
 
-    const scans = await db
-      .select({
-        id: ticketScanLogs.id,
+//     const scans = await db
+//       .select({
+//         id: ticketScanLogs.id,
 
-        ticketId: bookings.bookingNumber,
+//         ticketId: bookings.bookingNumber,
 
-        visitorName: bookings.customerName,
+//         visitorName: bookings.customerName,
 
-        attractionId: attractions.id,
+//         attractionId: attractions.id,
 
-        attraction: attractions.name,
+//         attraction: attractions.name,
 
-        visitorsCount: ticketScanLogs.visitorsCount,
+//         visitorsCount: ticketScanLogs.visitorsCount,
 
-        verdict: ticketScanLogs.verdict,
+//         verdict: ticketScanLogs.verdict,
 
-        reason: ticketScanLogs.reason,
+//         reason: ticketScanLogs.reason,
 
-        scannedAt: ticketScanLogs.scannedAt,
+//         scannedAt: ticketScanLogs.scannedAt,
 
-        scannedBy: ticketScanLogs.scannedBy,
-      })
-      .from(ticketScanLogs)
+//         scannedBy: ticketScanLogs.scannedBy,
+//       })
+//       .from(ticketScanLogs)
 
-      .innerJoin(bookings, eq(ticketScanLogs.bookingId, bookings.id))
+//       .innerJoin(bookings, eq(ticketScanLogs.bookingId, bookings.id))
 
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+//       .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
 
-      .where(eq(attractions.adminId, adminId))
+//       .where(eq(attractions.adminId, adminId))
 
-      .orderBy(desc(ticketScanLogs.scannedAt))
+//       .orderBy(desc(ticketScanLogs.scannedAt))
 
-      .limit(limit);
+//       .limit(limit);
 
-    // ---------------------------------------------
-    // ATTRACTION ACCESS
-    // ---------------------------------------------
+//     // ---------------------------------------------
+//     // ATTRACTION ACCESS
+//     // ---------------------------------------------
 
-    const accessibleScans = [];
+//     const accessibleScans = [];
 
-    for (const scan of scans) {
-      try {
-        await requireAttractionAccess(auth, scan.attractionId);
+//     for (const scan of scans) {
+//       try {
+//         await requireAttractionAccess(auth, scan.attractionId);
 
-        accessibleScans.push(scan);
-      } catch (error) {
-        if (error instanceof Error && error.message === "FORBIDDEN") {
-          continue;
-        }
+//         accessibleScans.push(scan);
+//       } catch (error) {
+//         if (error instanceof Error && error.message === "FORBIDDEN") {
+//           continue;
+//         }
 
-        throw error;
-      }
-    }
+//         throw error;
+//       }
+//     }
 
-    // ---------------------------------------------
-    // RESPONSE
-    // ---------------------------------------------
+//     // ---------------------------------------------
+//     // RESPONSE
+//     // ---------------------------------------------
 
-    return success({
-      scans: accessibleScans.map((scan) => ({
-        id: scan.id,
+//     return success({
+//       scans: accessibleScans.map((scan) => ({
+//         id: scan.id,
 
-        ticketId: scan.ticketId,
+//         ticketId: scan.ticketId,
 
-        visitorName: scan.visitorName,
+//         visitorName: scan.visitorName,
 
-        attraction: scan.attraction,
+//         attraction: scan.attraction,
 
-        visitorsCount: scan.visitorsCount,
+//         visitorsCount: scan.visitorsCount,
 
-        verdict: scan.verdict,
+//         verdict: scan.verdict,
 
-        reason: scan.reason,
+//         reason: scan.reason,
 
-        timestamp: scan.scannedAt,
+//         timestamp: scan.scannedAt,
 
-        scannedBy: scan.scannedBy,
-      })),
+//         scannedBy: scan.scannedBy,
+//       })),
 
-      pagination: {
-        limit,
-        count: accessibleScans.length,
-      },
-    });
-  } catch (error) {
-    console.error("Get ticket scanner history error:", error);
+//       pagination: {
+//         limit,
+//         count: accessibleScans.length,
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Get ticket scanner history error:", error);
 
-    // ---------------------------------------------
-    // AUTH ERRORS
-    // ---------------------------------------------
+//     // ---------------------------------------------
+//     // AUTH ERRORS
+//     // ---------------------------------------------
 
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return failure("Authentication required.", 401, "UNAUTHORIZED");
-    }
+//     if (error instanceof Error && error.message === "UNAUTHORIZED") {
+//       return failure("Authentication required.", 401, "UNAUTHORIZED");
+//     }
 
-    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
-      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
-    }
+//     if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
+//       return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+//     }
 
-    if (error instanceof Error && error.message === "FORBIDDEN") {
-      return failure(
-        "You do not have permission to access scanner history.",
-        403,
-        "FORBIDDEN",
-      );
-    }
+//     if (error instanceof Error && error.message === "FORBIDDEN") {
+//       return failure(
+//         "You do not have permission to access scanner history.",
+//         403,
+//         "FORBIDDEN",
+//       );
+//     }
 
-    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
-      return failure(
-        "User is not associated with an admin.",
-        403,
-        "USER_HAS_NO_ADMIN",
-      );
-    }
+//     if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+//       return failure(
+//         "User is not associated with an admin.",
+//         403,
+//         "USER_HAS_NO_ADMIN",
+//       );
+//     }
 
-    return failure(
-      "Unable to fetch scanner history.",
-      500,
-      "INTERNAL_SERVER_ERROR",
-    );
-  }
-}
+//     return failure(
+//       "Unable to fetch scanner history.",
+//       500,
+//       "INTERNAL_SERVER_ERROR",
+//     );
+//   }
+// }

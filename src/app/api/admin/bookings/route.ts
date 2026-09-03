@@ -15,6 +15,8 @@ import {
   count,
 } from "drizzle-orm";
 
+import crypto from "crypto";
+
 import { db } from "@/db";
 
 import {
