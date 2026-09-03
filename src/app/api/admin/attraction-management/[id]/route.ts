@@ -5,6 +5,7 @@ import {
   attractionManagement,
   attractions,
   attractionSeats,
+  attractionCategory,
   seatLayouts,
 } from "@/db/schema";
 
@@ -17,7 +18,6 @@ import {
 import {
   getLegacySeatLayoutId,
   listTimeSlotsByAttractionIds,
-  parseCategorySeatCounts,
   parseTimeSlotsPayload,
   replaceAttractionSeatLayouts,
   resolveSeatLayoutIds,
@@ -73,7 +73,187 @@ export async function PATCH(
     }
 
     if (!existing) {
-      return failure("Attraction not found or access denied", 403, "FORBIDDEN");
+      return failure(
+        "Attraction not found or access denied",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    // =====================================================
+    // CATEGORIES
+    // =====================================================
+
+    const shouldSyncCategories =
+      body.categories !== undefined;
+
+    let categoriesToInsert:
+      | {
+          name: string;
+          basePrice: number;
+          futurePrice?: number | null;
+          effectiveFrom?: string | null;
+          noOfSeats: number;
+          imageLink?: string | null;
+        }[]
+      | null = null;
+
+    if (shouldSyncCategories) {
+      if (!Array.isArray(body.categories)) {
+        return failure(
+          "categories must be an array.",
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
+      if (body.categories.length === 0) {
+        return failure(
+          "At least one category is required.",
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
+      const categoryNames = new Set<string>();
+
+      for (const category of body.categories) {
+        // ---------------------------------------------
+        // CATEGORY NAME
+        // ---------------------------------------------
+
+        if (
+          !category ||
+          typeof category.name !== "string" ||
+          !category.name.trim()
+        ) {
+          return failure(
+            "Each category must have a name.",
+            400,
+            "VALIDATION_ERROR",
+          );
+        }
+
+        const normalizedName =
+          category.name.trim().toLowerCase();
+
+        if (categoryNames.has(normalizedName)) {
+          return failure(
+            `Duplicate category name: ${category.name}`,
+            400,
+            "VALIDATION_ERROR",
+          );
+        }
+
+        categoryNames.add(normalizedName);
+
+        // ---------------------------------------------
+        // BASE PRICE
+        // ---------------------------------------------
+
+        const basePrice = Number(category.basePrice);
+
+        if (
+          category.basePrice === undefined ||
+          category.basePrice === null ||
+          category.basePrice === "" ||
+          !Number.isFinite(basePrice) ||
+          basePrice < 0
+        ) {
+          return failure(
+            `Invalid basePrice for category: ${category.name}`,
+            400,
+            "VALIDATION_ERROR",
+          );
+        }
+
+        // ---------------------------------------------
+        // FUTURE PRICE
+        // ---------------------------------------------
+
+        let futurePrice: number | null = null;
+
+        if (
+          category.futurePrice !== undefined &&
+          category.futurePrice !== null &&
+          category.futurePrice !== ""
+        ) {
+          futurePrice = Number(category.futurePrice);
+
+          if (
+            !Number.isFinite(futurePrice) ||
+            futurePrice < 0
+          ) {
+            return failure(
+              `Invalid futurePrice for category: ${category.name}`,
+              400,
+              "VALIDATION_ERROR",
+            );
+          }
+        }
+
+        // ---------------------------------------------
+        // SEAT COUNT
+        // ---------------------------------------------
+
+        const noOfSeats = Number(category.noOfSeats);
+
+        if (
+          category.noOfSeats === undefined ||
+          category.noOfSeats === null ||
+          category.noOfSeats === "" ||
+          !Number.isInteger(noOfSeats) ||
+          noOfSeats < 0
+        ) {
+          return failure(
+            `Invalid noOfSeats for category: ${category.name}`,
+            400,
+            "VALIDATION_ERROR",
+          );
+        }
+
+        // ---------------------------------------------
+        // EFFECTIVE DATE
+        // ---------------------------------------------
+
+        let effectiveFrom: string | null = null;
+
+        if (
+          category.effectiveFrom !== undefined &&
+          category.effectiveFrom !== null &&
+          category.effectiveFrom !== ""
+        ) {
+          const date = new Date(category.effectiveFrom);
+
+          if (Number.isNaN(date.getTime())) {
+            return failure(
+              `Invalid effectiveFrom for category: ${category.name}`,
+              400,
+              "VALIDATION_ERROR",
+            );
+          }
+
+          effectiveFrom = category.effectiveFrom;
+        }
+
+        // ---------------------------------------------
+        // PREPARE CATEGORY
+        // ---------------------------------------------
+
+        categoriesToInsert ??= [];
+
+        categoriesToInsert.push({
+          name: category.name.trim(),
+          basePrice,
+          futurePrice,
+          effectiveFrom,
+          noOfSeats,
+          imageLink:
+            category.imageLink !== undefined
+              ? category.imageLink
+              : null,
+        });
+      }
     }
 
     // =====================================================
@@ -81,7 +261,8 @@ export async function PATCH(
     // =====================================================
 
     const shouldSyncSeatLayouts =
-      body.seatLayoutIds !== undefined || body.hasSeating !== undefined;
+      body.seatLayoutIds !== undefined ||
+      body.hasSeating !== undefined;
 
     let seatLayoutAssignments:
       | {
@@ -94,11 +275,13 @@ export async function PATCH(
 
     let expandedSeatLayoutIds: string[] | null = null;
 
-    let resolvedSeatLayouts: ReturnType<typeof resolveSeatLayoutIds> | null =
-      null;
+    let resolvedSeatLayouts:
+      | ReturnType<typeof resolveSeatLayoutIds>
+      | null = null;
 
     if (shouldSyncSeatLayouts) {
-      const hasSeating = body.hasSeating === false ? false : true;
+      const hasSeating =
+        body.hasSeating === false ? false : true;
 
       resolvedSeatLayouts = resolveSeatLayoutIds({
         hasSeating,
@@ -116,47 +299,29 @@ export async function PATCH(
         );
       }
 
-      seatLayoutAssignments = resolvedSeatLayouts.assignments;
+      seatLayoutAssignments =
+        resolvedSeatLayouts.assignments;
 
-      expandedSeatLayoutIds = resolvedSeatLayouts.expandedIds;
+      expandedSeatLayoutIds =
+        resolvedSeatLayouts.expandedIds;
 
-      // =====================================================
+      // ---------------------------------------------
       // VALIDATE LAYOUT OWNERSHIP
-      // =====================================================
+      // ---------------------------------------------
 
-      const seatLayoutOwnership = await validateSeatLayoutsForAdmin(
-        db,
-        existing.adminId,
-        resolvedSeatLayouts.uniqueIds,
-      );
+      const seatLayoutOwnership =
+        await validateSeatLayoutsForAdmin(
+          db,
+          existing.adminId,
+          resolvedSeatLayouts.uniqueIds,
+        );
 
       if (!seatLayoutOwnership.ok) {
-        return failure(seatLayoutOwnership.message, 400, "VALIDATION_ERROR");
-      }
-    }
-
-    // =====================================================
-    // SEAT CATEGORY COUNTS
-    // =====================================================
-
-    const seatFieldProvided = [
-      "adultSeats",
-      "childSeats",
-      "studentSeats",
-      "seniorSeats",
-      "foreignerSeats",
-    ].some((key) => body[key] !== undefined);
-
-    let parsedSeatCounts: ReturnType<typeof parseCategorySeatCounts> | null =
-      null;
-
-    if (seatFieldProvided) {
-      parsedSeatCounts = parseCategorySeatCounts(body, {
-        required: true,
-      });
-
-      if (!parsedSeatCounts.ok) {
-        return failure(parsedSeatCounts.message, 400, "VALIDATION_ERROR");
+        return failure(
+          seatLayoutOwnership.message,
+          400,
+          "VALIDATION_ERROR",
+        );
       }
     }
 
@@ -164,10 +329,15 @@ export async function PATCH(
     // TIME SLOTS
     // =====================================================
 
-    const timeSlotsParsed = parseTimeSlotsPayload(body);
+    const timeSlotsParsed =
+      parseTimeSlotsPayload(body);
 
     if (!timeSlotsParsed.ok) {
-      return failure(timeSlotsParsed.message, 400, "VALIDATION_ERROR");
+      return failure(
+        timeSlotsParsed.message,
+        400,
+        "VALIDATION_ERROR",
+      );
     }
 
     // =====================================================
@@ -179,7 +349,10 @@ export async function PATCH(
       // UPDATE ATTRACTION
       // =====================================================
 
-      if (body.name !== undefined || body.category !== undefined) {
+      if (
+        body.name !== undefined ||
+        body.category !== undefined
+      ) {
         await tx
           .update(attractions)
           .set({
@@ -197,7 +370,9 @@ export async function PATCH(
 
             updatedAt: new Date(),
           })
-          .where(eq(attractions.id, existing.attractionId));
+          .where(
+            eq(attractions.id, existing.attractionId),
+          );
       }
 
       // =====================================================
@@ -210,80 +385,60 @@ export async function PATCH(
         updatedAt: new Date(),
       };
 
-      // -----------------------------
+      // ---------------------------------------------
       // BASIC DATA
-      // -----------------------------
+      // ---------------------------------------------
 
       if (body.image !== undefined) {
         managementUpdate.image = body.image;
       }
 
       if (body.description !== undefined) {
-        managementUpdate.description = body.description;
+        managementUpdate.description =
+          body.description;
       }
 
       if (body.timing !== undefined) {
         managementUpdate.timing = body.timing;
       }
 
-      // -----------------------------
+      // ---------------------------------------------
       // DURATION
-      // -----------------------------
+      // ---------------------------------------------
 
       if (body.duration !== undefined) {
         managementUpdate.duration = body.duration;
       }
 
       if (body.durationUnit !== undefined) {
-        managementUpdate.durationUnit = body.durationUnit;
+        managementUpdate.durationUnit =
+          body.durationUnit;
       }
 
-      // -----------------------------
-      // PRICES
-      // -----------------------------
-
-      if (body.adultPrice !== undefined) {
-        managementUpdate.adultPrice = body.adultPrice;
-      }
-
-      if (body.childPrice !== undefined) {
-        managementUpdate.childPrice = body.childPrice;
-      }
-
-      if (body.studentPrice !== undefined) {
-        managementUpdate.studentPrice = body.studentPrice;
-      }
-
-      if (body.seniorPrice !== undefined) {
-        managementUpdate.seniorPrice = body.seniorPrice;
-      }
-
-      if (body.foreignerPrice !== undefined) {
-        managementUpdate.foreignerPrice = body.foreignerPrice;
-      }
-
-      // -----------------------------
+      // ---------------------------------------------
       // SEATING
-      // -----------------------------
+      // ---------------------------------------------
 
       if (body.hasSeating !== undefined) {
-        managementUpdate.hasSeating = Boolean(body.hasSeating);
-      }
-
-      if (parsedSeatCounts?.ok) {
-        Object.assign(managementUpdate, parsedSeatCounts.seats);
+        managementUpdate.hasSeating =
+          Boolean(body.hasSeating);
       }
 
       // =====================================================
       // LEGACY SEAT LAYOUT
       // =====================================================
 
-      if (seatLayoutAssignments !== null && expandedSeatLayoutIds !== null) {
-        managementUpdate.seatLayoutId = getLegacySeatLayoutId(
-          expandedSeatLayoutIds,
-        );
+      if (
+        seatLayoutAssignments !== null &&
+        expandedSeatLayoutIds !== null
+      ) {
+        managementUpdate.seatLayoutId =
+          getLegacySeatLayoutId(
+            expandedSeatLayoutIds,
+          );
 
-        managementUpdate.hasSeating = expandedSeatLayoutIds.length > 0;
+        managementUpdate.hasSeating =
+          expandedSeatLayoutIds.length > 0;
       }
 
       // =====================================================
@@ -293,26 +448,115 @@ export async function PATCH(
       const updatedRows = await tx
         .update(attractionManagement)
         .set(managementUpdate)
-        .where(eq(attractionManagement.id, id))
+        .where(
+          eq(attractionManagement.id, id),
+        )
         .returning();
 
       const updated = updatedRows[0];
+
+      // =====================================================
+      // UPDATE CATEGORIES
+      // =====================================================
+
+      let updatedCategories:
+        | (typeof attractionCategory.$inferSelect)[]
+        | undefined;
+
+      if (categoriesToInsert !== null) {
+        // ---------------------------------------------
+        // DELETE OLD CATEGORIES
+        // ---------------------------------------------
+
+        await tx
+          .delete(attractionCategory)
+          .where(
+            eq(
+              attractionCategory.attractionManagementId,
+              id,
+            ),
+          );
+
+        // ---------------------------------------------
+        // INSERT NEW CATEGORIES
+        // ---------------------------------------------
+
+        updatedCategories =
+          await tx
+            .insert(attractionCategory)
+            .values(
+              categoriesToInsert.map(
+                (category) => ({
+                  attractionManagementId: id,
+
+                  name: category.name,
+
+                  basePrice:
+                    String(category.basePrice),
+
+                  futurePrice:
+                    category.futurePrice !==
+                      undefined &&
+                    category.futurePrice !== null
+                      ? String(
+                          category.futurePrice,
+                        )
+                      : null,
+
+                  effectiveFrom:
+                    category.effectiveFrom ??
+                    null,
+
+                  noOfSeats:
+                    category.noOfSeats,
+
+                  imageLink:
+                    category.imageLink ??
+                    null,
+                }),
+              ),
+            )
+            .returning();
+      } else {
+        // ---------------------------------------------
+        // KEEP EXISTING CATEGORIES
+        // ---------------------------------------------
+
+        updatedCategories =
+          await tx
+            .select()
+            .from(attractionCategory)
+            .where(
+              eq(
+                attractionCategory.attractionManagementId,
+                id,
+              ),
+            );
+      }
 
       // =====================================================
       // SYNC SEAT LAYOUT JUNCTION
       // =====================================================
 
       let seatLayoutMappings:
-        | Awaited<ReturnType<typeof replaceAttractionSeatLayouts>>
+        | Awaited<
+            ReturnType<
+              typeof replaceAttractionSeatLayouts
+            >
+          >
         | undefined;
 
-      if (seatLayoutAssignments !== null && resolvedSeatLayouts?.ok) {
-        seatLayoutMappings = await replaceAttractionSeatLayouts(
-          tx,
-          id,
-          seatLayoutAssignments,
-          resolvedSeatLayouts.fullObjects,
-        );
+      if (
+        seatLayoutAssignments !== null &&
+        resolvedSeatLayouts?.ok
+      ) {
+        seatLayoutMappings =
+          await replaceAttractionSeatLayouts(
+            tx,
+            id,
+            seatLayoutAssignments,
+            resolvedSeatLayouts.fullObjects,
+          );
       }
 
       // =====================================================
@@ -330,7 +574,12 @@ export async function PATCH(
 
         await tx
           .delete(attractionSeats)
-          .where(eq(attractionSeats.attractionId, existing.attractionId));
+          .where(
+            eq(
+              attractionSeats.attractionId,
+              existing.attractionId,
+            ),
+          );
 
         const attractionSeatRows: {
           attractionId: string;
@@ -341,20 +590,46 @@ export async function PATCH(
 
         let seatOrder = 1;
 
-        for (const [index, assignment] of seatLayoutAssignments.entries()) {
-          const quantity = assignment.quantity ?? 1;
+        // ---------------------------------------------
+        // CREATE NEW SEATS
+        // ---------------------------------------------
 
-          const layout = resolvedSeatLayouts?.fullObjects[index];
+        for (
+          const [
+            index,
+            assignment,
+          ] of seatLayoutAssignments.entries()
+        ) {
+          const quantity =
+            assignment.quantity ?? 1;
+
+          const layout =
+            resolvedSeatLayouts?.fullObjects[index];
 
           if (!layout) {
-            throw new Error(`Seat layout not found at position ${index + 1}`);
+            throw new Error(
+              `Seat layout not found at position ${
+                index + 1
+              }`,
+            );
           }
 
-          for (let i = 0; i < quantity; i++) {
+          for (
+            let i = 0;
+            i < quantity;
+            i++
+          ) {
             attractionSeatRows.push({
-              attractionId: existing.attractionId,
-              seatLayoutId: assignment.seatLayoutId,
+              attractionId:
+                existing.attractionId,
+
+              seatLayoutId:
+                assignment.seatLayoutId,
+
+              // Use the actual seat/layout name
+              // instead of "Seat 1", "Seat 2", etc.
               name: layout.name ?? "",
+
               seatOrder,
             });
 
@@ -367,10 +642,11 @@ export async function PATCH(
         // ---------------------------------------------
 
         if (attractionSeatRows.length > 0) {
-          updatedAttractionSeats = await tx
-            .insert(attractionSeats)
-            .values(attractionSeatRows)
-            .returning();
+          updatedAttractionSeats =
+            await tx
+              .insert(attractionSeats)
+              .values(attractionSeatRows)
+              .returning();
         } else {
           updatedAttractionSeats = [];
         }
@@ -381,21 +657,31 @@ export async function PATCH(
       // =====================================================
 
       let timeSlots:
-        | Awaited<ReturnType<typeof syncAttractionTimeSlots>>
+        | Awaited<
+            ReturnType<
+              typeof syncAttractionTimeSlots
+            >
+          >
         | undefined;
 
       if (timeSlotsParsed.sync) {
-        timeSlots = await syncAttractionTimeSlots(
-          tx,
-          existing.attractionId,
-          timeSlotsParsed.slots,
-        );
+        timeSlots =
+          await syncAttractionTimeSlots(
+            tx,
+            existing.attractionId,
+            timeSlotsParsed.slots,
+          );
       } else {
-        const map = await listTimeSlotsByAttractionIds(tx, [
-          existing.attractionId,
-        ]);
+        const map =
+          await listTimeSlotsByAttractionIds(
+            tx,
+            [existing.attractionId],
+          );
 
-        timeSlots = map.get(existing.attractionId) ?? [];
+        timeSlots =
+          map.get(
+            existing.attractionId,
+          ) ?? [];
       }
 
       // =====================================================
@@ -411,28 +697,46 @@ export async function PATCH(
         | undefined;
 
       if (seatLayoutMappings !== undefined) {
-        const layoutIds = seatLayoutMappings.map(
-          (mapping) => mapping.seatLayoutId,
-        );
-
-        if (layoutIds.length > 0) {
-          const layouts = await tx
-            .select()
-            .from(seatLayouts)
-            .where(inArray(seatLayouts.id, layoutIds));
-
-          const layoutMap = new Map(
-            layouts.map((layout) => [layout.id, layout]),
+        const layoutIds =
+          seatLayoutMappings.map(
+            (mapping) =>
+              mapping.seatLayoutId,
           );
 
-          seatLayoutsResponse = seatLayoutMappings.map((mapping) => ({
-            ...(layoutMap.get(mapping.seatLayoutId) ?? {}),
-            quantity: mapping.quantity ?? 1,
-          })) as {
-            id: string;
-            quantity: number;
-            [key: string]: unknown;
-          }[];
+        if (layoutIds.length > 0) {
+          const layouts =
+            await tx
+              .select()
+              .from(seatLayouts)
+              .where(
+                inArray(
+                  seatLayouts.id,
+                  layoutIds,
+                ),
+              );
+
+          const layoutMap = new Map(
+            layouts.map((layout) => [
+              layout.id,
+              layout,
+            ]),
+          );
+
+          seatLayoutsResponse =
+            seatLayoutMappings.map(
+              (mapping) => ({
+                ...(layoutMap.get(
+                  mapping.seatLayoutId,
+                ) ?? {}),
+
+                quantity:
+                  mapping.quantity ?? 1,
+              }),
+            ) as {
+              id: string;
+              quantity: number;
+              [key: string]: unknown;
+            }[];
         } else {
           seatLayoutsResponse = [];
         }
@@ -445,11 +749,18 @@ export async function PATCH(
       return {
         management: updated,
 
-        seatLayouts: seatLayoutsResponse,
+        categories:
+          updatedCategories,
 
-        seatLayoutIds: expandedSeatLayoutIds ?? undefined,
+        seatLayouts:
+          seatLayoutsResponse,
 
-        attractionSeats: updatedAttractionSeats,
+        seatLayoutIds:
+          expandedSeatLayoutIds ??
+          undefined,
+
+        attractionSeats:
+          updatedAttractionSeats,
 
         timeSlots,
       };
@@ -462,58 +773,166 @@ export async function PATCH(
     const sanitizedResponse = {
       ...result.management,
 
-      ...(Array.isArray(result.seatLayouts)
+      // ---------------------------------------------
+      // DYNAMIC CATEGORIES
+      // ---------------------------------------------
+
+      categories:
+        Array.isArray(result.categories)
+          ? result.categories.map(
+              (category) => ({
+                id: category.id,
+
+                name: category.name,
+
+                basePrice:
+                  Number(
+                    category.basePrice,
+                  ),
+
+                futurePrice:
+                  category.futurePrice !==
+                  null
+                    ? Number(
+                        category.futurePrice,
+                      )
+                    : null,
+
+                effectiveFrom:
+                  category.effectiveFrom,
+
+                noOfSeats:
+                  category.noOfSeats,
+
+                imageLink:
+                  category.imageLink,
+              }),
+            )
+          : [],
+
+      // ---------------------------------------------
+      // SEAT LAYOUTS
+      // ---------------------------------------------
+
+      ...(Array.isArray(
+        result.seatLayouts,
+      )
         ? {
-            seatLayouts: result.seatLayouts.map((layout: any) => ({
-              id: layout.id,
-              name: layout.name,
-              rows: layout.rows,
-              cols: layout.cols,
-              hasAisle: layout.hasAisle,
-              aisleAfterCol: layout.aisleAfterCol,
-              status: layout.status,
-              quantity: layout.quantity,
-              totalSeats: layout.totalSeats,
-            })),
+            seatLayouts:
+              result.seatLayouts.map(
+                (layout: any) => ({
+                  id: layout.id,
+                  name: layout.name,
+                  rows: layout.rows,
+                  cols: layout.cols,
+                  hasAisle:
+                    layout.hasAisle,
+                  aisleAfterCol:
+                    layout.aisleAfterCol,
+                  status: layout.status,
+                  quantity:
+                    layout.quantity,
+                  totalSeats:
+                    layout.totalSeats,
+                }),
+              ),
           }
         : {}),
 
-      ...(Array.isArray(result.seatLayoutIds) && result.seatLayoutIds.length > 0
+      // ---------------------------------------------
+      // SEAT LAYOUT IDS
+      // ---------------------------------------------
+
+      ...(Array.isArray(
+        result.seatLayoutIds,
+      ) &&
+      result.seatLayoutIds.length > 0
         ? {
-            seatLayoutIds: result.seatLayoutIds,
+            seatLayoutIds:
+              result.seatLayoutIds,
           }
         : {}),
 
-      ...(Array.isArray(result.attractionSeats)
+      // ---------------------------------------------
+      // ATTRACTION SEATS
+      // ---------------------------------------------
+
+      ...(Array.isArray(
+        result.attractionSeats,
+      )
         ? {
-            attractionSeats: result.attractionSeats.map((seat: any) => ({
-              id: seat.id,
-              attractionId: seat.attractionId,
-              seatLayoutId: seat.seatLayoutId,
-              name: seat.name,
-              seatOrder: seat.seatOrder,
-              createdAt: seat.createdAt,
-            })),
+            attractionSeats:
+              result.attractionSeats.map(
+                (seat: any) => ({
+                  id: seat.id,
+
+                  attractionId:
+                    seat.attractionId,
+
+                  seatLayoutId:
+                    seat.seatLayoutId,
+
+                  name: seat.name,
+
+                  seatOrder:
+                    seat.seatOrder,
+
+                  createdAt:
+                    seat.createdAt,
+                }),
+              ),
           }
         : {}),
 
-      timeSlots: Array.isArray(result.timeSlots)
-        ? result.timeSlots.map((slot: any) => ({
-            id: slot.id,
-            attractionId: slot.attractionId,
-            slotTime: slot.slotTime,
-            isActive: slot.isActive,
-          }))
-        : [],
+      // ---------------------------------------------
+      // TIME SLOTS
+      // ---------------------------------------------
+
+      timeSlots:
+        Array.isArray(
+          result.timeSlots,
+        )
+          ? result.timeSlots.map(
+              (slot: any) => ({
+                id: slot.id,
+
+                attractionId:
+                  slot.attractionId,
+
+                slotTime:
+                  slot.slotTime,
+
+                isActive:
+                  slot.isActive,
+              }),
+            )
+          : [],
     };
 
-    return success(sanitizedResponse);
+    return success(
+      sanitizedResponse,
+    );
   } catch (error) {
-    console.error("Update attraction error:", error);
+    console.error(
+      "Update attraction error:",
+      error,
+    );
+
     if (error instanceof Error) {
-      console.error("Error message:", error.message);
-      console.error("Error code:", (error as any).code);
-      console.error("Error detail:", (error as any).detail);
+      console.error(
+        "Error message:",
+        error.message,
+      );
+
+      console.error(
+        "Error code:",
+        (error as any).code,
+      );
+
+      console.error(
+        "Error detail:",
+        (error as any).detail,
+      );
     }
 
     if (error instanceof Error) {
@@ -521,9 +940,13 @@ export async function PATCH(
       // DATABASE CONSTRAINT ERROR
       // =====================================================
 
-      const errorStr = error.message.toLowerCase();
+      const errorStr =
+        error.message.toLowerCase();
 
-      if (errorStr.includes("foreign key") || errorStr.includes("23503")) {
+      if (
+        errorStr.includes("foreign key") ||
+        errorStr.includes("23503")
+      ) {
         return failure(
           "One or more seat layouts do not exist in the database.",
           400,
@@ -531,7 +954,10 @@ export async function PATCH(
         );
       }
 
-      if (errorStr.includes("unique") || errorStr.includes("23505")) {
+      if (
+        errorStr.includes("unique") ||
+        errorStr.includes("23505")
+      ) {
         return failure(
           "Duplicate seat layout assignment detected.",
           400,
@@ -543,7 +969,11 @@ export async function PATCH(
       // TIME SLOT ERROR
       // =====================================================
 
-      if (error.message.startsWith("TIME_SLOT_NOT_FOUND:")) {
+      if (
+        error.message.startsWith(
+          "TIME_SLOT_NOT_FOUND:",
+        )
+      ) {
         return failure(
           `Unknown timeSlots.id: ${error.message.replace(
             "TIME_SLOT_NOT_FOUND:",
@@ -558,23 +988,40 @@ export async function PATCH(
       // AUTHENTICATION
       // =====================================================
 
-      if (error.message === "UNAUTHORIZED") {
-        return failure("Authentication required.", 401, "UNAUTHORIZED");
+      if (
+        error.message ===
+        "UNAUTHORIZED"
+      ) {
+        return failure(
+          "Authentication required.",
+          401,
+          "UNAUTHORIZED",
+        );
       }
 
       // =====================================================
       // ACCOUNT STATUS
       // =====================================================
 
-      if (error.message === "ACCOUNT_NOT_ACTIVE") {
-        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      if (
+        error.message ===
+        "ACCOUNT_NOT_ACTIVE"
+      ) {
+        return failure(
+          "Account is not active.",
+          403,
+          "ACCOUNT_NOT_ACTIVE",
+        );
       }
 
       // =====================================================
       // AUTHORIZATION
       // =====================================================
 
-      if (error.message === "FORBIDDEN") {
+      if (
+        error.message ===
+        "FORBIDDEN"
+      ) {
         return failure(
           "You are not authorized to access attraction management.",
           403,

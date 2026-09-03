@@ -84,8 +84,6 @@ export async function GET(request: NextRequest) {
       (row) => row.managementId,
     );
 
-    console.log("Fetching attraction categories for management IDs:", managementIds);
-
     const categoryRows =
       managementIds.length > 0
         ? await db
@@ -109,7 +107,7 @@ export async function GET(request: NextRequest) {
               ),
             )
         : [];
-      console.log("Fetched attraction categories:", categoryRows);
+
     // ---------------------------------------------
     // GROUP CATEGORIES BY MANAGEMENT ID
     // ---------------------------------------------
@@ -124,8 +122,8 @@ export async function GET(request: NextRequest) {
         categoriesByManagement.get(
           category.attractionManagementId,
         ) ?? [];
-      console.log("Adding category to management ID:", category.attractionManagementId, "Category:", category, "existing", existing);
-      existing.push(category);
+
+        existing.push(category);
 
       categoriesByManagement.set(
         category.attractionManagementId,
@@ -136,7 +134,7 @@ export async function GET(request: NextRequest) {
     // ---------------------------------------------
     // RESPONSE
     // ---------------------------------------------
-    console.log("Preparing response with attractions and their categories.", categoriesByManagement);
+
     const items = rows.map((row) => {
       const categories =
         categoriesByManagement.get(
@@ -183,7 +181,7 @@ export async function GET(request: NextRequest) {
         durationUnit: row.durationUnit,
       };
     });
-    console.log("Final response items:", items);
+
     return success({
       items,
     });
