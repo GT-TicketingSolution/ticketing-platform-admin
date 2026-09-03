@@ -1389,52 +1389,7 @@ export const attractionManagement = pgTable(
       length: 20,
     }),
 
-    adultPrice: numeric("adult_price", {
-      precision: 12,
-      scale: 2,
-    })
-      .notNull()
-      .default("0"),
-
-    childPrice: numeric("child_price", {
-      precision: 12,
-      scale: 2,
-    })
-      .notNull()
-      .default("0"),
-
-    studentPrice: numeric("student_price", {
-      precision: 12,
-      scale: 2,
-    })
-      .notNull()
-      .default("0"),
-
-    seniorPrice: numeric("senior_price", {
-      precision: 12,
-      scale: 2,
-    })
-      .notNull()
-      .default("0"),
-
-    foreignerPrice: numeric("foreigner_price", {
-      precision: 12,
-      scale: 2,
-    })
-      .notNull()
-      .default("0"),
-
     hasSeating: boolean("has_seating").notNull().default(false),
-
-    adultSeats: integer("adult_seats").notNull().default(0),
-
-    childSeats: integer("child_seats").notNull().default(0),
-
-    studentSeats: integer("student_seats").notNull().default(0),
-
-    seniorSeats: integer("senior_seats").notNull().default(0),
-
-    foreignerSeats: integer("foreigner_seats").notNull().default(0),
 
     seatLayoutId: uuid("seat_layout_id").references(() => seatLayouts.id, {
       onDelete: "set null",
