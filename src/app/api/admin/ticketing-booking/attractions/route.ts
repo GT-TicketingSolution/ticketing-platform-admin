@@ -4,7 +4,11 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/db";
 
-import { attractions, attractionManagement } from "@/db/schema";
+import {
+  attractions,
+  attractionManagement,
+  attractionCategory,
+} from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
 
@@ -58,16 +62,12 @@ export async function GET(request: NextRequest) {
         status: attractions.status,
         image: attractionManagement.image,
 
-        adultPrice: attractionManagement.adultPrice,
-        childPrice: attractionManagement.childPrice,
-        studentPrice: attractionManagement.studentPrice,
-        seniorPrice: attractionManagement.seniorPrice,
-        foreignerPrice: attractionManagement.foreignerPrice,
-
         hasSeating: attractionManagement.hasSeating,
         seatLayoutId: attractionManagement.seatLayoutId,
         duration: attractionManagement.duration,
         durationUnit: attractionManagement.durationUnit,
+
+        managementId: attractionManagement.id,
       })
       .from(attractions)
       .innerJoin(
@@ -77,50 +77,148 @@ export async function GET(request: NextRequest) {
       .where(and(...conditions));
 
     // ---------------------------------------------
-    // RESPONSE
+    // FETCH DYNAMIC CATEGORIES / PRICING
     // ---------------------------------------------
 
-    const items = rows.map((row) => ({
-      id: row.id,
+    const managementIds = rows.map(
+      (row) => row.managementId,
+    );
 
-      name: row.name,
+    console.log("Fetching attraction categories for management IDs:", managementIds);
 
-      category: row.category,
-      status: row.status,
+    const categoryRows =
+      managementIds.length > 0
+        ? await db
+            .select({
+              id: attractionCategory.id,
+              attractionManagementId:
+                attractionCategory.attractionManagementId,
+              name: attractionCategory.name,
+              basePrice: attractionCategory.basePrice,
+              futurePrice: attractionCategory.futurePrice,
+              effectiveFrom:
+                attractionCategory.effectiveFrom,
+              noOfSeats: attractionCategory.noOfSeats,
+              imageLink: attractionCategory.imageLink,
+            })
+            .from(attractionCategory)
+            .where(
+              inArray(
+                attractionCategory.attractionManagementId,
+                managementIds,
+              ),
+            )
+        : [];
+      console.log("Fetched attraction categories:", categoryRows);
+    // ---------------------------------------------
+    // GROUP CATEGORIES BY MANAGEMENT ID
+    // ---------------------------------------------
 
-      image: row.image,
+    const categoriesByManagement = new Map<
+      string,
+      typeof categoryRows
+    >();
 
-      pricing: {
-        adult: Number(row.adultPrice),
-        child: Number(row.childPrice),
-        student: Number(row.studentPrice),
-        senior: Number(row.seniorPrice),
-        foreigner: Number(row.foreignerPrice),
-      },
+    for (const category of categoryRows) {
+      const existing =
+        categoriesByManagement.get(
+          category.attractionManagementId,
+        ) ?? [];
+      console.log("Adding category to management ID:", category.attractionManagementId, "Category:", category, "existing", existing);
+      existing.push(category);
 
-      hasSeating: row.hasSeating,
+      categoriesByManagement.set(
+        category.attractionManagementId,
+        existing,
+      );
+    }
 
-      seatLayoutId: row.seatLayoutId,
+    // ---------------------------------------------
+    // RESPONSE
+    // ---------------------------------------------
+    console.log("Preparing response with attractions and their categories.", categoriesByManagement);
+    const items = rows.map((row) => {
+      const categories =
+        categoriesByManagement.get(
+          row.managementId,
+        ) ?? [];
 
-      duration: row.duration,
-      durationUnit: row.durationUnit,
-    }));
+      return {
+        id: row.id,
 
+        name: row.name,
+
+        category: row.category,
+
+        status: row.status,
+
+        image: row.image,
+
+        categories: categories.map((category) => ({
+          id: category.id,
+
+          name: category.name,
+
+          basePrice: Number(category.basePrice),
+
+          futurePrice:
+            category.futurePrice !== null
+              ? Number(category.futurePrice)
+              : null,
+
+          effectiveFrom:
+            category.effectiveFrom,
+
+          noOfSeats: category.noOfSeats,
+
+          imageLink: category.imageLink,
+        })),
+
+        hasSeating: row.hasSeating,
+
+        seatLayoutId: row.seatLayoutId,
+
+        duration: row.duration,
+
+        durationUnit: row.durationUnit,
+      };
+    });
+    console.log("Final response items:", items);
     return success({
       items,
     });
   } catch (error) {
-    console.error("Get ticketing booking attractions error:", error);
+    console.error(
+      "Get ticketing booking attractions error:",
+      error,
+    );
 
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    if (
+      error instanceof Error &&
+      error.message === "UNAUTHORIZED"
+    ) {
+      return failure(
+        "Authentication required.",
+        401,
+        "UNAUTHORIZED",
+      );
     }
 
-    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
-      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+    if (
+      error instanceof Error &&
+      error.message === "ACCOUNT_NOT_ACTIVE"
+    ) {
+      return failure(
+        "Account is not active.",
+        403,
+        "ACCOUNT_NOT_ACTIVE",
+      );
     }
 
-    if (error instanceof Error && error.message === "FORBIDDEN") {
+    if (
+      error instanceof Error &&
+      error.message === "FORBIDDEN"
+    ) {
       return failure(
         "You do not have permission to access ticketing.",
         403,
@@ -128,7 +226,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+    if (
+      error instanceof Error &&
+      error.message === "USER_HAS_NO_ADMIN"
+    ) {
       return failure(
         "User is not associated with an admin.",
         403,
