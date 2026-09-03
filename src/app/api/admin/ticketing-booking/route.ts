@@ -3,9 +3,10 @@ import { z } from "zod";
 import QRCode from "qrcode";
 import crypto from "crypto";
 import { desc, eq, and, isNotNull } from "drizzle-orm";
+import { generateInvoiceNumber } from "@/services/invoice.service";
 
 import { db } from "@/db";
-import { bookings, transactions, users } from "@/db/schema";
+import { bookings, transactions, users, scannerInvoices } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
 import { requireModuleAccess } from "@/lib/auth/authorization";
@@ -376,42 +377,42 @@ function generateBookingNumber(): string {
    INVOICE NUMBER
 ========================================================= */
 
-export async function generateInvoiceNumber(userId: string): Promise<string> {
-  const [user] = await db
-    .select({
-      invoicePrefix: users.invoiceNumberForUsersInitialPart,
-    })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
+// export async function generateInvoiceNumber(userId: string): Promise<string> {
+//   const [user] = await db
+//     .select({
+//       invoicePrefix: users.invoiceNumberForUsersInitialPart,
+//     })
+//     .from(users)
+//     .where(eq(users.id, userId))
+//     .limit(1);
 
-  if (!user) {
-    throw new Error("USER_NOT_FOUND");
-  }
+//   if (!user) {
+//     throw new Error("USER_NOT_FOUND");
+//   }
 
-  if (!user.invoicePrefix) {
-    throw new Error("INVOICE_PREFIX_NOT_CONFIGURED");
-  }
+//   if (!user.invoicePrefix) {
+//     throw new Error("INVOICE_PREFIX_NOT_CONFIGURED");
+//   }
 
-  // Get the last invoice number
-  const [lastTransaction] = await db
-    .select({
-      invoiceNumber: transactions.invoiceNumber,
-    })
-    .from(transactions)
-    .where(isNotNull(transactions.invoiceNumber))
-    .orderBy(desc(transactions.createdAt))
-    .limit(1);
+//   // Get the last invoice number
+//   const [lastTransaction] = await db
+//     .select({
+//       invoiceNumber: transactions.invoiceNumber,
+//     })
+//     .from(transactions)
+//     .where(isNotNull(transactions.invoiceNumber))
+//     .orderBy(desc(transactions.createdAt))
+//     .limit(1);
 
-  let nextNumber = 1;
+//   let nextNumber = 1;
 
-  if (lastTransaction?.invoiceNumber) {
-    const match = lastTransaction.invoiceNumber.match(/(\d+)$/);
+//   if (lastTransaction?.invoiceNumber) {
+//     const match = lastTransaction.invoiceNumber.match(/(\d+)$/);
 
-    if (match) {
-      nextNumber = Number(match[1]) + 1;
-    }
-  }
+//     if (match) {
+//       nextNumber = Number(match[1]) + 1;
+//     }
+//   }
 
-  return `${user.invoicePrefix}${String(nextNumber).padStart(5, "0")}`;
-}
+//   return `${user.invoicePrefix}${String(nextNumber).padStart(5, "0")}`;
+// }
