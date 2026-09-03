@@ -285,7 +285,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
   const [formData, setFormData] = useState(() => {
     const p = profileData?.profile || (profileData as any)?.data?.profile;
     const rawInvoice =
-      p?.invoiceNumberForUserInitialPart ||
+      p?.invoiceNumberForUsersInitialPart ||
       (p as any)?.invoicePrefix ||
       getDefaultFinancialYear();
     return {
@@ -295,7 +295,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
       businessName: p?.businessName || "",
       cin: p?.cin || (p as any)?.cin || "",
       gst: p?.gst || (p as any)?.gst || "",
-      invoiceNumberForUserInitialPart: rawInvoice
+      invoiceNumberForUsersInitialPart: rawInvoice
         ? rawInvoice.replace(/\/+$/, "")
         : getDefaultFinancialYear(),
       profileLink: p?.profileLink || (p as any)?.businessLogo || null,
@@ -311,7 +311,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
   useEffect(() => {
     if (profile) {
       const rawInvoice =
-        profile.invoiceNumberForUserInitialPart ||
+        profile.invoiceNumberForUsersInitialPart ||
         (profile as any).invoicePrefix ||
         getDefaultFinancialYear();
       const initialInvoicePrefix = rawInvoice
@@ -330,7 +330,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
         businessName: profile.businessName || "",
         cin: profile.cin || (profile as any).cin || "",
         gst: profile.gst || (profile as any).gst || "",
-        invoiceNumberForUserInitialPart: initialInvoicePrefix,
+        invoiceNumberForUsersInitialPart: initialInvoicePrefix,
         profileLink: initialProfileLink,
       });
 
@@ -373,8 +373,8 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
       const gstError = validateGST(formData.gst);
       if (gstError) errs.gst = gstError;
 
-      const prefixError = validateInvoicePrefix(formData.invoiceNumberForUserInitialPart);
-      if (prefixError) errs.invoiceNumberForUserInitialPart = prefixError;
+      const prefixError = validateInvoicePrefix(formData.invoiceNumberForUsersInitialPart);
+      if (prefixError) errs.invoiceNumberForUsersInitialPart = prefixError;
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -428,7 +428,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
     if (!validate()) return;
 
     try {
-      const invoicePrefix = formData.invoiceNumberForUserInitialPart.trim();
+      const invoicePrefix = formData.invoiceNumberForUsersInitialPart.trim();
       await updateMutation.mutateAsync({
         name: formData.name.trim(),
         email: formData.email.trim(),
@@ -437,9 +437,9 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
           businessName: formData.businessName.trim(),
           cin: formData.cin.trim().toUpperCase() || undefined,
           gst: formData.gst.trim().toUpperCase() || undefined,
-          profileLink: formData.profileLink ? formData.profileLink : "hi",
+          profileLink: formData.profileLink ? formData.profileLink : "",
           // Append trailing slash so backend receives e.g. "2026-2027/"
-          invoiceNumberForUserInitialPart: invoicePrefix ? `${invoicePrefix}/` : undefined,
+          invoiceNumberForUsersInitialPart: invoicePrefix ? `${invoicePrefix}/` : undefined,
         } : {}),
       });
       // Cache is already updated via setQueryData in useUpdateProfileMutation onSuccess —
@@ -798,7 +798,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                       display: "flex",
                       alignItems: "center",
                       height: "36px",
-                      border: `1.5px solid ${errors.invoiceNumberForUserInitialPart ? colors.status.error : colors.login.inputBorder}`,
+                      border: `1.5px solid ${errors.invoiceNumberForUsersInitialPart ? colors.status.error : colors.login.inputBorder}`,
                       borderRadius: "7px",
                       padding: "0 10px",
                       background: isSubmitting ? "#F9FAFB" : "#FFFFFF",
@@ -817,19 +817,19 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                       id="ep-invoice-prefix"
                       type="text"
                       placeholder={getDefaultFinancialYear()}
-                      value={formData.invoiceNumberForUserInitialPart}
+                      value={formData.invoiceNumberForUsersInitialPart}
                       maxLength={11}
                       disabled={isSubmitting}
                       onChange={(e) => {
                         const val = e.target.value.toUpperCase().replace(/\s+/g, "");
-                        setFormData((prev) => ({ ...prev, invoiceNumberForUserInitialPart: val }));
-                        if (errors.invoiceNumberForUserInitialPart) {
-                          setErrors((prev) => ({ ...prev, invoiceNumberForUserInitialPart: "" }));
+                        setFormData((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: val }));
+                        if (errors.invoiceNumberForUsersInitialPart) {
+                          setErrors((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: "" }));
                         }
                       }}
                       style={{
-                        width: formData.invoiceNumberForUserInitialPart
-                          ? `${Math.max(formData.invoiceNumberForUserInitialPart.length, 9)}ch`
+                        width: formData.invoiceNumberForUsersInitialPart
+                          ? `${Math.max(formData.invoiceNumberForUsersInitialPart.length, 9)}ch`
                           : `${getDefaultFinancialYear().length}ch`,
                         minWidth: "75px",
                         maxWidth: "130px",
@@ -887,7 +887,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                   </span>
 
                   {/* Error (prefix only) */}
-                  {errors.invoiceNumberForUserInitialPart ? (
+                  {errors.invoiceNumberForUsersInitialPart ? (
                     <span
                       style={{
                         fontSize: "11px",
@@ -900,7 +900,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                       }}
                     >
                       <AlertCircle size={12} />
-                      {errors.invoiceNumberForUserInitialPart}
+                      {errors.invoiceNumberForUsersInitialPart}
                     </span>
                   ) : null}
                 </div>

@@ -9,7 +9,7 @@ interface ViewSeatModalProps {
   isOpen: boolean;
   onClose: () => void;
   seat: SeatConfigData | null;
-  onEdit?: () => void;
+  onEdit?: (seat: SeatConfigData) => void;
 }
 
 export default function ViewSeatModal({
@@ -582,8 +582,9 @@ export default function ViewSeatModal({
             <button
               type="button"
               onClick={() => {
-                onClose();
-                onEdit();
+                if (seat) {
+                  onEdit(seat);
+                }
               }}
               style={{
                 height: "38px",

@@ -579,8 +579,9 @@ export default function SeatManagementPage() {
           setSelectedSeat(null);
         }}
         seat={selectedSeat}
-        onEdit={() => {
+        onEdit={(seatToEdit) => {
           setIsViewModalOpen(false);
+          setSelectedSeat(seatToEdit || selectedSeat);
           setIsCreateModalOpen(true);
         }}
       />

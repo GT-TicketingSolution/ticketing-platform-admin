@@ -17,7 +17,7 @@ export interface UserProfile {
   gst?: string | null;
   cin?: string | null;
   profileLink?: string | null;
-  invoiceNumberForUserInitialPart?: string | null;
+  invoiceNumberForUsersInitialPart?: string | null;
   lastLoginAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -35,7 +35,7 @@ export interface UpdateProfileRequest {
   gst?: string;
   cin?: string;
   profileLink?: string;
-  invoiceNumberForUserInitialPart?: string;
+  invoiceNumberForUsersInitialPart?: string;
 }
 
 export interface UpdateProfileResponse {
