@@ -46,6 +46,7 @@ export interface BookingListItem {
   customer?: BookingCustomer;
   customerName: string;
   mobileNumber: string;
+  gstNumber?: string | null;
   dateTime?: string;
   bookingDate: string;
   attraction: {

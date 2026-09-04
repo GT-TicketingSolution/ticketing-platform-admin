@@ -295,31 +295,75 @@ export async function PATCH(
     const mobileNumber =
       typeof body.mobileNumber === "string" ? body.mobileNumber.trim() : "";
 
+    const gstNumber =
+      typeof body.gstNumber === "string" ? body.gstNumber.trim() : null;
+
+    const totalAmount =
+      body.totalAmount !== undefined ? Number(body.totalAmount) : undefined;
+
+    const amountReceived =
+      body.amountReceived !== undefined
+        ? Number(body.amountReceived)
+        : undefined;
+
+    const returnAmount =
+      body.returnAmount !== undefined ? Number(body.returnAmount) : undefined;
+
     // =====================================================
     // 5. VALIDATION
     // =====================================================
 
-    if (!customerName) {
+    if (customerName && customerName.length < 2) {
       return failure(
-        "Customer name is required.",
+        "Name must be at least 2 characters.",
         400,
-        "CUSTOMER_NAME_REQUIRED",
+        "INVALID_CUSTOMER_NAME",
       );
     }
 
-    if (!mobileNumber) {
+    if (mobileNumber && !/^[6-9]\d{9}$/.test(mobileNumber)) {
       return failure(
-        "Mobile number is required.",
-        400,
-        "MOBILE_NUMBER_REQUIRED",
-      );
-    }
-
-    if (!/^\d{10}$/.test(mobileNumber)) {
-      return failure(
-        "Mobile number must be exactly 10 digits.",
+        "Enter a valid 10-digit Indian mobile number.",
         400,
         "INVALID_MOBILE_NUMBER",
+      );
+    }
+
+    if (gstNumber && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(gstNumber)) {
+      return failure(
+        "Enter a valid GST number.",
+        400,
+        "INVALID_GST_NUMBER",
+      );
+    }
+
+    if (totalAmount !== undefined && (!Number.isFinite(totalAmount) || totalAmount < 0)) {
+      return failure(
+        "Total amount must be a valid positive number.",
+        400,
+        "INVALID_TOTAL_AMOUNT",
+      );
+    }
+
+    if (
+      amountReceived !== undefined &&
+      (!Number.isFinite(amountReceived) || amountReceived < 0)
+    ) {
+      return failure(
+        "Amount received must be a valid positive number.",
+        400,
+        "INVALID_AMOUNT_RECEIVED",
+      );
+    }
+
+    if (
+      returnAmount !== undefined &&
+      (!Number.isFinite(returnAmount) || returnAmount < 0)
+    ) {
+      return failure(
+        "Return amount must be a valid positive number.",
+        400,
+        "INVALID_RETURN_AMOUNT",
       );
     }
 
@@ -331,9 +375,9 @@ export async function PATCH(
       .select({
         id: bookings.id,
 
-        bookingId: bookings.bookingNumber,
+        invoiceNumber: bookings.invoiceNumber,
 
-        attractionId: bookings.attractionId,
+        totalAmount: bookings.totalAmount,
       })
       .from(bookings)
       .where(and(eq(bookings.id, bookingId), isNull(bookings.deletedAt)))
@@ -344,23 +388,35 @@ export async function PATCH(
     }
 
     // =====================================================
-    // 7. ATTRACTION AUTHORIZATION
+    // 7. BUILD UPDATE DATA (only include provided fields)
     // =====================================================
 
-    const hasAccess = (
-      await Promise.all(
-        existingBooking.attractionId.map((attractionId: string) =>
-          hasAttractionAccess(auth, attractionId),
-        ),
-      )
-    ).every(Boolean);
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
 
-    if (!hasAccess) {
-      return failure(
-        "You do not have permission to modify this booking.",
-        403,
-        "FORBIDDEN",
-      );
+    if (customerName) {
+      updateData.customerName = customerName;
+    }
+
+    if (mobileNumber) {
+      updateData.mobileNumber = mobileNumber;
+    }
+
+    if (gstNumber !== undefined && gstNumber !== null) {
+      updateData.gstNumber = gstNumber;
+    }
+
+    if (totalAmount !== undefined) {
+      updateData.totalAmount = totalAmount.toFixed(2);
+    }
+
+    if (amountReceived !== undefined) {
+      updateData.amountReceived = amountReceived.toFixed(2);
+    }
+
+    if (returnAmount !== undefined) {
+      updateData.returnAmount = returnAmount.toFixed(2);
     }
 
     // =====================================================
@@ -369,22 +425,24 @@ export async function PATCH(
 
     const [updatedBooking] = await db
       .update(bookings)
-      .set({
-        customerName,
-
-        mobileNumber,
-
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(and(eq(bookings.id, bookingId), isNull(bookings.deletedAt)))
       .returning({
         id: bookings.id,
 
-        bookingId: bookings.bookingNumber,
+        invoiceNumber: bookings.invoiceNumber,
 
         customerName: bookings.customerName,
 
         mobileNumber: bookings.mobileNumber,
+
+        gstNumber: bookings.gstNumber,
+
+        totalAmount: bookings.totalAmount,
+
+        amountReceived: bookings.amountReceived,
+
+        returnAmount: bookings.returnAmount,
 
         updatedAt: bookings.updatedAt,
       });
@@ -394,7 +452,25 @@ export async function PATCH(
     }
 
     return success({
-      booking: updatedBooking,
+      booking: {
+        id: updatedBooking.id,
+
+        invoiceNumber: updatedBooking.invoiceNumber,
+
+        customer: {
+          name: updatedBooking.customerName,
+          mobileNumber: updatedBooking.mobileNumber,
+          gstNumber: updatedBooking.gstNumber,
+        },
+
+        amount: {
+          total: Number(updatedBooking.totalAmount),
+          received: Number(updatedBooking.amountReceived),
+          returnAmount: Number(updatedBooking.returnAmount),
+        },
+
+        updatedAt: updatedBooking.updatedAt,
+      },
     });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
@@ -462,9 +538,7 @@ export async function DELETE(
       .select({
         id: bookings.id,
 
-        bookingId: bookings.bookingNumber,
-
-        attractionId: bookings.attractionId,
+        invoiceNumber: bookings.invoiceNumber,
 
         deletedAt: bookings.deletedAt,
       })
@@ -489,27 +563,7 @@ export async function DELETE(
     }
 
     // =====================================================
-    // 6. ATTRACTION AUTHORIZATION
-    // =====================================================
-
-    const hasAccess = (
-      await Promise.all(
-        existingBooking.attractionId.map((attractionId: string) =>
-          hasAttractionAccess(auth, attractionId),
-        ),
-      )
-    ).every(Boolean);
-
-    if (!hasAccess) {
-      return failure(
-        "You do not have permission to delete this booking.",
-        403,
-        "FORBIDDEN",
-      );
-    }
-
-    // =====================================================
-    // 7. SOFT DELETE
+    // 6. SOFT DELETE
     // =====================================================
 
     const [deletedBooking] = await db
@@ -527,7 +581,7 @@ export async function DELETE(
       .returning({
         id: bookings.id,
 
-        bookingId: bookings.bookingNumber,
+        invoiceNumber: bookings.invoiceNumber,
 
         deletedAt: bookings.deletedAt,
       });
@@ -539,7 +593,13 @@ export async function DELETE(
     return success({
       message: "Booking deleted successfully.",
 
-      booking: deletedBooking,
+      booking: {
+        id: deletedBooking.id,
+
+        invoiceNumber: deletedBooking.invoiceNumber,
+
+        deletedAt: deletedBooking.deletedAt,
+      },
     });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {

@@ -243,9 +243,9 @@ export default function BookingsPage() {
     }
   };
 
-  const handleSaveEditedBooking = async (bookingId: string, customerName: string, mobileNumber: string) => {
+  const handleSaveEditedBooking = async (bookingId: string, data: { customerName: string; mobileNumber: string; gstNumber?: string }) => {
     try {
-      await updateBookingMutation.mutateAsync({ bookingId, payload: { customerName, mobileNumber } });
+      await updateBookingMutation.mutateAsync({ bookingId, payload: data });
       setIsEditOpen(false);
       setSelectedBooking(null);
     } catch {
@@ -365,7 +365,7 @@ export default function BookingsPage() {
         b.mobileNumber ?? "-",
         b.bookingDate ? new Date(b.bookingDate).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "-",
         b.attraction?.name ?? "-",
-        b.visitors?.total ?? "-",
+        typeof b.visitors === "number" ? b.visitors : b.visitors?.total ?? "-",
         b.amount ?? 0,
         b.amountPaid ?? 0,
         b.paymentMode ?? "-",
@@ -609,7 +609,7 @@ export default function BookingsPage() {
             },
           },
           { header: "Attraction", cell: (item: BookingListItem) => item.attraction?.name ?? "-" },
-          { header: "Visitors", cell: (item: BookingListItem) => item.visitors?.total ?? "-" },
+          { header: "Visitors", cell: (item: BookingListItem) => typeof item.visitors === "number" ? item.visitors : item.visitors?.total ?? "-" },
           { header: "Amount", cell: (item: BookingListItem) => `₹${item.amount ?? 0}` },
           { header: "Status", cell: (item: BookingListItem) => renderStatusBadge(item.status) },
           {
