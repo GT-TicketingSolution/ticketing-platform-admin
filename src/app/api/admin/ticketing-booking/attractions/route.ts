@@ -30,37 +30,6 @@ export async function GET(request: NextRequest) {
 
     const adminId = getAdminId(auth);
 
-    // =====================================================
-    // VERIFY ADMIN HAS INVOICES (via attractions)
-    // =====================================================
-
-    const [bookingRecord] = await db
-      .select({ id: bookings.id })
-      .from(bookings)
-      .innerJoin(
-        attractionsAgainstBooking,
-        eq(attractionsAgainstBooking.bookingId, bookings.id),
-      )
-      .innerJoin(
-        attractionManagement,
-        eq(attractionManagement.id, attractionsAgainstBooking.attractionManagementId),
-      )
-      .where(
-        and(
-          eq(attractionManagement.adminId, adminId),
-          isNotNull(bookings.invoiceNumber),
-          eq(bookings.isDeleted, false),
-        ),
-      )
-      .limit(1);
-
-    if (!bookingRecord) {
-      return success({
-        items: [],
-        message: "No invoices found for this admin. Please create a booking first.",
-      });
-    }
-
     const conditions = [
       eq(attractions.adminId, adminId),
       eq(attractions.status, "ACTIVE"),
