@@ -1,170 +1,208 @@
-// import { NextRequest } from "next/server";
+import { NextRequest } from "next/server";
 
-// import { and, desc, eq } from "drizzle-orm";
+export async function GET(request: NextRequest) {
+  try {
+    // ---------------------------------------------
+    // QUERY PARAMS
+    // ---------------------------------------------
 
-// import { db } from "@/db";
+    const { searchParams } = new URL(request.url);
 
-// import { ticketScanLogs, bookings, attractions } from "@/db/schema";
+    const limitParam = Number(searchParams.get("limit") ?? "20");
 
-// import { requireAuth } from "@/lib/auth/require-auth";
+    const limit = Math.min(
+      Math.max(Number.isFinite(limitParam) ? limitParam : 20, 1),
+      100,
+    );
 
-// import {
-//   requireModuleAccess,
-//   requireAttractionAccess,
-//   getAdminId,
-// } from "@/lib/auth/authorization";
+    // ---------------------------------------------
+    // MOCK SCAN HISTORY
+    // ---------------------------------------------
 
-// import { success, failure } from "@/lib/api/response";
+    const mockScans = [
+      {
+        id: "scan-001",
 
-// export async function GET(request: NextRequest) {
-//   try {
-//     // ---------------------------------------------
-//     // AUTH
-//     // ---------------------------------------------
+        visitorName: "Rahul Sharma",
 
-//     const auth = await requireAuth(request);
+        attraction: "Imagicaa Theme Park",
 
-//     // ADMIN / MANAGER / STAFF with BOOKINGS access
-//     await requireModuleAccess(auth, "SCANNER");
+        visitorsCount: 4,
 
-//     const adminId = getAdminId(auth);
+        verdict: "ALLOWED",
 
-//     // ---------------------------------------------
-//     // QUERY PARAMS
-//     // ---------------------------------------------
+        reason: null,
 
-//     const { searchParams } = new URL(request.url);
+        timestamp: "2026-09-04T12:30:00.000Z",
 
-//     const limitParam = Number(searchParams.get("limit") ?? "20");
+        scannedBy: "scanner-user-001",
+      },
 
-//     const limit = Math.min(
-//       Math.max(Number.isFinite(limitParam) ? limitParam : 20, 1),
-//       100,
-//     );
+      {
+        id: "scan-002",
 
-//     // ---------------------------------------------
-//     // FETCH SCAN HISTORY
-//     // ---------------------------------------------
+        visitorName: "Priya Patil",
 
-//     const scans = await db
-//       .select({
-//         id: ticketScanLogs.id,
+        attraction: "Imagicaa Theme Park",
 
-//         ticketId: bookings.bookingNumber,
+        visitorsCount: 2,
 
-//         visitorName: bookings.customerName,
+        verdict: "DENIED",
 
-//         attractionId: attractions.id,
+        reason: "Date Mismatch / Expired Ticket",
 
-//         attraction: attractions.name,
+        timestamp: "2026-09-04T11:45:00.000Z",
 
-//         visitorsCount: ticketScanLogs.visitorsCount,
+        scannedBy: "scanner-user-002",
+      },
 
-//         verdict: ticketScanLogs.verdict,
+      {
+        id: "scan-003",
 
-//         reason: ticketScanLogs.reason,
+        visitorName: "Amit Kulkarni",
 
-//         scannedAt: ticketScanLogs.scannedAt,
+        attraction: "Water Kingdom",
 
-//         scannedBy: ticketScanLogs.scannedBy,
-//       })
-//       .from(ticketScanLogs)
+        visitorsCount: 3,
 
-//       .innerJoin(bookings, eq(ticketScanLogs.bookingId, bookings.id))
+        verdict: "ALLOWED",
 
-//       .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+        reason: null,
 
-//       .where(eq(attractions.adminId, adminId))
+        timestamp: "2026-09-04T10:20:00.000Z",
 
-//       .orderBy(desc(ticketScanLogs.scannedAt))
+        scannedBy: "scanner-user-001",
+      },
 
-//       .limit(limit);
+      {
+        id: "scan-004",
 
-//     // ---------------------------------------------
-//     // ATTRACTION ACCESS
-//     // ---------------------------------------------
+        visitorName: "Sneha Joshi",
 
-//     const accessibleScans = [];
+        attraction: "Imagicaa Theme Park",
 
-//     for (const scan of scans) {
-//       try {
-//         await requireAttractionAccess(auth, scan.attractionId);
+        visitorsCount: 1,
 
-//         accessibleScans.push(scan);
-//       } catch (error) {
-//         if (error instanceof Error && error.message === "FORBIDDEN") {
-//           continue;
-//         }
+        verdict: "DENIED",
 
-//         throw error;
-//       }
-//     }
+        reason: "Already Used / Duplicate Entry Attempt",
 
-//     // ---------------------------------------------
-//     // RESPONSE
-//     // ---------------------------------------------
+        timestamp: "2026-09-04T09:55:00.000Z",
 
-//     return success({
-//       scans: accessibleScans.map((scan) => ({
-//         id: scan.id,
+        scannedBy: "scanner-user-003",
+      },
 
-//         ticketId: scan.ticketId,
+      {
+        id: "scan-005",
 
-//         visitorName: scan.visitorName,
+        visitorName: "Vikas Mehta",
 
-//         attraction: scan.attraction,
+        attraction: "Water Kingdom",
 
-//         visitorsCount: scan.visitorsCount,
+        visitorsCount: 5,
 
-//         verdict: scan.verdict,
+        verdict: "ALLOWED",
 
-//         reason: scan.reason,
+        reason: null,
 
-//         timestamp: scan.scannedAt,
+        timestamp: "2026-09-04T09:30:00.000Z",
 
-//         scannedBy: scan.scannedBy,
-//       })),
+        scannedBy: "scanner-user-002",
+      },
 
-//       pagination: {
-//         limit,
-//         count: accessibleScans.length,
-//       },
-//     });
-//   } catch (error) {
-//     console.error("Get ticket scanner history error:", error);
+      {
+        id: "scan-006",
 
-//     // ---------------------------------------------
-//     // AUTH ERRORS
-//     // ---------------------------------------------
+        visitorName: "Neha Shah",
 
-//     if (error instanceof Error && error.message === "UNAUTHORIZED") {
-//       return failure("Authentication required.", 401, "UNAUTHORIZED");
-//     }
+        attraction: "Imagicaa Theme Park",
 
-//     if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
-//       return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
-//     }
+        visitorsCount: 2,
 
-//     if (error instanceof Error && error.message === "FORBIDDEN") {
-//       return failure(
-//         "You do not have permission to access scanner history.",
-//         403,
-//         "FORBIDDEN",
-//       );
-//     }
+        verdict: "DENIED",
 
-//     if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
-//       return failure(
-//         "User is not associated with an admin.",
-//         403,
-//         "USER_HAS_NO_ADMIN",
-//       );
-//     }
+        reason: "Payment Disputed / Pending",
 
-//     return failure(
-//       "Unable to fetch scanner history.",
-//       500,
-//       "INTERNAL_SERVER_ERROR",
-//     );
-//   }
-// }
+        timestamp: "2026-09-04T09:10:00.000Z",
+
+        scannedBy: "scanner-user-001",
+      },
+
+      {
+        id: "scan-007",
+
+        visitorName: "Rohan Deshmukh",
+
+        attraction: "Imagicaa Theme Park",
+
+        visitorsCount: 4,
+
+        verdict: "ALLOWED",
+
+        reason: null,
+
+        timestamp: "2026-09-04T08:50:00.000Z",
+
+        scannedBy: "scanner-user-003",
+      },
+
+      {
+        id: "scan-008",
+
+        visitorName: "Karan Singh",
+
+        attraction: "Water Kingdom",
+
+        visitorsCount: 1,
+
+        verdict: "DENIED",
+
+        reason: "Unrecognized / Fake QR Code",
+
+        timestamp: "2026-09-04T08:35:00.000Z",
+
+        scannedBy: "scanner-user-002",
+      },
+    ];
+
+    // ---------------------------------------------
+    // APPLY LIMIT
+    // ---------------------------------------------
+
+    const scans = mockScans.slice(0, limit);
+
+    // ---------------------------------------------
+    // RESPONSE
+    // ---------------------------------------------
+
+    return Response.json(
+      {
+        success: true,
+
+        data: {
+          scans,
+
+          pagination: {
+            limit,
+
+            count: scans.length,
+          },
+        },
+      },
+      { status: 200 },
+    );
+  } catch (error) {
+    console.error("Get ticket scanner history error:", error);
+
+    return Response.json(
+      {
+        success: false,
+
+        message: "Unable to fetch scanner history.",
+
+        code: "INTERNAL_SERVER_ERROR",
+      },
+      { status: 500 },
+    );
+  }
+}

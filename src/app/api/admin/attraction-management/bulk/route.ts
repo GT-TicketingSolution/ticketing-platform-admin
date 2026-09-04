@@ -219,11 +219,11 @@ export async function POST(request: Request) {
             image: item.image ?? null,
             description: item.description ?? null,
             timing: item.timing ?? null,
-            adultPrice: item.adultPrice ?? 0,
-            childPrice: item.childPrice ?? 0,
-            studentPrice: item.studentPrice ?? 0,
-            seniorPrice: item.seniorPrice ?? 0,
-            foreignerPrice: item.foreignerPrice ?? 0,
+            // adultPrice: item.adultPrice ?? 0,
+            // childPrice: item.childPrice ?? 0,
+            // studentPrice: item.studentPrice ?? 0,
+            // seniorPrice: item.seniorPrice ?? 0,
+            // foreignerPrice: item.foreignerPrice ?? 0,
             hasSeating: item.hasSeating ?? false,
           })
           .where(
@@ -249,11 +249,11 @@ export async function POST(request: Request) {
             description: item.description ?? null,
             timing: item.timing ?? null,
 
-            adultPrice: item.adultPrice ?? 0,
-            childPrice: item.childPrice ?? 0,
-            studentPrice: item.studentPrice ?? 0,
-            seniorPrice: item.seniorPrice ?? 0,
-            foreignerPrice: item.foreignerPrice ?? 0,
+            // adultPrice: item.adultPrice ?? 0,
+            // childPrice: item.childPrice ?? 0,
+            // studentPrice: item.studentPrice ?? 0,
+            // seniorPrice: item.seniorPrice ?? 0,
+            // foreignerPrice: item.foreignerPrice ?? 0,
 
             hasSeating: item.hasSeating ?? false,
           })
