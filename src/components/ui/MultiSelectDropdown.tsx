@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Check, X } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 
@@ -12,6 +13,8 @@ interface MultiSelectDropdownProps {
   onChange: (values: string[]) => void;
   placeholder?: string;
   error?: string;
+  closeOnSelectOption?: (option: string) => boolean;
+  forceClose?: boolean;
 }
 
 export function MultiSelectDropdown({
@@ -22,13 +25,74 @@ export function MultiSelectDropdown({
   onChange,
   placeholder = "Select options...",
   error,
+  closeOnSelectOption,
+  forceClose,
 }: MultiSelectDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+  const [menuCoords, setMenuCoords] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    openAbove: boolean;
+  }>({ top: 0, left: 0, width: 0, openAbove: false });
+
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (forceClose) {
+      setIsOpen(false);
+    }
+  }, [forceClose]);
+
+  const updatePosition = () => {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      // If space below is less than 240px and space above is sufficient, open upwards
+      const openAbove = spaceBelow < 240 && rect.top > 240;
+      setMenuCoords({
+        top: openAbove ? rect.top - 6 : rect.bottom + 6,
+        left: rect.left,
+        width: rect.width,
+        openAbove,
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      updatePosition();
+      const handleScroll = (e: Event) => {
+        // If scrolling inside the menu popover itself, keep it open
+        if (menuRef.current && menuRef.current.contains(e.target as Node)) {
+          return;
+        }
+        updatePosition();
+      };
+      window.addEventListener("scroll", handleScroll, true);
+      window.addEventListener("resize", updatePosition);
+      return () => {
+        window.removeEventListener("scroll", handleScroll, true);
+        window.removeEventListener("resize", updatePosition);
+      };
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        triggerRef.current &&
+        !triggerRef.current.contains(target) &&
+        menuRef.current &&
+        !menuRef.current.contains(target)
+      ) {
         setIsOpen(false);
       }
     }
@@ -37,10 +101,14 @@ export function MultiSelectDropdown({
   }, []);
 
   const toggleOption = (option: string) => {
-    if (selected.includes(option)) {
-      onChange(selected.filter((item) => item !== option));
-    } else {
-      onChange([...selected, option]);
+    const isSelected = selected.includes(option);
+    const nextSelected = isSelected
+      ? selected.filter((item) => item !== option)
+      : [...selected, option];
+    onChange(nextSelected);
+
+    if (closeOnSelectOption && closeOnSelectOption(option)) {
+      setIsOpen(false);
     }
   };
 
@@ -50,7 +118,7 @@ export function MultiSelectDropdown({
   };
 
   return (
-    <div style={{ position: "relative", width: "100%" }} ref={dropdownRef}>
+    <div style={{ position: "relative", width: "100%" }}>
       {/* Label */}
       <label
         style={{
@@ -67,7 +135,14 @@ export function MultiSelectDropdown({
 
       {/* Trigger Box */}
       <div
-        onClick={() => setIsOpen((prev) => !prev)}
+        ref={triggerRef}
+        onClick={() => {
+          setIsOpen((prev) => {
+            const next = !prev;
+            if (next) updatePosition();
+            return next;
+          });
+        }}
         style={{
           minHeight: "42px",
           padding: "4px 12px",
@@ -155,87 +230,92 @@ export function MultiSelectDropdown({
         </span>
       )}
 
-      {/* Popover Dropdown Menu — Clean Data List Alone */}
-      {isOpen && (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 6px)",
-            left: 0,
-            right: 0,
-            zIndex: 100,
-            background: "#FFFFFF",
-            borderRadius: "10px",
-            border: "1px solid #E2E8F0",
-            boxShadow: "0 10px 25px -5px rgba(0,0,0,0.12), 0 8px 10px -6px rgba(0,0,0,0.04)",
-            overflow: "hidden",
-          }}
-        >
-          <div style={{ maxHeight: "220px", overflowY: "auto", padding: "6px" }}>
-            {options.length === 0 ? (
-              <div style={{ padding: "12px", fontSize: "13px", color: colors.text.muted, textAlign: "center" }}>
-                No options available
-              </div>
-            ) : (
-              options.map((opt) => {
-                const isSelected = selected.includes(opt);
-                return (
-                  <div
-                    key={opt}
-                    onClick={() => toggleOption(opt)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px",
-                      padding: "8px 12px",
-                      borderRadius: "6px",
-                      cursor: "pointer",
-                      transition: "background 0.15s ease",
-                      background: isSelected ? "rgba(35,114,165,0.06)" : "transparent",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) e.currentTarget.style.background = "#F8FAFC";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = isSelected ? "rgba(35,114,165,0.06)" : "transparent";
-                    }}
-                  >
-                    {/* Checkbox Icon */}
+      {/* Popover Dropdown Menu — Rendered in Portal so modals never clip it */}
+      {isOpen && mounted &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={{
+              position: "fixed",
+              top: `${menuCoords.top}px`,
+              left: `${menuCoords.left}px`,
+              width: `${menuCoords.width}px`,
+              transform: menuCoords.openAbove ? "translateY(-100%)" : "none",
+              zIndex: 99999,
+              background: "#FFFFFF",
+              borderRadius: "10px",
+              border: "1px solid #E2E8F0",
+              boxShadow: "0 14px 35px -4px rgba(0,0,0,0.18), 0 8px 14px -6px rgba(0,0,0,0.06)",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ maxHeight: "240px", overflowY: "auto", padding: "6px" }}>
+              {options.length === 0 ? (
+                <div style={{ padding: "12px", fontSize: "13px", color: colors.text.muted, textAlign: "center" }}>
+                  No options available
+                </div>
+              ) : (
+                options.map((opt) => {
+                  const isSelected = selected.includes(opt);
+                  return (
                     <div
+                      key={opt}
+                      onClick={() => toggleOption(opt)}
                       style={{
-                        width: "18px",
-                        height: "18px",
-                        borderRadius: "4px",
-                        border: `2px solid ${isSelected ? colors.brand.accent : "#94A3B8"}`,
-                        background: isSelected ? colors.brand.accent : "#FFFFFF",
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        transition: "all 0.15s ease",
-                        flexShrink: 0,
+                        gap: "10px",
+                        padding: "9px 12px",
+                        borderRadius: "6px",
+                        cursor: "pointer",
+                        transition: "background 0.15s ease",
+                        background: isSelected ? "rgba(35,114,165,0.08)" : "transparent",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) e.currentTarget.style.background = "#F8FAFC";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = isSelected ? "rgba(35,114,165,0.08)" : "transparent";
                       }}
                     >
-                      {isSelected && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
-                    </div>
+                      {/* Checkbox Icon */}
+                      <div
+                        style={{
+                          width: "18px",
+                          height: "18px",
+                          borderRadius: "4px",
+                          border: `2px solid ${isSelected ? colors.brand.accent : "#94A3B8"}`,
+                          background: isSelected ? colors.brand.accent : "#FFFFFF",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          transition: "all 0.15s ease",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {isSelected && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
+                      </div>
 
-                    {/* Option Text */}
-                    <span
-                      style={{
-                        fontSize: "13px",
-                        fontWeight: isSelected ? 600 : 500,
-                        color: isSelected ? colors.brand.accent : colors.text.primary,
-                        fontFamily: typography.fontFamily.sans,
-                      }}
-                    >
-                      {opt}
-                    </span>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
+                      {/* Option Text */}
+                      <span
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: isSelected ? 600 : 500,
+                          color: isSelected ? colors.brand.accent : colors.text.primary,
+                          fontFamily: typography.fontFamily.sans,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {opt}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

@@ -8,10 +8,22 @@ export type UserRole = "Admin" | "Manager" | "Staff";
 export const USER_ROLE_EVENT = "ticketing_user_role_changed";
 
 export function useUserRole() {
-  const [role, setRoleState] = useState<UserRole>("Admin");
+  const [role, setRoleState] = useState<UserRole>(() => {
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("userRole") as UserRole;
+      if (saved) return saved;
+      if (sessionStorage.getItem("staffRoles")) return "Staff";
+    }
+    return "Admin";
+  });
   const [managerSession, setManagerSession] = useState<ReturnType<typeof getManagerSession>>(null);
   const [managerAllowedModules, setManagerAllowedModules] = useState<Set<string> | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return !sessionStorage.getItem("userRole");
+    }
+    return true;
+  });
 
   const syncRoleFromStorage = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -54,7 +66,8 @@ export function useUserRole() {
     (moduleName: string): boolean => {
       if (role === "Admin") return true;
       if (role === "Staff") {
-        return ["Ticket Booking", "Scanner"].includes(moduleName);
+        const staffAllowed = ["Ticket Booking", "Scanner", "Reports", "Reports & Analytics"];
+        return staffAllowed.includes(moduleName);
       }
       if (role === "Manager") {
         if (!managerAllowedModules) return true; // Full manager access default if no restrict array
