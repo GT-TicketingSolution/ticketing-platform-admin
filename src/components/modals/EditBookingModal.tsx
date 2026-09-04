@@ -144,9 +144,9 @@ export default function EditBookingModal({
     if (Object.keys(errs).length > 0) return;
 
     onSave(booking!.id, {
-      customerName: customerName.trim() || undefined,
-      mobileNumber: mobileNumber.trim() || undefined,
-      gstNumber: gstNumber.trim() || undefined,
+      customerName: customerName.trim(),
+      mobileNumber: mobileNumber.trim(),
+      gstNumber: gstNumber.trim(),
     });
   };
 
@@ -198,7 +198,7 @@ export default function EditBookingModal({
                 margin: 0,
               }}
             >
-              Edit Booking ({booking.bookingId})
+              Edit Booking ({booking.invoiceNumber || "-"})
             </h3>
             <span style={{ fontSize: "12px", color: colors.text.muted, fontFamily: typography.fontFamily.sans }}>
               Update booking details
@@ -282,10 +282,12 @@ export default function EditBookingModal({
               <input
                 type="text"
                 value={gstNumber}
+                maxLength={15}
                 onChange={(e) => {
-                  setGstNumber(e.target.value);
+                  const val = e.target.value.toUpperCase().slice(0, 15);
+                  setGstNumber(val);
                   if (touched.gstNumber) {
-                    setErrors(validate(customerName, mobileNumber, e.target.value));
+                    setErrors(validate(customerName, mobileNumber, val));
                   }
                 }}
                 onBlur={() => handleBlur("gstNumber")}

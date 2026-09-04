@@ -205,6 +205,7 @@ function StaffManagementInner() {
   // Modal & Selection States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [showAddPassword, setShowAddPassword] = useState(false);
+  const [showEditPassword, setShowEditPassword] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -1164,22 +1165,44 @@ function StaffManagementInner() {
                 <label style={{ fontSize: "13px", fontWeight: 600, display: "block" }}>
                   Password (leave blank to keep current)
                 </label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  style={{
-                    width: "100%",
-                    height: "40px",
-                    borderRadius: "8px",
-                    border: "1.5px solid #CBD5E1",
-                    padding: "0 12px",
-                    marginTop: "4px",
-                    fontSize: "14px",
-                    boxSizing: "border-box",
-                  }}
-                />
+                <div style={{ position: "relative", marginTop: "4px" }}>
+                  <input
+                    type={showEditPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    style={{
+                      width: "100%",
+                      height: "40px",
+                      borderRadius: "8px",
+                      border: "1.5px solid #CBD5E1",
+                      padding: "0 40px 0 12px",
+                      fontSize: "14px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPassword((prev) => !prev)}
+                    style={{
+                      position: "absolute",
+                      right: "12px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "#64748B",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 0,
+                    }}
+                    aria-label={showEditPassword ? "Hide password" : "Show password"}
+                  >
+                    {showEditPassword ? <Eye size={18} /> : <EyeOff size={18} />}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1624,6 +1647,13 @@ function StaffManagementInner() {
             </div>
           </div>
         )}
+        <ReportTimingModal
+          isOpen={isReportTimingModalOpen}
+          onClose={handleCloseReportTimingModal}
+          onApply={handleApplyReportTiming}
+          currentHours={formData.reportViewDurationHours ? Number(formData.reportViewDurationHours) : 24}
+          targetLabel={timingModalTarget === "add" ? "New Staff Member" : (formData.name || "Staff Member")}
+        />
       </div>
     );
   }
@@ -2038,7 +2068,7 @@ function StaffManagementInner() {
                     tabIndex={-1}
                     aria-label={showAddPassword ? "Hide password" : "Show password"}
                   >
-                    {showAddPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {showAddPassword ? <Eye size={18} /> : <EyeOff size={18} />}
                   </button>
                 </div>
                 {formErrors.password && (

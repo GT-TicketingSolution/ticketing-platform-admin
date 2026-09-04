@@ -25,7 +25,6 @@ import {
 } from "@/hooks/useBookingQueries";
 import BookingDetailsModal from "@/components/modals/BookingDetailsModal";
 import EditBookingModal from "@/components/modals/EditBookingModal";
-import { useAttractions } from "@/hooks/useManagerQueries";
 import { exportToCSV, exportTableToPDF, renderStatusBadgeHTML, fetchAllPages } from "@/lib/exportUtils";
 import { ExportScope } from "@/components/ui/ExportButtons";
 
@@ -164,17 +163,15 @@ export default function BookingsPage() {
   }, []);
 
   // ── Queries 
-  const { data: bookingsData, isLoading } = useBookingList({
+  const { data: bookingsData, isLoading, isFetching } = useBookingList({
     page: currentPage,
     limit: ITEMS_PER_PAGE,
     search: debouncedSearch || undefined,
-    attractionId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
+    attractionManagementId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
     status: selectedStatus !== "All" ? selectedStatus : undefined,
     fromDate: fromDate || undefined,
     toDate: toDate || undefined,
   });
-
-  const { data: attractionsData = [] } = useAttractions();
 
   const updateBookingMutation = useUpdateBooking();
   const deleteBookingMutation = useDeleteBooking();
@@ -183,13 +180,91 @@ export default function BookingsPage() {
   const pagination = bookingsData?.pagination;
   const totalPages = pagination?.totalPages ?? 1;
 
-  // Build attraction dropdown options from live data
+  // Accumulate unique attractions discovered from booking items and list response so dropdown options remain stable
+  const [allAttractions, setAllAttractions] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    setAllAttractions((prev) => {
+      // Map by lowercased name so each attraction has only one entry with its correct attractionManagementId
+      const nameToAttr = new Map<string, { id: string; name: string }>();
+
+      // 1. Preserve previously discovered attractions
+      prev.forEach((a) => {
+        if (a.name && a.id) {
+          nameToAttr.set(a.name.trim().toLowerCase(), a);
+        }
+      });
+
+      // 2. Primary source: Extract from booking items (each item has attractions: [{ id, name, totalAmount }])
+      if (bookingsData?.items && bookingsData.items.length > 0) {
+        bookingsData.items.forEach((item) => {
+          if (Array.isArray(item.attractions)) {
+            item.attractions.forEach((a: any) => {
+              const id = a.id || a.attractionManagementId;
+              const name = a.name || a.attractionName;
+              if (id && name && name !== "-") {
+                nameToAttr.set(name.trim().toLowerCase(), { id, name });
+              }
+            });
+          }
+        });
+      }
+
+      // 3. Fallback / supplement: Add attractions from bookingsData.attractions if not already present
+      if (bookingsData?.attractions && bookingsData.attractions.length > 0) {
+        bookingsData.attractions.forEach((a: any) => {
+          const id = a.id || a.attractionManagementId || a.attractionId;
+          const name = a.name;
+          if (id && name && !nameToAttr.has(name.trim().toLowerCase())) {
+            nameToAttr.set(name.trim().toLowerCase(), { id, name });
+          }
+        });
+      }
+
+      return Array.from(nameToAttr.values());
+    });
+  }, [bookingsData?.items, bookingsData?.attractions]);
+
+  // Build attraction dropdown options directly from accumulated attractions and response
   const attractionOptions = useMemo(() => {
-    const unique = Array.from(
-      new Map(attractionsData.map((a: any) => [a.attractionId || a.id, a.name])).entries()
-    ).map(([id, name]) => ({ id, name }));
+    const nameToAttr = new Map<string, { id: string; name: string }>();
+
+    // From accumulated state
+    allAttractions.forEach((a) => {
+      if (a.name && a.id) {
+        nameToAttr.set(a.name.trim().toLowerCase(), a);
+      }
+    });
+
+    // From items in current response
+    if (bookingsData?.items) {
+      bookingsData.items.forEach((item) => {
+        if (Array.isArray(item.attractions)) {
+          item.attractions.forEach((a: any) => {
+            const id = a.id || a.attractionManagementId;
+            const name = a.name || a.attractionName;
+            if (id && name && name !== "-") {
+              nameToAttr.set(name.trim().toLowerCase(), { id, name });
+            }
+          });
+        }
+      });
+    }
+
+    // From attractions in current response
+    if (bookingsData?.attractions) {
+      bookingsData.attractions.forEach((a: any) => {
+        const id = a.id || a.attractionManagementId || a.attractionId;
+        const name = a.name;
+        if (id && name && !nameToAttr.has(name.trim().toLowerCase())) {
+          nameToAttr.set(name.trim().toLowerCase(), { id, name });
+        }
+      });
+    }
+
+    const unique = Array.from(nameToAttr.values());
     return [{ id: "All", name: "All Attractions" }, ...unique];
-  }, [attractionsData]);
+  }, [allAttractions, bookingsData?.items, bookingsData?.attractions]);
 
   // Contextual empty message based on active filters
   const emptyMessage = useMemo(() => {
@@ -205,7 +280,7 @@ export default function BookingsPage() {
     return `No bookings found matching ${parts.join(" · ")}.`;
   }, [debouncedSearch, selectedAttractionId, selectedStatus, fromDate, toDate, attractionOptions]);
 
-  // ── Handlers ─────────────────────────────────────────────────────────────
+  // ── Handlers 
   const handleResetFilters = () => {
     setSearch("");
     setDebouncedSearch("");
@@ -234,7 +309,9 @@ export default function BookingsPage() {
   const handleDeleteBooking = async (booking: BookingListItem) => {
     setActiveDropdownId(null);
     setDropdownPos(null);
-    const confirmed = await confirmDelete(`booking "${booking.customerName} (${booking.bookingId})"`);
+    const confirmed = await confirmDelete(
+      `booking "${booking.customer?.name || booking.customerName} (${booking.invoiceNumber || booking.bookingId})"`
+    );
     if (!confirmed) return;
     try {
       await deleteBookingMutation.mutateAsync(booking.id);
@@ -245,7 +322,14 @@ export default function BookingsPage() {
 
   const handleSaveEditedBooking = async (bookingId: string, data: { customerName?: string; mobileNumber?: string; gstNumber?: string }) => {
     try {
-      await updateBookingMutation.mutateAsync({ bookingId, payload: data });
+      await updateBookingMutation.mutateAsync({
+        bookingId,
+        payload: {
+          customerName: data.customerName ?? "",
+          mobileNumber: data.mobileNumber ?? "",
+          gstNumber: data.gstNumber ?? "",
+        },
+      });
       setIsEditOpen(false);
       setSelectedBooking(null);
     } catch {
@@ -257,7 +341,7 @@ export default function BookingsPage() {
   const getExportData = async (scope: ExportScope): Promise<BookingListItem[]> => {
     const params = {
       search: debouncedSearch || undefined,
-      attractionId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
+      attractionManagementId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
       status: selectedStatus !== "All" ? selectedStatus : undefined,
       fromDate: fromDate || undefined,
       toDate: toDate || undefined,
@@ -319,21 +403,44 @@ export default function BookingsPage() {
         orientation: "landscape",
         columns: [
           { header: "#", accessor: (_, idx) => (scope === "all" ? idx + 1 : (currentPage - 1) * ITEMS_PER_PAGE + idx + 1), width: "30px" },
-          { header: "Booking ID", accessor: "bookingId" },
-          { header: "Customer", accessor: "customerName" },
-          { header: "Mobile", accessor: (b) => b.mobileNumber ?? "-" },
-          { header: "Date & Time", accessor: (b) => b.bookingDate ? new Date(b.bookingDate).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "-" },
-          { header: "Attraction", accessor: (b) => b.attraction?.name ?? "-" },
-          { header: "Visitors", accessor: (b) => b.visitors?.total ?? "-", align: "center" },
-          { header: "Amount (₹)", accessor: (b) => `₹${(b.amount || 0).toFixed(2)}`, align: "right" },
-          { header: "Paid (₹)", accessor: (b) => `₹${(b.amountPaid || 0).toFixed(2)}`, align: "right" },
+          { header: "Invoice Number", accessor: (b) => b.invoiceNumber || b.bookingId || "-" },
+          { header: "Customer", accessor: (b) => b.customer?.name || b.customerName || "-" },
+          { header: "Mobile", accessor: (b) => b.customer?.mobileNumber || b.mobileNumber || "-" },
+          {
+            header: "Date & Time",
+            accessor: (b) => {
+              const dStr = b.dateTime || b.bookingDate || b.createdAt;
+              return dStr ? new Date(dStr).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "-";
+            },
+          },
+          {
+            header: "Attraction",
+            accessor: (b) =>
+              b.attractions && b.attractions.length > 0
+                ? b.attractions.map((a) => a.name).join(", ")
+                : b.attraction?.name ?? "-",
+          },
+          {
+            header: "Visitors",
+            accessor: (b) => (typeof b.visitors === "number" ? b.visitors : b.visitors?.total ?? "-"),
+            align: "center",
+          },
+          {
+            header: "Amount (₹)",
+            accessor: (b) => `₹${(b.grandTotalAmount ?? b.amount ?? 0).toFixed(2)}`,
+            align: "right",
+          },
+          { header: "Paid (₹)", accessor: (b) => `₹${(b.amountPaid || b.grandTotalAmount || b.amount || 0).toFixed(2)}`, align: "right" },
           { header: "Mode", accessor: (b) => b.paymentMode ?? "-" },
           { header: "Status", renderCell: (b) => renderStatusBadgeHTML(b.status), align: "center" },
         ],
         data: dataToExport,
         summaryCards: [
           { label: "Total Bookings", value: dataToExport.length },
-          { label: "Total Revenue", value: `₹${dataToExport.reduce((sum, b) => sum + (b.amount || 0), 0).toFixed(2)}` },
+          {
+            label: "Total Revenue",
+            value: `₹${dataToExport.reduce((sum, b) => sum + (b.grandTotalAmount ?? b.amount ?? 0), 0).toFixed(2)}`,
+          },
         ],
       });
 
@@ -357,20 +464,23 @@ export default function BookingsPage() {
         return;
       }
 
-      const headers = ["#", "Booking ID", "Customer Name", "Mobile", "Date & Time", "Attraction", "Visitors", "Amount (₹)", "Paid (₹)", "Payment Mode", "Status"];
-      const rows = dataToExport.map((b, i) => [
-        scope === "all" ? i + 1 : (currentPage - 1) * ITEMS_PER_PAGE + i + 1,
-        b.bookingId,
-        b.customerName,
-        b.mobileNumber ?? "-",
-        b.bookingDate ? new Date(b.bookingDate).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "-",
-        b.attraction?.name ?? "-",
-        typeof b.visitors === "number" ? b.visitors : b.visitors?.total ?? "-",
-        b.amount ?? 0,
-        b.amountPaid ?? 0,
-        b.paymentMode ?? "-",
-        b.status,
-      ]);
+      const headers = ["#", "Invoice Number", "Customer Name", "Mobile", "Date & Time", "Attraction", "Visitors", "Amount (₹)", "Paid (₹)", "Payment Mode", "Status"];
+      const rows = dataToExport.map((b, i) => {
+        const dStr = b.dateTime || b.bookingDate || b.createdAt;
+        return [
+          scope === "all" ? i + 1 : (currentPage - 1) * ITEMS_PER_PAGE + i + 1,
+          b.invoiceNumber || b.bookingId || "-",
+          b.customer?.name || b.customerName || "-",
+          b.customer?.mobileNumber || b.mobileNumber || "-",
+          dStr ? new Date(dStr).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "-",
+          b.attractions && b.attractions.length > 0 ? b.attractions.map((a) => a.name).join(", ") : b.attraction?.name ?? "-",
+          typeof b.visitors === "number" ? b.visitors : b.visitors?.total ?? "-",
+          b.grandTotalAmount ?? b.amount ?? 0,
+          b.amountPaid || b.grandTotalAmount || b.amount || 0,
+          b.paymentMode ?? "-",
+          b.status,
+        ];
+      });
 
       const fileNameScope = scope === "all" ? "All" : `Page_${currentPage}`;
       exportToCSV(`Bookings_${fileNameScope}_${new Date().toISOString().slice(0, 10)}`, headers, rows);
@@ -432,7 +542,7 @@ export default function BookingsPage() {
             <Search size={18} color="#B3AFAF" />
             <input
               type="text"
-              placeholder="Search by Booking ID, Customer Name, Mobile..."
+              placeholder="Search by Invoice Number, Customer Name, Mobile..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{
@@ -598,19 +708,39 @@ export default function BookingsPage() {
       {/* ── Bookings Data Table ── */}
       <GlobalDataTable
         columns={[
-          { header: "Booking ID", cell: (item: BookingListItem) => item.bookingId },
-          { header: "Customer Name", cell: (item: BookingListItem) => item.customerName },
+          {
+            header: "Invoice Number",
+            cell: (item: BookingListItem) => item.invoiceNumber || item.bookingId || "-",
+          },
+          {
+            header: "Customer Name",
+            cell: (item: BookingListItem) => item.customer?.name || item.customerName || "-",
+          },
           {
             header: "Date & Time",
             cell: (item: BookingListItem) => {
-              if (!item.bookingDate) return "-";
-              const d = new Date(item.bookingDate);
-              return isNaN(d.getTime()) ? item.bookingDate : d.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+              const dStr = item.dateTime || item.bookingDate || item.createdAt;
+              if (!dStr) return "-";
+              const d = new Date(dStr);
+              return isNaN(d.getTime()) ? dStr : d.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
             },
           },
-          { header: "Attraction", cell: (item: BookingListItem) => item.attraction?.name ?? "-" },
-          { header: "Visitors", cell: (item: BookingListItem) => typeof item.visitors === "number" ? item.visitors : item.visitors?.total ?? "-" },
-          { header: "Amount", cell: (item: BookingListItem) => `₹${item.amount ?? 0}` },
+          {
+            header: "Attraction",
+            cell: (item: BookingListItem) =>
+              item.attractions && item.attractions.length > 0
+                ? item.attractions.map((a) => a.name).join(", ")
+                : item.attraction?.name ?? "-",
+          },
+          {
+            header: "Visitors",
+            cell: (item: BookingListItem) =>
+              typeof item.visitors === "number" ? item.visitors : item.visitors?.total ?? "-",
+          },
+          {
+            header: "Amount",
+            cell: (item: BookingListItem) => `₹${item.grandTotalAmount ?? item.amount ?? 0}`,
+          },
           { header: "Status", cell: (item: BookingListItem) => renderStatusBadge(item.status) },
           {
             header: "Actions",
@@ -723,7 +853,7 @@ export default function BookingsPage() {
         sNoHeader="S.No"
         itemLabel="bookings"
         emptyMessage={emptyMessage}
-        isLoading={isLoading}
+        isLoading={isLoading || isFetching}
       />
 
       {/* ── Modals ── */}

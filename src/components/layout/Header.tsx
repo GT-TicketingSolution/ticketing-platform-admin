@@ -50,7 +50,7 @@ const ROUTE_HEADER_MAP: Record<string, { title: string; icon: React.ElementType 
   "/ticket-booking": { title: "Ticket Booking", icon: Ticket },
   "/bookings": { title: "Bookings", icon: BookOpen },
   "/transactions": { title: "Transactions", icon: CircleDollarSign },
-  "/invoices": { title: "Invoices", icon: FileText },
+  "/invoices": { title: "Scanner Invoices", icon: FileText },
   "/inventory": { title: "Inventory & Capacity", icon: Boxes },
   "/customer-management": { title: "Customer Management", icon: UserRound },
   "/complimentary-passes": { title: "Complimentary Passes", icon: ClipboardList },
@@ -71,7 +71,7 @@ function getRouteHeaderInfo(pathname: string, propTitle?: string): { title: stri
   if (clean.includes("ticket") || clean.includes("booking-view")) return { title: "Ticket Booking", icon: Ticket };
   if (clean.includes("booking")) return { title: "Bookings", icon: BookOpen };
   if (clean.includes("transaction")) return { title: "Transactions", icon: CircleDollarSign };
-  if (clean.includes("invoice")) return { title: "Invoices", icon: FileText };
+  if (clean.includes("invoice")) return { title: "Scanner Invoices", icon: FileText };
   if (clean.includes("inventory")) return { title: "Inventory & Capacity", icon: Boxes };
   if (clean.includes("customer")) return { title: "Customer Management", icon: UserRound };
   if (clean.includes("complimentary") || clean.includes("pass")) return { title: "Complimentary Passes", icon: ClipboardList };
