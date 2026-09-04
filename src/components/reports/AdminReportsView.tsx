@@ -26,7 +26,6 @@ import { colors } from "@/lib/theme";
 import AttractionReportCard from "@/components/reports/AttractionReportCard";
 import SingleAttractionReportView from "@/components/reports/SingleAttractionReportView";
 import { exportMultiSectionXLS, XLSSection } from "@/lib/exportUtils";
-import { useAttractionManagementList } from "@/hooks/useAttractionManagementQueries";
 import {
   useReportSummary,
   useReportAttraction,
@@ -53,8 +52,8 @@ export default function AdminReportsView() {
   }, []);
 
   // ── Real API Queries ────────────────────────────────────────────────────────
-  const { data: attractionsData = [], isLoading: isAttractionsLoading } =
-    useAttractionManagementList();
+  const attractionsData: any[] = [];  // Attractions API call removed
+  const isAttractionsLoading = false;  // No longer needed
 
   const selectedAttractionObj = useMemo(() => {
     if (
