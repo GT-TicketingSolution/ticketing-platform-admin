@@ -18,6 +18,8 @@ import {
   UserX,
   UserPlus,
   Loader2,
+  BarChart2,
+  Clock,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import { StaffUser } from "./types";
@@ -32,6 +34,7 @@ import StatusFilterSelect from "@/components/ui/StatusFilterSelect";
 import MultiSelectDropdown from "@/components/ui/MultiSelectDropdown";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import ExportButtons from "@/components/ui/ExportButtons";
+import ReportTimingModal from "@/components/modals/ReportTimingModal";
 import {
   useStaffList,
   fetchStaffList,
@@ -52,7 +55,13 @@ import { useAttractions, AttractionItem } from "@/hooks/useManagerQueries";
 
 const MultiSelect = MultiSelectDropdown;
 
-const STAFF_ROLES = ["Counter Operator", "Validator", "Helpdesk", "Supervisor"];
+const STAFF_ROLES = [
+  "Counter Operator",
+  "Validator",
+  "Helpdesk",
+  "Supervisor",
+  "Reports Access",
+];
 
 function StaffManagementInner() {
   const { showToast } = useToast();
@@ -145,6 +154,25 @@ function StaffManagementInner() {
             ? [normalizeRole(s.role)]
             : ["STAFF"];
 
+    let hasReportsAccess = s.canViewReports ?? false;
+    let durationHours: number | null = s.reportViewDurationHours ?? null;
+
+    const normalizedRoles = rolesArr.map((r) => {
+      if (r.toLowerCase().startsWith("reports access")) {
+        hasReportsAccess = true;
+        const match = r.match(/(\d+)/);
+        if (match && !durationHours) {
+          durationHours = parseInt(match[1], 10);
+        }
+        return "Reports Access";
+      }
+      return r;
+    });
+
+    if (hasReportsAccess && !durationHours) {
+      durationHours = 24;
+    }
+
     const attractionNames =
       s.assignedAttraction && s.assignedAttraction.length > 0
         ? s.assignedAttraction
@@ -157,8 +185,8 @@ function StaffManagementInner() {
       name: s.name || "—",
       email: s.email || "—",
       phone: s.phone ?? "—",
-      role: rolesArr,
-      roles: rolesArr,
+      role: normalizedRoles,
+      roles: normalizedRoles,
       assignedAttraction: attractionNames,
       attractions: s.attractions || [],
       attractionIds: s.attractionIds || s.attractions?.map((a) => a.id) || [],
@@ -169,16 +197,22 @@ function StaffManagementInner() {
           : "—",
       status: s.status,
       ticketsIssued: s.ticketsIssued ?? 0,
-      canViewReports: s.canViewReports ?? false,
-      reportViewDurationHours: s.reportViewDurationHours ?? null,
+      canViewReports: hasReportsAccess,
+      reportViewDurationHours: durationHours,
     };
   });
 
   // Modal & Selection States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [showAddPassword, setShowAddPassword] = useState(false);
+  const [showEditPassword, setShowEditPassword] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Report Access Timing Modal State
+  const [isReportTimingModalOpen, setIsReportTimingModalOpen] = useState(false);
+  const [timingModalTarget, setTimingModalTarget] = useState<"add" | "edit">("add");
+  const [pendingRoleSelection, setPendingRoleSelection] = useState<string[] | null>(null);
 
   // Form State for Add / Edit
   const [formData, setFormData] = useState({
@@ -209,6 +243,7 @@ function StaffManagementInner() {
       reportViewDurationHours: "",
     });
     setFormErrors({});
+    setPendingRoleSelection(null);
   };
 
   const isStaffFiltered =
@@ -235,18 +270,117 @@ function StaffManagementInner() {
     const attrArr = staff.assignedAttraction || [];
     const isAct = String(staff.status).toUpperCase() === "ACTIVE";
 
+    let hasReports = staff.canViewReports ?? false;
+    let duration: number | string = staff.reportViewDurationHours ?? "";
+
+    const cleanedRoles = roleArr.map((r) => {
+      if (r.toLowerCase().startsWith("reports access")) {
+        hasReports = true;
+        const match = r.match(/(\d+)/);
+        if (match && !duration) {
+          duration = parseInt(match[1], 10);
+        }
+        return "Reports Access";
+      }
+      return r;
+    });
+
+    if (hasReports && !cleanedRoles.includes("Reports Access")) {
+      cleanedRoles.push("Reports Access");
+    }
+    if (hasReports && !duration) {
+      duration = 24;
+    }
+
     setFormData({
       name: staff.name,
       email: staff.email,
       phone: staff.phone && staff.phone !== "—" ? staff.phone : "",
       password: "",
-      role: [...roleArr],
+      role: cleanedRoles,
       assignedAttraction: [...attrArr],
       status: isAct ? "Active" : "Inactive",
-      canViewReports: staff.canViewReports ?? false,
-      reportViewDurationHours: staff.reportViewDurationHours ?? "",
+      canViewReports: hasReports,
+      reportViewDurationHours: duration,
     });
     setIsEditing(true);
+  };
+
+  // Role dropdown change handler with Reports Access modal trigger
+  const handleRoleChange = (newRoles: string[], target: "add" | "edit") => {
+    const isAddingReportsAccess =
+      newRoles.includes("Reports Access") && !formData.role.includes("Reports Access");
+    const isRemovingReportsAccess =
+      !newRoles.includes("Reports Access") && formData.role.includes("Reports Access");
+
+    if (isAddingReportsAccess) {
+      // 1. Immediately enable the tick in the dropdown and form
+      setFormData((prev) => ({
+        ...prev,
+        role: newRoles,
+      }));
+      setFormErrors((p) => ({ ...p, role: "" }));
+      setPendingRoleSelection(newRoles);
+      setTimingModalTarget(target);
+      // 2. Open timing modal only when tick is enabled
+      setIsReportTimingModalOpen(true);
+    } else if (isRemovingReportsAccess) {
+      // When unticking / disabling Reports Access, modal does not open
+      setFormData((prev) => ({
+        ...prev,
+        role: newRoles,
+        canViewReports: false,
+        reportViewDurationHours: "",
+      }));
+      setFormErrors((p) => ({ ...p, role: "", reportViewDurationHours: "" }));
+    } else {
+      setFormData((prev) => ({ ...prev, role: newRoles }));
+      setFormErrors((p) => ({ ...p, role: "" }));
+    }
+  };
+
+  // Apply Reports Access Timing from popup modal
+  const handleApplyReportTiming = (hours: number) => {
+    const nextRoles = pendingRoleSelection
+      ? pendingRoleSelection
+      : formData.role.includes("Reports Access")
+        ? formData.role
+        : [...formData.role, "Reports Access"];
+
+    setFormData((prev) => ({
+      ...prev,
+      role: nextRoles,
+      canViewReports: true,
+      reportViewDurationHours: hours,
+    }));
+
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("staffReportTimingHours", String(hours));
+      sessionStorage.setItem("lastAssignedReportDurationHours", String(hours));
+      localStorage.setItem("staffReportTimingHours", String(hours));
+      sessionStorage.setItem(
+        "staffRoles",
+        JSON.stringify([...nextRoles, `Reports Access (${hours}h)`])
+      );
+    }
+
+    setPendingRoleSelection(null);
+    setIsReportTimingModalOpen(false);
+    setFormErrors((p) => ({ ...p, role: "", reportViewDurationHours: "" }));
+  };
+
+  // Cancel Reports Access Timing modal
+  const handleCloseReportTimingModal = () => {
+    // If not previously confirmed, remove Reports Access from role so tick is disabled
+    if (!formData.canViewReports) {
+      setFormData((prev) => ({
+        ...prev,
+        role: prev.role.filter((r) => r !== "Reports Access"),
+        reportViewDurationHours: "",
+      }));
+    }
+    setPendingRoleSelection(null);
+    setIsReportTimingModalOpen(false);
   };
 
   const handleAddSubmit = async (e: React.FormEvent) => {
@@ -293,19 +427,28 @@ function StaffManagementInner() {
       .map((name) => attractionsList.find((a) => a.name === name)?.id)
       .filter(Boolean) as string[];
 
+    // Format roles: tag Reports Access with assigned duration for display and persistence
+    const finalRoles = formData.role.map((r) => {
+      if (r === "Reports Access") {
+        const hours = formData.reportViewDurationHours || 24;
+        return `Reports Access (${hours}h)`;
+      }
+      return r;
+    });
+
     try {
       await createStaffMutation.mutateAsync({
         name: formData.name.trim(),
         email: formData.email.trim(),
         phone: formData.phone.trim(),
         password: formData.password,
-        roles: formData.role.length > 0 ? formData.role : ["STAFF"],
+        roles: finalRoles.length > 0 ? finalRoles : ["STAFF"],
         attractionIds: attractionIds.length > 0 ? attractionIds : [],
         status: formData.status === "Active" ? "ACTIVE" : "INACTIVE",
-        ...(formData.canViewReports !== undefined && { canViewReports: formData.canViewReports }),
-        ...(formData.canViewReports && formData.reportViewDurationHours !== ""
-          ? { reportViewDurationHours: Number(formData.reportViewDurationHours) }
-          : { reportViewDurationHours: null }),
+        canViewReports: formData.role.includes("Reports Access"),
+        reportViewDurationHours: formData.role.includes("Reports Access")
+          ? Number(formData.reportViewDurationHours || 24)
+          : null,
       });
       setIsAddModalOpen(false);
       resetForm();
@@ -346,6 +489,14 @@ function StaffManagementInner() {
       .map((name) => attractionsList.find((a) => a.name === name)?.id)
       .filter(Boolean) as string[];
 
+    const finalRoles = formData.role.map((r) => {
+      if (r === "Reports Access") {
+        const hours = formData.reportViewDurationHours || 24;
+        return `Reports Access (${hours}h)`;
+      }
+      return r;
+    });
+
     try {
       await updateStaffMutation.mutateAsync({
         staffId: selectedStaff.id,
@@ -354,12 +505,12 @@ function StaffManagementInner() {
           email: formData.email.trim(),
           phone: formData.phone.trim(),
           password: formData.password?.trim() ? formData.password : undefined,
-          roles: formData.role.length > 0 ? formData.role : ["STAFF"],
+          roles: finalRoles.length > 0 ? finalRoles : ["STAFF"],
           attractionIds: attractionIds.length > 0 ? attractionIds : [],
           status: formData.status === "Active" ? "ACTIVE" : "INACTIVE",
-          canViewReports: formData.canViewReports,
-          reportViewDurationHours: formData.canViewReports && formData.reportViewDurationHours !== ""
-            ? Number(formData.reportViewDurationHours)
+          canViewReports: formData.role.includes("Reports Access"),
+          reportViewDurationHours: formData.role.includes("Reports Access")
+            ? Number(formData.reportViewDurationHours || 24)
             : null,
         },
       });
@@ -615,23 +766,34 @@ function StaffManagementInner() {
         const roles = Array.isArray(s.role) ? s.role : [String(s.role)];
         return (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-            {roles.map((r) => (
-              <span
-                key={r}
-                style={{
-                  background: "rgba(35,114,165,0.08)",
-                  color: colors.brand.accent,
-                  padding: "3px 8px",
-                  borderRadius: "12px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  fontFamily: typography.fontFamily.sans,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {r}
-              </span>
-            ))}
+            {roles.map((r) => {
+              const isReports = r.toLowerCase().startsWith("reports access");
+              const label = isReports && s.reportViewDurationHours
+                ? `Reports Access (${s.reportViewDurationHours}h)`
+                : r;
+              return (
+                <span
+                  key={r}
+                  style={{
+                    background: isReports ? "#EFF6FF" : "rgba(35,114,165,0.08)",
+                    color: isReports ? "#1D4ED8" : colors.brand.accent,
+                    border: isReports ? "1px solid #BFDBFE" : "none",
+                    padding: "3px 8px",
+                    borderRadius: "12px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    fontFamily: typography.fontFamily.sans,
+                    whiteSpace: "nowrap",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  {isReports && <BarChart2 size={12} color="#2563EB" />}
+                  {label}
+                </span>
+              );
+            })}
           </div>
         );
       },
@@ -1003,22 +1165,44 @@ function StaffManagementInner() {
                 <label style={{ fontSize: "13px", fontWeight: 600, display: "block" }}>
                   Password (leave blank to keep current)
                 </label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  style={{
-                    width: "100%",
-                    height: "40px",
-                    borderRadius: "8px",
-                    border: "1.5px solid #CBD5E1",
-                    padding: "0 12px",
-                    marginTop: "4px",
-                    fontSize: "14px",
-                    boxSizing: "border-box",
-                  }}
-                />
+                <div style={{ position: "relative", marginTop: "4px" }}>
+                  <input
+                    type={showEditPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    style={{
+                      width: "100%",
+                      height: "40px",
+                      borderRadius: "8px",
+                      border: "1.5px solid #CBD5E1",
+                      padding: "0 40px 0 12px",
+                      fontSize: "14px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPassword((prev) => !prev)}
+                    style={{
+                      position: "absolute",
+                      right: "12px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "#64748B",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 0,
+                    }}
+                    aria-label={showEditPassword ? "Hide password" : "Show password"}
+                  >
+                    {showEditPassword ? <Eye size={18} /> : <EyeOff size={18} />}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1032,150 +1216,103 @@ function StaffManagementInner() {
                   setFormData({ ...formData, assignedAttraction: vals });
                   setFormErrors((p) => ({ ...p, assignedAttraction: "" }));
                 }}
+                forceClose={isReportTimingModalOpen}
                 error={formErrors.assignedAttraction}
               />
-              <MultiSelect
-                label="Staff Role"
-                required
-                options={STAFF_ROLES}
-                selected={formData.role}
-                onChange={(vals) => {
-                  setFormData({ ...formData, role: vals });
-                  setFormErrors((p) => ({ ...p, role: "" }));
-                }}
-                error={formErrors.role}
-              />
-            </div>
-
-            {/* Status + Report Access — same row, Edit Form */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", alignItems: "start" }}>
-              {/* Status Toggle */}
-              <StatusToggle
-                value={formData.status}
-                onChange={(status) => setFormData({ ...formData, status })}
-                error={formErrors.status}
-              />
-
-              {/* Report Access */}
-              <div
-                style={{
-                  border: "1.5px solid #E2E8F0",
-                  borderRadius: "10px",
-                  padding: "12px 16px",
-                  background: formData.canViewReports ? "rgba(35,114,165,0.03)" : "#FAFBFC",
-                  transition: "background 0.2s",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
-                  <div>
-                    <div style={{ fontSize: "13px", fontWeight: 700, color: colors.text.primary }}>
-                      Report Access
-                      <span
-                        style={{
-                          marginLeft: "8px",
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          color: colors.text.muted,
-                          background: "#F1F5F9",
-                          padding: "2px 7px",
-                          borderRadius: "6px",
-                        }}
-                      >
-                        Optional
-                      </span>
-                    </div>
-                    <div style={{ fontSize: "12px", color: colors.text.muted, marginTop: "2px" }}>
-                      Allow this staff member to view reports
-                    </div>
-                  </div>
-                  {/* Toggle */}
-                  <label
+              <div>
+                <MultiSelect
+                  label="Staff Role"
+                  required
+                  options={STAFF_ROLES}
+                  selected={formData.role}
+                  onChange={(vals) => handleRoleChange(vals, "edit")}
+                  closeOnSelectOption={(opt) => opt === "Reports Access"}
+                  forceClose={isReportTimingModalOpen}
+                  error={formErrors.role}
+                />
+                {formData.role.includes("Reports Access") && (
+                  <div
                     style={{
-                      position: "relative",
-                      display: "inline-flex",
+                      marginTop: "8px",
+                      padding: "10px 14px",
+                      borderRadius: "8px",
+                      background: "rgba(244, 188, 67, 0.12)",
+                      border: "1px solid rgba(244, 188, 67, 0.45)",
+                      display: "flex",
                       alignItems: "center",
-                      cursor: "pointer",
-                      flexShrink: 0,
+                      justifyContent: "space-between",
+                      gap: "10px",
                     }}
                   >
-                    <input
-                      type="checkbox"
-                      checked={!!formData.canViewReports}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          canViewReports: e.target.checked,
-                          reportViewDurationHours: e.target.checked ? formData.reportViewDurationHours : "",
-                        })
-                      }
-                      style={{ opacity: 0, width: 0, height: 0, position: "absolute" }}
-                    />
-                    <span
-                      style={{
-                        width: "44px",
-                        height: "24px",
-                        borderRadius: "12px",
-                        background: formData.canViewReports ? colors.brand.accent : "#CBD5E1",
-                        transition: "background 0.2s",
-                        position: "relative",
-                        display: "inline-block",
-                      }}
-                    >
-                      <span
-                        style={{
-                          position: "absolute",
-                          top: "3px",
-                          left: formData.canViewReports ? "23px" : "3px",
-                          width: "18px",
-                          height: "18px",
-                          borderRadius: "50%",
-                          background: "#FFFFFF",
-                          boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                          transition: "left 0.2s",
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <Clock size={16} color="#B45309" />
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: "#0C2A42" }}>
+                        Reports Access:{" "}
+                        <span style={{ fontWeight: 700 }}>
+                          Past {formData.reportViewDurationHours || 24} Hours ({((Number(formData.reportViewDurationHours) || 24) / 24).toFixed(1).replace(/\.0$/, "")} Days)
+                        </span>
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTimingModalTarget("edit");
+                          setIsReportTimingModalOpen(true);
                         }}
-                      />
-                    </span>
-                  </label>
-                </div>
-                {formData.canViewReports && (
-                  <div style={{ marginTop: "12px" }}>
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary, display: "block" }}>
-                      Report View Duration (Hours)
-                      <span style={{ fontSize: "12px", fontWeight: 400, color: colors.text.muted, marginLeft: "6px" }}>
-                        — Specify how many hours of past report data this staff member can access.
-                      </span>
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      placeholder="e.g. 8"
-                      value={formData.reportViewDurationHours}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormData({ ...formData, reportViewDurationHours: val === "" ? "" : Number(val) });
-                        setFormErrors((p) => ({ ...p, reportViewDurationHours: "" }));
-                      }}
-                      style={{
-                        width: "100%",
-                        height: "40px",
-                        borderRadius: "8px",
-                        border: `1.5px solid ${formErrors.reportViewDurationHours ? "#EF4444" : "#CBD5E1"}`,
-                        padding: "0 12px",
-                        marginTop: "6px",
-                        fontSize: "14px",
-                        boxSizing: "border-box",
-                      }}
-                    />
-                    {formErrors.reportViewDurationHours && (
-                      <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>
-                        {formErrors.reportViewDurationHours}
-                      </span>
-                    )}
+                        style={{
+                          background: colors.brand.primary,
+                          border: "none",
+                          color: colors.sidebar.activeText,
+                          padding: "4px 10px",
+                          borderRadius: "6px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          boxShadow: "0 1px 4px rgba(244,188,67,0.3)",
+                        }}
+                      >
+                        <Edit2 size={12} /> Edit Timing
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData({
+                            ...formData,
+                            role: formData.role.filter((r) => r !== "Reports Access"),
+                            canViewReports: false,
+                            reportViewDurationHours: "",
+                          });
+                        }}
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          color: "#64748B",
+                          padding: "4px",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                        title="Remove Reports Access"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
             </div>
+
+            {/* Status Toggle — Edit Form */}
+            <StatusToggle
+              value={formData.status}
+              onChange={(status) => setFormData({ ...formData, status })}
+              error={formErrors.status}
+            />
           </div>
         ) : (
           // ── Read-Only Detail Cards ────────────────────────────────────────
@@ -1268,21 +1405,34 @@ function StaffManagementInner() {
                         Role
                       </div>
                       <div style={{ marginTop: "4px", display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                        {selectedRoles.map((r) => (
-                          <span
-                            key={r}
-                            style={{
-                              background: "rgba(35,114,165,0.1)",
-                              color: colors.brand.accent,
-                              padding: "2px 8px",
-                              borderRadius: "4px",
-                              fontSize: "12px",
-                              fontWeight: 700,
-                            }}
-                          >
-                            {r}
-                          </span>
-                        ))}
+                        {selectedRoles.map((r) => {
+                          const isReports = r.toLowerCase().startsWith("reports access");
+                          const hours = selectedStaff.reportViewDurationHours || 24;
+                          const days = ((Number(hours) || 24) / 24).toFixed(1).replace(/\.0$/, "");
+                          const label = isReports
+                            ? `Reports Access: Past ${hours} Hours (${days} Days)`
+                            : r;
+                          return (
+                            <span
+                              key={r}
+                              style={{
+                                background: isReports ? "rgba(244, 188, 67, 0.15)" : "rgba(35,114,165,0.1)",
+                                color: isReports ? "#0C2A42" : colors.brand.accent,
+                                border: isReports ? "1px solid rgba(244, 188, 67, 0.5)" : "none",
+                                padding: "3px 10px",
+                                borderRadius: "6px",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
+                              {isReports && <BarChart2 size={13} color="#B45309" />}
+                              {label}
+                            </span>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
@@ -1313,6 +1463,61 @@ function StaffManagementInner() {
                   Performance &amp; Account Status
                 </h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {/* Reports Access Privilege Card */}
+                  {(selectedStaff.canViewReports || selectedRoles.some((r) => r.toLowerCase().startsWith("reports access"))) && (
+                    <div
+                      style={{
+                        background: "rgba(244, 188, 67, 0.12)",
+                        borderRadius: "12px",
+                        padding: "16px 20px",
+                        border: "1.5px solid rgba(244, 188, 67, 0.45)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        <div
+                          style={{
+                            width: "38px",
+                            height: "38px",
+                            borderRadius: "10px",
+                            background: "#F4BC43",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                            boxShadow: "0 2px 6px rgba(244,188,67,0.3)",
+                          }}
+                        >
+                          <BarChart2 size={20} color="#0C2A42" strokeWidth={2.2} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: "14px", fontWeight: 700, color: "#0C2A42" }}>
+                            Reports Access: Past {selectedStaff.reportViewDurationHours || 24} Hours ({((Number(selectedStaff.reportViewDurationHours) || 24) / 24).toFixed(1).replace(/\.0$/, "")} Days)
+                          </div>
+                          <div style={{ fontSize: "12px", color: "#64748B", marginTop: "2px" }}>
+                            Staff member can view historical reports and analytics within this assigned past time window.
+                          </div>
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          background: "#0C2A42",
+                          color: "#F4BC43",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          padding: "4px 10px",
+                          borderRadius: "6px",
+                          letterSpacing: "0.5px",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Active
+                      </span>
+                    </div>
+                  )}
                   <div
                     style={{
                       background: "rgba(35,114,165,0.05)",
@@ -1442,6 +1647,13 @@ function StaffManagementInner() {
             </div>
           </div>
         )}
+        <ReportTimingModal
+          isOpen={isReportTimingModalOpen}
+          onClose={handleCloseReportTimingModal}
+          onApply={handleApplyReportTiming}
+          currentHours={formData.reportViewDurationHours ? Number(formData.reportViewDurationHours) : 24}
+          targetLabel={timingModalTarget === "add" ? "New Staff Member" : (formData.name || "Staff Member")}
+        />
       </div>
     );
   }
@@ -1856,7 +2068,7 @@ function StaffManagementInner() {
                     tabIndex={-1}
                     aria-label={showAddPassword ? "Hide password" : "Show password"}
                   >
-                    {showAddPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {showAddPassword ? <Eye size={18} /> : <EyeOff size={18} />}
                   </button>
                 </div>
                 {formErrors.password && (
@@ -1876,19 +2088,21 @@ function StaffManagementInner() {
                     setFormData({ ...formData, assignedAttraction: vals });
                     setFormErrors((p) => ({ ...p, assignedAttraction: "" }));
                   }}
+                  forceClose={isReportTimingModalOpen}
                   error={formErrors.assignedAttraction}
                 />
-                <MultiSelect
-                  label="Staff Role"
-                  required
-                  options={STAFF_ROLES}
-                  selected={formData.role}
-                  onChange={(vals) => {
-                    setFormData({ ...formData, role: vals });
-                    setFormErrors((p) => ({ ...p, role: "" }));
-                  }}
-                  error={formErrors.role}
-                />
+                <div>
+                  <MultiSelect
+                    label="Staff Role"
+                    required
+                    options={STAFF_ROLES}
+                    selected={formData.role}
+                    onChange={(vals) => handleRoleChange(vals, "add")}
+                    closeOnSelectOption={(opt) => opt === "Reports Access"}
+                    forceClose={isReportTimingModalOpen}
+                    error={formErrors.role}
+                  />
+                </div>
               </div>
 
               {/* Status Toggle — Add Modal */}
@@ -1899,126 +2113,6 @@ function StaffManagementInner() {
                 onChange={(status) => setFormData({ ...formData, status })}
                 error={formErrors.status}
               />
-
-              {/* Report Access — Add Modal */}
-              <div
-                style={{
-                  border: "1.5px solid #E2E8F0",
-                  borderRadius: "10px",
-                  padding: "16px 20px",
-                  background: formData.canViewReports ? "rgba(35,114,165,0.03)" : "#FAFBFC",
-                  transition: "background 0.2s",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
-                  <div>
-                    <div style={{ fontSize: "13px", fontWeight: 700, color: colors.text.primary }}>
-                      Report Access
-                      <span
-                        style={{
-                          marginLeft: "8px",
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          color: colors.text.muted,
-                          background: "#F1F5F9",
-                          padding: "2px 7px",
-                          borderRadius: "6px",
-                        }}
-                      >
-                        Optional
-                      </span>
-                    </div>
-                    <div style={{ fontSize: "12px", color: colors.text.muted, marginTop: "2px" }}>
-                      Allow this staff member to view reports
-                    </div>
-                  </div>
-                  {/* Toggle */}
-                  <label
-                    style={{
-                      position: "relative",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      cursor: "pointer",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={!!formData.canViewReports}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          canViewReports: e.target.checked,
-                          reportViewDurationHours: e.target.checked ? formData.reportViewDurationHours : "",
-                        })
-                      }
-                      style={{ opacity: 0, width: 0, height: 0, position: "absolute" }}
-                    />
-                    <span
-                      style={{
-                        width: "44px",
-                        height: "24px",
-                        borderRadius: "12px",
-                        background: formData.canViewReports ? colors.brand.accent : "#CBD5E1",
-                        transition: "background 0.2s",
-                        position: "relative",
-                        display: "inline-block",
-                      }}
-                    >
-                      <span
-                        style={{
-                          position: "absolute",
-                          top: "3px",
-                          left: formData.canViewReports ? "23px" : "3px",
-                          width: "18px",
-                          height: "18px",
-                          borderRadius: "50%",
-                          background: "#FFFFFF",
-                          boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                          transition: "left 0.2s",
-                        }}
-                      />
-                    </span>
-                  </label>
-                </div>
-                {formData.canViewReports && (
-                  <div style={{ marginTop: "14px" }}>
-                    <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary, display: "block" }}>
-                      Report View Duration (Hours)
-                      <span style={{ fontSize: "12px", fontWeight: 400, color: colors.text.muted, marginLeft: "6px" }}>
-                        — Specify how many hours of past report data this staff member can access.
-                      </span>
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      placeholder="e.g. 8"
-                      value={formData.reportViewDurationHours}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormData({ ...formData, reportViewDurationHours: val === "" ? "" : Number(val) });
-                        setFormErrors((p) => ({ ...p, reportViewDurationHours: "" }));
-                      }}
-                      style={{
-                        width: "100%",
-                        height: "40px",
-                        borderRadius: "8px",
-                        border: `1.5px solid ${formErrors.reportViewDurationHours ? "#EF4444" : "#CBD5E1"}`,
-                        padding: "0 12px",
-                        marginTop: "6px",
-                        fontSize: "14px",
-                        boxSizing: "border-box",
-                      }}
-                    />
-                    {formErrors.reportViewDurationHours && (
-                      <span style={{ fontSize: "12px", color: "#EF4444", marginTop: "2px", display: "block" }}>
-                        {formErrors.reportViewDurationHours}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
 
               {/* Action Buttons */}
               <div
@@ -2087,6 +2181,15 @@ function StaffManagementInner() {
           </div>
         </div>
       )}
+
+      {/* Reports Access Timing Modal */}
+      <ReportTimingModal
+        isOpen={isReportTimingModalOpen}
+        onClose={handleCloseReportTimingModal}
+        onApply={handleApplyReportTiming}
+        currentHours={formData.reportViewDurationHours ? Number(formData.reportViewDurationHours) : 24}
+        targetLabel={timingModalTarget === "add" ? "New Staff Member" : (formData.name || "Staff Member")}
+      />
     </div>
   );
 }

@@ -9,7 +9,6 @@ import {
   lte,
   ne,
   sql,
-  arrayOverlaps,
 } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -20,9 +19,10 @@ import {
   attractionInventory,
   attractionInventorySlots,
   bookings,
-  bookingItems,
+  attractionsAgainstBooking,
+  attractionManagement,
+  categoryOfAttractionAgainstBooking,
 } from "@/db/schema";
-
 /* =========================================================
    TYPES
 ========================================================= */
@@ -277,32 +277,61 @@ export async function getInventory(filters: InventoryFilters) {
   const inventoryDates = [...new Set(dailyRows.map((row) => row.capacityDate))];
 
   /* =======================================================
-     BOOKED TICKETS PER ATTRACTION + DATE
-  ======================================================= */
+   BOOKED VISITORS PER ATTRACTION + DATE
+======================================================= */
 
   const bookedRows =
     attractionIds.length > 0 && inventoryDates.length > 0
       ? await db
           .select({
-            attractionId: sql<string>`unnest(${bookings.attractionId})`,
+            attractionId: attractions.id,
+
             visitDate: sql<string>`
-            DATE(${bookings.visitAt})
+            DATE(${bookings.createdAt})
           `,
+
             booked: sql<number>`
             COALESCE(
-              SUM(${bookingItems.quantity}),
+              SUM(
+                ${categoryOfAttractionAgainstBooking.noOfVisitors}
+              ),
               0
             )
           `,
           })
-          .from(bookingItems)
-          .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
+          .from(bookings)
+          .innerJoin(
+            attractionsAgainstBooking,
+            eq(attractionsAgainstBooking.bookingId, bookings.id),
+          )
+          .innerJoin(
+            attractionManagement,
+            eq(
+              attractionsAgainstBooking.attractionManagementId,
+              attractionManagement.id,
+            ),
+          )
+          .innerJoin(
+            attractions,
+            eq(attractionManagement.attractionId, attractions.id),
+          )
+          .innerJoin(
+            categoryOfAttractionAgainstBooking,
+            eq(
+              categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+              attractionsAgainstBooking.id,
+            ),
+          )
           .where(
             and(
-              arrayOverlaps(bookings.attractionId, attractionIds),
+              eq(attractions.adminId, filters.adminId),
+
+              eq(attractions.status, "ACTIVE"),
+
+              inArray(attractions.id, attractionIds),
 
               sql`
-              DATE(${bookings.visitAt})
+              DATE(${bookings.createdAt})
               IN (
                 ${sql.join(
                   inventoryDates.map((date) => sql`${date}`),
@@ -316,12 +345,8 @@ export async function getInventory(filters: InventoryFilters) {
               eq(bookings.isDeleted, false),
             ),
           )
-          .groupBy(
-            sql`unnest(${bookings.attractionId})`,
-            sql`DATE(${bookings.visitAt})`,
-          )
+          .groupBy(attractions.id, sql`DATE(${bookings.createdAt})`)
       : [];
-
   /* =======================================================
      BOOKED MAP
   ======================================================= */
@@ -422,46 +447,11 @@ export async function getInventory(filters: InventoryFilters) {
    * is the booked quantity.
    */
 
-  const slotBookedRows =
-    slotIds.length > 0
-      ? await db
-          .select({
-            slotId: bookingItems.timeSlotId,
-
-            visitDate: sql<string>`
-              DATE(${bookings.visitAt})
-            `,
-
-            booked: sql<number>`
-              COALESCE(
-                SUM(${bookingItems.quantity}),
-                0
-              )
-            `,
-          })
-          .from(bookingItems)
-          .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
-          .where(
-            and(
-              inArray(bookingItems.timeSlotId, slotIds),
-
-              sql`
-                DATE(${bookings.visitAt})
-                IN (
-                  ${sql.join(
-                    inventoryDates.map((date) => sql`${date}`),
-                    sql`, `,
-                  )}
-                )
-              `,
-
-              ne(bookings.status, "CANCELLED"),
-
-              eq(bookings.isDeleted, false),
-            ),
-          )
-          .groupBy(bookingItems.timeSlotId, sql`DATE(${bookings.visitAt})`)
-      : [];
+  const slotBookedRows: {
+    slotId: string;
+    visitDate: string;
+    booked: number;
+  }[] = [];
 
   /* =======================================================
      SLOT BOOKED MAP

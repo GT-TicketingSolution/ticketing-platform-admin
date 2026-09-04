@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getData, patchData, deleteData } from "@/lib/api/apiService";
 import { AppUrl } from "@/lib/api/endpoints";
 import { showSuccessNotify } from "@/lib/notify";
@@ -9,10 +9,16 @@ import { showErrorOnce } from "@/lib/api/axiosConfig";
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface BookingCustomer {
-  name: string;
+  name: string | null;
   mobileNumber?: string | null;
   mobile?: string | null;
   gstNumber?: string | null;
+}
+
+export interface BookingAttractionItem {
+  id: string;
+  name: string;
+  totalAmount?: number;
 }
 
 export interface BookingVisitorBreakdown {
@@ -42,17 +48,21 @@ export interface BookingAmountDetails {
 
 export interface BookingListItem {
   id: string;
+  invoiceNumber: string;
   bookingId: string;
   customer?: BookingCustomer;
   customerName: string;
   mobileNumber: string;
+  gstNumber?: string | null;
   dateTime?: string;
   bookingDate: string;
+  attractions?: BookingAttractionItem[];
   attraction: {
     id: string;
     name: string;
   };
-  visitors: {
+  grandTotalAmount: number;
+  visitors: number | {
     total: number;
     breakdown?: BookingVisitorBreakdown[];
   };
@@ -63,6 +73,7 @@ export interface BookingListItem {
   amountDue?: number;
   paymentMode: string;
   status: "PENDING" | "CONFIRMED" | "CANCELLED" | string;
+  createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -70,21 +81,24 @@ export interface BookingListItem {
 export interface BookingDetailItem {
   id: string;
   bookingId: string;
+  invoiceNumber?: string;
   customer: {
     name: string;
     mobile?: string | null;
     mobileNumber?: string | null;
     gstNumber?: string | null;
   };
+  attractions?: BookingAttractionItem[];
   attraction: {
     id: string;
     name: string;
   };
+  grandTotalAmount?: number;
   dateTime?: string;
   visitAt?: string;
   paymentMode?: string;
   status: "PENDING" | "CONFIRMED" | "CANCELLED" | string;
-  visitors?: {
+  visitors?: number | {
     total: number;
     breakdown?: BookingVisitorBreakdown[];
   };
@@ -117,6 +131,7 @@ export interface BookingListParams {
   limit?: number;
   search?: string;
   attractionId?: string;
+  attractionManagementId?: string;
   status?: string;
   fromDate?: string;
   toDate?: string;
@@ -124,6 +139,10 @@ export interface BookingListParams {
 
 export interface BookingListResponse {
   items: BookingListItem[];
+  attractions?: Array<{
+    id: string;
+    name: string;
+  }>;
   pagination: {
     page: number;
     limit: number;
@@ -133,8 +152,9 @@ export interface BookingListResponse {
 }
 
 export interface UpdateBookingPayload {
-  customerName: string;
-  mobileNumber: string;
+  customerName?: string;
+  mobileNumber?: string;
+  gstNumber?: string;
 }
 
 // ── Query Keys ───────────────────────────────────────────────────────────────
@@ -149,53 +169,85 @@ export const bookingKeys = {
 
 // ── Normalise Booking Item Helper ─────────────────────────────────────────────
 function mapBookingItem(item: any): BookingListItem {
+  const invoiceNum = item.invoiceNumber ?? item.bookingId ?? item.id ?? "-";
   const custName = item.customer?.name ?? item.customerName ?? "-";
   const custMobile = item.customer?.mobileNumber ?? item.customer?.mobile ?? item.mobileNumber ?? "-";
+  const custGst = item.customer?.gstNumber ?? item.gstNumber ?? null;
   const dateStr = item.dateTime ?? item.bookingDate ?? item.createdAt ?? "";
 
-  let totalAmount = 0;
+  // Parse grand total & amount
+  const grandTotal = Number(
+    item.grandTotalAmount ??
+    (typeof item.amount === "object" && item.amount !== null
+      ? (item.amount.total ?? item.amount.subtotal ?? 0)
+      : item.amount ?? 0)
+  );
+
   let paidAmount = 0;
   let dueAmount = 0;
   let amountDetails: BookingAmountDetails | undefined = undefined;
 
   if (typeof item.amount === "object" && item.amount !== null) {
     amountDetails = item.amount;
-    totalAmount = Number(item.amount.total ?? item.amount.subtotal ?? 0);
-    paidAmount = Number(item.amount.paid ?? 0);
+    paidAmount = Number(item.amount.paid ?? grandTotal);
     dueAmount = Number(item.amount.due ?? 0);
   } else {
-    totalAmount = Number(item.amount ?? 0);
-    paidAmount = Number(item.amountPaid ?? item.amount ?? 0);
+    paidAmount = Number(item.amountPaid ?? grandTotal);
     dueAmount = Number(item.amountDue ?? 0);
   }
 
-  const visitorsObj =
-    typeof item.visitors === "object" && item.visitors !== null
-      ? {
-          total: Number(item.visitors.total ?? 0),
-          breakdown: item.visitors.breakdown ?? [],
-        }
-      : {
-          total: Number(item.visitors ?? 0),
-          breakdown: [],
-        };
+  // Attractions list
+  const attractionsList: BookingAttractionItem[] = Array.isArray(item.attractions)
+    ? item.attractions.map((a: any) => ({
+      id: a.id ?? a.attractionManagementId ?? "",
+      name: a.name ?? a.attractionName ?? "-",
+      totalAmount: Number(a.totalAmount ?? 0),
+    }))
+    : item.attraction
+      ? [{ id: item.attraction.id ?? "", name: item.attraction.name ?? "-", totalAmount: grandTotal }]
+      : [];
+
+  const attractionDisplay = {
+    id: attractionsList.length > 0 ? attractionsList[0].id : (item.attraction?.id ?? ""),
+    name: attractionsList.length > 0
+      ? attractionsList.map((a) => a.name).join(", ")
+      : (item.attraction?.name ?? "-"),
+  };
+
+  // Visitors
+  const visitorsVal = typeof item.visitors === "number"
+    ? item.visitors
+    : typeof item.visitors === "object" && item.visitors !== null
+      ? (item.visitors.total ?? 0)
+      : Number(item.visitors ?? 0);
 
   return {
     ...item,
-    customer: item.customer ?? { name: custName, mobileNumber: custMobile, gstNumber: item.gstNumber ?? null },
+    id: item.id,
+    invoiceNumber: invoiceNum,
+    bookingId: invoiceNum,
+    customer: {
+      name: custName,
+      mobileNumber: custMobile,
+      gstNumber: custGst,
+    },
     customerName: custName,
     mobileNumber: custMobile,
+    gstNumber: custGst,
     dateTime: dateStr,
     bookingDate: dateStr,
-    attraction: item.attraction ?? { id: "", name: "-" },
-    visitors: visitorsObj,
+    attractions: attractionsList,
+    attraction: attractionDisplay,
+    visitors: visitorsVal,
+    grandTotalAmount: grandTotal,
     tickets: item.tickets ?? item.items ?? [],
-    amount: totalAmount,
+    amount: grandTotal,
     amountDetails,
     amountPaid: paidAmount,
     amountDue: dueAmount,
     paymentMode: item.paymentMode ?? item.payment?.mode ?? "-",
-    status: item.status ?? "PENDING",
+    status: item.status ?? "-",
+    createdBy: item.createdBy,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   };
@@ -216,8 +268,11 @@ export async function fetchBookingList(params?: BookingListParams): Promise<Book
   sp.set("page", String(page));
   sp.set("limit", String(limit));
   if (params?.search?.trim()) sp.set("search", params.search.trim());
-  if (params?.attractionId && params.attractionId !== "All") sp.set("attractionId", params.attractionId);
-  if (params?.status && params.status !== "All") sp.set("status", params.status);
+  const attractionMgmtId = params?.attractionManagementId || params?.attractionId;
+  if (attractionMgmtId && attractionMgmtId !== "All" && attractionMgmtId !== "ALL") {
+    sp.set("attractionManagementId", attractionMgmtId);
+  }
+  if (params?.status && params.status !== "All" && params.status !== "ALL") sp.set("status", params.status);
   if (params?.fromDate) sp.set("fromDate", params.fromDate);
   if (params?.toDate) sp.set("toDate", params.toDate);
 
@@ -230,6 +285,7 @@ export async function fetchBookingList(params?: BookingListParams): Promise<Book
     const totalCount = payload.pagination?.total ?? payload.items.length;
     return {
       items: payload.items.map(mapBookingItem),
+      attractions: Array.isArray(payload.attractions) ? payload.attractions : [],
       pagination: payload.pagination || {
         page,
         limit,
@@ -241,6 +297,7 @@ export async function fetchBookingList(params?: BookingListParams): Promise<Book
   if (Array.isArray(payload)) {
     return {
       items: payload.map(mapBookingItem),
+      attractions: [],
       pagination: {
         page,
         limit,
@@ -251,6 +308,7 @@ export async function fetchBookingList(params?: BookingListParams): Promise<Book
   }
   return {
     items: [],
+    attractions: [],
     pagination: { page: 1, limit, total: 0, totalPages: 0 },
   };
 }
@@ -266,8 +324,7 @@ export function useBookingList(params?: BookingListParams) {
   return useQuery<BookingListResponse>({
     queryKey: bookingKeys.list({ ...params, page, limit }),
     queryFn: () => fetchBookingList({ ...params, page, limit }),
-    placeholderData: keepPreviousData,
-    staleTime: 30 * 1000,
+    staleTime: 0,
     refetchOnWindowFocus: true,
   });
 }

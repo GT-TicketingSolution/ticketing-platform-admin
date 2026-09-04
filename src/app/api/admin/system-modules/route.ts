@@ -49,7 +49,7 @@ export async function GET(request: Request) {
         "TRANSACTIONS",
         "INVENTORY_CAPACITY",
         "SEAT_MANAGEMENT",
-        "INVOICES",
+        "SCANNER_INVOICES",
         "MANAGER_MANAGEMENT",
       ];
 

@@ -8,13 +8,27 @@ import { showErrorOnce } from "@/lib/api/axiosConfig";
 
 // ── Types 
 
+export interface AttractionCategoryItem {
+  id: string;
+  attractionManagementId?: string;
+  name: string;
+  basePrice: number;
+  futurePrice: number | null;
+  effectiveFrom: string | null;
+  noOfSeats: number | null;
+  imageLink: string | null;
+}
+
 export interface TicketingAttraction {
   id: string;
+  attractionManagementId?: string;
+  managementId?: string;
   name: string;
   category: string;
   status: string;
   image: string | null;
-  pricing: {
+  categories: AttractionCategoryItem[];
+  pricing?: {
     adult: number;
     child: number;
     student: number;
@@ -69,21 +83,37 @@ export interface TicketingBookingSeat {
   seatNumber: string;
 }
 
+export interface BookingCategoryPayload {
+  categoryId: string;
+  noOfVisitors: number;
+}
+
+export interface BookingAttractionPayload {
+  attractionManagementId: string;
+  attractionSubtotal: number;
+  attractionGst: number;
+  attractionRoundoff: number;
+  attractionRoundOffGstAdj: number;
+  attractionTotalAmount: number;
+  categories: BookingCategoryPayload[];
+}
+
 export interface CreateTicketingBookingPayload {
   customerName?: string | null;
   mobileNumber?: string | null;
   gstNumber?: string | null;
-  visitAt: string;
-  subtotal: number;
-  gstAmount: number;
-  gstAdjustment: number;
-  roundOff: number;
-  discountAmount: number;
-  paymentMode?: "CASH" | "UPI" | "CARD" | "ONLINE";
   totalAmount: number;
   amountReceived?: number;
   returnAmount?: number;
-  attractionId: string[];
+  paymentMode?: "CASH" | "UPI" | "CARD" | "ONLINE";
+  attractions: BookingAttractionPayload[];
+  visitAt?: string;
+  subtotal?: number;
+  gstAmount?: number;
+  gstAdjustment?: number;
+  roundOff?: number;
+  discountAmount?: number;
+  attractionId?: string[];
 }
 
 export interface CreateTicketingBookingResponse {
@@ -201,18 +231,40 @@ export function useTicketingAttractions() {
       const items = payload?.items ?? payload?.attractions ?? (Array.isArray(payload) ? payload : []);
       return items.map((item: any): TicketingAttraction => ({
         id: item.id,
+        attractionManagementId: item.attractionManagementId ?? item.managementId ?? item.categories?.[0]?.attractionManagementId,
+        managementId: item.managementId ?? item.attractionManagementId,
         name: item.name,
         category: item.category ?? item.type ?? "-",
         status: item.status ?? "ACTIVE",
         image: item.image ?? null,
-        pricing: {
-          adult: Number(item.pricing?.adult ?? item.adultPrice ?? 0),
-          child: Number(item.pricing?.child ?? item.childPrice ?? 0),
-          student: Number(item.pricing?.student ?? item.studentPrice ?? 0),
-          senior: Number(item.pricing?.senior ?? item.seniorPrice ?? 0),
-          foreigner: Number(item.pricing?.foreigner ?? item.foreignerPrice ?? 0),
-        },
-        hasSeating: item.hasSeating ?? false,
+        categories: Array.isArray(item.categories)
+          ? item.categories.map((c: any): AttractionCategoryItem => ({
+              id: String(c.id),
+              attractionManagementId: c.attractionManagementId ? String(c.attractionManagementId) : undefined,
+              name: String(c.name || ""),
+              basePrice: Number(c.basePrice ?? 0),
+              futurePrice:
+                c.futurePrice !== null && c.futurePrice !== undefined
+                  ? Number(c.futurePrice)
+                  : null,
+              effectiveFrom: c.effectiveFrom ?? null,
+              noOfSeats:
+                c.noOfSeats !== null && c.noOfSeats !== undefined
+                  ? Number(c.noOfSeats)
+                  : null,
+              imageLink: c.imageLink ?? null,
+            }))
+          : [],
+        pricing: item.pricing
+          ? {
+              adult: Number(item.pricing?.adult ?? item.adultPrice ?? 0),
+              child: Number(item.pricing?.child ?? item.childPrice ?? 0),
+              student: Number(item.pricing?.student ?? item.studentPrice ?? 0),
+              senior: Number(item.pricing?.senior ?? item.seniorPrice ?? 0),
+              foreigner: Number(item.pricing?.foreigner ?? item.foreignerPrice ?? 0),
+            }
+          : undefined,
+        hasSeating: Boolean(item.hasSeating),
         seatLayoutId: item.seatLayoutId ?? null,
         duration: item.duration ?? null,
         durationUnit: item.durationUnit ?? null,

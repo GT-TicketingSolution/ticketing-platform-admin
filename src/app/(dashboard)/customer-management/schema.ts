@@ -25,7 +25,7 @@ export const customerSchema = z.object({
     .or(z.literal("")),
   gstn: z
     .string()
-    .max(20, "GSTN cannot exceed 20 characters")
+    .max(15, "GSTN cannot exceed 15 characters")
     .optional()
     .or(z.literal("")),
 });

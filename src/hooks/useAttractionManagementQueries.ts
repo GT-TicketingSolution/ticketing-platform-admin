@@ -22,7 +22,10 @@ export const attractionManagementKeys = {
 };
 
 // ── List attractions
-export function useAttractionManagementList(params?: AttractionQueryParams) {
+export function useAttractionManagementList(
+  params?: AttractionQueryParams,
+  options?: { enabled?: boolean }
+) {
   const searchParams = new URLSearchParams();
   if (params?.search?.trim()) searchParams.set("search", params.search.trim());
   if (params?.status) searchParams.set("status", params.status);
@@ -34,6 +37,7 @@ export function useAttractionManagementList(params?: AttractionQueryParams) {
 
   return useQuery({
     queryKey: attractionManagementKeys.list(params),
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const res = await getData<any>(url);
       const items: any[] = Array.isArray(res)

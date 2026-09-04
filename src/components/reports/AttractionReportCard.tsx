@@ -5,15 +5,12 @@ import {
   ChevronDown,
   ChevronUp,
   Ticket,
-  IndianRupee,
   CreditCard,
   Building2,
   Clock,
   Download,
+  Printer,
   ExternalLink,
-  Users,
-  CheckCircle2,
-  AlertCircle,
 } from "lucide-react";
 import { AttractionReportData } from "@/lib/reportsData";
 import { colors } from "@/lib/theme";
@@ -27,6 +24,7 @@ interface AttractionReportCardProps {
   onSelectSingle: (attractionName: string) => void;
   fromDate?: string;
   toDate?: string;
+  onPrint?: (report: AttractionReportData) => void;
 }
 
 export default function AttractionReportCard({
@@ -36,6 +34,7 @@ export default function AttractionReportCard({
   onSelectSingle,
   fromDate,
   toDate,
+  onPrint,
 }: AttractionReportCardProps) {
   const { attraction, totalRevenue, totalTicketsSold, totalBookings, categoryBreakdown, paymentBreakdown, transactions } = report;
 
@@ -180,10 +179,10 @@ export default function AttractionReportCard({
                 <Clock size={14} color="#64748B" />
                 {attraction.timing}
               </span>
-              <span>•</span>
+              {/* <span>•</span>
               <span style={{ fontWeight: 500, color: "#475569" }}>
                 Adult Rate: ₹{attraction.pricing?.adult ?? 100}
-              </span>
+              </span> */}
             </div>
           </div>
         </div>
@@ -281,26 +280,54 @@ export default function AttractionReportCard({
                 <ExternalLink size={14} />
                 Detailed View
               </button>
-              <button
-                type="button"
-                onClick={handleExportAttractionCSV}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "6px 14px",
-                  borderRadius: "8px",
-                  backgroundColor: "#F8FAFC",
-                  color: "#334155",
-                  border: "1px solid #CBD5E1",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                <Download size={14} />
-                Export CSV
-              </button>
+              {onPrint ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPrint(report);
+                  }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "6px 14px",
+                    borderRadius: "8px",
+                    backgroundColor: "#0C2A42",
+                    color: "#F4BC43",
+                    border: "1px solid #0C2A42",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 6px rgba(12, 42, 66, 0.2)",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <Printer size={14} />
+                  Print
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleExportAttractionCSV}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "6px 14px",
+                    borderRadius: "8px",
+                    backgroundColor: "#F8FAFC",
+                    color: "#334155",
+                    border: "1px solid #CBD5E1",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <Download size={14} />
+                  Export CSV
+                </button>
+              )}
             </div>
           </div>
 

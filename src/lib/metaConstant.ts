@@ -39,7 +39,7 @@ export const META_CONSTANTS = {
     fullTitle: "Transactions | Ticketing Solution",
   },
   invoices: {
-    fullTitle: "Invoices | Ticketing Solution",
+    fullTitle: "Scanner Invoices | Ticketing Solution",
   },
   inventory: {
     fullTitle: "Inventory & Capacity | Ticketing Solution",

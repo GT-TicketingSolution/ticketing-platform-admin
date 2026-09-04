@@ -16,6 +16,7 @@ import {
   useAttractionTripNo,
   useAttractionSeatAvailability,
   TicketingAttraction,
+  AttractionCategoryItem,
 } from "@/hooks/useTicketingBookingQueries";
 import CustomerInfoView from "./CustomerInfoView";
 
@@ -79,39 +80,24 @@ function AttractionListSkeleton() {
   );
 }
 
-export type CategoryKey = "adult" | "child" | "senior" | "student" | "foreigner";
-
-export interface VisitorCategoryMeta {
-  key: CategoryKey;
-  label: string;
-  subLabel?: string;
-  image: string;
-  defaultPrice: number;
-}
-
-export const VISITOR_CATEGORIES: VisitorCategoryMeta[] = [
-  { key: "adult", label: "Adult", subLabel: "General entry", image: "/Assets/Visitors/Adult.jpg", defaultPrice: 100 },
-  { key: "child", label: "Child", subLabel: "5–12 yrs", image: "/Assets/Visitors/Child.jpg", defaultPrice: 50 },
-  { key: "student", label: "Student", subLabel: "ID Required", image: "/Assets/Visitors/Student.jpg", defaultPrice: 60 },
-  { key: "foreigner", label: "Foreigner", subLabel: "Passport verification", image: "/Assets/Visitors/Foreigner.jpg", defaultPrice: 500 },
-  { key: "senior", label: "Senior Citizen", subLabel: "60+ yrs", image: "/Assets/Visitors/Senior.jpg", defaultPrice: 75 },
-];
+export type CategoryKey = string;
 
 // Re-export type alias so remaining code can use it without change
 type Attraction = TicketingAttraction;
 
 interface CartEntry {
   attraction: Attraction;
-  quantities: Record<CategoryKey, number>;
+  quantities: Record<string, number>; // category.id -> count
 }
 
-const EMPTY_QTY: Record<CategoryKey, number> = { adult: 0, child: 0, senior: 0, student: 0, foreigner: 0 };
 const GST_RATE = 0.18;
 
 function calcEntry(entry: CartEntry) {
+  const categories = entry.attraction.categories || [];
   const subtotal = parseFloat(
-    VISITOR_CATEGORIES.reduce(
-      (s, c) => s + (entry.quantities[c.key] || 0) * (entry.attraction.pricing[c.key] ?? c.defaultPrice), 0
+    categories.reduce(
+      (s, c) => s + (entry.quantities[c.id] || 0) * (c.basePrice || 0),
+      0
     ).toFixed(2)
   );
   const roundedSubtotal = Math.round(subtotal);
@@ -125,18 +111,30 @@ function calcEntry(entry: CartEntry) {
 
 function formatRoundedPrice(price: number): number {
   if (price <= 0) return 0;
-  // If price has decimals, round up to next 10 (e.g. 98.5/98.7 -> 100, 12.3 -> 20, 50 -> 50)
-  return price % 10 !== 0 ? Math.ceil(price / 10) * 10 : price;
+  return price;
 }
 
 function getAttractionBaseRate(attraction: Attraction) {
-  const prices = Object.values(attraction.pricing)
-    .filter((p) => p > 0)
-    .map((p) => formatRoundedPrice(p));
-  const minP = prices.length > 0 ? Math.min(...prices) : 0;
-  const rawAdultP = attraction.pricing.adult || (prices.length > 0 ? Math.max(...prices) : 0);
-  const adultP = formatRoundedPrice(rawAdultP);
-  return `₹${minP}–₹${adultP} / person`;
+  const cats = attraction.categories || [];
+  const prices = cats
+    .map((c) => Number(c.basePrice ?? 0))
+    .filter((p) => p > 0);
+
+  if (prices.length === 0) {
+    if (attraction.pricing) {
+      const pList = Object.values(attraction.pricing).filter((p) => p > 0);
+      if (pList.length > 0) {
+        const minP = Math.min(...pList);
+        const maxP = Math.max(...pList);
+        return minP === maxP ? `₹${minP} / person` : `₹${minP}–₹${maxP} / person`;
+      }
+    }
+    return "—";
+  }
+
+  const minP = Math.min(...prices);
+  const maxP = Math.max(...prices);
+  return minP === maxP ? `₹${minP} / person` : `₹${minP}–₹${maxP} / person`;
 }
 
 /** Format duration value and unit nicely (e.g. 30, "minutes" -> "30 minutes") */
@@ -513,13 +511,14 @@ function VisitorCategoryCard({
   onCardClick,
   price,
 }: {
-  category: VisitorCategoryMeta;
+  category: AttractionCategoryItem;
   isSelected: boolean;
   count: number;
   onCardClick: () => void;
   price?: number;
 }) {
   const [imgErr, setImgErr] = useState(false);
+  const imageSrc = category.imageLink ? category.imageLink.trim() : "";
 
   return (
     <div
@@ -555,7 +554,7 @@ function VisitorCategoryCard({
           letterSpacing: "-0.2px",
         }}
       >
-        {category.label}
+        {category.name}
       </h4>
 
       {/* Circular Avatar Photo */}
@@ -574,11 +573,11 @@ function VisitorCategoryCard({
           boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
         }}
       >
-        {category.image && !imgErr ? (
+        {imageSrc && !imgErr ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={category.image}
-            alt={category.label}
+            src={imageSrc}
+            alt={category.name}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
             onError={() => setImgErr(true)}
           />
@@ -607,11 +606,16 @@ function VisitorCategoryCard({
             <span style={{ fontSize: "9.5px", fontWeight: 500, color: "#64748B" }}>/ person</span>
           </span>
         )}
-        {category.subLabel && (
+        {category.noOfSeats != null && category.noOfSeats > 0 ? (
           <span style={{ fontSize: "9.5px", fontWeight: 600, color: "#94A3B8" }}>
-            {category.subLabel}
+            {category.noOfSeats} {category.noOfSeats === 1 ? "seat" : "seats"}
+            {count > 0 && category.noOfSeats > 1 ? ` (${count * category.noOfSeats} seats)` : ""}
           </span>
-        )}
+        ) : category.effectiveFrom ? (
+          <span style={{ fontSize: "9.5px", fontWeight: 600, color: "#94A3B8" }}>
+            From {category.effectiveFrom}
+          </span>
+        ) : null}
       </div>
 
       {/* Count badge indicator */}
@@ -763,8 +767,8 @@ export default function TicketBookingView() {
   // Focused attraction for visitor categories panel
   const [activeAttractionId, setActiveAttractionId] = useState<string | null>(null);
 
-  // Per-attraction visitor categories: Map<attractionId, Set<CategoryKey>> - Initially EMPTY
-  const [attractionCategories, setAttractionCategories] = useState<Map<string, Set<CategoryKey>>>(new Map());
+  // Per-attraction visitor categories: Map<attractionId, Set<string>> - Initially EMPTY
+  const [attractionCategories, setAttractionCategories] = useState<Map<string, Set<string>>>(new Map());
 
   // Cart state
   const [cart, setCart] = useState<CartEntry[]>([]);
@@ -898,7 +902,7 @@ export default function TicketBookingView() {
 
   // Helper to get selected categories for a given attraction
   const getCategoriesForAttraction = useCallback(
-    (attractionId: string): Set<CategoryKey> => {
+    (attractionId: string): Set<string> => {
       return attractionCategories.get(attractionId) || new Set();
     },
     [attractionCategories]
@@ -921,23 +925,23 @@ export default function TicketBookingView() {
   }
 
   // Clicking a category card in the middle column increments quantity (+1) and never unselects on card click
-  function handleCategoryCardClick(key: CategoryKey) {
+  function handleCategoryCardClick(categoryId: string) {
     if (!activeAttractionId || !activeAttraction) return;
 
     setAttractionCategories((prev) => {
       const next = new Map(prev);
       const current = new Set(next.get(activeAttractionId) || []);
-      current.add(key);
+      current.add(categoryId);
       next.set(activeAttractionId, current);
       return next;
     });
 
     setCart((prevCart) => {
       const idx = prevCart.findIndex((e) => e.attraction.id === activeAttractionId);
-      const baseQty: Record<CategoryKey, number> =
-        idx >= 0 ? { ...prevCart[idx].quantities } : { ...EMPTY_QTY };
-      const currentVal = baseQty[key] || 0;
-      baseQty[key] = currentVal + 1;
+      const baseQty: Record<string, number> =
+        idx >= 0 ? { ...prevCart[idx].quantities } : {};
+      const currentVal = baseQty[categoryId] || 0;
+      baseQty[categoryId] = currentVal + 1;
 
       const newEntry: CartEntry = { attraction: activeAttraction, quantities: baseQty };
       if (idx >= 0) {
@@ -956,16 +960,16 @@ export default function TicketBookingView() {
   }
 
   // Set explicit quantity (typed in or from stepper buttons)
-  function setQuantity(key: CategoryKey, explicitValue: number, attractionOverride?: Attraction) {
+  function setQuantity(categoryId: string, explicitValue: number, attractionOverride?: Attraction) {
     const targetAttraction = attractionOverride || activeAttraction;
     if (!targetAttraction) return;
 
     setCart((prev) => {
       const idx = prev.findIndex((e) => e.attraction.id === targetAttraction.id);
-      const baseQty: Record<CategoryKey, number> =
-        idx >= 0 ? { ...prev[idx].quantities } : { ...EMPTY_QTY };
+      const baseQty: Record<string, number> =
+        idx >= 0 ? { ...prev[idx].quantities } : {};
       const newVal = Math.max(0, explicitValue);
-      baseQty[key] = newVal;
+      baseQty[categoryId] = newVal;
 
       const newEntry: CartEntry = { attraction: targetAttraction, quantities: baseQty };
       const hasAny = Object.values(baseQty).some((v) => v > 0);
@@ -975,7 +979,7 @@ export default function TicketBookingView() {
         setAttractionCategories((prevCats) => {
           const nm = new Map(prevCats);
           const cats = new Set(nm.get(targetAttraction.id) || []);
-          cats.delete(key);
+          cats.delete(categoryId);
           nm.set(targetAttraction.id, cats);
           return nm;
         });
@@ -1014,17 +1018,23 @@ export default function TicketBookingView() {
 
   const bookingSummary = cart.map((e) => {
     const calc = calcEntry(e);
+    const cats = e.attraction.categories || [];
     return {
       attractionId: e.attraction.id,
+      attractionManagementId: e.attraction.attractionManagementId || (cats[0] as any)?.attractionManagementId || e.attraction.id,
       attractionName: e.attraction.name,
       hasSeating: e.attraction.hasSeating,
       seatLayoutId: e.attraction.seatLayoutId,
-      passengers: VISITOR_CATEGORIES.filter((c) => (e.quantities[c.key] || 0) > 0).map((c) => ({
-        key: c.key,
-        label: c.label,
-        qty: e.quantities[c.key],
-        unitPrice: e.attraction.pricing[c.key] ?? c.defaultPrice,
-      })),
+      passengers: cats
+        .filter((c) => (e.quantities[c.id] || 0) > 0)
+        .map((c) => ({
+          key: c.id,
+          categoryId: c.id,
+          label: c.name,
+          qty: e.quantities[c.id],
+          unitPrice: c.basePrice,
+          noOfSeats: c.noOfSeats && Number(c.noOfSeats) > 0 ? Number(c.noOfSeats) : 1,
+        })),
       subtotal: calc.subtotal,
       gstAmount: calc.gst,
       gstAdjustment: calc.gstAdj,
@@ -1430,11 +1440,11 @@ export default function TicketBookingView() {
               <div style={{ display: "flex", gap: "6px" }}>
                 <button
                   onClick={() => {
-                    VISITOR_CATEGORIES.forEach((c) => {
+                    (activeAttraction.categories || []).forEach((c) => {
                       const cartEntry = cart.find((e) => e.attraction.id === activeAttraction.id);
-                      const curQty = cartEntry?.quantities[c.key] || 0;
+                      const curQty = cartEntry?.quantities[c.id] || 0;
                       if (curQty === 0) {
-                        setQuantity(c.key, 1, activeAttraction);
+                        setQuantity(c.id, 1, activeAttraction);
                       }
                     });
                   }}
@@ -1454,8 +1464,8 @@ export default function TicketBookingView() {
                 {selectedCategoryKeysForActive.size > 0 && (
                   <button
                     onClick={() => {
-                      VISITOR_CATEGORIES.forEach((c) => {
-                        setQuantity(c.key, 0, activeAttraction);
+                      (activeAttraction.categories || []).forEach((c) => {
+                        setQuantity(c.id, 0, activeAttraction);
                       });
                     }}
                     style={{
@@ -1490,22 +1500,40 @@ export default function TicketBookingView() {
             }}
             className="tbv-scroll-col"
           >
-            {VISITOR_CATEGORIES.map((category) => {
-              const isSelected = selectedCategoryKeysForActive.has(category.key);
-              const cartEntry = cart.find((e) => e.attraction.id === activeAttraction?.id);
-              const count = cartEntry?.quantities[category.key] || 0;
-              const price = activeAttraction?.pricing[category.key] ?? category.defaultPrice;
-              return (
-                <VisitorCategoryCard
-                  key={category.key}
-                  category={category}
-                  isSelected={isSelected && count > 0}
-                  count={count}
-                  price={price}
-                  onCardClick={() => handleCategoryCardClick(category.key)}
-                />
-              );
-            })}
+            {(activeAttraction?.categories || []).length === 0 ? (
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  padding: "40px 16px",
+                  textAlign: "center",
+                  color: "#64748B",
+                  fontSize: "12.5px",
+                  fontWeight: 600,
+                  background: "#F8FAFC",
+                  borderRadius: "10px",
+                  border: "1px dashed #CBD5E1",
+                }}
+              >
+                No visitor categories available for {activeAttraction?.name || "this attraction"}.
+              </div>
+            ) : (
+              (activeAttraction?.categories || []).map((category) => {
+                const isSelected = selectedCategoryKeysForActive.has(category.id);
+                const cartEntry = cart.find((e) => e.attraction.id === activeAttraction?.id);
+                const count = cartEntry?.quantities[category.id] || 0;
+                const price = category.basePrice;
+                return (
+                  <VisitorCategoryCard
+                    key={category.id}
+                    category={category}
+                    isSelected={isSelected && count > 0}
+                    count={count}
+                    price={price}
+                    onCardClick={() => handleCategoryCardClick(category.id)}
+                  />
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -1565,7 +1593,7 @@ export default function TicketBookingView() {
                 {selectedAttractionsList.map((attr) => {
                   const cats = getCategoriesForAttraction(attr.id);
                   const cartEntry = cart.find((e) => e.attraction.id === attr.id);
-                  const visibleCats = VISITOR_CATEGORIES.filter((c) => cats.has(c.key));
+                  const visibleCats = (attr.categories || []).filter((c) => cats.has(c.id));
 
                   if (visibleCats.length === 0) return null;
 
@@ -1603,13 +1631,13 @@ export default function TicketBookingView() {
 
                       <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                         {visibleCats.map((cat, idx) => {
-                          const qty = cartEntry?.quantities[cat.key] || 0;
-                          const price = attr.pricing[cat.key] ?? cat.defaultPrice;
+                          const qty = cartEntry?.quantities[cat.id] || 0;
+                          const price = cat.basePrice;
                           const lineTotal = Number((qty * price).toFixed(2));
 
                           return (
                             <div
-                              key={cat.key}
+                              key={cat.id}
                               style={{
                                 display: "flex",
                                 alignItems: "center",
@@ -1624,7 +1652,12 @@ export default function TicketBookingView() {
                             >
                               <div style={{ flex: 1, minWidth: "85px" }}>
                                 <p style={{ margin: 0, fontWeight: 700, fontSize: "11.5px", color: "#011B2F" }}>
-                                  {cat.label}
+                                  {cat.name}
+                                  {cat.noOfSeats && cat.noOfSeats > 1 ? (
+                                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#2576AB", marginLeft: "4px" }}>
+                                      ({cat.noOfSeats} seats{qty > 1 ? ` · ${qty * cat.noOfSeats} total` : ""})
+                                    </span>
+                                  ) : null}
                                 </p>
                                 <p style={{ margin: "1px 0 0", fontWeight: 600, fontSize: "10px", color: "#64748B" }}>
                                   ₹{price} / person
@@ -1633,9 +1666,9 @@ export default function TicketBookingView() {
 
                               <Stepper
                                 value={qty}
-                                onDec={() => setQuantity(cat.key, qty - 1, attr)}
-                                onInc={() => setQuantity(cat.key, qty + 1, attr)}
-                                onChange={(newQty) => setQuantity(cat.key, newQty, attr)}
+                                onDec={() => setQuantity(cat.id, qty - 1, attr)}
+                                onInc={() => setQuantity(cat.id, qty + 1, attr)}
+                                onChange={(newQty) => setQuantity(cat.id, newQty, attr)}
                               />
 
                               <div style={{ width: "48px", textAlign: "right" }}>
@@ -1748,8 +1781,8 @@ export default function TicketBookingView() {
                 ) : (
                   cart.map((entry) => {
                     const calc = calcEntry(entry);
-                    const activeItemCategories = VISITOR_CATEGORIES.filter(
-                      (c) => (entry.quantities[c.key] || 0) > 0
+                    const activeItemCategories = (entry.attraction.categories || []).filter(
+                      (c) => (entry.quantities[c.id] || 0) > 0
                     );
 
                     return (
@@ -1792,11 +1825,11 @@ export default function TicketBookingView() {
 
                         <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
                           {activeItemCategories.map((c) => {
-                            const qty = entry.quantities[c.key];
-                            const price = entry.attraction.pricing[c.key] ?? c.defaultPrice;
+                            const qty = entry.quantities[c.id];
+                            const price = c.basePrice;
                             return (
                               <div
-                                key={c.key}
+                                key={c.id}
                                 style={{
                                   display: "flex",
                                   alignItems: "center",
@@ -1807,13 +1840,18 @@ export default function TicketBookingView() {
                                 }}
                               >
                                 <span>
-                                  {c.label} × {qty}
+                                  {c.name} × {qty}
+                                  {c.noOfSeats && c.noOfSeats > 1 ? (
+                                    <span style={{ fontSize: "9.5px", color: "#64748B", marginLeft: "4px" }}>
+                                      ({qty * c.noOfSeats} seats)
+                                    </span>
+                                  ) : null}
                                 </span>
                                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                                   <span style={{ fontWeight: 700 }}>₹{Number((qty * price).toFixed(2))}</span>
                                   <button
                                     onClick={() => {
-                                      setQuantity(c.key, 0, entry.attraction);
+                                      setQuantity(c.id, 0, entry.attraction);
                                     }}
                                     title="Remove item"
                                     style={{
@@ -1853,16 +1891,37 @@ export default function TicketBookingView() {
                               <span style={{ fontWeight: 700, color: "#1E293B" }}>₹{calc.gst.toFixed(2)}</span>
                             </div>
                             <div style={{ display: "flex", justifyContent: "space-between" }}>
-                              <span style={{ color: "#94A3B8", fontWeight: 500, fontSize: "9px" }}>
+                              <span style={{ color: "#94A3B8", fontWeight: 500, fontSize: "9.5px" }}>
                                 Round-off GST Adj.
                               </span>
-                              <span style={{ color: "#94A3B8", fontWeight: 500, fontSize: "9px" }}>
+                              <span
+                                style={{
+                                  fontWeight: 600,
+                                  fontSize: "9.5px",
+                                  color:
+                                    calc.gstAdj > 0
+                                      ? "#16A34A"
+                                      : calc.gstAdj < 0
+                                      ? "#DC2626"
+                                      : "#94A3B8",
+                                }}
+                              >
                                 {calc.gstAdj >= 0 ? (calc.gstAdj > 0 ? `+₹${calc.gstAdj.toFixed(2)}` : `₹0.00`) : `-₹${Math.abs(calc.gstAdj).toFixed(2)}`}
                               </span>
                             </div>
                             <div style={{ display: "flex", justifyContent: "space-between" }}>
                               <span style={{ color: "#64748B", fontWeight: 600 }}>Round-Off</span>
-                              <span style={{ fontWeight: 700, color: "#1E293B" }}>
+                              <span
+                                style={{
+                                  fontWeight: 700,
+                                  color:
+                                    calc.roundOff > 0
+                                      ? "#16A34A"
+                                      : calc.roundOff < 0
+                                      ? "#DC2626"
+                                      : "#1E293B",
+                                }}
+                              >
                                 {calc.roundOff >= 0 ? (calc.roundOff > 0 ? `+₹${calc.roundOff.toFixed(2)}` : `₹0.00`) : `-₹${Math.abs(calc.roundOff).toFixed(2)}`}
                               </span>
                             </div>

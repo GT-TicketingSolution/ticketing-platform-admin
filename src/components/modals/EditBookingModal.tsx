@@ -5,27 +5,26 @@ import { X, Save, AlertCircle, Loader2 } from "lucide-react";
 import { BookingListItem } from "@/hooks/useBookingQueries";
 import { colors, typography } from "@/lib/theme";
 
-// ─── Schema-based validation 
+// ─── Schema-based validation
 interface FormErrors {
   customerName?: string;
   mobileNumber?: string;
+  gstNumber?: string;
 }
 
-function validate(customerName: string, mobileNumber: string): FormErrors {
+function validate(customerName: string, mobileNumber: string, gstNumber: string): FormErrors {
   const errors: FormErrors = {};
 
-  if (!customerName.trim()) {
-    errors.customerName = "Customer name is required.";
-  } else if (customerName.trim().length < 2) {
-    errors.customerName = "Name must be at least 2 characters.";
-  } else if (!/^[a-zA-Z\s.'-]+$/.test(customerName.trim())) {
+  if (customerName.trim() && (customerName.trim().length < 2 || !/^[a-zA-Z\s.'-]+$/.test(customerName.trim()))) {
     errors.customerName = "Name can only contain letters and spaces.";
   }
 
-  if (!mobileNumber.trim()) {
-    errors.mobileNumber = "Mobile number is required.";
-  } else if (!/^[6-9]\d{9}$/.test(mobileNumber.trim())) {
+  if (mobileNumber.trim() && !/^[6-9]\d{9}$/.test(mobileNumber.trim())) {
     errors.mobileNumber = "Enter a valid 10-digit Indian mobile number.";
+  }
+
+  if (gstNumber.trim() && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(gstNumber.trim())) {
+    errors.gstNumber = "Enter a valid GST number.";
   }
 
   return errors;
@@ -102,7 +101,7 @@ interface EditBookingModalProps {
   booking: BookingListItem | null;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (bookingId: string, customerName: string, mobileNumber: string) => void;
+  onSave: (bookingId: string, data: { customerName?: string; mobileNumber?: string; gstNumber?: string }) => void;
   isSaving?: boolean;
 }
 
@@ -115,36 +114,40 @@ export default function EditBookingModal({
 }: EditBookingModalProps) {
   const [customerName, setCustomerName] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
+  const [gstNumber, setGstNumber] = useState("");
   const [errors, setErrors] = useState<FormErrors>({});
-  const [touched, setTouched] = useState({ customerName: false, mobileNumber: false });
+  const [touched, setTouched] = useState({ customerName: false, mobileNumber: false, gstNumber: false });
 
   // Re-seed form when a new booking is opened
   useEffect(() => {
     if (booking) {
-      setCustomerName(booking.customerName);
-      setMobileNumber(booking.mobileNumber);
+      setCustomerName(booking.customerName && booking.customerName !== "-" ? booking.customerName : "");
+      setMobileNumber(booking.mobileNumber && booking.mobileNumber !== "-" ? booking.mobileNumber : "");
+      setGstNumber(booking.gstNumber && booking.gstNumber !== "-" ? booking.gstNumber : "");
       setErrors({});
-      setTouched({ customerName: false, mobileNumber: false });
+      setTouched({ customerName: false, mobileNumber: false, gstNumber: false });
     }
   }, [booking]);
 
   if (!isOpen || !booking) return null;
 
-  const handleBlur = (field: "customerName" | "mobileNumber") => {
+  const handleBlur = (field: "customerName" | "mobileNumber" | "gstNumber") => {
     setTouched((prev) => ({ ...prev, [field]: true }));
-    const errs = validate(customerName, mobileNumber);
+    const errs = validate(customerName, mobileNumber, gstNumber);
     setErrors(errs);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.SyntheticEvent) => {
     e.preventDefault();
-    // Mark both touched on submit attempt
-    setTouched({ customerName: true, mobileNumber: true });
-    const errs = validate(customerName, mobileNumber);
+    const errs = validate(customerName, mobileNumber, gstNumber);
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
-    onSave(booking!.id, customerName.trim(), mobileNumber.trim());
+    onSave(booking!.id, {
+      customerName: customerName.trim(),
+      mobileNumber: mobileNumber.trim(),
+      gstNumber: gstNumber.trim(),
+    });
   };
 
   return (
@@ -195,10 +198,10 @@ export default function EditBookingModal({
                 margin: 0,
               }}
             >
-              Edit Booking ({booking.bookingId})
+              Edit Booking ({booking.invoiceNumber || "-"})
             </h3>
             <span style={{ fontSize: "12px", color: colors.text.muted, fontFamily: typography.fontFamily.sans }}>
-              Update customer name and mobile number
+              Update booking details
             </span>
           </div>
 
@@ -234,7 +237,6 @@ export default function EditBookingModal({
             {/* Customer Name */}
             <FormField
               label="Customer Name"
-              required
               error={touched.customerName ? errors.customerName : undefined}
             >
               <input
@@ -243,11 +245,11 @@ export default function EditBookingModal({
                 onChange={(e) => {
                   setCustomerName(e.target.value);
                   if (touched.customerName) {
-                    setErrors(validate(e.target.value, mobileNumber));
+                    setErrors(validate(e.target.value, mobileNumber, gstNumber));
                   }
                 }}
                 onBlur={() => handleBlur("customerName")}
-                placeholder="Enter customer full name"
+                placeholder="Enter full name"
                 style={inputStyle(!!touched.customerName && !!errors.customerName)}
               />
             </FormField>
@@ -255,7 +257,6 @@ export default function EditBookingModal({
             {/* Mobile Number */}
             <FormField
               label="Mobile Number"
-              required
               error={touched.mobileNumber ? errors.mobileNumber : undefined}
             >
               <input
@@ -266,13 +267,32 @@ export default function EditBookingModal({
                   const val = e.target.value.replace(/\D/g, "").slice(0, 10);
                   setMobileNumber(val);
                   if (touched.mobileNumber) {
-                    setErrors(validate(customerName, val));
+                    setErrors(validate(customerName, val, gstNumber));
                   }
                 }}
                 onBlur={() => handleBlur("mobileNumber")}
-                placeholder="Enter 10-digit mobile number"
+                placeholder="Enter phone number"
                 maxLength={10}
                 style={inputStyle(!!touched.mobileNumber && !!errors.mobileNumber)}
+              />
+            </FormField>
+
+            {/* GST Number */}
+            <FormField label="GST Number" error={touched.gstNumber ? errors.gstNumber : undefined}>
+              <input
+                type="text"
+                value={gstNumber}
+                maxLength={15}
+                onChange={(e) => {
+                  const val = e.target.value.toUpperCase().slice(0, 15);
+                  setGstNumber(val);
+                  if (touched.gstNumber) {
+                    setErrors(validate(customerName, mobileNumber, val));
+                  }
+                }}
+                onBlur={() => handleBlur("gstNumber")}
+                placeholder="Enter GST number"
+                style={inputStyle(!!touched.gstNumber && !!errors.gstNumber)}
               />
             </FormField>
           </div>
