@@ -1,5 +1,5 @@
 {
-  "id": "07330e31-6c50-4021-80fa-525a82a21f01",
+  "id": "930c8ee5-9f34-4d37-bb34-137f8f52bd36",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -72,6 +72,105 @@
           "columns": [
             "admin_id",
             "module_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.attraction_category": {
+      "name": "attraction_category",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "attraction_management_id": {
+          "name": "attraction_management_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "base_price": {
+          "name": "base_price",
+          "type": "numeric(10, 5)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "future_price": {
+          "name": "future_price",
+          "type": "numeric(10, 5)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "effective_from": {
+          "name": "effective_from",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "no_of_seats": {
+          "name": "no_of_seats",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "image_link": {
+          "name": "image_link",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "attraction_category_attraction_management_id_attraction_management_id_fk": {
+          "name": "attraction_category_attraction_management_id_attraction_management_id_fk",
+          "tableFrom": "attraction_category",
+          "tableTo": "attraction_management",
+          "columnsFrom": [
+            "attraction_management_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "attraction_category_attraction_management_id_name_unique": {
+          "name": "attraction_category_attraction_management_id_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "attraction_management_id",
+            "name"
           ]
         }
       },
@@ -401,82 +500,12 @@
           "primaryKey": false,
           "notNull": false
         },
-        "adult_price": {
-          "name": "adult_price",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "child_price": {
-          "name": "child_price",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "student_price": {
-          "name": "student_price",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "senior_price": {
-          "name": "senior_price",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "foreigner_price": {
-          "name": "foreigner_price",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
         "has_seating": {
           "name": "has_seating",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "adult_seats": {
-          "name": "adult_seats",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "child_seats": {
-          "name": "child_seats",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "student_seats": {
-          "name": "student_seats",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "senior_seats": {
-          "name": "senior_seats",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "foreigner_seats": {
-          "name": "foreigner_seats",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "seat_layout_id": {
           "name": "seat_layout_id",
@@ -1264,6 +1293,145 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.attractions_against_booking": {
+      "name": "attractions_against_booking",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "booking_id": {
+          "name": "booking_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attraction_management_id": {
+          "name": "attraction_management_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attraction_subtotal": {
+          "name": "attraction_subtotal",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "attraction_gst": {
+          "name": "attraction_gst",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "attraction_roundoff": {
+          "name": "attraction_roundoff",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "attraction_round_off_gst_adj": {
+          "name": "attraction_round_off_gst_adj",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "attraction_totalamount": {
+          "name": "attraction_totalamount",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "attractions_against_booking_booking_id_idx": {
+          "name": "attractions_against_booking_booking_id_idx",
+          "columns": [
+            {
+              "expression": "booking_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "attractions_against_booking_attraction_management_id_idx": {
+          "name": "attractions_against_booking_attraction_management_id_idx",
+          "columns": [
+            {
+              "expression": "attraction_management_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "attractions_against_booking_booking_id_bookings_id_fk": {
+          "name": "attractions_against_booking_booking_id_bookings_id_fk",
+          "tableFrom": "attractions_against_booking",
+          "tableTo": "bookings",
+          "columnsFrom": [
+            "booking_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "attractions_against_booking_attraction_management_id_attraction_management_id_fk": {
+          "name": "attractions_against_booking_attraction_management_id_attraction_management_id_fk",
+          "tableFrom": "attractions_against_booking",
+          "tableTo": "attraction_management",
+          "columnsFrom": [
+            "attraction_management_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.audit_logs": {
       "name": "audit_logs",
       "schema": "",
@@ -1773,8 +1941,8 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "booking_number": {
-          "name": "booking_number",
+        "invoice_number": {
+          "name": "invoice_number",
           "type": "varchar(50)",
           "primaryKey": false,
           "notNull": true
@@ -1797,63 +1965,9 @@
           "primaryKey": false,
           "notNull": false
         },
-        "attraction_id": {
-          "name": "attraction_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "visit_at": {
-          "name": "visit_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "subtotal": {
-          "name": "subtotal",
+        "total_amount": {
+          "name": "total_amount",
           "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "gst_amount": {
-          "name": "gst_amount",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "gst_adjustment": {
-          "name": "gst_adjustment",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "round_off": {
-          "name": "round_off",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "discount_amount": {
-          "name": "discount_amount",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "payment_expires_at": {
-          "name": "payment_expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "payment_mode": {
-          "name": "payment_mode",
-          "type": "payment_mode",
-          "typeSchema": "public",
           "primaryKey": false,
           "notNull": true
         },
@@ -1865,17 +1979,19 @@
           "notNull": true,
           "default": "'PENDING'"
         },
-        "total_amount": {
-          "name": "total_amount",
+        "amount_received": {
+          "name": "amount_received",
           "type": "numeric(12, 2)",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "'0'"
         },
-        "amount_paid": {
-          "name": "amount_paid",
+        "return_change": {
+          "name": "return_change",
           "type": "numeric(12, 2)",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "'0'"
         },
         "created_by": {
           "name": "created_by",
@@ -1918,86 +2034,11 @@
         }
       },
       "indexes": {
-        "bookings_booking_number_idx": {
-          "name": "bookings_booking_number_idx",
+        "bookings_invoice_number_idx": {
+          "name": "bookings_invoice_number_idx",
           "columns": [
             {
-              "expression": "booking_number",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "bookings_customer_name_idx": {
-          "name": "bookings_customer_name_idx",
-          "columns": [
-            {
-              "expression": "customer_name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "bookings_mobile_idx": {
-          "name": "bookings_mobile_idx",
-          "columns": [
-            {
-              "expression": "mobile_number",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "bookings_attraction_idx": {
-          "name": "bookings_attraction_idx",
-          "columns": [
-            {
-              "expression": "attraction_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "bookings_visit_at_idx": {
-          "name": "bookings_visit_at_idx",
-          "columns": [
-            {
-              "expression": "visit_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "bookings_status_idx": {
-          "name": "bookings_status_idx",
-          "columns": [
-            {
-              "expression": "status",
+              "expression": "invoice_number",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2010,19 +2051,6 @@
         }
       },
       "foreignKeys": {
-        "bookings_attraction_id_attractions_id_fk": {
-          "name": "bookings_attraction_id_attractions_id_fk",
-          "tableFrom": "bookings",
-          "tableTo": "attractions",
-          "columnsFrom": [
-            "attraction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
         "bookings_created_by_users_id_fk": {
           "name": "bookings_created_by_users_id_fk",
           "tableFrom": "bookings",
@@ -2052,14 +2080,159 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "bookings_booking_number_unique": {
-          "name": "bookings_booking_number_unique",
+        "bookings_invoice_number_unique": {
+          "name": "bookings_invoice_number_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "booking_number"
+            "invoice_number"
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.category_of_attraction_against_booking": {
+      "name": "category_of_attraction_against_booking",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "attraction_against_booking_id": {
+          "name": "attraction_against_booking_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "booking_id": {
+          "name": "booking_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "no_of_visitors": {
+          "name": "no_of_visitors",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "category_attraction_against_booking_attraction_against_booking_id_idx": {
+          "name": "category_attraction_against_booking_attraction_against_booking_id_idx",
+          "columns": [
+            {
+              "expression": "attraction_against_booking_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "category_attraction_against_booking_booking_id_idx": {
+          "name": "category_attraction_against_booking_booking_id_idx",
+          "columns": [
+            {
+              "expression": "booking_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "category_attraction_against_booking_category_id_idx": {
+          "name": "category_attraction_against_booking_category_id_idx",
+          "columns": [
+            {
+              "expression": "category_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "category_of_attraction_against_booking_attraction_against_booking_id_attractions_against_booking_id_fk": {
+          "name": "category_of_attraction_against_booking_attraction_against_booking_id_attractions_against_booking_id_fk",
+          "tableFrom": "category_of_attraction_against_booking",
+          "tableTo": "attractions_against_booking",
+          "columnsFrom": [
+            "attraction_against_booking_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "category_of_attraction_against_booking_booking_id_bookings_id_fk": {
+          "name": "category_of_attraction_against_booking_booking_id_bookings_id_fk",
+          "tableFrom": "category_of_attraction_against_booking",
+          "tableTo": "bookings",
+          "columnsFrom": [
+            "booking_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "category_of_attraction_against_booking_category_id_attraction_category_id_fk": {
+          "name": "category_of_attraction_against_booking_category_id_attraction_category_id_fk",
+          "tableFrom": "category_of_attraction_against_booking",
+          "tableTo": "attraction_category",
+          "columnsFrom": [
+            "category_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -3154,6 +3327,151 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.scanner_invoice": {
+      "name": "scanner_invoice",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "invoice_number": {
+          "name": "invoice_number",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scanner_invoice_status": {
+          "name": "scanner_invoice_status",
+          "type": "scanner_invoice_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'UNSCANNED'"
+        },
+        "scanned_by_staff_id": {
+          "name": "scanned_by_staff_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scanned_at": {
+          "name": "scanned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_by": {
+          "name": "deleted_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_deleted": {
+          "name": "is_deleted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "scanner_invoices_invoice_number_idx": {
+          "name": "scanner_invoices_invoice_number_idx",
+          "columns": [
+            {
+              "expression": "invoice_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "scanner_invoices_scanned_by_staff_idx": {
+          "name": "scanner_invoices_scanned_by_staff_idx",
+          "columns": [
+            {
+              "expression": "scanned_by_staff_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "scanner_invoice_scanned_by_staff_id_users_id_fk": {
+          "name": "scanner_invoice_scanned_by_staff_id_users_id_fk",
+          "tableFrom": "scanner_invoice",
+          "tableTo": "users",
+          "columnsFrom": [
+            "scanned_by_staff_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "scanner_invoice_deleted_by_users_id_fk": {
+          "name": "scanner_invoice_deleted_by_users_id_fk",
+          "tableFrom": "scanner_invoice",
+          "tableTo": "users",
+          "columnsFrom": [
+            "deleted_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "scanner_invoice_invoice_number_unique": {
+          "name": "scanner_invoice_invoice_number_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "invoice_number"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -4354,12 +4672,6 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "transaction_number": {
-          "name": "transaction_number",
-          "type": "varchar(50)",
-          "primaryKey": false,
-          "notNull": true
-        },
         "booking_id": {
           "name": "booking_id",
           "type": "uuid",
@@ -4428,86 +4740,11 @@
         }
       },
       "indexes": {
-        "transactions_transaction_number_idx": {
-          "name": "transactions_transaction_number_idx",
-          "columns": [
-            {
-              "expression": "transaction_number",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "transactions_booking_idx": {
           "name": "transactions_booking_idx",
           "columns": [
             {
               "expression": "booking_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "transactions_payment_mode_idx": {
-          "name": "transactions_payment_mode_idx",
-          "columns": [
-            {
-              "expression": "payment_mode",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "transactions_status_idx": {
-          "name": "transactions_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "transactions_created_at_idx": {
-          "name": "transactions_created_at_idx",
-          "columns": [
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "transactions_deleted_at_idx": {
-          "name": "transactions_deleted_at_idx",
-          "columns": [
-            {
-              "expression": "deleted_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4548,15 +4785,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "transactions_transaction_number_unique": {
-          "name": "transactions_transaction_number_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "transaction_number"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -4627,6 +4856,30 @@
         "phone": {
           "name": "phone",
           "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "gst": {
+          "name": "gst",
+          "type": "varchar(15)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cin": {
+          "name": "cin",
+          "type": "varchar(21)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "profile_link": {
+          "name": "profile_link",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invoice_number_for_user_initial_part": {
+          "name": "invoice_number_for_user_initial_part",
+          "type": "varchar(11)",
           "primaryKey": false,
           "notNull": false
         },
@@ -4800,6 +5053,14 @@
       "values": [
         "ACTIVE",
         "INACTIVE"
+      ]
+    },
+    "public.scanner_invoice_status": {
+      "name": "scanner_invoice_status",
+      "schema": "public",
+      "values": [
+        "UNSCANNED",
+        "SCANNED"
       ]
     },
     "public.seat_layout_status": {
