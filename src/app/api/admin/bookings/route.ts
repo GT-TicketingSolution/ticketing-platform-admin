@@ -698,6 +698,8 @@ export async function GET(request: NextRequest) {
     // =====================================================
     // 11. FROM DATE (using attractionsAgainstBooking.createdAt)
     // =====================================================
+    // 11. FROM DATE (using bookings.createdAt with timezone conversion)
+    // =====================================================
 
     if (fromDate) {
       const startDate = new Date(`${fromDate}T00:00:00.000Z`);
@@ -707,18 +709,12 @@ export async function GET(request: NextRequest) {
       }
 
       conditions.push(
-        sql`EXISTS (
-          SELECT 1
-          FROM ${attractionsAgainstBooking}
-          WHERE
-            ${attractionsAgainstBooking.bookingId} = ${bookings.id}
-            AND ${attractionsAgainstBooking.createdAt} >= ${startDate}
-        )`,
+        sql`(${bookings.createdAt} AT TIME ZONE 'Asia/Kolkata')::date >= ${fromDate}::date`,
       );
     }
 
     // =====================================================
-    // 12. TO DATE (using attractionsAgainstBooking.createdAt)
+    // 12. TO DATE (using bookings.createdAt with timezone conversion)
     // =====================================================
 
     if (toDate) {
@@ -729,13 +725,7 @@ export async function GET(request: NextRequest) {
       }
 
       conditions.push(
-        sql`EXISTS (
-          SELECT 1
-          FROM ${attractionsAgainstBooking}
-          WHERE
-            ${attractionsAgainstBooking.bookingId} = ${bookings.id}
-            AND ${attractionsAgainstBooking.createdAt} <= ${endDate}
-        )`,
+        sql`(${bookings.createdAt} AT TIME ZONE 'Asia/Kolkata')::date <= ${toDate}::date`,
       );
     }
 
