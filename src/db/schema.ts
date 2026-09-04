@@ -1274,6 +1274,12 @@ export const staffSystemModulePermissions = pgTable(
         onDelete: "cascade",
       }),
 
+    reportAccessTiming: integer("report_access_timing"),
+
+    reportAccessUnit: varchar("report_access_unit", {
+      length: 20,
+    }),
+
     createdAt: timestamp("created_at", {
       withTimezone: true,
     })

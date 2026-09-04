@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { users, staffSystemModulePermissions } from "@/db/schema";
 
 /* =========================================================
 GET PROFILE
@@ -36,6 +36,23 @@ export async function getProfile(userId: string) {
 
   if (user.status !== "ACTIVE") {
     throw new Error("ACCOUNT_NOT_ACTIVE");
+  }
+
+  if (user.role === "STAFF") {
+    const [reportAccess] = await db
+      .select({
+        reportAccessTiming: staffSystemModulePermissions.reportAccessTiming,
+        reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
+      })
+      .from(staffSystemModulePermissions)
+      .where(eq(staffSystemModulePermissions.staffId, userId))
+      .limit(1);
+
+    return {
+      ...user,
+      reportAccessTiming: reportAccess?.reportAccessTiming ?? null,
+      reportAccessUnit: reportAccess?.reportAccessUnit ?? null,
+    };
   }
 
   return user;
