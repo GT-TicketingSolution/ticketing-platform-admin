@@ -316,7 +316,9 @@ export async function GET(request: NextRequest) {
         return failure("Invalid fromDate.", 400, "INVALID_FROM_DATE");
       }
 
-      conditions.push(gte(transactions.createdAt, startDate));
+      conditions.push(
+        sql`(${transactions.createdAt} AT TIME ZONE 'Asia/Kolkata')::date >= ${fromDate}::date`,
+      );
     }
 
     // =====================================================
@@ -330,7 +332,9 @@ export async function GET(request: NextRequest) {
         return failure("Invalid toDate.", 400, "INVALID_TO_DATE");
       }
 
-      conditions.push(lte(transactions.createdAt, endDate));
+      conditions.push(
+        sql`(${transactions.createdAt} AT TIME ZONE 'Asia/Kolkata')::date <= ${toDate}::date`,
+      );
     }
 
     // =====================================================
