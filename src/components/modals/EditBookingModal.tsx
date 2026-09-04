@@ -282,10 +282,12 @@ export default function EditBookingModal({
               <input
                 type="text"
                 value={gstNumber}
+                maxLength={15}
                 onChange={(e) => {
-                  setGstNumber(e.target.value);
+                  const val = e.target.value.toUpperCase().slice(0, 15);
+                  setGstNumber(val);
                   if (touched.gstNumber) {
-                    setErrors(validate(customerName, mobileNumber, e.target.value));
+                    setErrors(validate(customerName, mobileNumber, val));
                   }
                 }}
                 onBlur={() => handleBlur("gstNumber")}

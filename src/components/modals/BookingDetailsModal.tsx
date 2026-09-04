@@ -26,12 +26,16 @@ function buildInvoiceHTML(booking: BookingListItem): string {
   const statusColor = upper === "CONFIRMED" ? "#119167" : upper === "CANCELLED" ? "#DC2626" : "#D97706";
 
   const invoiceNumber = booking.invoiceNumber || booking.bookingId || booking.id;
-  const customerName = booking.customer?.name ?? booking.customerName ?? "-";
-  const customerMobile = booking.customer?.mobileNumber ?? booking.mobileNumber ?? "-";
-  const customerGst = booking.customer?.gstNumber ?? booking.gstNumber ?? "N/A";
+  const rawName = booking.customer?.name ?? booking.customerName;
+  const customerName = rawName && rawName !== "-" ? rawName : "";
+  const rawMobile = booking.customer?.mobileNumber ?? booking.mobileNumber;
+  const customerMobile = rawMobile && rawMobile !== "-" ? rawMobile : "";
+  const rawGst = booking.customer?.gstNumber ?? booking.gstNumber;
+  const customerGst = rawGst && rawGst !== "-" && rawGst !== "N/A" ? rawGst : "";
   const visitDate = formatDate(booking.dateTime || booking.bookingDate || booking.createdAt);
   const totalAmount = Number(booking.grandTotalAmount ?? booking.amount ?? 0);
-  const totalVisitors = typeof booking.visitors === "number" ? booking.visitors : (booking.visitors as any)?.total ?? "-";
+  const rawVisitors = typeof booking.visitors === "number" ? booking.visitors : (booking.visitors as any)?.total;
+  const totalVisitors = rawVisitors && rawVisitors !== "-" ? rawVisitors : "";
   const paymentMode = booking.paymentMode ?? "Cash";
 
   const attractionsList = booking.attractions && booking.attractions.length > 0
@@ -190,14 +194,18 @@ export default function BookingDetailsModal({ booking, isOpen, onClose }: Bookin
   const statusLabel = isConfirmed ? "Confirmed" : isCancelled ? "Cancelled" : "Pending";
 
   const invoiceNumber = booking.invoiceNumber || booking.bookingId || booking.id;
-  const customerName = booking.customer?.name ?? booking.customerName ?? "-";
-  const customerMobile = booking.customer?.mobileNumber ?? booking.mobileNumber ?? "-";
-  const customerGst = booking.customer?.gstNumber ?? booking.gstNumber ?? "N/A";
+  const rawName = booking.customer?.name ?? booking.customerName;
+  const customerName = rawName && rawName !== "-" ? rawName : "";
+  const rawMobile = booking.customer?.mobileNumber ?? booking.mobileNumber;
+  const customerMobile = rawMobile && rawMobile !== "-" ? rawMobile : "";
+  const rawGst = booking.customer?.gstNumber ?? booking.gstNumber;
+  const customerGst = rawGst && rawGst !== "-" && rawGst !== "N/A" ? rawGst : "";
   const attractionsList = booking.attractions && booking.attractions.length > 0
     ? booking.attractions
-    : [{ id: booking.attraction?.id ?? "", name: booking.attraction?.name ?? "-", totalAmount: booking.grandTotalAmount ?? booking.amount ?? 0 }];
-  const attractionsNames = attractionsList.map((a) => a.name).join(", ") || "-";
-  const totalVisitors = typeof booking.visitors === "number" ? booking.visitors : (booking.visitors as any)?.total ?? "-";
+    : [{ id: booking.attraction?.id ?? "", name: booking.attraction?.name ?? "", totalAmount: booking.grandTotalAmount ?? booking.amount ?? 0 }];
+  const attractionsNames = attractionsList.map((a) => a.name).filter((n) => n && n !== "-").join(", ") || "";
+  const rawVisitors = typeof booking.visitors === "number" ? booking.visitors : (booking.visitors as any)?.total;
+  const totalVisitors = rawVisitors && rawVisitors !== "-" ? rawVisitors : "";
   const grandTotal = Number(booking.grandTotalAmount ?? booking.amount ?? 0);
 
   return (

@@ -62,6 +62,7 @@ export interface InvoiceListParams {
   attractionId?: string;
   dateFrom?: string;
   dateTo?: string;
+  status?: string;
 }
 
 export interface InvoiceSummary {
@@ -106,6 +107,7 @@ export async function fetchInvoiceList(params?: InvoiceListParams): Promise<Invo
   if (params?.attractionId && params.attractionId !== "All") sp.set("attractionId", params.attractionId);
   if (params?.dateFrom) sp.set("dateFrom", params.dateFrom);
   if (params?.dateTo) sp.set("dateTo", params.dateTo);
+  if (params?.status && params.status !== "All") sp.set("status", params.status);
 
   const res = await getData<any>(`${AppUrl.invoice.list}?${sp.toString()}`);
 

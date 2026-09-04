@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Search,
   RotateCcw,
@@ -89,6 +89,7 @@ export default function InvoicesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
@@ -103,7 +104,7 @@ export default function InvoicesPage() {
   // Reset pagination on filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, fromDate, toDate]);
+  }, [debouncedSearch, fromDate, toDate, selectedStatusFilter]);
 
   // Modals & Dropdown State
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceListItem | null>(null);
@@ -134,6 +135,7 @@ export default function InvoicesPage() {
     search: debouncedSearch || undefined,
     dateFrom: fromDate || undefined,
     dateTo: toDate || undefined,
+    status: selectedStatusFilter !== "All" ? selectedStatusFilter : undefined,
   };
 
   const { data, isLoading, isError } = useInvoiceList(queryParams);
@@ -142,7 +144,7 @@ export default function InvoicesPage() {
   const invoices = data?.items ?? [];
   const pagination = data?.pagination ?? { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 };
 
-  const isFiltered = !!debouncedSearch || !!fromDate || !!toDate;
+  const isFiltered = !!debouncedSearch || !!fromDate || !!toDate || selectedStatusFilter !== "All";
 
   // Stats from backend summary, fallback to live data calculation
   const totalRevenue = data?.summary?.totalRevenue ?? invoices.reduce((s, inv) => s + (Number(inv.grandTotalAmount ?? inv.amount) || 0), 0);
@@ -157,6 +159,7 @@ export default function InvoicesPage() {
     setSearchQuery("");
     setFromDate("");
     setToDate("");
+    setSelectedStatusFilter("All");
     setCurrentPage(1);
   };
 
@@ -401,6 +404,44 @@ export default function InvoicesPage() {
                 setToDate("");
               }}
             />
+          </div>
+
+          {/* Status Filter */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <label
+              style={{
+                fontFamily: typography.fontFamily.sans,
+                fontWeight: 600,
+                fontSize: "10px",
+                color: "rgba(81, 82, 82, 0.65)",
+              }}
+            >
+              Status Filter
+            </label>
+            <select
+              value={selectedStatusFilter}
+              onChange={(e) => {
+                setSelectedStatusFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              style={{
+                height: "40px",
+                padding: "0 12px",
+                background: "#FFFFFF",
+                border: "0.5px solid rgba(179, 175, 175, 0.66)",
+                borderRadius: "4px",
+                fontFamily: typography.fontFamily.sans,
+                fontWeight: 600,
+                fontSize: "12px",
+                color: "#011B2F",
+                outline: "none",
+                cursor: "pointer",
+              }}
+            >
+              <option value="All">All Status</option>
+              <option value="SCANNED">Scanned</option>
+              <option value="UNSCANNED">Unscanned</option>
+            </select>
           </div>
 
           {/* Reset Button */}

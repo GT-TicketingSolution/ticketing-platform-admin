@@ -567,7 +567,7 @@ export default function InvoiceDetailsModal({
           >
             <div>
               <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", textTransform: "uppercase" }}>
-                Grand Total Amount
+                Total Amount
               </span>
               <strong style={{ color: "#0C2A42", fontSize: "20px", fontWeight: 800 }}>
                 ₹{grandTotal}
