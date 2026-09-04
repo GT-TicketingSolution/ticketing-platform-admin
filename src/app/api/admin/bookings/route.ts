@@ -1018,6 +1018,8 @@ export async function GET(request: NextRequest) {
 
         status: booking.status,
 
+        gstNumber: booking.gstNumber,
+
         createdBy: booking.createdBy,
 
         createdAt: booking.createdAt,
