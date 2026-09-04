@@ -10,6 +10,7 @@ interface DateRangePickerProps {
   onFromDateChange: (date: string) => void;
   onToDateChange: (date: string) => void;
   onClear?: () => void;
+  minDate?: string; // "YYYY-MM-DD"
 }
 
 const MONTHS = [
@@ -43,6 +44,7 @@ export default function DateRangePicker({
   onFromDateChange,
   onToDateChange,
   onClear,
+  minDate,
 }: DateRangePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [selecting, setSelecting] = useState<"from" | "to">("from");
@@ -73,9 +75,11 @@ export default function DateRangePicker({
 
   // Disability check:
   // 1. Future dates (strictly after today) are always disabled for both From and To
-  // 2. When selecting "to", dates strictly before draftFrom are also disabled
+  // 2. Dates older than minDate (if restricted) are disabled
+  // 3. When selecting "to", dates strictly before draftFrom are also disabled
   const isDisabled = (dateStr: string) => {
     if (dateStr > todayStr) return true;
+    if (minDate && dateStr < minDate) return true;
     if (selecting === "to" && draftFrom && dateStr < draftFrom) return true;
     return false;
   };
@@ -196,15 +200,18 @@ export default function DateRangePicker({
 
       if (calendarType === "from") {
         // Left Calendar (From Date):
-        // Disabled if future date (> today)
-        disabled = dateStr > todayStr;
+        // Disabled if future date (> today) or before minDate
+        disabled = dateStr > todayStr || Boolean(minDate && dateStr < minDate);
         // Only highlight draftFrom
         isEndpoint = dateStr === draftFrom;
         inRange = false;
       } else {
         // Right Calendar (To Date):
-        // Disabled if future date OR before draftFrom
-        disabled = dateStr > todayStr || (draftFrom ? dateStr < draftFrom : false);
+        // Disabled if future date OR before draftFrom OR before minDate
+        disabled =
+          dateStr > todayStr ||
+          (draftFrom ? dateStr < draftFrom : false) ||
+          Boolean(minDate && dateStr < minDate);
         // Only highlight draftTo (or hover preview date)
         isEndpoint = dateStr === effectiveTo;
         // Range soft highlight on right calendar

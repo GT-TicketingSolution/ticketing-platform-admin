@@ -113,6 +113,9 @@ export function useLoginMutation() {
           rawRole === "STAFF" ? "Staff" : rawRole === "MANAGER" ? "Manager" : "Admin";
         if (typeof window !== "undefined") {
           sessionStorage.setItem("userRole", formattedRole);
+          if ((data?.user as any)?.staffRoles) {
+            sessionStorage.setItem("staffRoles", JSON.stringify((data.user as any).staffRoles));
+          }
           window.dispatchEvent(new Event("ticketing_user_role_changed"));
         }
       }

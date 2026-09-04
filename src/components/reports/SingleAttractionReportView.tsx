@@ -4,16 +4,12 @@ import React, { useState, useMemo } from "react";
 import {
   Building2,
   Clock,
-  Ticket,
-  IndianRupee,
   CreditCard,
   Download,
   Printer,
   Search,
-  Users,
   Tag,
   ArrowLeft,
-  FileSpreadsheet,
 } from "lucide-react";
 import { AttractionReportData } from "@/lib/reportsData";
 import { colors } from "@/lib/theme";
@@ -27,6 +23,7 @@ interface SingleAttractionReportViewProps {
   onBackToAll: () => void;
   fromDate?: string;
   toDate?: string;
+  onPrint?: () => void;
 }
 
 export default function SingleAttractionReportView({
@@ -34,6 +31,7 @@ export default function SingleAttractionReportView({
   onBackToAll,
   fromDate,
   toDate,
+  onPrint,
 }: SingleAttractionReportViewProps) {
   const {
     attraction,
@@ -214,7 +212,31 @@ export default function SingleAttractionReportView({
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: "12px" }}>
+          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+            {onPrint && (
+              <button
+                type="button"
+                onClick={onPrint}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  backgroundColor: "#0C2A42",
+                  color: "#F4BC43",
+                  border: "none",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  boxShadow: "0 2px 6px rgba(12, 42, 66, 0.25)",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <Printer size={16} />
+                Print Sales Report
+              </button>
+            )}
             <button
               type="button"
               onClick={handleExportCSV}
