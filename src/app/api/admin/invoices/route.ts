@@ -76,6 +76,24 @@ export async function GET(request: NextRequest) {
 
     const attractionFilter = searchParams.get("attractionId")?.trim();
 
+    const scannerStatus = searchParams.get("status")?.trim().toUpperCase();
+
+    // =====================================================
+    // SCANNER STATUS FILTER
+    // =====================================================
+
+    if (
+      scannerStatus &&
+      scannerStatus !== "SCANNED" &&
+      scannerStatus !== "UNSCANNED"
+    ) {
+      return failure(
+        "Invalid status. Expected SCANNED or UNSCANNED.",
+        400,
+        "INVALID_SCANNER_STATUS",
+      );
+    }
+
     // =====================================================
     // ACCESSIBLE ATTRACTIONS
     // =====================================================
@@ -234,6 +252,23 @@ export async function GET(request: NextRequest) {
     ];
 
     // =====================================================
+    // SCANNER STATUS FILTER
+    // =====================================================
+
+    if (scannerStatus) {
+      conditions.push(
+        sql`EXISTS (
+      SELECT 1
+      FROM ${scannerInvoices}
+      WHERE
+        ${scannerInvoices.invoiceNumber} = ${bookings.invoiceNumber}
+        AND ${scannerInvoices.isDeleted} = false
+        AND ${scannerInvoices.scannerInvoiceStatus} = ${scannerStatus}
+    )`,
+      );
+    }
+
+    // =====================================================
     // SEARCH
     // =====================================================
 
@@ -284,27 +319,15 @@ export async function GET(request: NextRequest) {
     // =====================================================
 
     if (dateFrom) {
-      const startDate = new Date(`${dateFrom}T00:00:00.000Z`);
-
-      if (Number.isNaN(startDate.getTime())) {
-        return failure("Invalid dateFrom.", 400, "INVALID_DATE_FROM");
-      }
-
-      conditions.push(gte(bookings.createdAt, startDate));
+      conditions.push(
+        sql`(${bookings.createdAt} AT TIME ZONE 'Asia/Kolkata')::date >= ${dateFrom}::date`,
+      );
     }
 
-    // =====================================================
-    // DATE TO
-    // =====================================================
-
     if (dateTo) {
-      const endDate = new Date(`${dateTo}T23:59:59.999Z`);
-
-      if (Number.isNaN(endDate.getTime())) {
-        return failure("Invalid dateTo.", 400, "INVALID_DATE_TO");
-      }
-
-      conditions.push(lte(bookings.createdAt, endDate));
+      conditions.push(
+        sql`(${bookings.createdAt} AT TIME ZONE 'Asia/Kolkata')::date <= ${dateTo}::date`,
+      );
     }
 
     // =====================================================
