@@ -558,23 +558,24 @@ export async function GET(request: NextRequest) {
 
       return {
         // Serial number
-        sNo,
+
+        id: transaction.id,
 
         // Same invoice number as booking
         invoiceNumber,
 
-        customerName: transaction.customerName,
-
-        mobileNumber: transaction.mobileNumber,
-
-        gstNumber: transaction.gstNumber,
+        customer: {
+          name: transaction.customerName,
+          mobileNumber: transaction.mobileNumber,
+          gstNumber: transaction.gstNumber,
+        },
 
         // transactions.createdAt
         dateTime: transaction.dateTime,
 
         attractions: transactionAttractionList,
 
-        TotalAmount: Number(transaction.TotalAmount),
+        grandTotalAmount: Number(transaction.TotalAmount),
 
         paymentMode: transaction.paymentMode,
 
