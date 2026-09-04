@@ -101,7 +101,7 @@ interface EditBookingModalProps {
   booking: BookingListItem | null;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (bookingId: string, data: { customerName: string; mobileNumber: string; gstNumber?: string }) => void;
+  onSave: (bookingId: string, data: { customerName?: string; mobileNumber?: string; gstNumber?: string }) => void;
   isSaving?: boolean;
 }
 
@@ -121,9 +121,9 @@ export default function EditBookingModal({
   // Re-seed form when a new booking is opened
   useEffect(() => {
     if (booking) {
-      setCustomerName(booking.customerName);
-      setMobileNumber(booking.mobileNumber);
-      setGstNumber(booking.gstNumber || "");
+      setCustomerName(booking.customerName && booking.customerName !== "-" ? booking.customerName : "");
+      setMobileNumber(booking.mobileNumber && booking.mobileNumber !== "-" ? booking.mobileNumber : "");
+      setGstNumber(booking.gstNumber && booking.gstNumber !== "-" ? booking.gstNumber : "");
       setErrors({});
       setTouched({ customerName: false, mobileNumber: false, gstNumber: false });
     }

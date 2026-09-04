@@ -134,8 +134,9 @@ export interface BookingListResponse {
 }
 
 export interface UpdateBookingPayload {
-  customerName: string;
-  mobileNumber: string;
+  customerName?: string;
+  mobileNumber?: string;
+  gstNumber?: string;
 }
 
 // ── Query Keys ───────────────────────────────────────────────────────────────
