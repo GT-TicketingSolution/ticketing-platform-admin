@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { db } from "@/db";
 
@@ -8,6 +8,8 @@ import {
   attractions,
   attractionManagement,
   attractionCategory,
+  bookings,
+  attractionsAgainstBooking,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -27,6 +29,37 @@ export async function GET(request: NextRequest) {
     await requireModuleAccess(auth, "TICKET_BOOKING");
 
     const adminId = getAdminId(auth);
+
+    // =====================================================
+    // VERIFY ADMIN HAS INVOICES (via attractions)
+    // =====================================================
+
+    const [bookingRecord] = await db
+      .select({ id: bookings.id })
+      .from(bookings)
+      .innerJoin(
+        attractionsAgainstBooking,
+        eq(attractionsAgainstBooking.bookingId, bookings.id),
+      )
+      .innerJoin(
+        attractionManagement,
+        eq(attractionManagement.id, attractionsAgainstBooking.attractionManagementId),
+      )
+      .where(
+        and(
+          eq(attractionManagement.adminId, adminId),
+          isNotNull(bookings.invoiceNumber),
+          eq(bookings.isDeleted, false),
+        ),
+      )
+      .limit(1);
+
+    if (!bookingRecord) {
+      return success({
+        items: [],
+        message: "No invoices found for this admin. Please create a booking first.",
+      });
+    }
 
     const conditions = [
       eq(attractions.adminId, adminId),
