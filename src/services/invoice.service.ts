@@ -25,469 +25,469 @@ import {
    TYPES
 ========================================================= */
 
-export type InvoiceFilters = {
-  adminId: string;
+// export type InvoiceFilters = {
+//   adminId: string;
 
-  page?: number;
-  limit?: number;
-  search?: string;
-  paymentMode?: string;
-  dateFrom?: string;
-  dateTo?: string;
-};
+//   page?: number;
+//   limit?: number;
+//   search?: string;
+//   paymentMode?: string;
+//   dateFrom?: string;
+//   dateTo?: string;
+// };
 
-/* =========================================================
-   DATE RANGE
-========================================================= */
+// /* =========================================================
+//    DATE RANGE
+// ========================================================= */
 
-function buildDateRange(dateFrom?: string, dateTo?: string) {
-  const conditions = [];
+// function buildDateRange(dateFrom?: string, dateTo?: string) {
+//   const conditions = [];
 
-  if (dateFrom) {
-    const from = new Date(`${dateFrom}T00:00:00.000Z`);
+//   if (dateFrom) {
+//     const from = new Date(`${dateFrom}T00:00:00.000Z`);
 
-    if (!Number.isNaN(from.getTime())) {
-      conditions.push(gte(transactions.createdAt, from));
-    }
-  }
-
-  if (dateTo) {
-    const to = new Date(`${dateTo}T23:59:59.999Z`);
-
-    if (!Number.isNaN(to.getTime())) {
-      conditions.push(lte(transactions.createdAt, to));
-    }
-  }
-
-  return conditions;
-}
-
-/* =========================================================
-   GET INVOICES
-========================================================= */
-
-export async function getInvoices(filters: InvoiceFilters) {
-  // --------------------------------------------------
-  // PAGINATION
-  // --------------------------------------------------
-
-  const page = Math.max(Number(filters.page) || 1, 1);
-
-  const limit = Math.min(Math.max(Number(filters.limit) || 10, 1), 100);
-
-  const offset = (page - 1) * limit;
-
-  // --------------------------------------------------
-  // TENANT
-  // --------------------------------------------------
-
-  const adminId = filters.adminId;
-
-  // --------------------------------------------------
-  // FILTER CONDITIONS
-  // --------------------------------------------------
-
-  const conditions = [
-    // Transaction must not be deleted
-    isNull(transactions.deletedAt),
-
-    // Booking must not be deleted
-    isNull(bookings.deletedAt),
-
-    // CRITICAL:
-    // Invoice must belong to an attraction owned
-    // by the authenticated admin.
-    eq(attractions.adminId, adminId),
-  ];
-
-  // --------------------------------------------------
-  // SEARCH
-  // --------------------------------------------------
-
-  if (filters.search?.trim()) {
-    const search = `%${filters.search.trim()}%`;
-
-    conditions.push(
-      or(
-        ilike(transactions.invoiceNumber, search),
-
-        ilike(bookings.customerName, search),
-
-        ilike(attractions.name, search),
-      )!,
-    );
-  }
-
-  // --------------------------------------------------
-  // PAYMENT MODE
-  // --------------------------------------------------
-
-  if (filters.paymentMode && filters.paymentMode !== "ALL") {
-    conditions.push(
-      eq(
-        transactions.paymentMode,
-        filters.paymentMode as (typeof transactions.paymentMode.enumValues)[number],
-      ),
-    );
-  }
-
-  // --------------------------------------------------
-  // DATE FILTER
-  // --------------------------------------------------
-
-  conditions.push(...buildDateRange(filters.dateFrom, filters.dateTo));
-
-  const whereClause = and(...conditions);
-
-  // ==================================================
-  // SUMMARY
-  // ==================================================
-
-  const [summary] = await db
-    .select({
-      totalRevenue: sql<string>`
-        COALESCE(
-          SUM(
-            CASE
-              WHEN ${transactions.status} = 'SUCCESSFUL'
-              THEN ${transactions.amount}
-              ELSE 0
-            END
-          ),
-          0
-        )
-      `,
-
-      totalInvoices: sql<number>`
-        COUNT(${transactions.id})
-      `,
-
-      paidInvoices: sql<number>`
-        COUNT(
-          CASE
-            WHEN ${transactions.status} = 'SUCCESSFUL'
-            THEN 1
-          END
-        )
-      `,
-    })
-    .from(transactions)
-    .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-    .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
-    .where(whereClause);
-
-  // ==================================================
-  // TOTAL COUNT
-  // ==================================================
-
-  const [countResult] = await db
-    .select({
-      total: sql<number>`
-        COUNT(${transactions.id})
-      `,
-    })
-    .from(transactions)
-    .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-    .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
-    .where(whereClause);
-
-  const total = Number(countResult?.total || 0);
-
-  // ==================================================
-  // INVOICE LIST
-  // ==================================================
-
-  const rows = await db
-    .select({
-      id: transactions.id,
+//     if (!Number.isNaN(from.getTime())) {
+//       conditions.push(gte(transactions.createdAt, from));
+//     }
+//   }
+
+//   if (dateTo) {
+//     const to = new Date(`${dateTo}T23:59:59.999Z`);
+
+//     if (!Number.isNaN(to.getTime())) {
+//       conditions.push(lte(transactions.createdAt, to));
+//     }
+//   }
+
+//   return conditions;
+// }
+
+// /* =========================================================
+//    GET INVOICES
+// ========================================================= */
+
+// export async function getInvoices(filters: InvoiceFilters) {
+//   // --------------------------------------------------
+//   // PAGINATION
+//   // --------------------------------------------------
+
+//   const page = Math.max(Number(filters.page) || 1, 1);
+
+//   const limit = Math.min(Math.max(Number(filters.limit) || 10, 1), 100);
+
+//   const offset = (page - 1) * limit;
+
+//   // --------------------------------------------------
+//   // TENANT
+//   // --------------------------------------------------
+
+//   const adminId = filters.adminId;
+
+//   // --------------------------------------------------
+//   // FILTER CONDITIONS
+//   // --------------------------------------------------
+
+//   const conditions = [
+//     // Transaction must not be deleted
+//     isNull(transactions.deletedAt),
+
+//     // Booking must not be deleted
+//     isNull(bookings.deletedAt),
+
+//     // CRITICAL:
+//     // Invoice must belong to an attraction owned
+//     // by the authenticated admin.
+//     eq(attractions.adminId, adminId),
+//   ];
+
+//   // --------------------------------------------------
+//   // SEARCH
+//   // --------------------------------------------------
+
+//   if (filters.search?.trim()) {
+//     const search = `%${filters.search.trim()}%`;
+
+//     conditions.push(
+//       or(
+//         ilike(transactions.invoiceNumber, search),
+
+//         ilike(bookings.customerName, search),
+
+//         ilike(attractions.name, search),
+//       )!,
+//     );
+//   }
+
+//   // --------------------------------------------------
+//   // PAYMENT MODE
+//   // --------------------------------------------------
+
+//   if (filters.paymentMode && filters.paymentMode !== "ALL") {
+//     conditions.push(
+//       eq(
+//         transactions.paymentMode,
+//         filters.paymentMode as (typeof transactions.paymentMode.enumValues)[number],
+//       ),
+//     );
+//   }
+
+//   // --------------------------------------------------
+//   // DATE FILTER
+//   // --------------------------------------------------
+
+//   conditions.push(...buildDateRange(filters.dateFrom, filters.dateTo));
+
+//   const whereClause = and(...conditions);
+
+//   // ==================================================
+//   // SUMMARY
+//   // ==================================================
+
+//   const [summary] = await db
+//     .select({
+//       totalRevenue: sql<string>`
+//         COALESCE(
+//           SUM(
+//             CASE
+//               WHEN ${transactions.status} = 'SUCCESSFUL'
+//               THEN ${transactions.amount}
+//               ELSE 0
+//             END
+//           ),
+//           0
+//         )
+//       `,
+
+//       totalInvoices: sql<number>`
+//         COUNT(${transactions.id})
+//       `,
+
+//       paidInvoices: sql<number>`
+//         COUNT(
+//           CASE
+//             WHEN ${transactions.status} = 'SUCCESSFUL'
+//             THEN 1
+//           END
+//         )
+//       `,
+//     })
+//     .from(transactions)
+//     .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+//     .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+//     .where(whereClause);
+
+//   // ==================================================
+//   // TOTAL COUNT
+//   // ==================================================
+
+//   const [countResult] = await db
+//     .select({
+//       total: sql<number>`
+//         COUNT(${transactions.id})
+//       `,
+//     })
+//     .from(transactions)
+//     .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+//     .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+//     .where(whereClause);
+
+//   const total = Number(countResult?.total || 0);
+
+//   // ==================================================
+//   // INVOICE LIST
+//   // ==================================================
+
+//   const rows = await db
+//     .select({
+//       id: transactions.id,
 
-      bookingId: transactions.bookingId,
+//       bookingId: transactions.bookingId,
 
-      invoiceNumber: transactions.invoiceNumber,
+//       invoiceNumber: transactions.invoiceNumber,
 
-      customerName: bookings.customerName,
+//       customerName: bookings.customerName,
 
-      dateTime: transactions.createdAt,
+//       dateTime: transactions.createdAt,
 
-      visitAt: bookings.visitAt,
+//       visitAt: bookings.visitAt,
 
-      attractionId: attractions.id,
+//       attractionId: attractions.id,
 
-      attractionName: attractions.name,
+//       attractionName: attractions.name,
 
-      amount: transactions.amount,
+//       amount: transactions.amount,
 
-      paymentMode: transactions.paymentMode,
+//       paymentMode: transactions.paymentMode,
 
-      status: transactions.status,
-    })
-    .from(transactions)
-    .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-    .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
-    .where(whereClause)
-    .orderBy(desc(transactions.createdAt))
-    .limit(limit)
-    .offset(offset);
+//       status: transactions.status,
+//     })
+//     .from(transactions)
+//     .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+//     .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+//     .where(whereClause)
+//     .orderBy(desc(transactions.createdAt))
+//     .limit(limit)
+//     .offset(offset);
 
-  // ==================================================
-  // VISITOR COUNTS
-  // ==================================================
+//   // ==================================================
+//   // VISITOR COUNTS
+//   // ==================================================
 
-  const bookingIds = rows.map((row) => row.bookingId);
+//   const bookingIds = rows.map((row) => row.bookingId);
 
-  const visitorCounts =
-    bookingIds.length > 0
-      ? await db
-          .select({
-            bookingId: bookingItems.bookingId,
+//   const visitorCounts =
+//     bookingIds.length > 0
+//       ? await db
+//           .select({
+//             bookingId: bookingItems.bookingId,
 
-            totalVisitors: sql<number>`
-              COALESCE(
-                SUM(${bookingItems.quantity}),
-                0
-              )
-            `,
-          })
-          .from(bookingItems)
-          .where(inArray(bookingItems.bookingId, bookingIds))
-          .groupBy(bookingItems.bookingId)
-      : [];
+//             totalVisitors: sql<number>`
+//               COALESCE(
+//                 SUM(${bookingItems.quantity}),
+//                 0
+//               )
+//             `,
+//           })
+//           .from(bookingItems)
+//           .where(inArray(bookingItems.bookingId, bookingIds))
+//           .groupBy(bookingItems.bookingId)
+//       : [];
 
-  const visitorMap = new Map(
-    visitorCounts.map((item) => [item.bookingId, Number(item.totalVisitors)]),
-  );
+//   const visitorMap = new Map(
+//     visitorCounts.map((item) => [item.bookingId, Number(item.totalVisitors)]),
+//   );
 
-  // ==================================================
-  // FORMAT RESPONSE
-  // ==================================================
+//   // ==================================================
+//   // FORMAT RESPONSE
+//   // ==================================================
 
-  const items = rows.map((invoice, index) => ({
-    sNo: offset + index + 1,
+//   const items = rows.map((invoice, index) => ({
+//     sNo: offset + index + 1,
 
-    id: invoice.id,
+//     id: invoice.id,
 
-    invoiceNumber: invoice.invoiceNumber,
+//     invoiceNumber: invoice.invoiceNumber,
 
-    customerName: invoice.customerName,
+//     customerName: invoice.customerName,
 
-    dateTime: invoice.dateTime,
+//     dateTime: invoice.dateTime,
 
-    visitAt: invoice.visitAt,
+//     visitAt: invoice.visitAt,
 
-    attraction: {
-      id: invoice.attractionId,
+//     attraction: {
+//       id: invoice.attractionId,
 
-      name: invoice.attractionName,
-    },
+//       name: invoice.attractionName,
+//     },
 
-    visitors: visitorMap.get(invoice.bookingId) || 0,
+//     visitors: visitorMap.get(invoice.bookingId) || 0,
 
-    amount: Number(invoice.amount),
+//     amount: Number(invoice.amount),
 
-    paymentMode: invoice.paymentMode,
+//     paymentMode: invoice.paymentMode,
 
-    status: invoice.status,
-  }));
+//     status: invoice.status,
+//   }));
 
-  // ==================================================
-  // FINAL RESPONSE
-  // ==================================================
+//   // ==================================================
+//   // FINAL RESPONSE
+//   // ==================================================
 
-  return {
-    summary: {
-      totalRevenue: Number(summary?.totalRevenue || 0),
+//   return {
+//     summary: {
+//       totalRevenue: Number(summary?.totalRevenue || 0),
 
-      totalInvoices: Number(summary?.totalInvoices || 0),
+//       totalInvoices: Number(summary?.totalInvoices || 0),
 
-      paidInvoices: Number(summary?.paidInvoices || 0),
-    },
+//       paidInvoices: Number(summary?.paidInvoices || 0),
+//     },
 
-    items,
+//     items,
 
-    pagination: {
-      page,
+//     pagination: {
+//       page,
 
-      limit,
+//       limit,
 
-      total,
+//       total,
 
-      totalPages: total === 0 ? 0 : Math.ceil(total / limit),
-    },
-  };
-}
+//       totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+//     },
+//   };
+// }
 
-/* =========================================================
-   GET INVOICE BY ID
-========================================================= */
+// /* =========================================================
+//    GET INVOICE BY ID
+// ========================================================= */
 
-/* =========================================================
-   GET INVOICE BY ID
-========================================================= */
+// /* =========================================================
+//    GET INVOICE BY ID
+// ========================================================= */
 
-export async function getInvoiceById(invoiceId: string, adminId: string) {
-  // --------------------------------------------------
-  // GET INVOICE + BOOKING + CUSTOMER + ATTRACTION
-  // --------------------------------------------------
+// export async function getInvoiceById(invoiceId: string, adminId: string) {
+//   // --------------------------------------------------
+//   // GET INVOICE + BOOKING + CUSTOMER + ATTRACTION
+//   // --------------------------------------------------
 
-  const [invoice] = await db
-    .select({
-      id: transactions.id,
+//   const [invoice] = await db
+//     .select({
+//       id: transactions.id,
 
-      // IMPORTANT:
-      // invoiceId from invoice_number, NOT transactions.id
-      invoiceId: transactions.invoiceNumber,
+//       // IMPORTANT:
+//       // invoiceId from invoice_number, NOT transactions.id
+//       invoiceId: transactions.invoiceNumber,
 
-      amount: transactions.amount,
+//       amount: transactions.amount,
 
-      paymentMode: transactions.paymentMode,
+//       paymentMode: transactions.paymentMode,
 
-      status: transactions.status,
+//       status: transactions.status,
 
-      createdAt: transactions.createdAt,
+//       createdAt: transactions.createdAt,
 
-      updatedAt: transactions.updatedAt,
+//       updatedAt: transactions.updatedAt,
 
-      // Booking
-      bookingId: bookings.id,
+//       // Booking
+//       bookingId: bookings.id,
 
-      bookingNumber: bookings.bookingNumber,
+//       bookingNumber: bookings.bookingNumber,
 
-      customerName: bookings.customerName,
+//       customerName: bookings.customerName,
 
-      mobileNumber: bookings.mobileNumber,
+//       mobileNumber: bookings.mobileNumber,
 
-      gstNumber: bookings.gstNumber,
+//       gstNumber: bookings.gstNumber,
 
-      visitAt: bookings.visitAt,
+//       visitAt: bookings.visitAt,
 
-      // Attraction
-      attractionId: attractions.id,
+//       // Attraction
+//       attractionId: attractions.id,
 
-      attractionName: attractions.name,
-    })
-    .from(transactions)
-    .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-    .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
-    .where(
-      and(
-        // IMPORTANT:
-        // URL is /invoices/INV-2026-1001
-        // so search invoice_number
-        eq(transactions.invoiceNumber, invoiceId),
+//       attractionName: attractions.name,
+//     })
+//     .from(transactions)
+//     .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+//     .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+//     .where(
+//       and(
+//         // IMPORTANT:
+//         // URL is /invoices/INV-2026-1001
+//         // so search invoice_number
+//         eq(transactions.invoiceNumber, invoiceId),
 
-        isNull(transactions.deletedAt),
+//         isNull(transactions.deletedAt),
 
-        isNull(bookings.deletedAt),
+//         isNull(bookings.deletedAt),
 
-        eq(attractions.adminId, adminId),
-      ),
-    )
-    .limit(1);
+//         eq(attractions.adminId, adminId),
+//       ),
+//     )
+//     .limit(1);
 
-  // --------------------------------------------------
-  // NOT FOUND
-  // --------------------------------------------------
+//   // --------------------------------------------------
+//   // NOT FOUND
+//   // --------------------------------------------------
 
-  if (!invoice) {
-    return null;
-  }
+//   if (!invoice) {
+//     return null;
+//   }
 
-  // ==================================================
-  // GET TICKETS
-  // ==================================================
+//   // ==================================================
+//   // GET TICKETS
+//   // ==================================================
 
-  const ticketRows = await db
-    .select({
-      id: bookingItems.id,
+//   const ticketRows = await db
+//     .select({
+//       id: bookingItems.id,
 
-      category: bookingItems.category,
+//       category: bookingItems.category,
 
-      quantity: bookingItems.quantity,
+//       quantity: bookingItems.quantity,
 
-      unitPrice: bookingItems.unitPrice,
+//       unitPrice: bookingItems.unitPrice,
 
-      totalPrice: bookingItems.totalPrice,
-    })
-    .from(bookingItems)
-    .where(eq(bookingItems.bookingId, invoice.bookingId));
+//       totalPrice: bookingItems.totalPrice,
+//     })
+//     .from(bookingItems)
+//     .where(eq(bookingItems.bookingId, invoice.bookingId));
 
-  // ==================================================
-  // TOTAL VISITORS
-  // ==================================================
+//   // ==================================================
+//   // TOTAL VISITORS
+//   // ==================================================
 
-  const totalVisitors = ticketRows.reduce(
-    (total, item) => total + Number(item.quantity || 0),
-    0,
-  );
+//   const totalVisitors = ticketRows.reduce(
+//     (total, item) => total + Number(item.quantity || 0),
+//     0,
+//   );
 
-  // ==================================================
-  // TICKET SUMMARY
-  // ==================================================
+//   // ==================================================
+//   // TICKET SUMMARY
+//   // ==================================================
 
-  const tickets = ticketRows.map((item) => ({
-    id: item.id,
+//   const tickets = ticketRows.map((item) => ({
+//     id: item.id,
 
-    category: item.category,
+//     category: item.category,
 
-    quantity: Number(item.quantity),
+//     quantity: Number(item.quantity),
 
-    unitPrice: Number(item.unitPrice),
+//     unitPrice: Number(item.unitPrice),
 
-    total: Number(item.totalPrice),
-  }));
+//     total: Number(item.totalPrice),
+//   }));
 
-  // ==================================================
-  // CALCULATE SUMMARY
-  // ==================================================
+//   // ==================================================
+//   // CALCULATE SUMMARY
+//   // ==================================================
 
-  const subtotal = tickets.reduce((total, ticket) => total + ticket.total, 0);
+//   const subtotal = tickets.reduce((total, ticket) => total + ticket.total, 0);
 
-  // ==================================================
-  // RESPONSE
-  // ==================================================
+//   // ==================================================
+//   // RESPONSE
+//   // ==================================================
 
-  return {
-    invoiceId: invoice.invoiceId,
+//   return {
+//     invoiceId: invoice.invoiceId,
 
-    generatedAt: invoice.createdAt,
+//     generatedAt: invoice.createdAt,
 
-    customer: {
-      name: invoice.customerName,
+//     customer: {
+//       name: invoice.customerName,
 
-      mobileNumber: invoice.mobileNumber,
+//       mobileNumber: invoice.mobileNumber,
 
-      gstn: invoice.gstNumber,
-    },
+//       gstn: invoice.gstNumber,
+//     },
 
-    booking: {
-      id: invoice.bookingId,
+//     booking: {
+//       id: invoice.bookingId,
 
-      bookingId: invoice.bookingNumber,
+//       bookingId: invoice.bookingNumber,
 
-      attraction: {
-        id: invoice.attractionId,
+//       attraction: {
+//         id: invoice.attractionId,
 
-        name: invoice.attractionName,
-      },
+//         name: invoice.attractionName,
+//       },
 
-      visitDate: invoice.visitAt,
+//       visitDate: invoice.visitAt,
 
-      paymentMode: invoice.paymentMode,
-    },
+//       paymentMode: invoice.paymentMode,
+//     },
 
-    tickets,
+//     tickets,
 
-    summary: {
-      totalVisitors,
+//     summary: {
+//       totalVisitors,
 
-      subtotal,
+//       subtotal,
 
-      discount: 0,
+//       discount: 0,
 
-      grandTotal: Number(invoice.amount),
-    },
-  };
-}
+//       grandTotal: Number(invoice.amount),
+//     },
+//   };
+// }
 
 export async function generateInvoiceNumber(userId: string): Promise<string> {
   const [user] = await db
