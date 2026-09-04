@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   X,
   User,
@@ -10,6 +10,10 @@ import {
   Check,
   AlertCircle,
   Loader2,
+  FileText,
+  Receipt,
+  ImagePlus,
+  Upload,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import {
@@ -34,6 +38,8 @@ function InputField({
   error,
   maxLength,
   disabled,
+  required = true,
+  prefix,
 }: {
   id: string;
   label: string;
@@ -45,36 +51,58 @@ function InputField({
   error?: string;
   maxLength?: number;
   disabled?: boolean;
+  required?: boolean;
+  prefix?: React.ReactNode;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
       <label
         htmlFor={id}
         style={{
-          fontSize: "13px",
+          fontSize: "12px",
           fontWeight: typography.fontWeight.semibold,
           color: colors.text.primary,
           fontFamily: typography.fontFamily.sans,
         }}
       >
-        {label} <span style={{ color: colors.status.error }}>*</span>
+        {label} {required && <span style={{ color: colors.status.error }}>*</span>}
       </label>
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          height: "42px",
+          height: "36px",
           border: `1.5px solid ${error ? colors.status.error : colors.login.inputBorder}`,
-          borderRadius: "8px",
-          padding: "0 12px",
+          borderRadius: "7px",
+          padding: "0 10px",
           background: disabled ? "#F9FAFB" : "#FFFFFF",
           transition: "border-color 0.2s ease",
           opacity: disabled ? 0.7 : 1,
         }}
       >
-        <span style={{ display: "flex", marginRight: "10px", flexShrink: 0, color: colors.login.inputIcon }}>
+        <span style={{ display: "flex", marginRight: "8px", flexShrink: 0, color: colors.login.inputIcon }}>
           {icon}
         </span>
+        {prefix && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              fontSize: "12px",
+              fontFamily: typography.fontFamily.sans,
+              fontWeight: typography.fontWeight.semibold,
+              color: colors.login.inputIcon,
+              userSelect: "none",
+              marginRight: "6px",
+              paddingRight: "6px",
+              borderRight: `1.5px solid ${colors.login.inputBorder}`,
+              height: "18px",
+              lineHeight: 1,
+            }}
+          >
+            {prefix}
+          </span>
+        )}
         <input
           id={id}
           type={type}
@@ -87,7 +115,7 @@ function InputField({
             width: "100%",
             border: "none",
             outline: "none",
-            fontSize: "14px",
+            fontSize: "13px",
             fontFamily: typography.fontFamily.sans,
             color: colors.text.primary,
             background: "transparent",
@@ -97,15 +125,15 @@ function InputField({
       {error && (
         <span
           style={{
-            fontSize: "12px",
+            fontSize: "11px",
             color: colors.status.error,
             fontFamily: typography.fontFamily.sans,
             display: "flex",
             alignItems: "center",
-            gap: "4px",
+            gap: "3px",
           }}
         >
-          <AlertCircle size={13} />
+          <AlertCircle size={12} />
           {error}
         </span>
       )}
@@ -113,13 +141,24 @@ function InputField({
   );
 }
 
-// ── Read-only info row (role / status) ──
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
+// ── Read-only info row (role / status / CIN / GST) ──
+function ReadOnlyField({
+  label,
+  value,
+  icon,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  icon?: React.ReactNode;
+  placeholder?: string;
+}) {
+  const display = value || placeholder || "—";
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
       <span
         style={{
-          fontSize: "13px",
+          fontSize: "12px",
           fontWeight: typography.fontWeight.semibold,
           color: colors.text.primary,
           fontFamily: typography.fontFamily.sans,
@@ -129,24 +168,110 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
       </span>
       <div
         style={{
-          height: "42px",
+          height: "36px",
           border: `1.5px solid ${colors.login.inputBorder}`,
-          borderRadius: "8px",
-          padding: "0 12px",
+          borderRadius: "7px",
+          padding: "0 10px",
           background: "#F9FAFB",
           display: "flex",
           alignItems: "center",
-          fontSize: "14px",
+          gap: icon ? "8px" : undefined,
+          fontSize: "13px",
           fontFamily: typography.fontFamily.sans,
-          color: colors.text.primary,
+          color: value ? colors.text.primary : colors.text.primary,
           opacity: 0.7,
         }}
       >
-        {value}
+        {icon && (
+          <span style={{ display: "flex", flexShrink: 0, color: colors.login.inputIcon }}>
+            {icon}
+          </span>
+        )}
+        <span style={{ color: value ? colors.text.primary : "#9CA3AF" }}>
+          {display}
+        </span>
       </div>
     </div>
   );
 }
+
+// ── CIN & GST Validation Helpers ──
+export const cinRegex = /^[UL]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6}$/;
+export const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
+export const validateCIN = (cin: string): string => {
+  const value = cin ? cin.trim().toUpperCase() : "";
+  // Optional field: valid if empty
+  if (!value) return "";
+
+  if (value.length !== 21) {
+    return "CIN must be exactly 21 characters";
+  }
+
+  if (!cinRegex.test(value)) {
+    return "Please enter a valid CIN";
+  }
+
+  return "";
+};
+
+export const validateGST = (gst: string): string => {
+  const value = gst ? gst.trim().toUpperCase() : "";
+  // Optional field: valid if empty
+  if (!value) return "";
+
+  if (value.length !== 15) {
+    return "GST must be exactly 15 characters";
+  }
+
+  if (!gstRegex.test(value)) {
+    return "Please enter a valid GST number";
+  }
+
+  return "";
+};
+
+export const getDefaultFinancialYear = (): string => {
+  const now = new Date();
+  const month = now.getMonth(); // 0 = Jan, 3 = Apr
+  const year = now.getFullYear();
+  // Indian Financial Year: April to March (month >= 3 is Apr-Dec: 2026 -> 2026-2027)
+  if (month >= 3) {
+    return `${year}-${year + 1}`;
+  } else {
+    return `${year - 1}-${year}`;
+  }
+};
+
+export const validateInvoicePrefix = (prefix: string): string => {
+  const value = prefix ? prefix.trim().replace(/\/+$/, "") : "";
+  // Optional field: valid if empty
+  if (!value) return "";
+
+  if (value.length < 4) {
+    return "Invoice prefix must be at least 4 characters";
+  }
+  if (value.length > 11) {
+    return "Invoice prefix cannot exceed 11 characters";
+  }
+  if (value.includes("/")) {
+    return "Prefix should not include slash (/)";
+  }
+  return "";
+};
+
+export const formatPhoneNumber = (val?: string | null): string => {
+  if (!val) return "";
+  let cleaned = val.trim();
+  if (cleaned.startsWith("+91")) {
+    cleaned = cleaned.slice(3);
+  }
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.startsWith("91") && digits.length > 10) {
+    return digits.slice(2, 12);
+  }
+  return digits.slice(0, 10);
+};
 
 export default function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
   // Profile is already pre-fetched by DashboardLayout on login.
@@ -155,23 +280,70 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
 
   const updateMutation = useUpdateProfileMutation();
 
-  const profile = profileData?.profile;
+  const profile = profileData?.profile || (profileData as any)?.data?.profile;
 
   // Only ADMIN users can view/edit the business name
   const isAdmin = profile?.role === "ADMIN";
 
-  const [formData, setFormData] = useState({ name: "", email: "", phone: "", businessName: "" });
+  const [formData, setFormData] = useState(() => {
+    const p = profileData?.profile || (profileData as any)?.data?.profile;
+    const rawInvoice =
+      p?.invoiceNumberForUsersInitialPart ||
+      (p as any)?.invoicePrefix ||
+      getDefaultFinancialYear();
+    return {
+      name: p?.name || "",
+      email: p?.email || "",
+      phone: formatPhoneNumber(p?.phone),
+      businessName: p?.businessName || "",
+      cin: p?.cin || (p as any)?.cin || "",
+      gst: p?.gst || (p as any)?.gst || "",
+      invoiceNumberForUsersInitialPart: rawInvoice
+        ? rawInvoice.replace(/\/+$/, "")
+        : getDefaultFinancialYear(),
+      profileLink: p?.profileLink || (p as any)?.businessLogo || null,
+    };
+  });
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [businessImage, setBusinessImage] = useState<File | null>(null);
+  const [businessImagePreview, setBusinessImagePreview] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Seed form whenever profile loads or modal re-opens
   useEffect(() => {
     if (profile) {
+      const rawInvoice =
+        profile.invoiceNumberForUsersInitialPart ||
+        (profile as any).invoicePrefix ||
+        getDefaultFinancialYear();
+      const initialInvoicePrefix = rawInvoice
+        ? rawInvoice.replace(/\/+$/, "")
+        : getDefaultFinancialYear();
+
+      const initialProfileLink =
+        profile.profileLink ||
+        (profile as any).businessLogo ||
+        "";
+
       setFormData({
         name: profile.name || "",
         email: profile.email || "",
-        phone: profile.phone || "",
+        phone: formatPhoneNumber(profile.phone),
         businessName: profile.businessName || "",
+        cin: profile.cin || (profile as any).cin || "",
+        gst: profile.gst || (profile as any).gst || "",
+        invoiceNumberForUsersInitialPart: initialInvoicePrefix,
+        profileLink: initialProfileLink,
       });
+
+      // Seed business/profile image preview from response if available
+      if (initialProfileLink) {
+        setBusinessImagePreview(initialProfileLink);
+      } else {
+        setBusinessImagePreview(null);
+      }
+      setBusinessImage(null);
       setErrors({});
     }
   }, [profile, isOpen]);
@@ -179,7 +351,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
   if (!isOpen) return null;
 
   const avatarInitials = formData.name
-    ? formData.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
+    ? formData.name.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2)
     : "??";
 
   // ── Validation ──
@@ -194,9 +366,64 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
     if (formData.phone && formData.phone.length > 0 && formData.phone.length < 10) {
       errs.phone = "Phone must be at least 10 digits";
     }
-    if (isAdmin && !formData.businessName.trim()) errs.businessName = "Business name is required";
+    if (isAdmin) {
+      if (!formData.businessName.trim()) {
+        errs.businessName = "Business name is required";
+      }
+      const cinError = validateCIN(formData.cin);
+      if (cinError) errs.cin = cinError;
+
+      const gstError = validateGST(formData.gst);
+      if (gstError) errs.gst = gstError;
+
+      const prefixError = validateInvoicePrefix(formData.invoiceNumberForUsersInitialPart);
+      if (prefixError) errs.invoiceNumberForUsersInitialPart = prefixError;
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
+  };
+
+  // ── Image upload handler ──
+  const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/svg+xml"];
+  const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2 MB
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageError(null);
+
+    // Validate file type
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setImageError("Only PNG, JPG, and SVG formats are allowed");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    // Validate file size
+    if (file.size > MAX_IMAGE_SIZE) {
+      setImageError("File size must not exceed 2 MB");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    setBusinessImage(file);
+    setBusinessImagePreview(URL.createObjectURL(file));
+
+    // Convert to base64 and store in formData for submission
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      setFormData((prev) => ({ ...prev, profileLink: base64String }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveImage = () => {
+    setBusinessImage(null);
+    setBusinessImagePreview(null);
+    setImageError(null);
+    setFormData((prev) => ({ ...prev, profileLink: "" }));
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -204,13 +431,22 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
     if (!validate()) return;
 
     try {
+      const invoicePrefix = formData.invoiceNumberForUsersInitialPart.trim();
       await updateMutation.mutateAsync({
         name: formData.name.trim(),
         email: formData.email.trim(),
         phone: formData.phone.trim() || undefined,
-        ...(isAdmin ? { businessName: formData.businessName.trim() } : {}),
+        ...(isAdmin ? {
+          businessName: formData.businessName.trim(),
+          cin: formData.cin.trim().toUpperCase() || undefined,
+          gst: formData.gst.trim().toUpperCase() || undefined,
+          profileLink: formData.profileLink ? formData.profileLink : "",
+          // Append trailing slash so backend receives e.g. "2026-2027/"
+          invoiceNumberForUsersInitialPart: invoicePrefix ? `${invoicePrefix}/` : undefined,
+        } : {}),
       });
-      await refetch();
+      // Cache is already updated via setQueryData in useUpdateProfileMutation onSuccess —
+      // do NOT call refetch() here to avoid triggering an extra GET /profile request.
       setTimeout(onClose, 600);
     } catch {
       // Errors are shown via toast in useUpdateProfileMutation's onError
@@ -245,7 +481,7 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
       <div
         style={{
           width: "100%",
-          maxWidth: "480px",
+          maxWidth: "560px",
           background: "#FFFFFF",
           borderRadius: "16px",
           boxShadow: "0 20px 40px rgba(1, 27, 47, 0.25)",
@@ -279,9 +515,18 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
                 fontWeight: typography.fontWeight.bold,
                 fontSize: "16px",
                 flexShrink: 0,
+                overflow: "hidden",
               }}
             >
-              {avatarInitials}
+              {businessImagePreview ? (
+                <img
+                  src={businessImagePreview}
+                  alt="Profile"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
+                avatarInitials
+              )}
             </div>
             <div>
               <h3
@@ -409,70 +654,434 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
           </div>
         ) : (
           /* ── Form ── */
-          <form onSubmit={handleSubmit} style={{ padding: "24px" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <InputField
-                id="ep-name"
-                label="Full Name"
-                icon={<User size={16} />}
-                placeholder="e.g. John Doe"
-                value={formData.name}
-                onChange={(v) => setFormData({ ...formData, name: v })}
-                error={errors.name}
-                disabled={isSubmitting}
-              />
-
-              <InputField
-                id="ep-email"
-                label="Email Address"
-                icon={<Mail size={16} />}
-                type="email"
-                placeholder="admin@example.com"
-                value={formData.email}
-                onChange={(v) => setFormData({ ...formData, email: v })}
-                error={errors.email}
-                disabled={isSubmitting}
-              />
-
-              <InputField
-                id="ep-phone"
-                label="Phone Number"
-                icon={<Phone size={16} />}
-                placeholder="9876543210"
-                value={formData.phone}
-                maxLength={10}
-                onChange={(v) =>
-                  setFormData({
-                    ...formData,
-                    phone: v.replace(/\D/g, "").slice(0, 10),
-                  })
-                }
-                error={errors.phone}
-                disabled={isSubmitting}
-              />
-
-              {isAdmin && (
+          <form noValidate onSubmit={handleSubmit} style={{ padding: "18px 22px 22px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {/* ── Full Name & Email Address — side by side ── */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <InputField
-                  id="ep-business-name"
-                  label="Business Name"
-                  icon={<Building2 size={16} />}
-                  placeholder="e.g. Acme Corp"
-                  value={formData.businessName}
-                  onChange={(v) => setFormData({ ...formData, businessName: v })}
-                  error={errors.businessName}
+                  id="ep-name"
+                  label="Full Name"
+                  icon={<User size={16} />}
+                  placeholder="e.g. John Doe"
+                  value={formData.name}
+                  onChange={(v) => setFormData({ ...formData, name: v })}
+                  error={errors.name}
+                  disabled={isSubmitting}
+                />
+                <InputField
+                  id="ep-email"
+                  label="Email Address"
+                  icon={<Mail size={16} />}
+                  type="email"
+                  placeholder="admin@example.com"
+                  value={formData.email}
+                  onChange={(v) => setFormData({ ...formData, email: v })}
+                  error={errors.email}
+                  disabled={isSubmitting}
+                />
+              </div>
+
+              {/* ── Phone Number & Business Name — side by side (admin) / full-width (others) ── */}
+              {isAdmin ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <InputField
+                    id="ep-phone"
+                    label="Phone Number"
+                    icon={<Phone size={16} />}
+                    prefix="+91"
+                    placeholder="9876543210"
+                    value={formData.phone}
+                    maxLength={10}
+                    onChange={(v) =>
+                      setFormData({
+                        ...formData,
+                        phone: formatPhoneNumber(v),
+                      })
+                    }
+                    error={errors.phone}
+                    disabled={isSubmitting}
+                  />
+                  <InputField
+                    id="ep-business-name"
+                    label="Business Name"
+                    icon={<Building2 size={16} />}
+                    placeholder="e.g. Acme Corp"
+                    value={formData.businessName}
+                    onChange={(v) => setFormData({ ...formData, businessName: v })}
+                    error={errors.businessName}
+                    disabled={isSubmitting}
+                  />
+                </div>
+              ) : (
+                <InputField
+                  id="ep-phone"
+                  label="Phone Number"
+                  icon={<Phone size={16} />}
+                  prefix="+91"
+                  placeholder="9876543210"
+                  value={formData.phone}
+                  maxLength={10}
+                  onChange={(v) =>
+                    setFormData({
+                      ...formData,
+                      phone: formatPhoneNumber(v),
+                    })
+                  }
+                  error={errors.phone}
                   disabled={isSubmitting}
                 />
               )}
 
-              {/* Read-only fields from server */}
-              {profile?.role && <ReadOnlyField label="Role" value={profile.role} />}
-              {profile?.status && <ReadOnlyField label="Status" value={profile.status} />}
+              {/* ── CIN & GST — admin only, below phone row ── */}
+              {isAdmin && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <InputField
+                    id="ep-cin"
+                    label="CIN"
+                    icon={<FileText size={16} />}
+                    placeholder="Enter your CIN"
+                    value={formData.cin}
+                    maxLength={21}
+                    onChange={(v) => {
+                      const clean = v.toUpperCase().replace(/\s+/g, "").slice(0, 21);
+                      setFormData((prev) => ({ ...prev, cin: clean }));
+                      if (errors.cin) setErrors((prev) => ({ ...prev, cin: "" }));
+                    }}
+                    error={errors.cin}
+                    disabled={isSubmitting}
+                    required={false}
+                  />
+                  <InputField
+                    id="ep-gst"
+                    label="GST"
+                    icon={<Receipt size={16} />}
+                    placeholder="Enter your GST"
+                    value={formData.gst}
+                    maxLength={15}
+                    onChange={(v) => {
+                      const clean = v.toUpperCase().replace(/\s+/g, "").slice(0, 15);
+                      setFormData((prev) => ({ ...prev, gst: clean }));
+                      if (errors.gst) setErrors((prev) => ({ ...prev, gst: "" }));
+                    }}
+                    error={errors.gst}
+                    disabled={isSubmitting}
+                    required={false}
+                  />
+                </div>
+              )}
+
+              {/* ── Invoice Number (Prefix / Serial Number) — admin only ── */}
+              {isAdmin && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <label
+                      htmlFor="ep-invoice-prefix"
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: typography.fontWeight.semibold,
+                        color: colors.text.primary,
+                        fontFamily: typography.fontFamily.sans,
+                      }}
+                    >
+                      Invoice Number
+                    </label>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontFamily: typography.fontFamily.sans,
+                        color: "#9CA3AF",
+                      }}
+                    >
+                      Prefix 4-11 characters
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      height: "36px",
+                      border: `1.5px solid ${errors.invoiceNumberForUsersInitialPart ? colors.status.error : colors.login.inputBorder}`,
+                      borderRadius: "7px",
+                      padding: "0 10px",
+                      background: isSubmitting ? "#F9FAFB" : "#FFFFFF",
+                      transition: "border-color 0.2s ease",
+                      gap: "6px",
+                      cursor: "text",
+                    }}
+                    onClick={() => document.getElementById("ep-invoice-prefix")?.focus()}
+                  >
+                    <span style={{ display: "flex", color: colors.login.inputIcon, flexShrink: 0 }}>
+                      <Receipt size={15} />
+                    </span>
+
+                    {/* Prefix Input before slash */}
+                    <input
+                      id="ep-invoice-prefix"
+                      type="text"
+                      placeholder={getDefaultFinancialYear()}
+                      value={formData.invoiceNumberForUsersInitialPart}
+                      maxLength={11}
+                      disabled={isSubmitting}
+                      onBlur={() => {
+                        const err = validateInvoicePrefix(formData.invoiceNumberForUsersInitialPart);
+                        if (err) {
+                          setErrors((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: err }));
+                        }
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase().replace(/\s+/g, "");
+                        setFormData((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: val }));
+                        if (errors.invoiceNumberForUsersInitialPart) {
+                          const err = validateInvoicePrefix(val);
+                          setErrors((prev) => ({ ...prev, invoiceNumberForUsersInitialPart: err }));
+                        }
+                      }}
+                      style={{
+                        width: formData.invoiceNumberForUsersInitialPart
+                          ? `${Math.max(formData.invoiceNumberForUsersInitialPart.length, 9)}ch`
+                          : `${getDefaultFinancialYear().length}ch`,
+                        minWidth: "75px",
+                        maxWidth: "130px",
+                        border: "none",
+                        outline: "none",
+                        background: "transparent",
+                        fontSize: "13px",
+                        fontFamily: typography.fontFamily.sans,
+                        fontWeight: typography.fontWeight.semibold,
+                        color: colors.text.primary,
+                        padding: 0,
+                        margin: 0,
+                      }}
+                    />
+
+                    {/* Slash separator */}
+                    <span
+                      style={{
+                        color: "#9CA3AF",
+                        fontWeight: 700,
+                        fontSize: "15px",
+                        userSelect: "none",
+                        flexShrink: 0,
+                        lineHeight: 1,
+                      }}
+                    >
+                      /
+                    </span>
+
+                    {/* Placeholder text after slash */}
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        fontFamily: typography.fontFamily.sans,
+                        fontWeight: typography.fontWeight.medium,
+                        color: "#9CA3AF",
+                        userSelect: "none",
+                      }}
+                    >
+                      001
+                    </span>
+                  </div>
+
+                  {/* Error directly below the field */}
+                  {errors.invoiceNumberForUsersInitialPart ? (
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        color: colors.status.error,
+                        fontFamily: typography.fontFamily.sans,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "3px",
+                        marginTop: "2px",
+                      }}
+                    >
+                      <AlertCircle size={12} />
+                      {errors.invoiceNumberForUsersInitialPart}
+                    </span>
+                  ) : null}
+
+                  {/* Helper text below input */}
+                  <span
+                    style={{
+                      fontSize: "11.5px",
+                      color: "#6B7280",
+                      fontFamily: typography.fontFamily.sans,
+                      lineHeight: "15px",
+                      marginTop: "2px",
+                    }}
+                  >
+                    The number after / auto-increments: INV-2026/001, INV-2026/002
+                  </span>
+                </div>
+              )}
+
+              {/* ── Role & Status — always side by side ── */}
+              {(profile?.role || profile?.status) && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  {profile?.role && <ReadOnlyField label="Role" value={profile.role} />}
+                  {profile?.status && <ReadOnlyField label="Status" value={profile.status} />}
+                </div>
+              )}
+
+
+              {/* ── Business Image Upload — admin only ── */}
+              {isAdmin && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: typography.fontWeight.semibold,
+                      color: colors.text.primary,
+                      fontFamily: typography.fontFamily.sans,
+                    }}
+                  >
+                    Business Logo
+                  </span>
+                  <div
+                    style={{
+                      border: `1.5px dashed ${colors.login.inputBorder}`,
+                      borderRadius: "10px",
+                      padding: "16px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "16px",
+                      background: "#FAFBFC",
+                      cursor: isSubmitting ? "not-allowed" : "pointer",
+                      transition: "border-color 0.2s ease, background 0.2s ease",
+                    }}
+                    onClick={() => !isSubmitting && fileInputRef.current?.click()}
+                  >
+                    {/* Hidden file input */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/svg+xml"
+                      style={{ display: "none" }}
+                      onChange={handleImageChange}
+                      disabled={isSubmitting}
+                    />
+
+                    {/* Preview or placeholder */}
+                    {businessImagePreview ? (
+                      <div
+                        style={{
+                          width: "56px",
+                          height: "56px",
+                          borderRadius: "10px",
+                          overflow: "hidden",
+                          flexShrink: 0,
+                          border: `1px solid ${colors.login.inputBorder}`,
+                        }}
+                      >
+                        <img
+                          src={businessImagePreview}
+                          alt="Business logo"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          width: "56px",
+                          height: "56px",
+                          borderRadius: "10px",
+                          background: "#F0F1F3",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                          color: "#9CA3AF",
+                        }}
+                      >
+                        <ImagePlus size={22} />
+                      </div>
+                    )}
+
+                    {/* Text */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p
+                        style={{
+                          margin: 0,
+                          fontSize: "13px",
+                          fontWeight: typography.fontWeight.semibold,
+                          color: colors.text.primary,
+                          fontFamily: typography.fontFamily.sans,
+                        }}
+                      >
+                        {businessImagePreview ? "Change Image" : "Upload Business Logo"}
+                      </p>
+                      <p
+                        style={{
+                          margin: "2px 0 0 0",
+                          fontSize: "11px",
+                          color: "#9CA3AF",
+                          fontFamily: typography.fontFamily.sans,
+                        }}
+                      >
+                        PNG, JPG or SVG — max 2 MB
+                      </p>
+                    </div>
+
+                    {/* Upload icon */}
+                    <Upload size={18} style={{ color: colors.login.inputIcon, flexShrink: 0 }} />
+                  </div>
+
+                  {/* Remove button if image exists */}
+                  {businessImagePreview && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveImage();
+                      }}
+                      disabled={isSubmitting}
+                      style={{
+                        alignSelf: "flex-start",
+                        padding: "4px 12px",
+                        borderRadius: "6px",
+                        border: `1px solid ${colors.login.inputBorder}`,
+                        background: "#FFF",
+                        color: colors.status.error,
+                        fontSize: "12px",
+                        fontFamily: typography.fontFamily.sans,
+                        fontWeight: typography.fontWeight.medium,
+                        cursor: isSubmitting ? "not-allowed" : "pointer",
+                        marginTop: "4px",
+                      }}
+                    >
+                      Remove Image
+                    </button>
+                  )}
+
+                  {/* Validation error */}
+                  {imageError && (
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        color: colors.status.error,
+                        fontFamily: typography.fontFamily.sans,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <AlertCircle size={13} />
+                      {imageError}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Action Buttons */}
             <div
               style={{
-                marginTop: "24px",
+                marginTop: "16px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "flex-end",

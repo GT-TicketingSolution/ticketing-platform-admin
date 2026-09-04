@@ -1,11 +1,11 @@
 import {
   and,
-  arrayContains,
   eq,
   gte,
   inArray,
   lte,
   sql,
+  isNotNull,
   type SQL,
 } from "drizzle-orm";
 
@@ -15,8 +15,10 @@ import {
   attractions,
   attractionManagement,
   bookings,
-  bookingItems,
   transactions,
+  attractionsAgainstBooking,
+  categoryOfAttractionAgainstBooking,
+  attractionCategory,
 } from "@/db/schema";
 
 export interface ReportFilter {
@@ -56,57 +58,28 @@ function getBookingConditions(filter: ReportFilter): SQL[] {
   const endDate = getEndDate(filter.toDate);
 
   if (startDate) {
-    conditions.push(gte(bookings.visitAt, startDate));
+    conditions.push(gte(bookings.createdAt, startDate));
   }
 
   if (endDate) {
-    conditions.push(lte(bookings.visitAt, endDate));
-  }
-
-  /*
-   * bookings.attractionId is now uuid[].
-   *
-   * Therefore:
-   *
-   * eq(bookings.attractionId, filter.attractionId)
-   *
-   * is WRONG.
-   *
-   * arrayContains() checks whether the booking contains
-   * the requested attraction.
-   */
-  if (filter.attractionId) {
-    conditions.push(
-      arrayContains(bookings.attractionId, [filter.attractionId]),
-    );
+    conditions.push(lte(bookings.createdAt, endDate));
   }
 
   return conditions;
 }
 
 /* =========================================================
-   TENANT CONDITION FOR BOOKINGS
+   TENANT / ATTRACTION CONDITION
 ========================================================= */
 
-/*
- * A booking can contain multiple attraction IDs.
- *
- * We therefore cannot do:
- *
- * eq(bookings.attractionId, attractions.id)
- *
- * Instead, verify that at least one attraction belonging to
- * this admin exists inside bookings.attractionId.
- */
-function getTenantBookingCondition(adminId: string): SQL {
-  return sql`
-    EXISTS (
-      SELECT 1
-      FROM attractions a
-      WHERE a.admin_id = ${adminId}
-        AND a.id = ANY(${bookings.attractionId})
-    )
-  `;
+function getAttractionConditions(filter: ReportFilter): SQL[] {
+  const conditions: SQL[] = [eq(attractions.adminId, filter.adminId)];
+
+  if (filter.attractionId) {
+    conditions.push(eq(attractions.id, filter.attractionId));
+  }
+
+  return conditions;
 }
 
 /* =========================================================
@@ -116,27 +89,9 @@ function getTenantBookingCondition(adminId: string): SQL {
 export async function getReportSummary(filter: ReportFilter) {
   const bookingConditions = getBookingConditions(filter);
 
-  /*
-   * -------------------------------------------------------
-   * Revenue + Booking Count
-   * -------------------------------------------------------
-   *
-   * We intentionally do NOT join attractions here.
-   *
-   * Joining bookings.attractionId[] against attractions
-   * would create multiple rows for multi-attraction bookings.
-   *
-   * Example:
-   *
-   * booking.attractionId = [A, B]
-   *
-   * would produce:
-   *
-   * booking + A
-   * booking + B
-   *
-   * which could duplicate transaction revenue.
-   */
+  /* -------------------------------------------------------
+     Revenue + Booking Count
+  ------------------------------------------------------- */
 
   const bookingSummary = await db
     .select({
@@ -159,28 +114,78 @@ export async function getReportSummary(filter: ReportFilter) {
       `,
     })
     .from(bookings)
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(attractionsAgainstBooking.bookingId, bookings.id),
+    )
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(
+      attractions,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
     .leftJoin(transactions, eq(transactions.bookingId, bookings.id))
     .where(
-      and(...bookingConditions, getTenantBookingCondition(filter.adminId)),
+      and(
+        ...bookingConditions,
+        eq(attractionManagement.adminId, filter.adminId),
+        ...(filter.attractionId
+          ? [eq(attractions.id, filter.attractionId)]
+          : []),
+      ),
     );
 
   /* -------------------------------------------------------
-     Tickets
+     Ticket / Visitor Count
   ------------------------------------------------------- */
 
   const ticketSummary = await db
     .select({
       tickets: sql<number>`
         COALESCE(
-          SUM(${bookingItems.quantity}),
+          SUM(
+            ${categoryOfAttractionAgainstBooking.noOfVisitors}
+          ),
           0
         )
       `,
     })
-    .from(bookingItems)
-    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
+    .from(bookings)
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(attractionsAgainstBooking.bookingId, bookings.id),
+    )
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(
+      attractions,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
+    .innerJoin(
+      categoryOfAttractionAgainstBooking,
+      eq(
+        categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+        attractionsAgainstBooking.id,
+      ),
+    )
     .where(
-      and(...bookingConditions, getTenantBookingCondition(filter.adminId)),
+      and(
+        ...bookingConditions,
+        eq(attractionManagement.adminId, filter.adminId),
+        ...(filter.attractionId
+          ? [eq(attractions.id, filter.attractionId)]
+          : []),
+      ),
     );
 
   /* -------------------------------------------------------
@@ -195,10 +200,6 @@ export async function getReportSummary(filter: ReportFilter) {
 
   const attractionReports = await getAttractionReports(filter);
 
-  /* -------------------------------------------------------
-     Final Response
-  ------------------------------------------------------- */
-
   return {
     totalRevenue: Number(bookingSummary[0]?.revenue ?? 0),
 
@@ -209,9 +210,7 @@ export async function getReportSummary(filter: ReportFilter) {
     topAttraction: topAttraction
       ? {
           id: topAttraction.id,
-
           name: topAttraction.name,
-
           revenue: Number(topAttraction.revenue ?? 0),
         }
       : null,
@@ -225,16 +224,6 @@ export async function getReportSummary(filter: ReportFilter) {
 ========================================================= */
 
 async function getTopAttraction(filter: ReportFilter) {
-  /*
-   * IMPORTANT:
-   *
-   * For attraction-level revenue we use
-   * bookingItems.attractionId.
-   *
-   * This prevents one transaction from being duplicated
-   * across every attraction in bookings.attractionId[].
-   */
-
   const bookingConditions = getBookingConditions(filter);
 
   const result = await db
@@ -246,31 +235,34 @@ async function getTopAttraction(filter: ReportFilter) {
       revenue: sql<number>`
         COALESCE(
           SUM(
-            CASE
-              WHEN ${transactions.status} = 'SUCCESSFUL'
-               AND ${transactions.isDeleted} = false
-              THEN ${bookingItems.totalPrice}
-              ELSE 0
-            END
+            ${attractionsAgainstBooking.attractionTotalAmount}
           ),
           0
         )
       `,
     })
-    .from(bookingItems)
-    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
-    .innerJoin(attractions, eq(bookingItems.attractionId, attractions.id))
-    .leftJoin(transactions, eq(transactions.bookingId, bookings.id))
+    .from(bookings)
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(attractionsAgainstBooking.bookingId, bookings.id),
+    )
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(
+      attractions,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
     .where(
       and(
         ...bookingConditions,
-
         eq(attractions.adminId, filter.adminId),
-
-        getTenantBookingCondition(filter.adminId),
-
         ...(filter.attractionId
-          ? [eq(bookingItems.attractionId, filter.attractionId)]
+          ? [eq(attractions.id, filter.attractionId)]
           : []),
       ),
     )
@@ -279,12 +271,7 @@ async function getTopAttraction(filter: ReportFilter) {
       sql`
         COALESCE(
           SUM(
-            CASE
-              WHEN ${transactions.status} = 'SUCCESSFUL'
-               AND ${transactions.isDeleted} = false
-              THEN ${bookingItems.totalPrice}
-              ELSE 0
-            END
+            ${attractionsAgainstBooking.attractionTotalAmount}
           ),
           0
         ) DESC
@@ -304,11 +291,7 @@ export async function getAttractionReports(filter: ReportFilter) {
      Attraction Conditions
   ------------------------------------------------------- */
 
-  const attractionConditions: SQL[] = [eq(attractions.adminId, filter.adminId)];
-
-  if (filter.attractionId) {
-    attractionConditions.push(eq(attractions.id, filter.attractionId));
-  }
+  const attractionConditions = getAttractionConditions(filter);
 
   /* -------------------------------------------------------
      Attraction Master Data
@@ -326,20 +309,20 @@ export async function getAttractionReports(filter: ReportFilter) {
 
       timing: attractionManagement.timing,
 
-      adultPrice: attractionManagement.adultPrice,
+      // adultPrice: attractionManagement.adultPrice,
 
-      childPrice: attractionManagement.childPrice,
+      // childPrice: attractionManagement.childPrice,
 
-      studentPrice: attractionManagement.studentPrice,
+      // studentPrice: attractionManagement.studentPrice,
 
-      seniorPrice: attractionManagement.seniorPrice,
+      // seniorPrice: attractionManagement.seniorPrice,
 
-      foreignerPrice: attractionManagement.foreignerPrice,
+      // foreignerPrice: attractionManagement.foreignerPrice,
 
       image: attractionManagement.image,
     })
     .from(attractions)
-    .leftJoin(
+    .innerJoin(
       attractionManagement,
       eq(attractionManagement.attractionId, attractions.id),
     )
@@ -349,41 +332,20 @@ export async function getAttractionReports(filter: ReportFilter) {
     return [];
   }
 
-  /* -------------------------------------------------------
-     Common Booking Conditions
-  ------------------------------------------------------- */
-
   const bookingConditions = getBookingConditions(filter);
 
   /* -------------------------------------------------------
      Revenue + Booking Count
   ------------------------------------------------------- */
 
-  /*
-   * Use bookingItems.attractionId.
-   *
-   * This is critical because bookingItems has:
-   *
-   * attractionId: uuid
-   *
-   * while bookings has:
-   *
-   * attractionId: uuid[]
-   */
-
   const revenueRows = await db
     .select({
-      attractionId: bookingItems.attractionId,
+      attractionId: attractions.id,
 
       revenue: sql<number>`
         COALESCE(
           SUM(
-            CASE
-              WHEN ${transactions.status} = 'SUCCESSFUL'
-               AND ${transactions.isDeleted} = false
-              THEN ${bookingItems.totalPrice}
-              ELSE 0
-            END
+            ${attractionsAgainstBooking.attractionTotalAmount}
           ),
           0
         )
@@ -393,57 +355,83 @@ export async function getAttractionReports(filter: ReportFilter) {
         COUNT(DISTINCT ${bookings.id})
       `,
     })
-    .from(bookingItems)
-    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
-    .innerJoin(attractions, eq(bookingItems.attractionId, attractions.id))
-    .leftJoin(transactions, eq(transactions.bookingId, bookings.id))
+    .from(bookings)
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(attractionsAgainstBooking.bookingId, bookings.id),
+    )
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(
+      attractions,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
     .where(
       and(
         ...bookingConditions,
-
         eq(attractions.adminId, filter.adminId),
-
-        getTenantBookingCondition(filter.adminId),
-
         ...(filter.attractionId
-          ? [eq(bookingItems.attractionId, filter.attractionId)]
+          ? [eq(attractions.id, filter.attractionId)]
           : []),
       ),
     )
-    .groupBy(bookingItems.attractionId);
+    .groupBy(attractions.id);
 
   /* -------------------------------------------------------
-     Ticket Count
+     Ticket / Visitor Count
   ------------------------------------------------------- */
 
   const ticketRows = await db
     .select({
-      attractionId: bookingItems.attractionId,
+      attractionId: attractions.id,
 
       tickets: sql<number>`
         COALESCE(
-          SUM(${bookingItems.quantity}),
+          SUM(
+            ${categoryOfAttractionAgainstBooking.noOfVisitors}
+          ),
           0
         )
       `,
     })
-    .from(bookingItems)
-    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
-    .innerJoin(attractions, eq(bookingItems.attractionId, attractions.id))
+    .from(bookings)
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(attractionsAgainstBooking.bookingId, bookings.id),
+    )
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(
+      attractions,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
+    .innerJoin(
+      categoryOfAttractionAgainstBooking,
+      eq(
+        categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+        attractionsAgainstBooking.id,
+      ),
+    )
     .where(
       and(
         ...bookingConditions,
-
         eq(attractions.adminId, filter.adminId),
-
-        getTenantBookingCondition(filter.adminId),
-
         ...(filter.attractionId
-          ? [eq(bookingItems.attractionId, filter.attractionId)]
+          ? [eq(attractions.id, filter.attractionId)]
           : []),
       ),
     )
-    .groupBy(bookingItems.attractionId);
+    .groupBy(attractions.id);
 
   /* -------------------------------------------------------
      Ticket Category Breakdown
@@ -451,45 +439,56 @@ export async function getAttractionReports(filter: ReportFilter) {
 
   const ticketCategoryRows = await db
     .select({
-      attractionId: bookingItems.attractionId,
+      attractionId: attractions.id,
 
-      category: bookingItems.category,
-
-      rate: sql<number>`
-        MIN(${bookingItems.unitPrice})
-      `,
+      category: attractionCategory.name,
 
       quantity: sql<number>`
         COALESCE(
-          SUM(${bookingItems.quantity}),
-          0
-        )
-      `,
-
-      revenue: sql<number>`
-        COALESCE(
-          SUM(${bookingItems.totalPrice}),
+          SUM(
+            ${categoryOfAttractionAgainstBooking.noOfVisitors}
+          ),
           0
         )
       `,
     })
-    .from(bookingItems)
-    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
-    .innerJoin(attractions, eq(bookingItems.attractionId, attractions.id))
+    .from(bookings)
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(attractionsAgainstBooking.bookingId, bookings.id),
+    )
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(
+      attractions,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
+    .innerJoin(
+      categoryOfAttractionAgainstBooking,
+      eq(
+        categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+        attractionsAgainstBooking.id,
+      ),
+    )
+    .innerJoin(
+      attractionCategory,
+      eq(categoryOfAttractionAgainstBooking.categoryId, attractionCategory.id),
+    )
     .where(
       and(
         ...bookingConditions,
-
         eq(attractions.adminId, filter.adminId),
-
-        getTenantBookingCondition(filter.adminId),
-
         ...(filter.attractionId
-          ? [eq(bookingItems.attractionId, filter.attractionId)]
+          ? [eq(attractions.id, filter.attractionId)]
           : []),
       ),
     )
-    .groupBy(bookingItems.attractionId, bookingItems.category);
+    .groupBy(attractions.id, attractionCategory.id, attractionCategory.name);
 
   /* -------------------------------------------------------
      Payment Distribution
@@ -505,7 +504,7 @@ export async function getAttractionReports(filter: ReportFilter) {
 
   const paymentRows = await db
     .select({
-      attractionId: bookingItems.attractionId,
+      attractionId: attractions.id,
 
       mode: transactions.paymentMode,
 
@@ -516,7 +515,7 @@ export async function getAttractionReports(filter: ReportFilter) {
       amount: sql<number>`
         COALESCE(
           SUM(
-            ${bookingItems.totalPrice}
+            ${attractionsAgainstBooking.attractionTotalAmount}
           ),
           0
         )
@@ -524,67 +523,87 @@ export async function getAttractionReports(filter: ReportFilter) {
     })
     .from(transactions)
     .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-    .innerJoin(bookingItems, eq(bookingItems.bookingId, bookings.id))
-    .innerJoin(attractions, eq(bookingItems.attractionId, attractions.id))
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(attractionsAgainstBooking.bookingId, bookings.id),
+    )
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(
+      attractions,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
     .where(
       and(
         ...paymentConditions,
-
         eq(attractions.adminId, filter.adminId),
-
-        getTenantBookingCondition(filter.adminId),
-
         ...(filter.attractionId
-          ? [eq(bookingItems.attractionId, filter.attractionId)]
+          ? [eq(attractions.id, filter.attractionId)]
           : []),
       ),
     )
-    .groupBy(bookingItems.attractionId, transactions.paymentMode);
+    .groupBy(attractions.id, transactions.paymentMode);
 
   /* -------------------------------------------------------
-     Recent Transactions
+     Recent Transactions / Attraction Bookings
   ------------------------------------------------------- */
 
   const transactionConditions: SQL[] = [
     ...bookingConditions,
 
     eq(transactions.isDeleted, false),
+
+    isNotNull(transactions.invoiceNumber),
   ];
 
   const transactionRows = await db
     .select({
-      attractionId: bookingItems.attractionId,
+      attractionId: attractions.id,
 
-      transactionId: transactions.transactionNumber,
+      invoiceNumber: bookings.invoiceNumber,
 
       customerName: bookings.customerName,
 
-      dateTime: transactions.createdAt,
+      dateTime: bookings.createdAt,
 
       paymentMode: transactions.paymentMode,
 
-      amount: transactions.amount,
+      amount: attractionsAgainstBooking.attractionTotalAmount,
 
-      status: transactions.status,
+      status: bookings.status,
     })
-    .from(transactions)
-    .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-    .innerJoin(bookingItems, eq(bookingItems.bookingId, bookings.id))
-    .innerJoin(attractions, eq(bookingItems.attractionId, attractions.id))
+    .from(bookings)
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(attractionsAgainstBooking.bookingId, bookings.id),
+    )
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(
+      attractions,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
+    .innerJoin(transactions, eq(transactions.bookingId, bookings.id))
     .where(
       and(
         ...transactionConditions,
-
         eq(attractions.adminId, filter.adminId),
-
-        getTenantBookingCondition(filter.adminId),
-
         ...(filter.attractionId
-          ? [eq(bookingItems.attractionId, filter.attractionId)]
+          ? [eq(attractions.id, filter.attractionId)]
           : []),
       ),
     )
-    .orderBy(sql`${transactions.createdAt} DESC`);
+    .orderBy(sql`${bookings.createdAt} DESC`);
 
   /* =======================================================
      BUILD MAPS
@@ -640,11 +659,13 @@ export async function getAttractionReports(filter: ReportFilter) {
     existing.push({
       category: row.category,
 
-      rate: Number(row.rate ?? 0),
+      // Historical booked price is not available here.
+      // Category report is visitor-count based.
+      rate: 0,
 
       quantity: Number(row.quantity ?? 0),
 
-      revenue: Number(row.revenue ?? 0),
+      revenue: 0,
     });
 
     categoryMap.set(row.attractionId, existing);
@@ -684,7 +705,7 @@ export async function getAttractionReports(filter: ReportFilter) {
   const transactionMap = new Map<
     string,
     Array<{
-      transactionId: string;
+      invoiceNumber: string;
       customerName: string | null;
       dateTime: Date;
       paymentMode: string;
@@ -696,16 +717,9 @@ export async function getAttractionReports(filter: ReportFilter) {
   for (const row of transactionRows) {
     const existing = transactionMap.get(row.attractionId) ?? [];
 
-    /*
-     * transactionRows is already ordered
-     * newest -> oldest.
-     *
-     * Keep latest 6 per attraction.
-     */
-
     if (existing.length < 6) {
       existing.push({
-        transactionId: row.transactionId,
+        invoiceNumber: row.invoiceNumber,
 
         customerName: row.customerName,
 
@@ -741,15 +755,15 @@ export async function getAttractionReports(filter: ReportFilter) {
 
         timing: attraction.timing,
 
-        adultRate: Number(attraction.adultPrice ?? 0),
+        // adultRate: Number(attraction.adultPrice ?? 0),
 
-        childRate: Number(attraction.childPrice ?? 0),
+        // childRate: Number(attraction.childPrice ?? 0),
 
-        studentRate: Number(attraction.studentPrice ?? 0),
+        // studentRate: Number(attraction.studentPrice ?? 0),
 
-        seniorRate: Number(attraction.seniorPrice ?? 0),
+        // seniorRate: Number(attraction.seniorPrice ?? 0),
 
-        foreignerRate: Number(attraction.foreignerPrice ?? 0),
+        // foreignerRate: Number(attraction.foreignerPrice ?? 0),
 
         image: attraction.image,
       },
@@ -801,11 +815,30 @@ export async function getPaymentDistribution(filter: ReportFilter) {
     })
     .from(transactions)
     .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(attractionsAgainstBooking.bookingId, bookings.id),
+    )
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(
+      attractions,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
     .where(
       and(
         ...conditions,
 
-        getTenantBookingCondition(filter.adminId),
+        eq(attractionManagement.adminId, filter.adminId),
+
+        ...(filter.attractionId
+          ? [eq(attractions.id, filter.attractionId)]
+          : []),
       ),
     )
     .groupBy(transactions.paymentMode);
@@ -828,44 +861,64 @@ export async function getTicketBreakdown(filter: ReportFilter) {
 
   const result = await db
     .select({
-      category: bookingItems.category,
-
-      rate: sql<number>`
-        MIN(${bookingItems.unitPrice})
-      `,
+      category: attractionCategory.name,
 
       quantity: sql<number>`
         COALESCE(
-          SUM(${bookingItems.quantity}),
-          0
-        )
-      `,
-
-      revenue: sql<number>`
-        COALESCE(
-          SUM(${bookingItems.totalPrice}),
+          SUM(
+            ${categoryOfAttractionAgainstBooking.noOfVisitors}
+          ),
           0
         )
       `,
     })
-    .from(bookingItems)
-    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
+    .from(categoryOfAttractionAgainstBooking)
+    .innerJoin(
+      bookings,
+      eq(categoryOfAttractionAgainstBooking.bookingId, bookings.id),
+    )
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(
+        categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+        attractionsAgainstBooking.id,
+      ),
+    )
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(
+      attractions,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
+    .innerJoin(
+      attractionCategory,
+      eq(categoryOfAttractionAgainstBooking.categoryId, attractionCategory.id),
+    )
     .where(
       and(
         ...conditions,
 
-        getTenantBookingCondition(filter.adminId),
+        eq(attractionManagement.adminId, filter.adminId),
+
+        ...(filter.attractionId
+          ? [eq(attractions.id, filter.attractionId)]
+          : []),
       ),
     )
-    .groupBy(bookingItems.category);
+    .groupBy(attractionCategory.id, attractionCategory.name);
 
   return result.map((row) => ({
     category: row.category,
 
-    rate: Number(row.rate ?? 0),
+    rate: 0,
 
     quantity: Number(row.quantity ?? 0),
 
-    revenue: Number(row.revenue ?? 0),
+    revenue: 0,
   }));
 }

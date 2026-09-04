@@ -1,14 +1,14 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 
 import {
   attractions,
   attractionManagement,
+  attractionCategory,
   attractionManagementSeatLayouts,
   seatLayouts,
   attractionSeats,
-  seatLayoutSeats,
 } from "@/db/schema";
 
 import { success, failure } from "@/lib/api/response";
@@ -22,9 +22,7 @@ import {
 
 import {
   getLegacySeatLayoutId,
-  expandSeatLayoutIds,
   listTimeSlotsByAttractionIds,
-  parseCategorySeatCounts,
   parseTimeSlotsPayload,
   replaceAttractionSeatLayouts,
   resolveSeatLayoutIds,
@@ -69,35 +67,11 @@ export async function GET(request: Request) {
 
           durationUnit: attractionManagement.durationUnit,
 
-          pricing: {
-            adult: attractionManagement.adultPrice,
-
-            child: attractionManagement.childPrice,
-
-            student: attractionManagement.studentPrice,
-
-            senior: attractionManagement.seniorPrice,
-
-            foreigner: attractionManagement.foreignerPrice,
-          },
-
-          seating: {
-            adult: attractionManagement.adultSeats,
-
-            child: attractionManagement.childSeats,
-
-            student: attractionManagement.studentSeats,
-
-            senior: attractionManagement.seniorSeats,
-
-            foreigner: attractionManagement.foreignerSeats,
-          },
-
           hasSeating: attractionManagement.hasSeating,
 
           status: attractions.status,
 
-          // Legacy field
+          // Legacy seat layout field
           seatLayoutId: attractionManagement.seatLayoutId,
 
           createdAt: attractionManagement.createdAt,
@@ -142,35 +116,11 @@ export async function GET(request: Request) {
 
           durationUnit: attractionManagement.durationUnit,
 
-          pricing: {
-            adult: attractionManagement.adultPrice,
-
-            child: attractionManagement.childPrice,
-
-            student: attractionManagement.studentPrice,
-
-            senior: attractionManagement.seniorPrice,
-
-            foreigner: attractionManagement.foreignerPrice,
-          },
-
-          seating: {
-            adult: attractionManagement.adultSeats,
-
-            child: attractionManagement.childSeats,
-
-            student: attractionManagement.studentSeats,
-
-            senior: attractionManagement.seniorSeats,
-
-            foreigner: attractionManagement.foreignerSeats,
-          },
-
           hasSeating: attractionManagement.hasSeating,
 
           status: attractions.status,
 
-          // Legacy field
+          // Legacy seat layout field
           seatLayoutId: attractionManagement.seatLayoutId,
 
           createdAt: attractionManagement.createdAt,
@@ -202,12 +152,60 @@ export async function GET(request: Request) {
     const attractionIds = managementData.map((item) => item.attractionId);
 
     // =====================================================
+    // GET ATTRACTION CATEGORIES
+    // =====================================================
+
+    const categoryRows = await db
+      .select({
+        id: attractionCategory.id,
+
+        attractionManagementId: attractionCategory.attractionManagementId,
+
+        name: attractionCategory.name,
+
+        basePrice: attractionCategory.basePrice,
+
+        futurePrice: attractionCategory.futurePrice,
+
+        effectiveFrom: attractionCategory.effectiveFrom,
+
+        noOfSeats: attractionCategory.noOfSeats,
+
+        imageLink: attractionCategory.imageLink,
+
+        createdAt: attractionCategory.createdAt,
+
+        updatedAt: attractionCategory.updatedAt,
+      })
+      .from(attractionCategory)
+      .where(inArray(attractionCategory.attractionManagementId, managementIds));
+
+    // =====================================================
+    // GROUP CATEGORIES
+    // =====================================================
+
+    const categoriesByManagementId = new Map<string, typeof categoryRows>();
+
+    for (const categoryRow of categoryRows) {
+      const existing =
+        categoriesByManagementId.get(categoryRow.attractionManagementId) ?? [];
+
+      existing.push(categoryRow);
+
+      categoriesByManagementId.set(
+        categoryRow.attractionManagementId,
+        existing,
+      );
+    }
+
+    // =====================================================
     // GET SEAT LAYOUT MAPPINGS
     // =====================================================
 
     let seatLayoutMappings;
+
     try {
-      // Try with position and isEnabled columns (new schema)
+      // Try with position and isEnabled columns
       seatLayoutMappings = await db
         .select({
           attractionManagementId:
@@ -235,7 +233,8 @@ export async function GET(request: Request) {
           ),
         );
     } catch (error: any) {
-      // Fallback: columns don't exist yet, use defaults
+      // Fallback for databases where position/isEnabled
+      // columns do not exist yet.
       if (
         error.message?.includes("does not exist") ||
         error.cause?.message?.includes("does not exist")
@@ -344,28 +343,23 @@ export async function GET(request: Request) {
     const result = managementData.map((item) => {
       const mappings = seatLayoutsByManagementId.get(item.id) ?? [];
 
-      // IMPORTANT:
-      // Do NOT use Set here.
-      //
-      // If DB has:
-      //
-      // layout1
-      // layout1
-      // layout2
-      //
-      // response becomes:
-      //
-      // ["layout1", "layout1", "layout2"]
+      const categories = categoriesByManagementId.get(item.id) ?? [];
 
-      // Build seatLayoutIds as array of objects with full metadata (position, status)
-      // IMPORTANT: Expand by quantity so same layout allocated N times shows N entries
+      // =================================================
+      // EXPANDED SEAT LAYOUT IDS
+      // =================================================
+
       const seatLayoutIds = mappings
         .flatMap((mapping) => {
           const quantity = mapping.quantity ?? 1;
+
           return Array.from({ length: quantity }, (_, i) => ({
             id: mapping.seatLayoutId,
+
             name: mapping.seatLayout?.name || "Layout",
+
             status: mapping.isEnabled ? "active" : "inactive",
+
             position: (mapping.position ?? 0) + i,
           }));
         })
@@ -375,6 +369,12 @@ export async function GET(request: Request) {
 
       return {
         ...item,
+
+        // =================================================
+        // CATEGORIES
+        // =================================================
+
+        categories,
 
         // =================================================
         // SEAT LAYOUTS
@@ -387,26 +387,29 @@ export async function GET(request: Request) {
         })),
 
         // =================================================
-        // EXPANDED IDS - Full objects with position and status
+        // EXPANDED IDS
         // =================================================
 
         seatLayoutIds,
 
         // =================================================
-        // SEAT ALLOCATIONS - For form reconstruction with suffixes
+        // SEAT ALLOCATIONS
         // =================================================
 
         seatAllocations: seatLayoutIds.map((layout, idx) => {
-          // Count how many times this layout ID appears before this index
           const count = seatLayoutIds.filter((l) => l.id === layout.id).length;
+
           const indexOfThisId =
             seatLayoutIds.slice(0, idx + 1).filter((l) => l.id === layout.id)
               .length - 1;
 
           return {
             instanceId: `alloc_${item.id}_${layout.id}_${idx}`,
+
             layoutId: layout.id,
+
             isDisabled: layout.status === "inactive",
+
             suffix:
               count > 1 ? ` - ${String.fromCharCode(65 + indexOfThisId)}` : "",
           };
@@ -482,18 +485,10 @@ export async function POST(request: Request) {
       image,
       description,
       timing,
-
       duration,
       durationUnit,
-
-      adultPrice = 0,
-      childPrice = 0,
-      studentPrice = 0,
-      seniorPrice = 0,
-      foreignerPrice = 0,
-
+      categories,
       hasSeating = false,
-
       seatLayoutIds,
     } = body;
 
@@ -506,11 +501,125 @@ export async function POST(request: Request) {
     }
 
     // =====================================================
-    // RESOLVE SEAT LAYOUTS
+    // CATEGORY VALIDATION
     // =====================================================
 
+    if (!Array.isArray(categories) || categories.length === 0) {
+      return failure(
+        "At least one attraction category is required",
+        400,
+        "VALIDATION_ERROR",
+      );
+    }
+
+    // =====================================================
+    // VALIDATE CATEGORY DATA
+    // =====================================================
+
+    const categoryNames = new Set<string>();
+
+    for (const categoryItem of categories) {
+      if (!categoryItem || typeof categoryItem !== "object") {
+        return failure("Invalid category data", 400, "VALIDATION_ERROR");
+      }
+
+      const categoryName =
+        typeof categoryItem.name === "string" ? categoryItem.name.trim() : "";
+
+      if (!categoryName) {
+        return failure("Category name is required", 400, "VALIDATION_ERROR");
+      }
+
+      if (categoryNames.has(categoryName.toLowerCase())) {
+        return failure(
+          `Duplicate category name: ${categoryName}`,
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
+      categoryNames.add(categoryName.toLowerCase());
+
+      // -----------------------------------------------
+      // BASE PRICE
+      // -----------------------------------------------
+
+      if (
+        categoryItem.basePrice === undefined ||
+        categoryItem.basePrice === null ||
+        categoryItem.basePrice === "" ||
+        Number.isNaN(Number(categoryItem.basePrice)) ||
+        Number(categoryItem.basePrice) < 0
+      ) {
+        return failure(
+          `Invalid basePrice for category: ${categoryName}`,
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
+      // -----------------------------------------------
+      // FUTURE PRICE
+      // -----------------------------------------------
+
+      if (
+        categoryItem.futurePrice !== undefined &&
+        categoryItem.futurePrice !== null &&
+        categoryItem.futurePrice !== "" &&
+        (Number.isNaN(Number(categoryItem.futurePrice)) ||
+          Number(categoryItem.futurePrice) < 0)
+      ) {
+        return failure(
+          `Invalid futurePrice for category: ${categoryName}`,
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
+      // -----------------------------------------------
+      // SEAT COUNT
+      // -----------------------------------------------
+
+      if (
+        categoryItem.noOfSeats === undefined ||
+        categoryItem.noOfSeats === null ||
+        Number.isNaN(Number(categoryItem.noOfSeats)) ||
+        !Number.isInteger(Number(categoryItem.noOfSeats)) ||
+        Number(categoryItem.noOfSeats) < 0
+      ) {
+        return failure(
+          `Invalid noOfSeats for category: ${categoryName}`,
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
+      // -----------------------------------------------
+      // EFFECTIVE DATE
+      // -----------------------------------------------
+
+      if (
+        categoryItem.effectiveFrom !== undefined &&
+        categoryItem.effectiveFrom !== null &&
+        categoryItem.effectiveFrom !== ""
+      ) {
+        const dateValue = new Date(categoryItem.effectiveFrom);
+
+        if (Number.isNaN(dateValue.getTime())) {
+          return failure(
+            `Invalid effectiveFrom for category: ${categoryName}`,
+            400,
+            "VALIDATION_ERROR",
+          );
+        }
+      }
+    }
+
+    // =====================================================
+    // RESOLVE SEAT LAYOUTS
+    // =====================================================
     const resolvedSeatLayouts = resolveSeatLayoutIds({
-      hasSeating: true,
+      hasSeating: Boolean(hasSeating),
       seatLayoutIds,
     });
 
@@ -523,18 +632,6 @@ export async function POST(request: Request) {
         400,
         "VALIDATION_ERROR",
       );
-    }
-
-    // =====================================================
-    // SEAT COUNTS
-    // =====================================================
-
-    const seatCounts = parseCategorySeatCounts(body, {
-      required: true,
-    });
-
-    if (!seatCounts.ok) {
-      return failure(seatCounts.message, 400, "VALIDATION_ERROR");
     }
 
     // =====================================================
@@ -604,26 +701,46 @@ export async function POST(request: Request) {
 
           durationUnit: durationUnit ?? null,
 
-          adultPrice,
+          hasSeating: Boolean(hasSeating),
 
-          childPrice,
-
-          studentPrice,
-
-          seniorPrice,
-
-          foreignerPrice,
-
-          ...seatCounts.seats,
-
-          hasSeating: true,
-
-          // Legacy field
+          // Legacy seat-layout compatibility field.
+          // Kept because existing seat-layout logic
+          // still uses it.
           seatLayoutId: getLegacySeatLayoutId(resolvedSeatLayouts.expandedIds),
         })
         .returning();
 
       const management = managementRows[0];
+
+      // =================================================
+      // CREATE ATTRACTION CATEGORIES
+      // =================================================
+
+      const categoryRows = await tx
+        .insert(attractionCategory)
+        .values(
+          categories.map((categoryItem: any) => ({
+            attractionManagementId: management.id,
+
+            name: categoryItem.name.trim(),
+
+            basePrice: String(categoryItem.basePrice),
+
+            futurePrice:
+              categoryItem.futurePrice !== undefined &&
+              categoryItem.futurePrice !== null &&
+              categoryItem.futurePrice !== ""
+                ? String(categoryItem.futurePrice)
+                : null,
+
+            effectiveFrom: categoryItem.effectiveFrom ?? null,
+
+            noOfSeats: Number(categoryItem.noOfSeats),
+
+            imageLink: categoryItem.imageLink ?? null,
+          })),
+        )
+        .returning();
 
       // =================================================
       // CREATE JUNCTION MAPPINGS
@@ -640,43 +757,32 @@ export async function POST(request: Request) {
       // CREATE ATTRACTION SEATS
       // =================================================
       //
-      // IMPORTANT:
-      // We intentionally iterate over
-      // expandedSeatLayoutIds.
+      // Category noOfSeats is NOT used here.
       //
-      // Example:
-      //
-      // seatLayoutIds:
-      //
-      // [
-      //   "layout-1",
-      //   "layout-1",
-      //   "layout-2"
-      // ]
-      //
-      // creates:
-      //
-      // Seat 1 -> layout-1
-      // Seat 2 -> layout-1
-      // Seat 3 -> layout-2
-      //
-      // Same layout ID is therefore allowed.
+      // Category capacity and physical seat-layout
+      // allocation are separate concepts.
       // =================================================
 
       const expandedSeatLayoutIds = resolvedSeatLayouts.expandedIds;
 
-      const attractionSeatRows = expandedSeatLayoutIds.map(
-        (seatLayoutId, index) => ({
-          attractionId: attraction.id,
+      const attractionSeatRows = resolvedSeatLayouts.fullObjects.flatMap(
+        (seatLayout) => {
+          return Array.from(
+            { length: 1 }, // quantity
+            (_, index) => ({
+              attractionId: attraction.id,
 
-          seatLayoutId,
+              seatLayoutId: seatLayout.id,
 
-          name: `Seat ${index + 1}`,
+              // Ensure a default name is assigned when the seat name is not provided.
+              name: seatLayout.name ?? `Seat ${index + 1}`,
 
-          seatOrder: index + 1,
+              seatOrder: seatLayout.position,
 
-          isActive: true,
-        }),
+              isActive: seatLayout.isEnabled,
+            }),
+          );
+        },
       );
 
       let createdAttractionSeats: typeof attractionSeatRows = [];
@@ -713,6 +819,8 @@ export async function POST(request: Request) {
 
         management,
 
+        categories: categoryRows,
+
         seatLayouts: seatLayoutMappings,
 
         seatLayoutIds: expandedSeatLayoutIds,
@@ -730,43 +838,114 @@ export async function POST(request: Request) {
     const sanitizedResult = {
       attraction: {
         id: result.attraction.id,
+
         adminId: result.attraction.adminId,
+
         name: result.attraction.name,
+
         type: result.attraction.type,
+
         status: result.attraction.status,
+
         createdAt: result.attraction.createdAt,
+
         updatedAt: result.attraction.updatedAt,
       },
+
       management: result.management,
+
+      // =================================================
+      // CATEGORIES
+      // =================================================
+
+      categories: Array.isArray(result.categories)
+        ? result.categories.map((category: any) => ({
+            id: category.id,
+
+            attractionManagementId: category.attractionManagementId,
+
+            name: category.name,
+
+            basePrice: category.basePrice,
+
+            futurePrice: category.futurePrice,
+
+            effectiveFrom: category.effectiveFrom,
+
+            noOfSeats: category.noOfSeats,
+
+            imageLink: category.imageLink,
+
+            createdAt: category.createdAt,
+
+            updatedAt: category.updatedAt,
+          }))
+        : [],
+
+      // =================================================
+      // SEAT LAYOUTS
+      // =================================================
+
       seatLayouts: Array.isArray(result.seatLayouts)
         ? result.seatLayouts.map((layout: any) => ({
             id: layout.id,
+
             name: layout.name,
+
             rows: layout.rows,
+
             cols: layout.cols,
+
             hasAisle: layout.hasAisle,
+
             aisleAfterCol: layout.aisleAfterCol,
+
             status: layout.status,
+
             quantity: layout.quantity,
+
             totalSeats: layout.totalSeats,
           }))
         : [],
+
+      // =================================================
+      // SEAT LAYOUT IDS
+      // =================================================
+
       seatLayoutIds: result.seatLayoutIds,
+
+      // =================================================
+      // ATTRACTION SEATS
+      // =================================================
+
       attractionSeats: Array.isArray(result.attractionSeats)
         ? result.attractionSeats.map((seat: any) => ({
             id: seat.id,
+
             attractionId: seat.attractionId,
+
             seatLayoutId: seat.seatLayoutId,
+
             name: seat.name,
+
             seatOrder: seat.seatOrder,
+
             createdAt: seat.createdAt,
           }))
         : [],
+
+      // =================================================
+      // TIME SLOTS
+      // =================================================
+
       timeSlots: Array.isArray(result.timeSlots)
         ? result.timeSlots.map((slot: any) => ({
             id: slot.id,
+
             attractionId: slot.attractionId,
+
             slotTime: slot.slotTime,
+
             isActive: slot.isActive,
           }))
         : [],
@@ -787,8 +966,6 @@ export async function POST(request: Request) {
     const postgresConstraint =
       dbError?.cause?.constraint ?? dbError?.constraint;
 
-    const postgresDetail = dbError?.cause?.detail ?? dbError?.detail;
-
     // =====================================================
     // DUPLICATE ATTRACTION NAME
     // =====================================================
@@ -801,6 +978,22 @@ export async function POST(request: Request) {
         "An attraction with this name already exists.",
         409,
         "DUPLICATE_NAME",
+      );
+    }
+
+    // =====================================================
+    // DUPLICATE CATEGORY
+    // =====================================================
+
+    if (
+      postgresCode === "23505" &&
+      postgresConstraint ===
+        "attraction_category_attraction_management_id_name_unique"
+    ) {
+      return failure(
+        "A category with this name already exists for this attraction.",
+        409,
+        "DUPLICATE_CATEGORY",
       );
     }
 

@@ -5,36 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1788285465908,
-      "tag": "0000_melodic_mentallo",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1788331662855,
-      "tag": "0001_strange_the_fallen",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1788337373258,
-      "tag": "0002_thick_prowler",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1788341324375,
-      "tag": "0003_chief_stingray",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1788355666330,
-      "tag": "0004_fix_booking_attraction_ids",
+      "when": 1788553411594,
+      "tag": "0000_sharp_typhoid_mary",
       "breakpoints": true
     }
   ]

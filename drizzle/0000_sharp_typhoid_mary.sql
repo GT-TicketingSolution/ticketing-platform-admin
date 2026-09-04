@@ -5,6 +5,7 @@ CREATE TYPE "public"."complimentary_pass_status" AS ENUM('ACTIVE', 'USED', 'EXPI
 CREATE TYPE "public"."module_status" AS ENUM('ACTIVE', 'INACTIVE');--> statement-breakpoint
 CREATE TYPE "public"."payment_mode" AS ENUM('CASH', 'UPI', 'CARD', 'ONLINE');--> statement-breakpoint
 CREATE TYPE "public"."reference_status" AS ENUM('ACTIVE', 'INACTIVE');--> statement-breakpoint
+CREATE TYPE "public"."scanner_invoice_status" AS ENUM('UNSCANNED', 'SCANNED');--> statement-breakpoint
 CREATE TYPE "public"."seat_layout_status" AS ENUM('ACTIVE', 'INACTIVE');--> statement-breakpoint
 CREATE TYPE "public"."ticket_scan_verdict" AS ENUM('ALLOWED', 'DENIED');--> statement-breakpoint
 CREATE TYPE "public"."transaction_status" AS ENUM('SUCCESSFUL', 'PENDING', 'CANCELLED', 'FAILED');--> statement-breakpoint
@@ -16,6 +17,20 @@ CREATE TABLE "admin_system_module_permissions" (
 	"module_id" uuid NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "admin_system_module_permissions_unique" UNIQUE("admin_id","module_id")
+);
+--> statement-breakpoint
+CREATE TABLE "attraction_category" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"attraction_management_id" uuid NOT NULL,
+	"name" text NOT NULL,
+	"base_price" numeric(10, 5) NOT NULL,
+	"future_price" numeric(10, 5),
+	"effective_from" date,
+	"no_of_seats" integer NOT NULL,
+	"image_link" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "attraction_category_attraction_management_id_name_unique" UNIQUE("attraction_management_id","name")
 );
 --> statement-breakpoint
 CREATE TABLE "attraction_daily_capacities" (
@@ -56,17 +71,7 @@ CREATE TABLE "attraction_management" (
 	"timing" varchar(100),
 	"duration" integer,
 	"duration_unit" varchar(20),
-	"adult_price" numeric(12, 2) DEFAULT '0' NOT NULL,
-	"child_price" numeric(12, 2) DEFAULT '0' NOT NULL,
-	"student_price" numeric(12, 2) DEFAULT '0' NOT NULL,
-	"senior_price" numeric(12, 2) DEFAULT '0' NOT NULL,
-	"foreigner_price" numeric(12, 2) DEFAULT '0' NOT NULL,
 	"has_seating" boolean DEFAULT false NOT NULL,
-	"adult_seats" integer DEFAULT 0 NOT NULL,
-	"child_seats" integer DEFAULT 0 NOT NULL,
-	"student_seats" integer DEFAULT 0 NOT NULL,
-	"senior_seats" integer DEFAULT 0 NOT NULL,
-	"foreigner_seats" integer DEFAULT 0 NOT NULL,
 	"seat_layout_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -130,6 +135,19 @@ CREATE TABLE "attractions" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "attractions_against_booking" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"booking_id" uuid NOT NULL,
+	"attraction_management_id" uuid NOT NULL,
+	"attraction_subtotal" numeric(12, 2) DEFAULT '0' NOT NULL,
+	"attraction_gst" numeric(12, 2) DEFAULT '0' NOT NULL,
+	"attraction_roundoff" numeric(12, 2) DEFAULT '0' NOT NULL,
+	"attraction_round_off_gst_adj" numeric(12, 2) DEFAULT '0' NOT NULL,
+	"attraction_totalamount" numeric(12, 2) DEFAULT '0' NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "audit_logs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid,
@@ -172,29 +190,31 @@ CREATE TABLE "booking_seats" (
 --> statement-breakpoint
 CREATE TABLE "bookings" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"booking_number" varchar(50) NOT NULL,
+	"invoice_number" varchar(50) NOT NULL,
 	"customer_name" varchar(150),
 	"mobile_number" varchar(20),
 	"gst_number" varchar(20),
-	"attraction_id" uuid NOT NULL,
-	"visit_at" timestamp with time zone NOT NULL,
-	"subtotal" numeric(12, 2) DEFAULT '0' NOT NULL,
-	"gst_amount" numeric(12, 2) DEFAULT '0' NOT NULL,
-	"gst_adjustment" numeric(12, 2) DEFAULT '0' NOT NULL,
-	"round_off" numeric(12, 2) DEFAULT '0' NOT NULL,
-	"discount_amount" numeric(12, 2) DEFAULT '0' NOT NULL,
-	"payment_expires_at" timestamp with time zone,
-	"payment_mode" "payment_mode" NOT NULL,
-	"status" "booking_status" DEFAULT 'PENDING' NOT NULL,
 	"total_amount" numeric(12, 2) NOT NULL,
-	"amount_paid" numeric(12, 2) NOT NULL,
+	"status" "booking_status" DEFAULT 'PENDING' NOT NULL,
+	"amount_received" numeric(12, 2) DEFAULT '0' NOT NULL,
+	"return_change" numeric(12, 2) DEFAULT '0' NOT NULL,
 	"created_by" uuid,
 	"deleted_at" timestamp with time zone,
 	"deleted_by" uuid,
 	"is_deleted" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "bookings_booking_number_unique" UNIQUE("booking_number")
+	CONSTRAINT "bookings_invoice_number_unique" UNIQUE("invoice_number")
+);
+--> statement-breakpoint
+CREATE TABLE "category_of_attraction_against_booking" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"attraction_against_booking_id" uuid NOT NULL,
+	"booking_id" uuid NOT NULL,
+	"category_id" uuid NOT NULL,
+	"no_of_visitors" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "complimentary_passes" (
@@ -279,6 +299,20 @@ CREATE TABLE "references" (
 	"is_deleted" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "scanner_invoice" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"invoice_number" varchar(50) NOT NULL,
+	"scanner_invoice_status" "scanner_invoice_status" DEFAULT 'UNSCANNED' NOT NULL,
+	"scanned_by_staff_id" uuid,
+	"scanned_at" timestamp with time zone,
+	"deleted_at" timestamp with time zone,
+	"deleted_by" uuid,
+	"is_deleted" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "scanner_invoice_invoice_number_unique" UNIQUE("invoice_number")
 );
 --> statement-breakpoint
 CREATE TABLE "seat_booking_history" (
@@ -382,7 +416,6 @@ CREATE TABLE "ticket_scan_logs" (
 --> statement-breakpoint
 CREATE TABLE "transactions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"transaction_number" varchar(50) NOT NULL,
 	"booking_id" uuid NOT NULL,
 	"invoice_number" varchar(50),
 	"amount" numeric(12, 2) NOT NULL,
@@ -392,8 +425,7 @@ CREATE TABLE "transactions" (
 	"deleted_by" uuid,
 	"is_deleted" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "transactions_transaction_number_unique" UNIQUE("transaction_number")
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "users" (
@@ -407,6 +439,10 @@ CREATE TABLE "users" (
 	"role" "user_role" DEFAULT 'STAFF' NOT NULL,
 	"status" "user_status" DEFAULT 'ACTIVE' NOT NULL,
 	"phone" varchar(20),
+	"gst" varchar(15),
+	"cin" varchar(21),
+	"profile_link" text,
+	"invoice_number_for_user_initial_part" varchar(11),
 	"last_login_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -415,6 +451,7 @@ CREATE TABLE "users" (
 --> statement-breakpoint
 ALTER TABLE "admin_system_module_permissions" ADD CONSTRAINT "admin_system_module_permissions_admin_id_users_id_fk" FOREIGN KEY ("admin_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "admin_system_module_permissions" ADD CONSTRAINT "admin_system_module_permissions_module_id_system_modules_id_fk" FOREIGN KEY ("module_id") REFERENCES "public"."system_modules"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "attraction_category" ADD CONSTRAINT "attraction_category_attraction_management_id_attraction_management_id_fk" FOREIGN KEY ("attraction_management_id") REFERENCES "public"."attraction_management"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "attraction_daily_capacities" ADD CONSTRAINT "attraction_daily_capacities_attraction_id_attractions_id_fk" FOREIGN KEY ("attraction_id") REFERENCES "public"."attractions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "attraction_inventory" ADD CONSTRAINT "attraction_inventory_attraction_id_attractions_id_fk" FOREIGN KEY ("attraction_id") REFERENCES "public"."attractions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "attraction_inventory_slots" ADD CONSTRAINT "attraction_inventory_slots_inventory_id_attraction_inventory_id_fk" FOREIGN KEY ("inventory_id") REFERENCES "public"."attraction_inventory"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -429,6 +466,8 @@ ALTER TABLE "attraction_seats" ADD CONSTRAINT "attraction_seats_seat_layout_id_s
 ALTER TABLE "attraction_slot_capacities" ADD CONSTRAINT "attraction_slot_capacities_time_slot_id_attraction_time_slots_id_fk" FOREIGN KEY ("time_slot_id") REFERENCES "public"."attraction_time_slots"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "attraction_time_slots" ADD CONSTRAINT "attraction_time_slots_attraction_id_attractions_id_fk" FOREIGN KEY ("attraction_id") REFERENCES "public"."attractions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "attractions" ADD CONSTRAINT "attractions_admin_id_users_id_fk" FOREIGN KEY ("admin_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "attractions_against_booking" ADD CONSTRAINT "attractions_against_booking_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "attractions_against_booking" ADD CONSTRAINT "attractions_against_booking_attraction_management_id_attraction_management_id_fk" FOREIGN KEY ("attraction_management_id") REFERENCES "public"."attraction_management"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "booking_checkins" ADD CONSTRAINT "booking_checkins_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "booking_checkins" ADD CONSTRAINT "booking_checkins_checked_in_by_users_id_fk" FOREIGN KEY ("checked_in_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -437,9 +476,11 @@ ALTER TABLE "booking_items" ADD CONSTRAINT "booking_items_attraction_id_attracti
 ALTER TABLE "booking_items" ADD CONSTRAINT "booking_items_time_slot_id_attraction_time_slots_id_fk" FOREIGN KEY ("time_slot_id") REFERENCES "public"."attraction_time_slots"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "booking_seats" ADD CONSTRAINT "booking_seats_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "booking_seats" ADD CONSTRAINT "booking_seats_time_slot_id_attraction_time_slots_id_fk" FOREIGN KEY ("time_slot_id") REFERENCES "public"."attraction_time_slots"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "bookings" ADD CONSTRAINT "bookings_attraction_id_attractions_id_fk" FOREIGN KEY ("attraction_id") REFERENCES "public"."attractions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_deleted_by_users_id_fk" FOREIGN KEY ("deleted_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "category_of_attraction_against_booking" ADD CONSTRAINT "category_of_attraction_against_booking_attraction_against_booking_id_attractions_against_booking_id_fk" FOREIGN KEY ("attraction_against_booking_id") REFERENCES "public"."attractions_against_booking"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "category_of_attraction_against_booking" ADD CONSTRAINT "category_of_attraction_against_booking_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "category_of_attraction_against_booking" ADD CONSTRAINT "category_of_attraction_against_booking_category_id_attraction_category_id_fk" FOREIGN KEY ("category_id") REFERENCES "public"."attraction_category"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "complimentary_passes" ADD CONSTRAINT "complimentary_passes_admin_id_users_id_fk" FOREIGN KEY ("admin_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "complimentary_passes" ADD CONSTRAINT "complimentary_passes_attraction_id_attractions_id_fk" FOREIGN KEY ("attraction_id") REFERENCES "public"."attractions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "complimentary_passes" ADD CONSTRAINT "complimentary_passes_reference_id_references_id_fk" FOREIGN KEY ("reference_id") REFERENCES "public"."references"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -455,6 +496,8 @@ ALTER TABLE "manager_system_module_permissions" ADD CONSTRAINT "manager_system_m
 ALTER TABLE "password_reset_tokens" ADD CONSTRAINT "password_reset_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "references" ADD CONSTRAINT "references_admin_id_users_id_fk" FOREIGN KEY ("admin_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "references" ADD CONSTRAINT "references_deleted_by_users_id_fk" FOREIGN KEY ("deleted_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "scanner_invoice" ADD CONSTRAINT "scanner_invoice_scanned_by_staff_id_users_id_fk" FOREIGN KEY ("scanned_by_staff_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "scanner_invoice" ADD CONSTRAINT "scanner_invoice_deleted_by_users_id_fk" FOREIGN KEY ("deleted_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "seat_booking_history" ADD CONSTRAINT "seat_booking_history_attraction_id_attractions_id_fk" FOREIGN KEY ("attraction_id") REFERENCES "public"."attractions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "seat_booking_history" ADD CONSTRAINT "seat_booking_history_attraction_seat_id_attraction_seats_id_fk" FOREIGN KEY ("attraction_seat_id") REFERENCES "public"."attraction_seats"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "seat_layout_seats" ADD CONSTRAINT "seat_layout_seats_seat_layout_id_seat_layouts_id_fk" FOREIGN KEY ("seat_layout_id") REFERENCES "public"."seat_layouts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -491,6 +534,8 @@ CREATE UNIQUE INDEX "attraction_time_slots_attraction_slot_unique" ON "attractio
 CREATE UNIQUE INDEX "attractions_name_unique_idx" ON "attractions" USING btree ("name");--> statement-breakpoint
 CREATE INDEX "attractions_admin_idx" ON "attractions" USING btree ("admin_id");--> statement-breakpoint
 CREATE INDEX "attractions_status_idx" ON "attractions" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "attractions_against_booking_booking_id_idx" ON "attractions_against_booking" USING btree ("booking_id");--> statement-breakpoint
+CREATE INDEX "attractions_against_booking_attraction_management_id_idx" ON "attractions_against_booking" USING btree ("attraction_management_id");--> statement-breakpoint
 CREATE INDEX "audit_user_idx" ON "audit_logs" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "audit_created_idx" ON "audit_logs" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "booking_checkins_booking_idx" ON "booking_checkins" USING btree ("booking_id");--> statement-breakpoint
@@ -500,12 +545,10 @@ CREATE INDEX "booking_items_booking_idx" ON "booking_items" USING btree ("bookin
 CREATE INDEX "booking_seats_booking_idx" ON "booking_seats" USING btree ("booking_id");--> statement-breakpoint
 CREATE INDEX "booking_seats_slot_date_idx" ON "booking_seats" USING btree ("time_slot_id","visit_date");--> statement-breakpoint
 CREATE UNIQUE INDEX "booking_seats_slot_date_seat_unique" ON "booking_seats" USING btree ("time_slot_id","visit_date","bogie","seat_number");--> statement-breakpoint
-CREATE INDEX "bookings_booking_number_idx" ON "bookings" USING btree ("booking_number");--> statement-breakpoint
-CREATE INDEX "bookings_customer_name_idx" ON "bookings" USING btree ("customer_name");--> statement-breakpoint
-CREATE INDEX "bookings_mobile_idx" ON "bookings" USING btree ("mobile_number");--> statement-breakpoint
-CREATE INDEX "bookings_attraction_idx" ON "bookings" USING btree ("attraction_id");--> statement-breakpoint
-CREATE INDEX "bookings_visit_at_idx" ON "bookings" USING btree ("visit_at");--> statement-breakpoint
-CREATE INDEX "bookings_status_idx" ON "bookings" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "bookings_invoice_number_idx" ON "bookings" USING btree ("invoice_number");--> statement-breakpoint
+CREATE INDEX "category_attraction_against_booking_attraction_against_booking_id_idx" ON "category_of_attraction_against_booking" USING btree ("attraction_against_booking_id");--> statement-breakpoint
+CREATE INDEX "category_attraction_against_booking_booking_id_idx" ON "category_of_attraction_against_booking" USING btree ("booking_id");--> statement-breakpoint
+CREATE INDEX "category_attraction_against_booking_category_id_idx" ON "category_of_attraction_against_booking" USING btree ("category_id");--> statement-breakpoint
 CREATE INDEX "complimentary_pass_admin_idx" ON "complimentary_passes" USING btree ("admin_id");--> statement-breakpoint
 CREATE INDEX "complimentary_pass_attraction_idx" ON "complimentary_passes" USING btree ("attraction_id");--> statement-breakpoint
 CREATE INDEX "complimentary_pass_reference_idx" ON "complimentary_passes" USING btree ("reference_id");--> statement-breakpoint
@@ -530,6 +573,8 @@ CREATE INDEX "password_reset_token_idx" ON "password_reset_tokens" USING btree (
 CREATE INDEX "references_admin_idx" ON "references" USING btree ("admin_id");--> statement-breakpoint
 CREATE INDEX "references_mobile_idx" ON "references" USING btree ("mobile");--> statement-breakpoint
 CREATE INDEX "references_deleted_idx" ON "references" USING btree ("is_deleted");--> statement-breakpoint
+CREATE INDEX "scanner_invoices_invoice_number_idx" ON "scanner_invoice" USING btree ("invoice_number");--> statement-breakpoint
+CREATE INDEX "scanner_invoices_scanned_by_staff_idx" ON "scanner_invoice" USING btree ("scanned_by_staff_id");--> statement-breakpoint
 CREATE INDEX "seat_booking_history_attraction_idx" ON "seat_booking_history" USING btree ("attraction_id");--> statement-breakpoint
 CREATE INDEX "seat_booking_history_trip_idx" ON "seat_booking_history" USING btree ("trip_no");--> statement-breakpoint
 CREATE INDEX "seat_booking_history_attraction_seat_idx" ON "seat_booking_history" USING btree ("attraction_seat_id");--> statement-breakpoint
@@ -556,12 +601,7 @@ CREATE INDEX "ticket_scan_logs_scanned_code_idx" ON "ticket_scan_logs" USING btr
 CREATE INDEX "ticket_scan_logs_scanned_by_idx" ON "ticket_scan_logs" USING btree ("scanned_by");--> statement-breakpoint
 CREATE INDEX "ticket_scan_logs_scanned_at_idx" ON "ticket_scan_logs" USING btree ("scanned_at");--> statement-breakpoint
 CREATE INDEX "ticket_scan_logs_verdict_idx" ON "ticket_scan_logs" USING btree ("verdict");--> statement-breakpoint
-CREATE INDEX "transactions_transaction_number_idx" ON "transactions" USING btree ("transaction_number");--> statement-breakpoint
 CREATE INDEX "transactions_booking_idx" ON "transactions" USING btree ("booking_id");--> statement-breakpoint
-CREATE INDEX "transactions_payment_mode_idx" ON "transactions" USING btree ("payment_mode");--> statement-breakpoint
-CREATE INDEX "transactions_status_idx" ON "transactions" USING btree ("status");--> statement-breakpoint
-CREATE INDEX "transactions_created_at_idx" ON "transactions" USING btree ("created_at");--> statement-breakpoint
-CREATE INDEX "transactions_deleted_at_idx" ON "transactions" USING btree ("deleted_at");--> statement-breakpoint
 CREATE INDEX "users_email_idx" ON "users" USING btree ("email");--> statement-breakpoint
 CREATE INDEX "users_role_idx" ON "users" USING btree ("role");--> statement-breakpoint
 CREATE INDEX "users_admin_idx" ON "users" USING btree ("admin_id");

@@ -4,7 +4,11 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/db";
 
-import { attractions, attractionManagement } from "@/db/schema";
+import {
+  attractions,
+  attractionManagement,
+  attractionCategory,
+} from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
 
@@ -58,16 +62,12 @@ export async function GET(request: NextRequest) {
         status: attractions.status,
         image: attractionManagement.image,
 
-        adultPrice: attractionManagement.adultPrice,
-        childPrice: attractionManagement.childPrice,
-        studentPrice: attractionManagement.studentPrice,
-        seniorPrice: attractionManagement.seniorPrice,
-        foreignerPrice: attractionManagement.foreignerPrice,
-
         hasSeating: attractionManagement.hasSeating,
         seatLayoutId: attractionManagement.seatLayoutId,
         duration: attractionManagement.duration,
         durationUnit: attractionManagement.durationUnit,
+
+        managementId: attractionManagement.id,
       })
       .from(attractions)
       .innerJoin(
@@ -77,50 +77,152 @@ export async function GET(request: NextRequest) {
       .where(and(...conditions));
 
     // ---------------------------------------------
+    // FETCH DYNAMIC CATEGORIES / PRICING
+    // ---------------------------------------------
+
+    const managementIds = rows.map(
+      (row) => row.managementId,
+    );
+
+    const categoryRows =
+      managementIds.length > 0
+        ? await db
+            .select({
+              id: attractionCategory.id,
+              attractionManagementId:
+                attractionCategory.attractionManagementId,
+              name: attractionCategory.name,
+              basePrice: attractionCategory.basePrice,
+              futurePrice: attractionCategory.futurePrice,
+              effectiveFrom:
+                attractionCategory.effectiveFrom,
+              noOfSeats: attractionCategory.noOfSeats,
+              imageLink: attractionCategory.imageLink,
+            })
+            .from(attractionCategory)
+            .where(
+              inArray(
+                attractionCategory.attractionManagementId,
+                managementIds,
+              ),
+            )
+        : [];
+
+    // ---------------------------------------------
+    // GROUP CATEGORIES BY MANAGEMENT ID
+    // ---------------------------------------------
+
+    const categoriesByManagement = new Map<
+      string,
+      typeof categoryRows
+    >();
+
+    for (const category of categoryRows) {
+      const existing =
+        categoriesByManagement.get(
+          category.attractionManagementId,
+        ) ?? [];
+
+        existing.push(category);
+
+      categoriesByManagement.set(
+        category.attractionManagementId,
+        existing,
+      );
+    }
+
+    // ---------------------------------------------
     // RESPONSE
     // ---------------------------------------------
 
-    const items = rows.map((row) => ({
-      id: row.id,
+    const items = rows.map((row) => {
+      const categories =
+        categoriesByManagement.get(
+          row.managementId,
+        ) ?? [];
 
-      name: row.name,
+      return {
+        id: row.id,
 
-      category: row.category,
-      status: row.status,
+        attractionManagementId: row.managementId,
 
-      image: row.image,
+        managementId: row.managementId,
 
-      pricing: {
-        adult: Number(row.adultPrice),
-        child: Number(row.childPrice),
-        student: Number(row.studentPrice),
-        senior: Number(row.seniorPrice),
-        foreigner: Number(row.foreignerPrice),
-      },
+        name: row.name,
 
-      hasSeating: row.hasSeating,
+        category: row.category,
 
-      seatLayoutId: row.seatLayoutId,
+        status: row.status,
 
-      duration: row.duration,
-      durationUnit: row.durationUnit,
-    }));
+        image: row.image,
+
+        categories: categories.map((category) => ({
+          id: category.id,
+
+          attractionManagementId: category.attractionManagementId,
+
+          name: category.name,
+
+          basePrice: Number(category.basePrice),
+
+          futurePrice:
+            category.futurePrice !== null
+              ? Number(category.futurePrice)
+              : null,
+
+          effectiveFrom:
+            category.effectiveFrom,
+
+          noOfSeats: category.noOfSeats,
+
+          imageLink: category.imageLink,
+        })),
+
+        hasSeating: row.hasSeating,
+
+        seatLayoutId: row.seatLayoutId,
+
+        duration: row.duration,
+
+        durationUnit: row.durationUnit,
+      };
+    });
 
     return success({
       items,
     });
   } catch (error) {
-    console.error("Get ticketing booking attractions error:", error);
+    console.error(
+      "Get ticketing booking attractions error:",
+      error,
+    );
 
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return failure("Authentication required.", 401, "UNAUTHORIZED");
+    if (
+      error instanceof Error &&
+      error.message === "UNAUTHORIZED"
+    ) {
+      return failure(
+        "Authentication required.",
+        401,
+        "UNAUTHORIZED",
+      );
     }
 
-    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
-      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+    if (
+      error instanceof Error &&
+      error.message === "ACCOUNT_NOT_ACTIVE"
+    ) {
+      return failure(
+        "Account is not active.",
+        403,
+        "ACCOUNT_NOT_ACTIVE",
+      );
     }
 
-    if (error instanceof Error && error.message === "FORBIDDEN") {
+    if (
+      error instanceof Error &&
+      error.message === "FORBIDDEN"
+    ) {
       return failure(
         "You do not have permission to access ticketing.",
         403,
@@ -128,7 +230,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
+    if (
+      error instanceof Error &&
+      error.message === "USER_HAS_NO_ADMIN"
+    ) {
       return failure(
         "User is not associated with an admin.",
         403,

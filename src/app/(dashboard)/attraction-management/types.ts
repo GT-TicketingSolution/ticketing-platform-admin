@@ -83,6 +83,22 @@ export type AttractionTimeSlotPayloadItem = {
   isActive: boolean;
 };
 
+export interface AttractionCategoryPayloadItem {
+  name: string;
+  basePrice: number;
+  futurePrice?: number | null;
+  effectiveFrom?: string | null;
+  noOfSeats: number;
+  imageLink?: string | null;
+}
+
+export interface AttractionSeatLayoutPayloadItem {
+  id: string;
+  name: string;
+  status: string;
+  position: number;
+}
+
 // ── Create payload ───────────────────────────────────────────────────────────
 export interface CreateAttractionPayload {
   name: string;
@@ -92,18 +108,19 @@ export interface CreateAttractionPayload {
   timing?: string | null;
   duration?: string | number | null;
   durationUnit?: string | null;
+  categories?: AttractionCategoryPayloadItem[];
+  hasSeating?: boolean;
+  seatLayoutIds?: string[] | AttractionSeatLayoutPayloadItem[];
   adultPrice?: number;
   childPrice?: number;
   studentPrice?: number;
   seniorPrice?: number;
   foreignerPrice?: number;
-  adultSeats: number;
-  childSeats: number;
-  studentSeats: number;
-  seniorSeats: number;
-  foreignerSeats: number;
-  hasSeating?: boolean;
-  seatLayoutIds?: string[] | Array<{ id: string; name: string; status: string; position: number }>;
+  adultSeats?: number;
+  childSeats?: number;
+  studentSeats?: number;
+  seniorSeats?: number;
+  foreignerSeats?: number;
   /** Optional — omit to leave slots untouched / empty on create */
   timeSlots?: AttractionTimeSlotPayloadItem[];
 }
@@ -117,6 +134,9 @@ export interface UpdateAttractionPayload {
   timing?: string | null;
   duration?: string | number | null;
   durationUnit?: string | null;
+  categories?: AttractionCategoryPayloadItem[];
+  hasSeating?: boolean;
+  seatLayoutIds?: string[] | AttractionSeatLayoutPayloadItem[];
   adultPrice?: number;
   childPrice?: number;
   studentPrice?: number;
@@ -127,8 +147,6 @@ export interface UpdateAttractionPayload {
   studentSeats?: number;
   seniorSeats?: number;
   foreignerSeats?: number;
-  hasSeating?: boolean;
-  seatLayoutIds?: string[] | Array<{ id: string; name: string; status: string; position: number }>;
   /** Optional — omit to leave existing slots untouched */
   timeSlots?: AttractionTimeSlotPayloadItem[];
 }

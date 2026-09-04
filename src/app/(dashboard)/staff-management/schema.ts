@@ -24,6 +24,20 @@ export const staffSchema = z.object({
     .array(z.string())
     .min(1, "Please select at least one attraction"),
   status: z.enum(["Active", "Inactive", "ACTIVE", "INACTIVE"] as const),
+  /** Optional: whether this staff can view reports */
+  canViewReports: z.boolean().optional(),
+  /** Optional: how many hours this staff can access reports (positive integer) */
+  reportViewDurationHours: z
+    .preprocess((val) => {
+      if (val === "" || val === null || val === undefined) return undefined;
+      const parsed = Number(val);
+      return isNaN(parsed) ? val : parsed;
+    }, z.number({ message: "Duration must be a valid number" })
+        .int("Duration must be a whole number")
+        .positive("Duration must be greater than 0")
+        .optional()
+        .nullable()
+    ),
 });
 
 export type StaffFormData = z.infer<typeof staffSchema>;

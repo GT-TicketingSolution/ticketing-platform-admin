@@ -10,10 +10,17 @@ export interface UserProfile {
   id: string;
   name: string;
   email: string;
-  phone: string | null;
   role: string;
   status: string;
+  phone: string | null;
   businessName: string | null;
+  gst?: string | null;
+  cin?: string | null;
+  profileLink?: string | null;
+  invoiceNumberForUsersInitialPart?: string | null;
+  lastLoginAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface ProfileResponse {
@@ -25,8 +32,11 @@ export interface UpdateProfileRequest {
   email: string;
   phone?: string;
   businessName?: string;
+  gst?: string;
+  cin?: string;
+  profileLink?: string;
+  invoiceNumberForUsersInitialPart?: string;
 }
-
 
 export interface UpdateProfileResponse {
   message: string;
@@ -103,6 +113,9 @@ export function useLoginMutation() {
           rawRole === "STAFF" ? "Staff" : rawRole === "MANAGER" ? "Manager" : "Admin";
         if (typeof window !== "undefined") {
           sessionStorage.setItem("userRole", formattedRole);
+          if ((data?.user as any)?.staffRoles) {
+            sessionStorage.setItem("staffRoles", JSON.stringify((data.user as any).staffRoles));
+          }
           window.dispatchEvent(new Event("ticketing_user_role_changed"));
         }
       }
@@ -288,6 +301,9 @@ export function useProfileQuery(enabled = true) {
     // Never run when logout is in progress — prevents the profile API from
     // being called after the user clicks logout but before the page unloads.
     enabled: enabled && !_isLoggingOut,
-    staleTime: 5 * 60 * 1000,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
   });
 }

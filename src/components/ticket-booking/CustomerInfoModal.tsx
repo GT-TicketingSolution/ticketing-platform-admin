@@ -26,7 +26,7 @@ import AddNewCustomerModal, { NewCustomer } from "./AddNewCustomerModal";
 export interface BookingSummaryItem {
   attractionId?: string;
   attractionName: string;
-  passengers: { label: string; qty: number }[];
+  passengers: { label: string; qty: number; noOfSeats?: number | null }[];
   totalAmount: number;
 }
 
@@ -423,21 +423,30 @@ function ProcessPaymentModal({
   );
 }
 
-// ── Isolated Iframe Receipt Printer (Clean 1-page thermal/ticket output) ──
-function printReceiptViaIframe(elementId: string, onDone?: () => void) {
+// ── QZ Tray-first Receipt Printer ──
+// Tries QZ Tray (silent, no dialog) first; falls back to iframe print if QZ Tray is not running.
+async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
   if (typeof window === "undefined") return;
   const element = document.getElementById(elementId);
-  if (!element) {
-    window.print();
-    onDone?.();
-    return;
+  if (!element) { onDone?.(); return; }
+
+  const innerHtml = element.innerHTML;
+
+  // ── Try QZ Tray first (silent, no dialog) ──
+  try {
+    const { printViaQZ } = await import("@/lib/qzPrint");
+    const success = await printViaQZ(innerHtml);
+    if (success) {
+      onDone?.();
+      return;
+    }
+  } catch (_) {
+    // QZ Tray not available, fall through to iframe
   }
 
-  // Remove existing print iframe if any
+  // ── Fallback: iframe print (browser dialog will appear) ──
   const oldIframe = document.getElementById("print-receipt-iframe");
-  if (oldIframe) {
-    oldIframe.remove();
-  }
+  if (oldIframe) oldIframe.remove();
 
   const iframe = document.createElement("iframe");
   iframe.id = "print-receipt-iframe";
@@ -451,86 +460,57 @@ function printReceiptViaIframe(elementId: string, onDone?: () => void) {
   document.body.appendChild(iframe);
 
   const doc = iframe.contentWindow?.document || iframe.contentDocument;
-  if (!doc) {
-    window.print();
-    onDone?.();
-    return;
-  }
+  if (!doc) { onDone?.(); return; }
 
   doc.open();
-  doc.write(`
-    <!DOCTYPE html>
+  doc.write(`<!DOCTYPE html>
     <html>
       <head>
         <title>Ticket Bill</title>
         <meta charset="utf-8" />
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800;900&display=swap" rel="stylesheet">
         <style>
-          @page {
-            size: auto;
-            margin: 0;
-          }
-          * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-          }
+          @page { size: 80mm auto; margin: 0; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
           body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Courier New', Courier, monospace;
+            font-family: 'Courier New', Courier, monospace;
             color: #000000;
             background: #FFFFFF;
-            width: 80mm;
-            max-width: 80mm;
+            width: 76mm;
+            max-width: 78mm;
             margin: 0 auto;
-            padding: 2mm 1.5mm;
+            padding: 2mm 1mm;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            font-weight: 700;
+            font-weight: 600;
+            font-size: 12px;
+            line-height: 1.35;
           }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-          }
-          img {
-            max-width: 100%;
-            height: auto;
-          }
+          table { width: 100%; border-collapse: collapse; }
+          img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
         </style>
       </head>
-      <body>
-        ${element.innerHTML}
-      </body>
-    </html>
-  `);
+      <body>${innerHtml}</body>
+    </html>`);
   doc.close();
 
   let hasDone = false;
-  const finish = () => {
-    if (!hasDone) {
-      hasDone = true;
-      onDone?.();
-    }
-  };
+  const finish = () => { if (!hasDone) { hasDone = true; onDone?.(); } };
 
   setTimeout(() => {
     try {
       if (iframe.contentWindow) {
-        iframe.contentWindow.onafterprint = () => {
-          finish();
-        };
+        iframe.contentWindow.onafterprint = () => finish();
       }
       iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
       setTimeout(finish, 600);
     } catch (err) {
       console.error("Iframe print error:", err);
-      window.print();
       finish();
     }
   }, 250);
 }
+
 
 // ── Ticket Generated Modal (Thermal Receipt Layout) ──
 function TicketGeneratedModal({
@@ -587,10 +567,25 @@ function TicketGeneratedModal({
   gstAmount?: number;
   roundOff?: number;
 }) {
-  const booking = confirmedData?.booking;
-  const qrCodes = confirmedData?.qrCodes || [];
+  const booking = confirmedData?.booking || (confirmedData as any)?.data || (confirmedData as any);
+  const qrCodes: Array<{ attractionId?: string; qrCode: string; [key: string]: unknown }> =
+    confirmedData?.qrCodes || (confirmedData as any)?.data?.qrCodes || [];
 
-  const ticketNo = booking?.bookingNumber || "-";
+  const invoiceNum =
+    (booking as any)?.invoiceNumber ||
+    (confirmedData as any)?.data?.invoiceNumber ||
+    (confirmedData as any)?.invoiceNumber ||
+    (booking as any)?.transaction?.invoiceNumber ||
+    (confirmedData as any)?.data?.transaction?.invoiceNumber;
+
+  const ticketNo =
+    invoiceNum ||
+    booking?.bookingNumber ||
+    (confirmedData as any)?.data?.bookingNumber ||
+    (confirmedData as any)?.bookingNumber ||
+    (booking as any)?.bookingId ||
+    (confirmedData as any)?.data?.bookingId ||
+    "-";
   const finalTotal = booking?.totalAmount ? parseFloat(String(booking.totalAmount)) : grandTotal;
   const payMode = booking?.paymentMode || "CASH";
   const rawDate = booking?.visitAt || booking?.createdAt;
@@ -598,18 +593,18 @@ function TicketGeneratedModal({
 
   const formattedDate = dateObj && !isNaN(dateObj.getTime())
     ? dateObj.toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      })
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    })
     : "-";
 
   const formattedTime = dateObj && !isNaN(dateObj.getTime())
     ? dateObj.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      })
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    })
     : "-";
 
   const custName = (booking?.customerName || customerInfo.name || "").trim() || "Guest";
@@ -641,17 +636,17 @@ function TicketGeneratedModal({
 
   const handlePrint = () => {
     printReceiptViaIframe("printable-ticket-receipt", () => {
-      showToast("Ticket printed successfully", "success");
+      showToast("Ticket sent to printing machine", "success");
     });
   };
 
-  // Directly trigger automatic print as soon as ticket popup opens
+  // Automatically trigger printing as soon as ticket popup opens
   useEffect(() => {
     if (isOpen && typeof window !== "undefined" && !hasAutoPrintedRef.current) {
       hasAutoPrintedRef.current = true;
       const t = setTimeout(() => {
         handlePrint();
-      }, 300);
+      }, 350);
       return () => clearTimeout(t);
     }
     if (!isOpen) {
@@ -683,11 +678,11 @@ function TicketGeneratedModal({
         style={{
           background: "#FFFFFF",
           borderRadius: "20px",
-          width: "480px",
-          maxWidth: "96vw",
+          width: "440px",
+          maxWidth: "94vw",
           boxShadow: "0 24px 80px rgba(0,0,0,0.28)",
           fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-          padding: "24px 20px",
+          padding: "20px 16px",
           boxSizing: "border-box",
           position: "relative",
           maxHeight: "92vh",
@@ -742,7 +737,7 @@ function TicketGeneratedModal({
               background: "#FFFFFF",
               border: "1.5px solid #000000",
               borderRadius: "10px",
-              padding: "16px 14px",
+              padding: "14px 10px",
               fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Courier New', Courier, monospace",
               color: "#000000",
               fontSize: "12px",
@@ -1093,11 +1088,20 @@ function TicketGeneratedModalWithProfile(props: Parameters<typeof TicketGenerate
 
 // ── Bogie Seat Allocation Panel ────────────────────────────────────────────────
 function SeatAllocationPanel({ bookingSummary }: { bookingSummary: import("./CustomerInfoModal").BookingSummaryItem[] }) {
-  const totalPax = bookingSummary.reduce((s, b) => s + b.passengers.reduce((x, p) => x + p.qty, 0), 0);
+  const totalPax = bookingSummary.reduce((s, b) => s + b.passengers.reduce((x, p) => x + (p.qty || 0) * (p.noOfSeats && p.noOfSeats > 0 ? p.noOfSeats : 1), 0), 0);
   const paxList: { label: string; idx: number }[] = [];
   bookingSummary.forEach(b => {
     const cnt: Record<string, number> = {};
-    b.passengers.forEach(p => { if (p.qty > 0) { for (let i = 1; i <= p.qty; i++) { cnt[p.label] = (cnt[p.label] || 0) + 1; paxList.push({ label: p.label, idx: cnt[p.label] }); } } });
+    b.passengers.forEach(p => {
+      if (p.qty > 0) {
+        const seatsPerTicket = p.noOfSeats && p.noOfSeats > 0 ? p.noOfSeats : 1;
+        const totalSeats = p.qty * seatsPerTicket;
+        for (let i = 1; i <= totalSeats; i++) {
+          cnt[p.label] = (cnt[p.label] || 0) + 1;
+          paxList.push({ label: p.label, idx: cnt[p.label] });
+        }
+      }
+    });
   });
   const [layouts, setLayouts] = useState<{ id: string; name: string; rows: number; cols: number; hasAisle: boolean; aisleAfterCol: number }[]>([]);
   useEffect(() => { try { const r = localStorage.getItem(SEAT_STORAGE_KEY); if (r) setLayouts(JSON.parse(r)); } catch { } }, []);

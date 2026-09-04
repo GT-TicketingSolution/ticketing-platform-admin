@@ -13,17 +13,22 @@ import {
   sql,
 } from "drizzle-orm";
 
-import { z } from "zod";
-
 import { db } from "@/db";
 
-import { transactions, bookings, attractions } from "@/db/schema";
+import {
+  transactions,
+  bookings,
+  attractions,
+  attractionManagement,
+  attractionsAgainstBooking,
+  categoryOfAttractionAgainstBooking,
+  attractionCategory,
+} from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
 
 import {
   requireModuleAccess,
-  requireAttractionAccess,
   getAdminId,
   getAccessibleAttractionIds,
 } from "@/lib/auth/authorization";
@@ -149,50 +154,90 @@ export async function GET(request: NextRequest) {
     //
     // IMPORTANT:
     //
-    // We DO NOT join:
+    // bookings does NOT contain attractionId.
     //
-    // bookings.attractionId = attractions.id
+    // Attraction relationship:
     //
-    // because bookings.attractionId is uuid[].
+    // bookings
+    //    ↓
+    // attractionsAgainstBooking
+    //    ↓
+    // attractionManagement
+    //    ↓
+    // attractions
     // =====================================================
 
     const conditions = [
       isNull(transactions.deletedAt),
 
+      eq(transactions.isDeleted, false),
+
       isNull(bookings.deletedAt),
 
-      // Make sure booking belongs to this admin.
+      eq(bookings.isDeleted, false),
+
+      // ---------------------------------------------------
+      // Booking belongs to this admin through attraction.
+      // ---------------------------------------------------
+
       sql`EXISTS (
         SELECT 1
-        FROM ${attractions}
+        FROM ${attractionsAgainstBooking}
+        INNER JOIN ${attractionManagement}
+          ON ${attractionsAgainstBooking.attractionManagementId}
+          = ${attractionManagement.id}
+        INNER JOIN ${attractions}
+          ON ${attractionManagement.attractionId}
+          = ${attractions.id}
         WHERE
-          ${attractions.id} = ANY(${bookings.attractionId})
-          AND ${attractions.adminId} = ${adminId}
+          ${attractionsAgainstBooking.bookingId}
+          = ${bookings.id}
+
+          AND ${attractions.adminId}
+          = ${adminId}
       )`,
 
-      // Make sure booking contains at least one
-      // attraction accessible to this user.
+      // ---------------------------------------------------
+      // Booking contains an attraction accessible
+      // to the current user.
+      // ---------------------------------------------------
+
       sql`EXISTS (
         SELECT 1
-        FROM ${attractions}
+        FROM ${attractionsAgainstBooking}
+        INNER JOIN ${attractionManagement}
+          ON ${attractionsAgainstBooking.attractionManagementId}
+          = ${attractionManagement.id}
+        INNER JOIN ${attractions}
+          ON ${attractionManagement.attractionId}
+          = ${attractions.id}
         WHERE
-          ${attractions.id} = ANY(${bookings.attractionId})
+          ${attractionsAgainstBooking.bookingId}
+          = ${bookings.id}
+
           AND ${inArray(attractions.id, accessibleAttractionIds)}
       )`,
     ];
 
     // =====================================================
     // 9. ATTRACTION FILTER
-    //
-    // bookings.attractionId = uuid[]
-    //
-    // Check whether attraction UUID exists
-    // inside the array.
     // =====================================================
 
     if (attractionId) {
       conditions.push(
-        sql`${attractionId}::uuid = ANY(${bookings.attractionId})`,
+        sql`EXISTS (
+          SELECT 1
+          FROM ${attractionsAgainstBooking}
+          INNER JOIN ${attractionManagement}
+            ON ${attractionsAgainstBooking.attractionManagementId}
+            = ${attractionManagement.id}
+          WHERE
+            ${attractionsAgainstBooking.bookingId}
+            = ${bookings.id}
+
+            AND ${attractionManagement.attractionId}
+            = ${attractionId}::uuid
+        )`,
       );
     }
 
@@ -205,18 +250,30 @@ export async function GET(request: NextRequest) {
 
       conditions.push(
         or(
-          ilike(transactions.transactionNumber, searchValue),
-
-          ilike(bookings.bookingNumber, searchValue),
+          ilike(transactions.invoiceNumber, searchValue),
 
           ilike(bookings.customerName, searchValue),
 
+          ilike(bookings.mobileNumber, searchValue),
+
+          ilike(bookings.gstNumber, searchValue),
+
+          // Search attraction name.
           sql`EXISTS (
             SELECT 1
-            FROM ${attractions}
+            FROM ${attractionsAgainstBooking}
+            INNER JOIN ${attractionManagement}
+              ON ${attractionsAgainstBooking.attractionManagementId}
+              = ${attractionManagement.id}
+            INNER JOIN ${attractions}
+              ON ${attractionManagement.attractionId}
+              = ${attractions.id}
             WHERE
-              ${attractions.id} = ANY(${bookings.attractionId})
-              AND ${attractions.name} ILIKE ${searchValue}
+              ${attractionsAgainstBooking.bookingId}
+              = ${bookings.id}
+
+              AND ${attractions.name}
+              ILIKE ${searchValue}
           )`,
         )!,
       );
@@ -259,7 +316,9 @@ export async function GET(request: NextRequest) {
         return failure("Invalid fromDate.", 400, "INVALID_FROM_DATE");
       }
 
-      conditions.push(gte(transactions.createdAt, startDate));
+      conditions.push(
+        sql`(${transactions.createdAt} AT TIME ZONE 'Asia/Kolkata')::date >= ${fromDate}::date`,
+      );
     }
 
     // =====================================================
@@ -273,7 +332,9 @@ export async function GET(request: NextRequest) {
         return failure("Invalid toDate.", 400, "INVALID_TO_DATE");
       }
 
-      conditions.push(lte(transactions.createdAt, endDate));
+      conditions.push(
+        sql`(${transactions.createdAt} AT TIME ZONE 'Asia/Kolkata')::date <= ${toDate}::date`,
+      );
     }
 
     // =====================================================
@@ -284,8 +345,6 @@ export async function GET(request: NextRequest) {
 
     // =====================================================
     // 16. TOTAL COUNT
-    //
-    // NO ATTRACTION JOIN.
     // =====================================================
 
     const [{ count: totalCount }] = await db
@@ -300,32 +359,33 @@ export async function GET(request: NextRequest) {
 
     // =====================================================
     // 17. TRANSACTIONS
-    //
-    // IMPORTANT:
-    //
-    // Only transactions -> bookings is joined.
-    // Attractions are loaded separately.
     // =====================================================
 
     const transactionRows = await db
       .select({
         id: transactions.id,
 
-        transactionId: transactions.transactionNumber,
+        // Same invoice number as bookings.invoiceNumber.
+        invoiceNumber: transactions.invoiceNumber,
 
         customerName: bookings.customerName,
 
-        bookingId: bookings.bookingNumber,
+        mobileNumber: bookings.mobileNumber,
 
-        attractionIds: bookings.attractionId,
+        gstNumber: bookings.gstNumber,
 
-        amount: transactions.amount,
+        // Used internally for categories.
+        bookingId: bookings.id,
+
+        TotalAmount: transactions.amount,
 
         paymentMode: transactions.paymentMode,
 
         status: transactions.status,
 
-        transactionDate: transactions.createdAt,
+        // IMPORTANT:
+        // This is transactions.createdAt.
+        dateTime: transactions.createdAt,
       })
       .from(transactions)
       .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
@@ -335,104 +395,203 @@ export async function GET(request: NextRequest) {
       .offset(offset);
 
     // =====================================================
-    // 18. GET ALL ATTRACTION IDS
+    // 18. NO TRANSACTIONS
     // =====================================================
 
-    const allAttractionIds = Array.from(
-      new Set(
-        transactionRows.flatMap(
-          (transaction) => transaction.attractionIds || [],
-        ),
-      ),
+    if (transactionRows.length === 0) {
+      return success({
+        items: [],
+
+        attractions: attractionRows,
+
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+        },
+      });
+    }
+
+    // =====================================================
+    // 19. BOOKING IDS
+    // =====================================================
+
+    const bookingIds = Array.from(
+      new Set(transactionRows.map((transaction) => transaction.bookingId)),
     );
 
     // =====================================================
-    // 19. GET ATTRACTIONS
+    // 20. GET ATTRACTIONS FOR TRANSACTIONS
     // =====================================================
 
-    const transactionAttractions =
-      allAttractionIds.length > 0
-        ? await db
-            .select({
-              id: attractions.id,
-              name: attractions.name,
-            })
-            .from(attractions)
-            .where(
-              and(
-                eq(attractions.adminId, adminId),
+    const transactionAttractions = await db
+      .select({
+        bookingId: attractionsAgainstBooking.bookingId,
+        attractionId: attractions.id,
+        attractionName: attractions.name,
 
-                inArray(attractions.id, allAttractionIds),
-
-                inArray(attractions.id, accessibleAttractionIds),
-              ),
-            )
-        : [];
+        attractionSubtotal: attractionsAgainstBooking.attractionSubtotal,
+        attractionGst: attractionsAgainstBooking.attractionGst,
+        attractionRoundoff: attractionsAgainstBooking.attractionRoundoff,
+        attractionRoundOffGstAdj:
+          attractionsAgainstBooking.attractionRoundOffGstAdj,
+        attractionTotalAmount: attractionsAgainstBooking.attractionTotalAmount,
+      })
+      .from(attractionsAgainstBooking)
+      .innerJoin(
+        attractionManagement,
+        eq(
+          attractionsAgainstBooking.attractionManagementId,
+          attractionManagement.id,
+        ),
+      )
+      .innerJoin(
+        attractions,
+        eq(attractionManagement.attractionId, attractions.id),
+      )
+      .where(
+        and(
+          inArray(attractionsAgainstBooking.bookingId, bookingIds),
+          eq(attractions.adminId, adminId),
+          inArray(attractions.id, accessibleAttractionIds),
+        ),
+      );
 
     // =====================================================
-    // 20. ATTRACTION MAP
+    // 21. ATTRACTION MAP
     // =====================================================
 
     const attractionMap = new Map<
       string,
-      {
+      Array<{
         id: string;
         name: string;
-      }
+        attractionSubtotal: number;
+        attractionGst: number;
+        attractionRoundoff: number;
+        attractionRoundOffGstAdj: number;
+        attractionTotalAmount: number;
+      }>
     >();
 
-    for (const attraction of transactionAttractions) {
-      attractionMap.set(attraction.id, attraction);
+    for (const row of transactionAttractions) {
+      if (!attractionMap.has(row.bookingId)) {
+        attractionMap.set(row.bookingId, []);
+      }
+
+      const list = attractionMap.get(row.bookingId)!;
+
+      list.push({
+        id: row.attractionId,
+        name: row.attractionName,
+        attractionSubtotal: Number(row.attractionSubtotal || 0),
+        attractionGst: Number(row.attractionGst || 0),
+        attractionRoundoff: Number(row.attractionRoundoff || 0),
+        attractionRoundOffGstAdj: Number(row.attractionRoundOffGstAdj || 0),
+        attractionTotalAmount: Number(row.attractionTotalAmount || 0),
+      });
     }
 
     // =====================================================
-    // 21. RESPONSE ITEMS
+    // 22. GET CATEGORY DETAILS
     // =====================================================
 
-    const items = transactionRows.map((transaction) => {
-      const transactionAttractionList = (transaction.attractionIds || [])
-        .map((id) => attractionMap.get(id))
-        .filter(
-          (
-            attraction,
-          ): attraction is {
-            id: string;
-            name: string;
-          } => Boolean(attraction),
-        );
+    const categoryRows = await db
+      .select({
+        bookingId: categoryOfAttractionAgainstBooking.bookingId,
+
+        categoryId: categoryOfAttractionAgainstBooking.categoryId,
+
+        categoryName: attractionCategory.name,
+
+        noOfSeats: attractionCategory.noOfSeats,
+      })
+      .from(categoryOfAttractionAgainstBooking)
+      .innerJoin(
+        attractionCategory,
+        eq(
+          categoryOfAttractionAgainstBooking.categoryId,
+          attractionCategory.id,
+        ),
+      )
+      .where(inArray(categoryOfAttractionAgainstBooking.bookingId, bookingIds));
+
+    // =====================================================
+    // 23. CATEGORY MAP
+    // =====================================================
+
+    const categoryMap = new Map<
+      string,
+      Array<{
+        id: string;
+        name: string;
+        noOfSeats: number;
+      }>
+    >();
+
+    for (const row of categoryRows) {
+      if (!categoryMap.has(row.bookingId)) {
+        categoryMap.set(row.bookingId, []);
+      }
+
+      categoryMap.get(row.bookingId)!.push({
+        id: row.categoryId,
+
+        name: row.categoryName,
+
+        noOfSeats: Number(row.noOfSeats || 0),
+      });
+    }
+
+    // =====================================================
+    // 24. RESPONSE ITEMS
+    // =====================================================
+
+    const items = transactionRows.map((transaction, index) => {
+      const transactionAttractionList =
+        attractionMap.get(transaction.bookingId) || [];
+
+      const categories = categoryMap.get(transaction.bookingId) || [];
+
+      const sNo = offset + index + 1;
 
       return {
+        // Transaction UUID
         id: transaction.id,
 
-        transactionId: transaction.transactionId,
+        // Actual invoice number from transactions table
+        invoiceNumber: transaction.invoiceNumber,
 
-        customerName: transaction.customerName,
+        customer: {
+          name: transaction.customerName,
+          mobileNumber: transaction.mobileNumber,
+          gstNumber: transaction.gstNumber,
+        },
 
-        transactionDate: transaction.transactionDate,
+        // transactions.createdAt
+        dateTime: transaction.dateTime,
 
-        bookingId: transaction.bookingId,
-
-        // Multiple attractions
         attractions: transactionAttractionList,
 
-        // Keep IDs too
-        attractionIds: transaction.attractionIds,
-
-        amount: Number(transaction.amount),
+        grandTotalAmount: Number(transaction.TotalAmount),
 
         paymentMode: transaction.paymentMode,
 
         status: transaction.status,
+
+        categories,
       };
     });
 
     // =====================================================
-    // 22. RESPONSE
+    // 25. RESPONSE
     // =====================================================
 
     return success({
       items,
 
+      // Attraction dropdown
       attractions: attractionRows,
 
       pagination: {
@@ -474,216 +633,6 @@ export async function GET(request: NextRequest) {
 
     return failure(
       "Unable to fetch transactions.",
-      500,
-      "INTERNAL_SERVER_ERROR",
-    );
-  }
-}
-
-// =====================================================
-// POST TRANSACTION
-// ADMIN + MANAGER + STAFF WITH ACCESS
-// =====================================================
-
-const createTransactionSchema = z.object({
-  bookingId: z.string().uuid("Invalid booking ID."),
-
-  amount: z.number().positive("Amount must be greater than 0."),
-
-  paymentMode: z.enum(["CASH", "UPI", "CARD", "ONLINE"]),
-
-  status: z
-    .enum(["SUCCESSFUL", "PENDING", "CANCELLED", "FAILED"])
-    .optional()
-    .default("SUCCESSFUL"),
-});
-
-export async function POST(request: NextRequest) {
-  try {
-    // =====================================================
-    // 1. AUTHENTICATION
-    // =====================================================
-
-    const auth = await requireAuth(request);
-
-    // =====================================================
-    // 2. MODULE AUTHORIZATION
-    // =====================================================
-
-    await requireModuleAccess(auth, "TRANSACTIONS");
-
-    // =====================================================
-    // 3. TENANT / ADMIN
-    // =====================================================
-
-    const adminId = getAdminId(auth);
-
-    // =====================================================
-    // 4. REQUEST BODY
-    // =====================================================
-
-    const body = await request.json();
-
-    const parsed = createTransactionSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return failure(
-        parsed.error.issues[0]?.message || "Invalid request data.",
-        400,
-        "VALIDATION_ERROR",
-      );
-    }
-
-    const data = parsed.data;
-
-    // =====================================================
-    // 5. FIND BOOKING
-    // =====================================================
-
-    const [booking] = await db
-      .select({
-        id: bookings.id,
-
-        bookingNumber: bookings.bookingNumber,
-
-        customerName: bookings.customerName,
-
-        attractionId: bookings.attractionId,
-
-        attractionName: attractions.name,
-      })
-      .from(bookings)
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
-      .where(
-        and(
-          eq(bookings.id, data.bookingId),
-
-          isNull(bookings.deletedAt),
-
-          eq(attractions.adminId, adminId),
-        ),
-      )
-      .limit(1);
-
-    if (!booking) {
-      return failure("Booking not found.", 404, "BOOKING_NOT_FOUND");
-    }
-
-    // =====================================================
-    // 6. ATTRACTION AUTHORIZATION
-    // =====================================================
-
-    try {
-      await requireAttractionAccess(auth, booking.attractionId[0]);
-    } catch (error) {
-      if (error instanceof Error && error.message === "FORBIDDEN") {
-        return failure(
-          "You do not have access to this attraction.",
-          403,
-          "ATTRACTION_ACCESS_DENIED",
-        );
-      }
-
-      throw error;
-    }
-
-    // =====================================================
-    // 7. GENERATE TRANSACTION NUMBER
-    // =====================================================
-
-    const transactionNumber = `TXN-${new Date().getFullYear()}-${crypto
-      .randomUUID()
-      .replace(/-/g, "")
-      .slice(0, 8)
-      .toUpperCase()}`;
-
-    // =====================================================
-    // 8. CREATE TRANSACTION
-    // =====================================================
-
-    const [transaction] = await db
-      .insert(transactions)
-      .values({
-        transactionNumber,
-
-        bookingId: data.bookingId,
-
-        amount: data.amount.toFixed(2),
-
-        paymentMode: data.paymentMode,
-
-        status: data.status,
-      })
-      .returning({
-        transactionNumber: transactions.transactionNumber,
-
-        bookingId: transactions.bookingId,
-
-        amount: transactions.amount,
-
-        paymentMode: transactions.paymentMode,
-
-        status: transactions.status,
-
-        createdAt: transactions.createdAt,
-      });
-
-    // =====================================================
-    // 9. RESPONSE
-    // =====================================================
-
-    return success(
-      {
-        transactionId: transaction.transactionNumber,
-
-        customerName: booking.customerName,
-
-        transactionDate: transaction.createdAt,
-
-        bookingId: booking.bookingNumber,
-
-        attraction: {
-          id: booking.attractionId,
-          name: booking.attractionName,
-        },
-
-        amount: Number(transaction.amount),
-
-        paymentMode: transaction.paymentMode,
-
-        status: transaction.status,
-      },
-      201,
-    );
-  } catch (error) {
-    console.error("Create transaction error:", error);
-
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return failure("Authentication required.", 401, "UNAUTHORIZED");
-    }
-
-    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
-      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
-    }
-
-    if (error instanceof Error && error.message === "FORBIDDEN") {
-      return failure(
-        "You do not have permission to create transactions.",
-        403,
-        "FORBIDDEN",
-      );
-    }
-
-    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
-      return failure(
-        "User is not associated with an admin.",
-        403,
-        "USER_HAS_NO_ADMIN",
-      );
-    }
-
-    return failure(
-      "Unable to create transaction.",
       500,
       "INTERNAL_SERVER_ERROR",
     );

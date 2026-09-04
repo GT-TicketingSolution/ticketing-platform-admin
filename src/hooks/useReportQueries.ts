@@ -92,9 +92,15 @@ export const reportKeys = {
 // ── Raw API Fetchers ───────────────────────────────────────────────────────────
 
 /** GET /api/admin/reports/summary */
-export function useReportSummary(fromDate?: string, toDate?: string, attractionId?: string) {
+export function useReportSummary(
+  fromDate?: string,
+  toDate?: string,
+  attractionId?: string,
+  options?: { enabled?: boolean }
+) {
   return useQuery<ReportSummaryResponse>({
     queryKey: reportKeys.summary(fromDate, toDate, attractionId),
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const sp = new URLSearchParams();
       if (fromDate) sp.set("fromDate", fromDate);
@@ -121,9 +127,14 @@ export function useReportSummary(fromDate?: string, toDate?: string, attractionI
 }
 
 /** GET /api/admin/reports/attractions (and alias /attraction) */
-export function useReportAttraction(fromDate?: string, toDate?: string) {
+export function useReportAttraction(
+  fromDate?: string,
+  toDate?: string,
+  options?: { enabled?: boolean }
+) {
   return useQuery<AttractionReportItem[]>({
     queryKey: reportKeys.attraction(fromDate, toDate),
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const sp = new URLSearchParams();
       if (fromDate) sp.set("fromDate", fromDate);
@@ -168,9 +179,10 @@ export function useReportAttraction(fromDate?: string, toDate?: string) {
 }
 
 /** GET /api/admin/reports/payment */
-export function useReportPayment() {
+export function useReportPayment(options?: { enabled?: boolean }) {
   return useQuery<PaymentDistributionItem[]>({
     queryKey: reportKeys.payment(),
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const res = await getData<any>(AppUrl.reports.payment);
       const payload = res?.data ?? res ?? {};
@@ -191,9 +203,10 @@ export function useReportPayment() {
 }
 
 /** GET /api/admin/reports/tickets */
-export function useReportTickets() {
+export function useReportTickets(options?: { enabled?: boolean }) {
   return useQuery<TicketBreakdownItem[]>({
     queryKey: reportKeys.tickets(),
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const res = await getData<any>(AppUrl.reports.tickets);
       const payload = res?.data ?? res ?? {};

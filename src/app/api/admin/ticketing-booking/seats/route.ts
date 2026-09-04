@@ -272,7 +272,6 @@ export async function GET(request: NextRequest) {
         seatNumber: bookingSeats.seatNumber,
         bookingId: bookingSeats.bookingId,
         bookingStatus: bookings.status,
-        paymentExpiresAt: bookings.paymentExpiresAt,
       })
       .from(bookingSeats)
       .innerJoin(bookings, eq(bookingSeats.bookingId, bookings.id))
@@ -303,19 +302,6 @@ export async function GET(request: NextRequest) {
 
       // PENDING booking:
       // only occupy/lock the seat while payment window is active.
-      if (status === "PENDING") {
-        if (
-          bookingSeat.paymentExpiresAt &&
-          new Date(bookingSeat.paymentExpiresAt) > now
-        ) {
-          occupiedSet.add(bookingSeat.seatNumber);
-        }
-
-        // If paymentExpiresAt has passed,
-        // do NOT add the seat.
-        // It becomes available.
-        continue;
-      }
 
       // CANCELLED / EXPIRED / FAILED
       // Do nothing -> seat remains available.

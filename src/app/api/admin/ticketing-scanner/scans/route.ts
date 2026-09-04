@@ -1,34 +1,7 @@
 import { NextRequest } from "next/server";
 
-import { and, desc, eq } from "drizzle-orm";
-
-import { db } from "@/db";
-
-import { ticketScanLogs, bookings, attractions } from "@/db/schema";
-
-import { requireAuth } from "@/lib/auth/require-auth";
-
-import {
-  requireModuleAccess,
-  requireAttractionAccess,
-  getAdminId,
-} from "@/lib/auth/authorization";
-
-import { success, failure } from "@/lib/api/response";
-
 export async function GET(request: NextRequest) {
   try {
-    // ---------------------------------------------
-    // AUTH
-    // ---------------------------------------------
-
-    const auth = await requireAuth(request);
-
-    // ADMIN / MANAGER / STAFF with BOOKINGS access
-    await requireModuleAccess(auth, "SCANNER");
-
-    const adminId = getAdminId(auth);
-
     // ---------------------------------------------
     // QUERY PARAMS
     // ---------------------------------------------
@@ -43,128 +16,193 @@ export async function GET(request: NextRequest) {
     );
 
     // ---------------------------------------------
-    // FETCH SCAN HISTORY
+    // MOCK SCAN HISTORY
     // ---------------------------------------------
 
-    const scans = await db
-      .select({
-        id: ticketScanLogs.id,
+    const mockScans = [
+      {
+        id: "scan-001",
 
-        ticketId: bookings.bookingNumber,
+        visitorName: "Rahul Sharma",
 
-        visitorName: bookings.customerName,
+        attraction: "Imagicaa Theme Park",
 
-        attractionId: attractions.id,
+        visitorsCount: 4,
 
-        attraction: attractions.name,
+        verdict: "ALLOWED",
 
-        visitorsCount: ticketScanLogs.visitorsCount,
+        reason: null,
 
-        verdict: ticketScanLogs.verdict,
+        timestamp: "2026-09-04T12:30:00.000Z",
 
-        reason: ticketScanLogs.reason,
+        scannedBy: "scanner-user-001",
+      },
 
-        scannedAt: ticketScanLogs.scannedAt,
+      {
+        id: "scan-002",
 
-        scannedBy: ticketScanLogs.scannedBy,
-      })
-      .from(ticketScanLogs)
+        visitorName: "Priya Patil",
 
-      .innerJoin(bookings, eq(ticketScanLogs.bookingId, bookings.id))
+        attraction: "Imagicaa Theme Park",
 
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
+        visitorsCount: 2,
 
-      .where(eq(attractions.adminId, adminId))
+        verdict: "DENIED",
 
-      .orderBy(desc(ticketScanLogs.scannedAt))
+        reason: "Date Mismatch / Expired Ticket",
 
-      .limit(limit);
+        timestamp: "2026-09-04T11:45:00.000Z",
+
+        scannedBy: "scanner-user-002",
+      },
+
+      {
+        id: "scan-003",
+
+        visitorName: "Amit Kulkarni",
+
+        attraction: "Water Kingdom",
+
+        visitorsCount: 3,
+
+        verdict: "ALLOWED",
+
+        reason: null,
+
+        timestamp: "2026-09-04T10:20:00.000Z",
+
+        scannedBy: "scanner-user-001",
+      },
+
+      {
+        id: "scan-004",
+
+        visitorName: "Sneha Joshi",
+
+        attraction: "Imagicaa Theme Park",
+
+        visitorsCount: 1,
+
+        verdict: "DENIED",
+
+        reason: "Already Used / Duplicate Entry Attempt",
+
+        timestamp: "2026-09-04T09:55:00.000Z",
+
+        scannedBy: "scanner-user-003",
+      },
+
+      {
+        id: "scan-005",
+
+        visitorName: "Vikas Mehta",
+
+        attraction: "Water Kingdom",
+
+        visitorsCount: 5,
+
+        verdict: "ALLOWED",
+
+        reason: null,
+
+        timestamp: "2026-09-04T09:30:00.000Z",
+
+        scannedBy: "scanner-user-002",
+      },
+
+      {
+        id: "scan-006",
+
+        visitorName: "Neha Shah",
+
+        attraction: "Imagicaa Theme Park",
+
+        visitorsCount: 2,
+
+        verdict: "DENIED",
+
+        reason: "Payment Disputed / Pending",
+
+        timestamp: "2026-09-04T09:10:00.000Z",
+
+        scannedBy: "scanner-user-001",
+      },
+
+      {
+        id: "scan-007",
+
+        visitorName: "Rohan Deshmukh",
+
+        attraction: "Imagicaa Theme Park",
+
+        visitorsCount: 4,
+
+        verdict: "ALLOWED",
+
+        reason: null,
+
+        timestamp: "2026-09-04T08:50:00.000Z",
+
+        scannedBy: "scanner-user-003",
+      },
+
+      {
+        id: "scan-008",
+
+        visitorName: "Karan Singh",
+
+        attraction: "Water Kingdom",
+
+        visitorsCount: 1,
+
+        verdict: "DENIED",
+
+        reason: "Unrecognized / Fake QR Code",
+
+        timestamp: "2026-09-04T08:35:00.000Z",
+
+        scannedBy: "scanner-user-002",
+      },
+    ];
 
     // ---------------------------------------------
-    // ATTRACTION ACCESS
+    // APPLY LIMIT
     // ---------------------------------------------
 
-    const accessibleScans = [];
-
-    for (const scan of scans) {
-      try {
-        await requireAttractionAccess(auth, scan.attractionId);
-
-        accessibleScans.push(scan);
-      } catch (error) {
-        if (error instanceof Error && error.message === "FORBIDDEN") {
-          continue;
-        }
-
-        throw error;
-      }
-    }
+    const scans = mockScans.slice(0, limit);
 
     // ---------------------------------------------
     // RESPONSE
     // ---------------------------------------------
 
-    return success({
-      scans: accessibleScans.map((scan) => ({
-        id: scan.id,
+    return Response.json(
+      {
+        success: true,
 
-        ticketId: scan.ticketId,
+        data: {
+          scans,
 
-        visitorName: scan.visitorName,
+          pagination: {
+            limit,
 
-        attraction: scan.attraction,
-
-        visitorsCount: scan.visitorsCount,
-
-        verdict: scan.verdict,
-
-        reason: scan.reason,
-
-        timestamp: scan.scannedAt,
-
-        scannedBy: scan.scannedBy,
-      })),
-
-      pagination: {
-        limit,
-        count: accessibleScans.length,
+            count: scans.length,
+          },
+        },
       },
-    });
+      { status: 200 },
+    );
   } catch (error) {
     console.error("Get ticket scanner history error:", error);
 
-    // ---------------------------------------------
-    // AUTH ERRORS
-    // ---------------------------------------------
+    return Response.json(
+      {
+        success: false,
 
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return failure("Authentication required.", 401, "UNAUTHORIZED");
-    }
+        message: "Unable to fetch scanner history.",
 
-    if (error instanceof Error && error.message === "ACCOUNT_NOT_ACTIVE") {
-      return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
-    }
-
-    if (error instanceof Error && error.message === "FORBIDDEN") {
-      return failure(
-        "You do not have permission to access scanner history.",
-        403,
-        "FORBIDDEN",
-      );
-    }
-
-    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
-      return failure(
-        "User is not associated with an admin.",
-        403,
-        "USER_HAS_NO_ADMIN",
-      );
-    }
-
-    return failure(
-      "Unable to fetch scanner history.",
-      500,
-      "INTERNAL_SERVER_ERROR",
+        code: "INTERNAL_SERVER_ERROR",
+      },
+      { status: 500 },
     );
   }
 }

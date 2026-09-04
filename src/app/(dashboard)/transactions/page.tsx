@@ -32,7 +32,6 @@ import {
   renderStatusBadgeHTML,
   fetchAllPages,
 } from "@/lib/exportUtils";
-import { useAttractions } from "@/hooks/useManagerQueries";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -127,19 +126,37 @@ export default function TransactionsPage() {
     toDate: toDate || undefined,
   };
 
-  const { data, isLoading, isError } = useTransactionList(queryParams);
-  const { data: attractionsData = [] } = useAttractions();
+  const { data, isLoading, isFetching, isError } = useTransactionList(queryParams);
   const deleteTransaction = useDeleteTransaction();
 
   const transactions = data?.items ?? [];
   const pagination = data?.pagination ?? { page: 1, limit: ITEMS_PER_PAGE, total: 0, totalPages: 0 };
 
+  // Accumulate unique attractions from transaction list responses so dropdown options remain stable
+  const [allAttractions, setAllAttractions] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    if (data?.attractions && data.attractions.length > 0) {
+      setAllAttractions((prev) => {
+        const map = new Map(prev.map((a) => [a.id, a.name]));
+        data.attractions!.forEach((a: any) => {
+          const id = a.id || a.attractionId;
+          if (id && a.name) {
+            map.set(id, a.name);
+          }
+        });
+        return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+      });
+    }
+  }, [data?.attractions]);
+
   const attractionOptions = useMemo(() => {
+    const list = allAttractions.length > 0 ? allAttractions : (data?.attractions || []);
     const unique = Array.from(
-      new Map((attractionsData as any[]).map((a: any) => [a.attractionId || a.id, a.name])).entries()
+      new Map(list.map((a: any) => [a.id || a.attractionId, a.name])).entries()
     ).map(([id, name]) => ({ id, name }));
     return [{ id: "All", name: "All Attractions" }, ...unique];
-  }, [attractionsData]);
+  }, [allAttractions, data?.attractions]);
 
   const isFiltered = !!debouncedSearch || selectedAttractionId !== "All" || selectedPaymentMode !== "All" || selectedStatus !== "All" || !!fromDate || !!toDate;
 
@@ -237,19 +254,38 @@ export default function TransactionsPage() {
         orientation: "landscape",
         columns: [
           { header: "#", accessor: (_, i) => (scope === "all" ? i + 1 : (currentPage - 1) * ITEMS_PER_PAGE + i + 1), width: "30px" },
-          { header: "Transaction ID", accessor: "transactionId" },
-          { header: "Customer", accessor: "customerName" },
-          { header: "Date", accessor: (t) => t.transactionDate ? new Date(t.transactionDate).toLocaleDateString("en-IN") : "-" },
-          { header: "Booking ID", accessor: "bookingId" },
-          { header: "Attraction", accessor: (t) => t.attraction?.name ?? "-" },
-          { header: "Amount (₹)", accessor: (t) => `₹${Number(t.amount).toFixed(2)}`, align: "right" },
+          { header: "Invoice Number", accessor: (t) => t.invoiceNumber || t.transactionId || "-" },
+          { header: "Customer", accessor: (t) => t.customer?.name || t.customerName || "-" },
+          { header: "Mobile", accessor: (t) => t.customer?.mobileNumber || t.mobileNumber || "-" },
+          {
+            header: "Date & Time",
+            accessor: (t) => {
+              const dStr = t.dateTime || t.transactionDate;
+              return dStr ? new Date(dStr).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "-";
+            },
+          },
+          {
+            header: "Attractions",
+            accessor: (t) =>
+              t.attractions && t.attractions.length > 0
+                ? t.attractions.map((a) => a.name).join(", ")
+                : t.attraction?.name ?? "-",
+          },
+          {
+            header: "Amount (₹)",
+            accessor: (t) => `₹${Number(t.grandTotalAmount ?? t.amount ?? 0).toFixed(2)}`,
+            align: "right",
+          },
           { header: "Mode", accessor: "paymentMode" },
           { header: "Status", renderCell: (t) => renderStatusBadgeHTML(t.status), align: "center" },
         ],
         data: items,
         summaryCards: [
           { label: "Total Transactions", value: items.length },
-          { label: "Total Revenue", value: `₹${items.reduce((s, t) => s + Number(t.amount), 0).toFixed(2)}` },
+          {
+            label: "Total Revenue",
+            value: `₹${items.reduce((s, t) => s + Number(t.grandTotalAmount ?? t.amount ?? 0), 0).toFixed(2)}`,
+          },
         ],
       });
       showToast(`PDF downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
@@ -268,13 +304,21 @@ export default function TransactionsPage() {
       if (!items.length) { showToast("No transaction data to export.", "info"); return; }
       const dateKey = new Date().toISOString().slice(0, 10);
       const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
-      const headers = ["#", "Transaction ID", "Customer", "Date", "Booking ID", "Attraction", "Amount (₹)", "Mode", "Status"];
-      const rows = items.map((t, i) => [
-        scope === "all" ? i + 1 : (currentPage - 1) * ITEMS_PER_PAGE + i + 1, t.transactionId, t.customerName,
-        t.transactionDate ? new Date(t.transactionDate).toLocaleDateString("en-IN") : "-",
-        t.bookingId, t.attraction?.name ?? "-",
-        Number(t.amount).toFixed(2), t.paymentMode, t.status,
-      ]);
+      const headers = ["#", "Invoice Number", "Customer Name", "Mobile", "Date & Time", "Attractions", "Amount (₹)", "Payment Mode", "Status"];
+      const rows = items.map((t, i) => {
+        const dStr = t.dateTime || t.transactionDate;
+        return [
+          scope === "all" ? i + 1 : (currentPage - 1) * ITEMS_PER_PAGE + i + 1,
+          t.invoiceNumber || t.transactionId || "-",
+          t.customer?.name || t.customerName || "-",
+          t.customer?.mobileNumber || t.mobileNumber || "-",
+          dStr ? new Date(dStr).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "-",
+          t.attractions && t.attractions.length > 0 ? t.attractions.map((a) => a.name).join(", ") : t.attraction?.name ?? "-",
+          Number(t.grandTotalAmount ?? t.amount ?? 0).toFixed(2),
+          t.paymentMode,
+          t.status,
+        ];
+      });
       exportToCSV(`Transactions_${scopeLabel}_${dateKey}`, headers, rows);
       showToast(`Excel downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
     } catch (err) {
@@ -317,7 +361,7 @@ export default function TransactionsPage() {
           <Search size={18} color="#A0A0A0" strokeWidth={2} />
           <input
             type="text"
-            placeholder="Search by ID, customer, booking..."
+            placeholder="Search by Invoice Number, Customer Name, Mobile..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
@@ -436,28 +480,39 @@ export default function TransactionsPage() {
       <GlobalDataTable
         columns={[
           {
-            header: "Transaction ID",
+            header: "Invoice Number",
             cell: (item) => (
               <span style={{ fontFamily: typography.fontFamily.sans, fontWeight: 600, fontSize: "13px", color: colors.brand.accent }}>
-                {item.transactionId}
+                {item.invoiceNumber || item.transactionId}
               </span>
             ),
           },
-          { header: "Customer Name", accessorKey: "customerName" },
+          {
+            header: "Customer Name",
+            cell: (item) => (
+              <span style={{ fontSize: "13px", color: colors.text.primary }}>
+                {item.customer?.name || item.customerName || "-"}
+              </span>
+            ),
+          },
           {
             header: "Date & Time",
-            cell: (item) => (
-              <span style={{ fontSize: "13px", color: colors.text.primary }}>
-                {new Date(item.transactionDate).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
-              </span>
-            ),
+            cell: (item) => {
+              const dStr = item.dateTime || item.transactionDate;
+              return (
+                <span style={{ fontSize: "13px", color: colors.text.primary }}>
+                  {dStr ? new Date(dStr).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "-"}
+                </span>
+              );
+            },
           },
-          { header: "Booking ID", accessorKey: "bookingId" },
           {
-            header: "Attraction",
+            header: "Attractions",
             cell: (item) => (
               <span style={{ fontSize: "13px", color: colors.text.primary }}>
-                {item.attraction?.name ?? "-"}
+                {item.attractions && item.attractions.length > 0
+                  ? item.attractions.map((a) => a.name).join(", ")
+                  : item.attraction?.name ?? "-"}
               </span>
             ),
           },
@@ -465,7 +520,7 @@ export default function TransactionsPage() {
             header: "Amount",
             cell: (item) => (
               <span style={{ fontFamily: typography.fontFamily.sans, fontWeight: 700, fontSize: "13px", color: "#011B2F" }}>
-                ₹{Number(item.amount).toFixed(2)}
+                ₹{Number(item.grandTotalAmount ?? item.amount ?? 0).toFixed(2)}
               </span>
             ),
           },
@@ -505,7 +560,7 @@ export default function TransactionsPage() {
         showSNo={true}
         sNoHeader="S.No"
         itemLabel="transactions"
-        isLoading={isLoading}
+        isLoading={isLoading || isFetching}
         emptyIcon={isFiltered ? <SearchX size={26} color={colors.brand.accent} /> : <Receipt size={26} color={colors.brand.accent} />}
         emptyTitle={isFiltered ? "No Matching Transactions Found" : "No Transactions Found"}
         emptyDescription={

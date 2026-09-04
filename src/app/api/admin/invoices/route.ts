@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import {
   and,
   desc,
+  asc,
   eq,
   gte,
   ilike,
@@ -16,11 +17,15 @@ import {
 import { db } from "@/db";
 
 import {
-  transactions,
   bookings,
+  transactions,
+  scannerInvoices,
   attractions,
-  bookingItems,
+  attractionManagement,
+  attractionsAgainstBooking,
+  categoryOfAttractionAgainstBooking,
   managerAttractionPermissions,
+  users,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -35,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     const auth = await requireAuth(request);
 
-    await requireModuleAccess(auth, "INVOICES");
+    await requireModuleAccess(auth, "SCANNER_INVOICES");
 
     // =====================================================
     // TENANT
@@ -65,11 +70,29 @@ export async function GET(request: NextRequest) {
 
     const search = searchParams.get("search")?.trim() || "";
 
-    const paymentMode = searchParams.get("paymentMode")?.trim().toUpperCase();
-
     const dateFrom = searchParams.get("dateFrom")?.trim();
 
     const dateTo = searchParams.get("dateTo")?.trim();
+
+    const attractionFilter = searchParams.get("attractionId")?.trim();
+
+    const scannerStatus = searchParams.get("status")?.trim().toUpperCase();
+
+    // =====================================================
+    // SCANNER STATUS FILTER
+    // =====================================================
+
+    if (
+      scannerStatus &&
+      scannerStatus !== "SCANNED" &&
+      scannerStatus !== "UNSCANNED"
+    ) {
+      return failure(
+        "Invalid status. Expected SCANNED or UNSCANNED.",
+        400,
+        "INVALID_SCANNER_STATUS",
+      );
+    }
 
     // =====================================================
     // ACCESSIBLE ATTRACTIONS
@@ -126,9 +149,6 @@ export async function GET(request: NextRequest) {
     // -----------------------------------------------------
     // STAFF
     // -----------------------------------------------------
-    // Keep the same behavior as your existing route:
-    // staff can access active attractions under their admin.
-    // -----------------------------------------------------
     else {
       const staffAttractions = await db
         .select({
@@ -173,45 +193,80 @@ export async function GET(request: NextRequest) {
     // =====================================================
 
     const conditions = [
-      // Transaction not deleted
-      isNull(transactions.deletedAt),
-
       // Booking not deleted
       isNull(bookings.deletedAt),
 
-      // Booking soft-delete flag
       eq(bookings.isDeleted, false),
 
-      // ---------------------------------------------------
-      // TENANT ISOLATION
-      //
-      // bookings.attractionId = uuid[]
-      //
-      // attractions.id = uuid
-      //
-      // Therefore we MUST use ANY().
-      // ---------------------------------------------------
+      // Tenant isolation
+      eq(bookings.createdBy, bookings.createdBy),
+
+      // =====================================================
+      // ACTIVE SCANNER INVOICE
+      // =====================================================
 
       sql`EXISTS (
-        SELECT 1
-        FROM ${attractions}
-        WHERE
-          ${attractions.id} = ANY(${bookings.attractionId})
-          AND ${attractions.adminId} = ${adminId}
-      )`,
+    SELECT 1
+    FROM ${scannerInvoices}
+    WHERE
+      ${scannerInvoices.invoiceNumber} = ${bookings.invoiceNumber}
+      AND ${scannerInvoices.isDeleted} = false
+      AND ${scannerInvoices.deletedAt} IS NULL
+  )`,
 
-      // ---------------------------------------------------
-      // USER ATTRACTION ACCESS
-      // ---------------------------------------------------
+      // =====================================================
+      // BOOKING MUST CONTAIN AT LEAST ONE ATTRACTION
+      // =====================================================
 
       sql`EXISTS (
-        SELECT 1
-        FROM ${attractions}
-        WHERE
-          ${attractions.id} = ANY(${bookings.attractionId})
-          AND ${inArray(attractions.id, accessibleAttractionIds)}
-      )`,
+    SELECT 1
+    FROM ${attractionsAgainstBooking}
+    INNER JOIN ${attractionManagement}
+      ON ${attractionsAgainstBooking.attractionManagementId}
+      = ${attractionManagement.id}
+    INNER JOIN ${attractions}
+      ON ${attractionManagement.attractionId}
+      = ${attractions.id}
+    WHERE
+      ${attractionsAgainstBooking.bookingId} = ${bookings.id}
+      AND ${attractions.adminId} = ${adminId}
+  )`,
+
+      // =====================================================
+      // USER MUST HAVE ACCESS TO AT LEAST ONE ATTRACTION
+      // =====================================================
+
+      sql`EXISTS (
+    SELECT 1
+    FROM ${attractionsAgainstBooking}
+    INNER JOIN ${attractionManagement}
+      ON ${attractionsAgainstBooking.attractionManagementId}
+      = ${attractionManagement.id}
+    INNER JOIN ${attractions}
+      ON ${attractionManagement.attractionId}
+      = ${attractions.id}
+    WHERE
+      ${attractionsAgainstBooking.bookingId} = ${bookings.id}
+      AND ${inArray(attractions.id, accessibleAttractionIds)}
+  )`,
     ];
+
+    // =====================================================
+    // SCANNER STATUS FILTER
+    // =====================================================
+
+    if (scannerStatus) {
+      conditions.push(
+        sql`EXISTS (
+      SELECT 1
+      FROM ${scannerInvoices}
+      WHERE
+        ${scannerInvoices.invoiceNumber} = ${bookings.invoiceNumber}
+        AND ${scannerInvoices.isDeleted} = false
+        AND ${scannerInvoices.scannerInvoiceStatus} = ${scannerStatus}
+    )`,
+      );
+    }
 
     // =====================================================
     // SEARCH
@@ -222,47 +277,40 @@ export async function GET(request: NextRequest) {
 
       conditions.push(
         or(
-          ilike(transactions.invoiceNumber, searchValue),
-
-          ilike(transactions.transactionNumber, searchValue),
-
-          ilike(bookings.bookingNumber, searchValue),
+          ilike(bookings.invoiceNumber, searchValue),
 
           ilike(bookings.customerName, searchValue),
 
           ilike(bookings.mobileNumber, searchValue),
 
+          ilike(bookings.gstNumber, searchValue),
+
           // Search attraction name
           sql`EXISTS (
             SELECT 1
-            FROM ${attractions}
+            FROM ${attractionsAgainstBooking}
+            INNER JOIN ${attractionManagement}
+              ON ${attractionsAgainstBooking.attractionManagementId}
+              = ${attractionManagement.id}
+            INNER JOIN ${attractions}
+              ON ${attractionManagement.attractionId}
+              = ${attractions.id}
             WHERE
-              ${attractions.id} = ANY(${bookings.attractionId})
+              ${attractionsAgainstBooking.bookingId} = ${bookings.id}
               AND ${attractions.name} ILIKE ${searchValue}
           )`,
+
+          // Search transaction invoice number
+          sql`EXISTS (
+            SELECT 1
+            FROM ${transactions}
+            WHERE
+              ${transactions.bookingId} = ${bookings.id}
+              AND ${transactions.invoiceNumber} ILIKE ${searchValue}
+              AND ${transactions.isDeleted} = false
+              AND ${transactions.deletedAt} IS NULL
+          )`,
         )!,
-      );
-    }
-
-    // =====================================================
-    // PAYMENT MODE
-    // =====================================================
-
-    if (paymentMode && paymentMode !== "ALL") {
-      if (
-        paymentMode !== "CASH" &&
-        paymentMode !== "UPI" &&
-        paymentMode !== "CARD" &&
-        paymentMode !== "ONLINE"
-      ) {
-        return failure("Invalid payment mode.", 400, "INVALID_PAYMENT_MODE");
-      }
-
-      conditions.push(
-        eq(
-          transactions.paymentMode,
-          paymentMode as "CASH" | "UPI" | "CARD" | "ONLINE",
-        ),
       );
     }
 
@@ -271,38 +319,33 @@ export async function GET(request: NextRequest) {
     // =====================================================
 
     if (dateFrom) {
-      const startDate = new Date(`${dateFrom}T00:00:00.000Z`);
-
-      if (Number.isNaN(startDate.getTime())) {
-        return failure("Invalid dateFrom.", 400, "INVALID_DATE_FROM");
-      }
-
-      conditions.push(gte(transactions.createdAt, startDate));
+      conditions.push(
+        sql`(${bookings.createdAt} AT TIME ZONE 'Asia/Kolkata')::date >= ${dateFrom}::date`,
+      );
     }
 
-    // =====================================================
-    // DATE TO
-    // =====================================================
-
     if (dateTo) {
-      const endDate = new Date(`${dateTo}T23:59:59.999Z`);
-
-      if (Number.isNaN(endDate.getTime())) {
-        return failure("Invalid dateTo.", 400, "INVALID_DATE_TO");
-      }
-
-      conditions.push(lte(transactions.createdAt, endDate));
+      conditions.push(
+        sql`(${bookings.createdAt} AT TIME ZONE 'Asia/Kolkata')::date <= ${dateTo}::date`,
+      );
     }
 
     // =====================================================
     // ATTRACTION FILTER
     // =====================================================
 
-    const attractionFilter = searchParams.get("attractionId")?.trim();
-
     if (attractionFilter) {
       conditions.push(
-        sql`${attractionFilter}::uuid = ANY(${bookings.attractionId})`,
+        sql`EXISTS (
+          SELECT 1
+          FROM ${attractionsAgainstBooking}
+          INNER JOIN ${attractionManagement}
+            ON ${attractionsAgainstBooking.attractionManagementId}
+            = ${attractionManagement.id}
+          WHERE
+            ${attractionsAgainstBooking.bookingId} = ${bookings.id}
+            AND ${attractionManagement.attractionId} = ${attractionFilter}::uuid
+        )`,
       );
     }
 
@@ -314,10 +357,9 @@ export async function GET(request: NextRequest) {
 
     const [countResult] = await db
       .select({
-        count: sql<number>`COUNT(DISTINCT ${transactions.id})`,
+        count: sql<number>`COUNT(DISTINCT ${bookings.id})`,
       })
-      .from(transactions)
-      .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+      .from(bookings)
       .where(whereClause);
 
     const totalInvoices = Number(countResult?.count || 0);
@@ -329,15 +371,25 @@ export async function GET(request: NextRequest) {
     const [revenueResult] = await db
       .select({
         totalRevenue: sql<string>`
-          COALESCE(
-            SUM(${transactions.amount}),
-            0
-          )
-        `,
+      COALESCE(
+        SUM(${bookings.totalAmount}),
+        0
+      )
+    `,
       })
-      .from(transactions)
-      .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-      .where(and(...conditions, eq(transactions.status, "SUCCESSFUL")));
+      .from(bookings)
+      .innerJoin(transactions, eq(transactions.bookingId, bookings.id))
+      .where(
+        and(
+          ...conditions,
+
+          isNull(transactions.deletedAt),
+
+          eq(transactions.isDeleted, false),
+
+          eq(transactions.status, "SUCCESSFUL"),
+        ),
+      );
 
     const totalRevenue = Number(revenueResult?.totalRevenue || 0);
 
@@ -347,34 +399,35 @@ export async function GET(request: NextRequest) {
 
     const [paidResult] = await db
       .select({
-        count: sql<number>`COUNT(DISTINCT ${transactions.id})`,
+        count: sql<number>`
+      COUNT(DISTINCT ${bookings.id})
+    `,
       })
-      .from(transactions)
-      .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-      .where(and(...conditions, eq(transactions.status, "SUCCESSFUL")));
+      .from(bookings)
+      .innerJoin(transactions, eq(transactions.bookingId, bookings.id))
+      .where(
+        and(
+          ...conditions,
+
+          isNull(transactions.deletedAt),
+
+          eq(transactions.isDeleted, false),
+
+          eq(transactions.status, "SUCCESSFUL"),
+        ),
+      );
 
     const paidInvoices = Number(paidResult?.count || 0);
 
     // =====================================================
-    // INVOICE LIST
+    // BOOKING LIST
     // =====================================================
 
-    const invoiceRows = await db
+    const bookingRows = await db
       .select({
-        // Transaction UUID
-        id: transactions.id,
+        id: bookings.id,
 
-        // Invoice number
-        invoiceId: transactions.invoiceNumber,
-
-        // Transaction number
-        transactionId: transactions.transactionNumber,
-
-        // Booking UUID
-        bookingUuid: bookings.id,
-
-        // Booking number
-        bookingId: bookings.bookingNumber,
+        invoiceNumber: bookings.invoiceNumber,
 
         customerName: bookings.customerName,
 
@@ -382,198 +435,290 @@ export async function GET(request: NextRequest) {
 
         gstNumber: bookings.gstNumber,
 
-        dateTime: transactions.createdAt,
+        totalAmount: bookings.totalAmount,
 
-        visitAt: bookings.visitAt,
+        status: bookings.status,
 
-        // IMPORTANT:
-        // This is uuid[]
-        attractionIds: bookings.attractionId,
-
-        amount: transactions.amount,
-
-        paymentMode: transactions.paymentMode,
-
-        status: transactions.status,
+        createdAt: bookings.createdAt,
       })
-      .from(transactions)
-      .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+      .from(bookings)
       .where(whereClause)
-      .orderBy(desc(transactions.createdAt))
+      .orderBy(asc(bookings.invoiceNumber))
       .limit(limit)
       .offset(offset);
 
     // =====================================================
-    // GET ALL ATTRACTION IDS
+    // NO BOOKINGS
     // =====================================================
 
-    const allAttractionIds = Array.from(
-      new Set(invoiceRows.flatMap((row) => row.attractionIds || [])),
+    if (bookingRows.length === 0) {
+      return success({
+        summary: {
+          totalRevenue,
+          totalInvoices,
+          paidInvoices,
+        },
+
+        items: [],
+
+        pagination: {
+          page,
+          limit,
+          total: totalInvoices,
+          totalPages:
+            totalInvoices === 0 ? 0 : Math.ceil(totalInvoices / limit),
+        },
+      });
+    }
+
+    // =====================================================
+    // BOOKING IDS
+    // =====================================================
+
+    const bookingIds = bookingRows.map((booking) => booking.id);
+
+    // =====================================================
+    // TRANSACTIONS
+    // =====================================================
+
+    const transactionRows = await db
+      .select({
+        id: transactions.id,
+
+        bookingId: transactions.bookingId,
+
+        invoiceNumber: transactions.invoiceNumber,
+
+        paymentMode: transactions.paymentMode,
+
+        status: transactions.status,
+
+        amount: transactions.amount,
+      })
+      .from(transactions)
+      .where(
+        and(
+          inArray(transactions.bookingId, bookingIds),
+          isNull(transactions.deletedAt),
+          eq(transactions.isDeleted, false),
+        ),
+      )
+      .orderBy(desc(transactions.createdAt));
+
+    // =====================================================
+    // TRANSACTION MAP
+    // =====================================================
+
+    const transactionMap = new Map<string, (typeof transactionRows)[number]>();
+
+    for (const transaction of transactionRows) {
+      // Keep the first/latest transaction
+      // because query is ordered DESC.
+      if (!transactionMap.has(transaction.bookingId)) {
+        transactionMap.set(transaction.bookingId, transaction);
+      }
+    }
+
+    // =====================================================
+    // SCANNER INVOICES
+    // =====================================================
+
+    const invoiceNumbers = bookingRows.map((booking) => booking.invoiceNumber);
+
+    const scannerInvoiceRows = await db
+      .select({
+        id: scannerInvoices.id,
+        invoiceNumber: scannerInvoices.invoiceNumber,
+
+        scannerInvoiceStatus: scannerInvoices.scannerInvoiceStatus,
+
+        scannedAt: scannerInvoices.scannedAt,
+
+        scannedByStaffName: users.name,
+      })
+      .from(scannerInvoices)
+      .leftJoin(users, eq(scannerInvoices.scannedByStaffId, users.id))
+      .where(
+        and(
+          inArray(scannerInvoices.invoiceNumber, invoiceNumbers),
+          isNull(scannerInvoices.deletedAt),
+          eq(scannerInvoices.isDeleted, false),
+        ),
+      );
+
+    // =====================================================
+    // SCANNER INVOICE MAP
+    // =====================================================
+
+    const scannerInvoiceMap = new Map(
+      scannerInvoiceRows.map((invoice) => [invoice.invoiceNumber, invoice]),
     );
 
     // =====================================================
-    // FETCH ATTRACTION DETAILS
+    // ATTRACTIONS AGAINST BOOKING
     // =====================================================
 
-    const attractionRows =
-      allAttractionIds.length > 0
-        ? await db
-            .select({
-              id: attractions.id,
-              name: attractions.name,
-            })
-            .from(attractions)
-            .where(
-              and(
-                inArray(attractions.id, allAttractionIds),
-                eq(attractions.adminId, adminId),
-              ),
-            )
-        : [];
+    const attractionBookingRows = await db
+      .select({
+        bookingId: attractionsAgainstBooking.bookingId,
+
+        attractionManagementId:
+          attractionsAgainstBooking.attractionManagementId,
+
+        attractionManagementAttractionId: attractionManagement.attractionId,
+
+        attractionId: attractions.id,
+
+        attractionName: attractions.name,
+      })
+      .from(attractionsAgainstBooking)
+      .innerJoin(
+        attractionManagement,
+        eq(
+          attractionsAgainstBooking.attractionManagementId,
+          attractionManagement.id,
+        ),
+      )
+      .innerJoin(
+        attractions,
+        eq(attractionManagement.attractionId, attractions.id),
+      )
+      .where(
+        and(
+          inArray(attractionsAgainstBooking.bookingId, bookingIds),
+          eq(attractions.adminId, adminId),
+        ),
+      );
 
     // =====================================================
-    // CREATE ATTRACTION MAP
+    // GROUP ATTRACTIONS BY BOOKING
     // =====================================================
 
-    const attractionMap = new Map(
-      attractionRows.map((attraction) => [attraction.id, attraction]),
-    );
+    const attractionMap = new Map<
+      string,
+      Array<{
+        id: string;
+        name: string;
+      }>
+    >();
 
-    // =====================================================
-    // BOOKING ITEMS
-    // =====================================================
-
-    const bookingIds = invoiceRows.map((row) => row.bookingUuid);
-
-    const itemRows =
-      bookingIds.length > 0
-        ? await db
-            .select({
-              bookingId: bookingItems.bookingId,
-
-              category: bookingItems.category,
-
-              quantity: bookingItems.quantity,
-
-              unitPrice: bookingItems.unitPrice,
-
-              totalPrice: bookingItems.totalPrice,
-            })
-            .from(bookingItems)
-            .where(inArray(bookingItems.bookingId, bookingIds))
-        : [];
-
-    // =====================================================
-    // GROUP VISITORS
-    // =====================================================
-
-    const visitorMap = new Map<string, Map<string, number>>();
-
-    for (const item of itemRows) {
-      if (!visitorMap.has(item.bookingId)) {
-        visitorMap.set(item.bookingId, new Map<string, number>());
+    for (const row of attractionBookingRows) {
+      if (!attractionMap.has(row.bookingId)) {
+        attractionMap.set(row.bookingId, []);
       }
 
-      const categoryMap = visitorMap.get(item.bookingId)!;
+      const bookingAttractions = attractionMap.get(row.bookingId)!;
 
-      categoryMap.set(
-        item.category,
-        (categoryMap.get(item.category) || 0) + Number(item.quantity || 0),
-      );
+      // Avoid duplicate attraction IDs
+      if (!bookingAttractions.some((item) => item.id === row.attractionId)) {
+        bookingAttractions.push({
+          id: row.attractionId,
+          name: row.attractionName,
+        });
+      }
+    }
+
+    // =====================================================
+    // VISITOR TOTALS
+    // =====================================================
+
+    const visitorRows = await db
+      .select({
+        bookingId: categoryOfAttractionAgainstBooking.bookingId,
+
+        totalVisitors: sql<number>`
+          COALESCE(
+            SUM(
+              ${categoryOfAttractionAgainstBooking.noOfVisitors}
+            ),
+            0
+          )
+        `,
+      })
+      .from(categoryOfAttractionAgainstBooking)
+      .where(inArray(categoryOfAttractionAgainstBooking.bookingId, bookingIds))
+      .groupBy(categoryOfAttractionAgainstBooking.bookingId);
+
+    // =====================================================
+    // VISITOR MAP
+    // =====================================================
+
+    const visitorMap = new Map<string, number>();
+
+    for (const row of visitorRows) {
+      visitorMap.set(row.bookingId, Number(row.totalVisitors || 0));
     }
 
     // =====================================================
     // FORMAT ITEMS
     // =====================================================
 
-    const items = invoiceRows.map((invoice, index) => {
-      const categories = visitorMap.get(invoice.bookingUuid);
+    const items = bookingRows.map((booking) => {
+      const scannerInvoice = scannerInvoiceMap.get(booking.invoiceNumber);
 
-      const visitors = categories
-        ? Array.from(categories.entries())
-            .map(([category, quantity]) => `${quantity} ${category}`)
-            .join(" + ")
-        : "0";
+      const bookingAttractions = attractionMap.get(booking.id) || [];
 
-      // Resolve all attractions
-      const invoiceAttractions = (invoice.attractionIds || [])
-        .map((id) => attractionMap.get(id))
-        .filter(
-          (
-            attraction,
-          ): attraction is {
-            id: string;
-            name: string;
-          } => Boolean(attraction),
-        );
+      const visitors = visitorMap.get(booking.id) || 0;
 
       return {
-        sNo: offset + index + 1,
+        id: scannerInvoice?.id ?? null,
 
         // -------------------------------------------------
-        // Invoice
+        // INVOICE
         // -------------------------------------------------
 
-        invoiceId: invoice.invoiceId || invoice.transactionId,
+        invoiceNumber: scannerInvoice?.invoiceNumber ?? null,
 
         // -------------------------------------------------
-        // Customer
+        // CUSTOMER
         // -------------------------------------------------
 
-        customerName: invoice.customerName,
-
-        mobileNumber: invoice.mobileNumber,
-
-        gstNumber: invoice.gstNumber,
-
+        customer: {
+          name: booking.customerName,
+          mobileNumber: booking.mobileNumber,
+          gstNumber: booking.gstNumber,
+        },
         // -------------------------------------------------
-        // Date
-        // -------------------------------------------------
-
-        dateTime: invoice.dateTime,
-
-        visitAt: invoice.visitAt,
-
-        // -------------------------------------------------
-        // MULTIPLE ATTRACTIONS
+        // DATE
         // -------------------------------------------------
 
-        attractionIds: invoice.attractionIds || [],
-
-        attractions: invoiceAttractions,
+        dateTime: booking.createdAt,
 
         // -------------------------------------------------
-        // BACKWARD COMPATIBILITY
-        //
-        // Existing frontend can still use:
-        // invoice.attraction
+        // ATTRACTIONS
         // -------------------------------------------------
 
-        attraction: invoiceAttractions[0] || null,
+        attractions: bookingAttractions,
 
         // -------------------------------------------------
-        // Visitors
+        // VISITORS
         // -------------------------------------------------
 
         visitors,
 
         // -------------------------------------------------
-        // Payment
+        // PAYMENT
         // -------------------------------------------------
 
-        amount: Number(invoice.amount),
-
-        paymentMode: invoice.paymentMode,
-
-        status: invoice.status,
+        grandTotalAmount: Number(booking.totalAmount),
 
         // -------------------------------------------------
-        // References
+        // SCANNER INVOICE
         // -------------------------------------------------
 
-        transactionId: invoice.transactionId,
+        scannerInvoice: scannerInvoice
+          ? {
+              scannerInvoiceStatus: scannerInvoice.scannerInvoiceStatus,
 
-        bookingId: invoice.bookingId,
+              scannedByStaff: scannerInvoice.scannedByStaffName,
+
+              scannedAt: scannerInvoice.scannedAt,
+            }
+          : null,
+
+        // -------------------------------------------------
+        // REFERENCES
+        // -------------------------------------------------
       };
     });
 
@@ -604,9 +749,9 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof Error) {
-      // =====================================================
+      // ===================================================
       // AUTHENTICATION ERRORS
-      // =====================================================
+      // ===================================================
 
       if (error.message === "UNAUTHORIZED") {
         return failure("Authentication required.", 401, "UNAUTHORIZED");
@@ -616,9 +761,9 @@ export async function GET(request: NextRequest) {
         return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
       }
 
-      // =====================================================
+      // ===================================================
       // MODULE AUTHORIZATION
-      // =====================================================
+      // ===================================================
 
       if (
         error.message === "MODULE_ACCESS_DENIED" ||
@@ -631,9 +776,9 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      // =====================================================
+      // ===================================================
       // ADMIN CONTEXT
-      // =====================================================
+      // ===================================================
 
       if (error.message === "ADMIN_CONTEXT_REQUIRED") {
         return failure(
@@ -643,13 +788,17 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      // =====================================================
-      // DATABASE / KNOWN ERRORS
-      // =====================================================
+      // ===================================================
+      // PAYMENT
+      // ===================================================
 
       if (error.message === "INVALID_PAYMENT_MODE") {
         return failure("Invalid payment mode.", 400, "INVALID_PAYMENT_MODE");
       }
+
+      // ===================================================
+      // DATE FROM
+      // ===================================================
 
       if (error.message === "INVALID_DATE_FROM") {
         return failure(
@@ -658,6 +807,10 @@ export async function GET(request: NextRequest) {
           "INVALID_DATE_FROM",
         );
       }
+
+      // ===================================================
+      // DATE TO
+      // ===================================================
 
       if (error.message === "INVALID_DATE_TO") {
         return failure(

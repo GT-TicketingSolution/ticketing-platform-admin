@@ -13,240 +13,6 @@ import {
 import { success, failure } from "@/lib/api/response";
 
 // =====================================================
-// GET BOOKING DETAILS
-// =====================================================
-
-export async function GET(
-  request: Request,
-  {
-    params,
-  }: {
-    params: Promise<{
-      bookingId: string;
-    }>;
-  },
-) {
-  try {
-    // =====================================================
-    // 1. AUTHENTICATION
-    // =====================================================
-
-    const auth = await requireAuth(request);
-
-    // =====================================================
-    // 2. MODULE AUTHORIZATION
-    // =====================================================
-
-    await requireModuleAccess(auth, "BOOKINGS");
-
-    // =====================================================
-    // 3. BOOKING ID
-    // =====================================================
-
-    const { bookingId } = await params;
-
-    if (!bookingId) {
-      return failure("Booking ID is required.", 400, "BOOKING_ID_REQUIRED");
-    }
-
-    // =====================================================
-    // 4. FIND BOOKING
-    //
-    // We intentionally fetch the attractionId first.
-    // Then we verify whether this user can access that
-    // attraction.
-    // =====================================================
-
-    const [booking] = await db
-      .select({
-        id: bookings.id,
-
-        bookingId: bookings.bookingNumber,
-
-        customerName: bookings.customerName,
-
-        mobileNumber: bookings.mobileNumber,
-
-        gstNumber: bookings.gstNumber,
-
-        visitAt: bookings.visitAt,
-
-        paymentMode: bookings.paymentMode,
-
-        status: bookings.status,
-
-        totalAmount: bookings.totalAmount,
-
-        amountPaid: bookings.amountPaid,
-
-        createdAt: bookings.createdAt,
-
-        updatedAt: bookings.updatedAt,
-
-        attractionId: attractions.id,
-
-        attractionName: attractions.name,
-      })
-      .from(bookings)
-      .innerJoin(attractions, eq(bookings.attractionId, attractions.id))
-      .where(and(eq(bookings.id, bookingId), isNull(bookings.deletedAt)))
-      .limit(1);
-
-    if (!booking) {
-      return failure("Booking not found.", 404, "BOOKING_NOT_FOUND");
-    }
-
-    // =====================================================
-    // 5. ATTRACTION AUTHORIZATION
-    // =====================================================
-
-    const hasAccess = await hasAttractionAccess(auth, booking.attractionId);
-
-    if (!hasAccess) {
-      return failure(
-        "You do not have access to this booking.",
-        403,
-        "FORBIDDEN",
-      );
-    }
-
-    // =====================================================
-    // 6. BOOKING ITEMS
-    // =====================================================
-
-    const items = await db
-      .select({
-        id: bookingItems.id,
-
-        category: bookingItems.category,
-
-        quantity: bookingItems.quantity,
-
-        unitPrice: bookingItems.unitPrice,
-
-        totalPrice: bookingItems.totalPrice,
-      })
-      .from(bookingItems)
-      .where(eq(bookingItems.bookingId, booking.id));
-
-    // =====================================================
-    // 7. BOOKING SEATS
-    // =====================================================
-
-    const seats = await db
-      .select({
-        id: bookingSeats.id,
-
-        bogie: bookingSeats.bogie,
-
-        seatNumber: bookingSeats.seatNumber,
-      })
-      .from(bookingSeats)
-      .where(eq(bookingSeats.bookingId, booking.id));
-
-    // =====================================================
-    // 8. RESPONSE
-    // =====================================================
-
-    return success({
-      booking: {
-        id: booking.id,
-
-        bookingId: booking.bookingId,
-
-        bookedAt: booking.createdAt,
-
-        status: booking.status,
-
-        customer: {
-          name: booking.customerName,
-          mobile: booking.mobileNumber,
-          gstNumber: booking.gstNumber,
-        },
-
-        attraction: {
-          id: booking.attractionId,
-          name: booking.attractionName,
-        },
-
-        visitAt: booking.visitAt,
-
-        payment: {
-          mode: booking.paymentMode,
-
-          totalAmount: Number(booking.totalAmount),
-
-          amountPaid: Number(booking.amountPaid),
-
-          amountDue: Number(booking.totalAmount) - Number(booking.amountPaid),
-        },
-
-        items: items.map((item) => ({
-          id: item.id,
-
-          category: item.category,
-
-          quantity: Number(item.quantity),
-
-          unitPrice: Number(item.unitPrice),
-
-          totalPrice: Number(item.totalPrice),
-        })),
-
-        visitors: {
-          total: items.reduce(
-            (total, item) => total + Number(item.quantity),
-            0,
-          ),
-        },
-
-        seats: {
-          total: seats.length,
-
-          items: seats.map((seat) => ({
-            id: seat.id,
-
-            bogie: seat.bogie,
-
-            seatNumber: seat.seatNumber,
-          })),
-        },
-
-        createdAt: booking.createdAt,
-
-        updatedAt: booking.updatedAt,
-      },
-    });
-  } catch (error) {
-    // =====================================================
-    // AUTHORIZATION ERRORS
-    // =====================================================
-
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return failure("Authentication required.", 401, "UNAUTHORIZED");
-    }
-
-    if (error instanceof Error && error.message === "FORBIDDEN") {
-      return failure(
-        "You do not have permission to access this resource.",
-        403,
-        "FORBIDDEN",
-      );
-    }
-
-    if (error instanceof Error && error.message === "USER_HAS_NO_ADMIN") {
-      return failure("User is not associated with an admin.", 403, "FORBIDDEN");
-    }
-
-    return failure(
-      "Unable to fetch booking details.",
-      500,
-      "INTERNAL_SERVER_ERROR",
-    );
-  }
-}
-
-// =====================================================
 // PATCH BOOKING
 // =====================================================
 
@@ -295,31 +61,79 @@ export async function PATCH(
     const mobileNumber =
       typeof body.mobileNumber === "string" ? body.mobileNumber.trim() : "";
 
+    const gstNumber =
+      typeof body.gstNumber === "string" ? body.gstNumber.trim() : null;
+
+    const totalAmount =
+      body.totalAmount !== undefined ? Number(body.totalAmount) : undefined;
+
+    const amountReceived =
+      body.amountReceived !== undefined
+        ? Number(body.amountReceived)
+        : undefined;
+
+    const returnAmount =
+      body.returnAmount !== undefined ? Number(body.returnAmount) : undefined;
+
     // =====================================================
     // 5. VALIDATION
     // =====================================================
 
-    if (!customerName) {
+    if (customerName && customerName.length < 2) {
       return failure(
-        "Customer name is required.",
+        "Name must be at least 2 characters.",
         400,
-        "CUSTOMER_NAME_REQUIRED",
+        "INVALID_CUSTOMER_NAME",
       );
     }
 
-    if (!mobileNumber) {
+    if (mobileNumber && !/^[6-9]\d{9}$/.test(mobileNumber)) {
       return failure(
-        "Mobile number is required.",
-        400,
-        "MOBILE_NUMBER_REQUIRED",
-      );
-    }
-
-    if (!/^\d{10}$/.test(mobileNumber)) {
-      return failure(
-        "Mobile number must be exactly 10 digits.",
+        "Enter a valid 10-digit Indian mobile number.",
         400,
         "INVALID_MOBILE_NUMBER",
+      );
+    }
+
+    if (
+      gstNumber &&
+      !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(
+        gstNumber,
+      )
+    ) {
+      return failure("Enter a valid GST number.", 400, "INVALID_GST_NUMBER");
+    }
+
+    if (
+      totalAmount !== undefined &&
+      (!Number.isFinite(totalAmount) || totalAmount < 0)
+    ) {
+      return failure(
+        "Total amount must be a valid positive number.",
+        400,
+        "INVALID_TOTAL_AMOUNT",
+      );
+    }
+
+    if (
+      amountReceived !== undefined &&
+      (!Number.isFinite(amountReceived) || amountReceived < 0)
+    ) {
+      return failure(
+        "Amount received must be a valid positive number.",
+        400,
+        "INVALID_AMOUNT_RECEIVED",
+      );
+    }
+
+    if (
+      returnAmount !== undefined &&
+      (!Number.isFinite(returnAmount) || returnAmount < 0)
+    ) {
+      return failure(
+        "Return amount must be a valid positive number.",
+        400,
+        "INVALID_RETURN_AMOUNT",
       );
     }
 
@@ -331,9 +145,9 @@ export async function PATCH(
       .select({
         id: bookings.id,
 
-        bookingId: bookings.bookingNumber,
+        invoiceNumber: bookings.invoiceNumber,
 
-        attractionId: bookings.attractionId,
+        totalAmount: bookings.totalAmount,
       })
       .from(bookings)
       .where(and(eq(bookings.id, bookingId), isNull(bookings.deletedAt)))
@@ -344,23 +158,35 @@ export async function PATCH(
     }
 
     // =====================================================
-    // 7. ATTRACTION AUTHORIZATION
+    // 7. BUILD UPDATE DATA (only include provided fields)
     // =====================================================
 
-    const hasAccess = (
-      await Promise.all(
-        existingBooking.attractionId.map((attractionId: string) =>
-          hasAttractionAccess(auth, attractionId),
-        ),
-      )
-    ).every(Boolean);
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
 
-    if (!hasAccess) {
-      return failure(
-        "You do not have permission to modify this booking.",
-        403,
-        "FORBIDDEN",
-      );
+    if (customerName) {
+      updateData.customerName = customerName;
+    }
+
+    if (mobileNumber) {
+      updateData.mobileNumber = mobileNumber;
+    }
+
+    if (gstNumber !== undefined && gstNumber !== null) {
+      updateData.gstNumber = gstNumber;
+    }
+
+    if (totalAmount !== undefined) {
+      updateData.totalAmount = totalAmount.toFixed(2);
+    }
+
+    if (amountReceived !== undefined) {
+      updateData.amountReceived = amountReceived.toFixed(2);
+    }
+
+    if (returnAmount !== undefined) {
+      updateData.returnAmount = returnAmount.toFixed(2);
     }
 
     // =====================================================
@@ -369,22 +195,24 @@ export async function PATCH(
 
     const [updatedBooking] = await db
       .update(bookings)
-      .set({
-        customerName,
-
-        mobileNumber,
-
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(and(eq(bookings.id, bookingId), isNull(bookings.deletedAt)))
       .returning({
         id: bookings.id,
 
-        bookingId: bookings.bookingNumber,
+        invoiceNumber: bookings.invoiceNumber,
 
         customerName: bookings.customerName,
 
         mobileNumber: bookings.mobileNumber,
+
+        gstNumber: bookings.gstNumber,
+
+        totalAmount: bookings.totalAmount,
+
+        amountReceived: bookings.amountReceived,
+
+        returnAmount: bookings.returnAmount,
 
         updatedAt: bookings.updatedAt,
       });
@@ -394,7 +222,25 @@ export async function PATCH(
     }
 
     return success({
-      booking: updatedBooking,
+      booking: {
+        id: updatedBooking.id,
+
+        invoiceNumber: updatedBooking.invoiceNumber,
+
+        customer: {
+          name: updatedBooking.customerName,
+          mobileNumber: updatedBooking.mobileNumber,
+          gstNumber: updatedBooking.gstNumber,
+        },
+
+        amount: {
+          total: Number(updatedBooking.totalAmount),
+          received: Number(updatedBooking.amountReceived),
+          returnAmount: Number(updatedBooking.returnAmount),
+        },
+
+        updatedAt: updatedBooking.updatedAt,
+      },
     });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
@@ -462,9 +308,7 @@ export async function DELETE(
       .select({
         id: bookings.id,
 
-        bookingId: bookings.bookingNumber,
-
-        attractionId: bookings.attractionId,
+        invoiceNumber: bookings.invoiceNumber,
 
         deletedAt: bookings.deletedAt,
       })
@@ -489,27 +333,7 @@ export async function DELETE(
     }
 
     // =====================================================
-    // 6. ATTRACTION AUTHORIZATION
-    // =====================================================
-
-    const hasAccess = (
-      await Promise.all(
-        existingBooking.attractionId.map((attractionId: string) =>
-          hasAttractionAccess(auth, attractionId),
-        ),
-      )
-    ).every(Boolean);
-
-    if (!hasAccess) {
-      return failure(
-        "You do not have permission to delete this booking.",
-        403,
-        "FORBIDDEN",
-      );
-    }
-
-    // =====================================================
-    // 7. SOFT DELETE
+    // 6. SOFT DELETE
     // =====================================================
 
     const [deletedBooking] = await db
@@ -527,7 +351,7 @@ export async function DELETE(
       .returning({
         id: bookings.id,
 
-        bookingId: bookings.bookingNumber,
+        invoiceNumber: bookings.invoiceNumber,
 
         deletedAt: bookings.deletedAt,
       });
@@ -539,7 +363,13 @@ export async function DELETE(
     return success({
       message: "Booking deleted successfully.",
 
-      booking: deletedBooking,
+      booking: {
+        id: deletedBooking.id,
+
+        invoiceNumber: deletedBooking.invoiceNumber,
+
+        deletedAt: deletedBooking.deletedAt,
+      },
     });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
