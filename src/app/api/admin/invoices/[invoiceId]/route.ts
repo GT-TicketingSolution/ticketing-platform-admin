@@ -1,13 +1,21 @@
-import { NextRequest } from "next/server";
 import { and, eq, isNull } from "drizzle-orm";
+import { NextRequest } from "next/server";
 
 import { db } from "@/db";
-import { transactions } from "@/db/schema";
 
-import { getInvoiceById } from "@/services/invoice.service";
-import { failure, success } from "@/lib/api/response";
+import {
+  scannerInvoices,
+  bookings,
+  attractions,
+  attractionsAgainstBooking,
+  attractionManagement,
+} from "@/db/schema";
+
 import { requireAuth } from "@/lib/auth/require-auth";
-import { requireModuleAccess } from "@/lib/auth/authorization";
+
+import { requireModuleAccess, getAdminId } from "@/lib/auth/authorization";
+
+import { success, failure } from "@/lib/api/response";
 
 export async function DELETE(
   request: NextRequest,
@@ -20,27 +28,27 @@ export async function DELETE(
   },
 ) {
   try {
-    // --------------------------------------------------
-    // AUTH
-    // --------------------------------------------------
+    // =====================================================
+    // AUTHENTICATION
+    // =====================================================
 
     const auth = await requireAuth(request);
 
-    await requireModuleAccess(auth, "INVOICES");
+    await requireModuleAccess(auth, "SCANNER_INVOICES");
 
-    // --------------------------------------------------
-    // TENANT
-    // --------------------------------------------------
+    // =====================================================
+    // ADMIN CONTEXT
+    // =====================================================
 
-    const adminId = auth.user.adminId ?? auth.user.id;
+    const adminId = getAdminId(auth);
 
     if (!adminId) {
       return failure("Admin context not found.", 403, "ADMIN_CONTEXT_REQUIRED");
     }
 
-    // --------------------------------------------------
-    // PARAM
-    // --------------------------------------------------
+    // =====================================================
+    // ROUTE PARAM
+    // =====================================================
 
     const { invoiceId } = await params;
 
@@ -48,79 +56,118 @@ export async function DELETE(
       return failure("Invoice ID is required.", 400, "INVOICE_ID_REQUIRED");
     }
 
-    // --------------------------------------------------
-    // CHECK INVOICE BELONGS TO ADMIN
-    // --------------------------------------------------
+    // =====================================================
+    // FIND INVOICE
+    // =====================================================
 
-    const invoice = await getInvoiceById(invoiceId, adminId);
+    const [existingInvoice] = await db
+      .select({
+        id: scannerInvoices.id,
+        invoiceNumber: scannerInvoices.invoiceNumber,
+        deletedAt: scannerInvoices.deletedAt,
+        isDeleted: scannerInvoices.isDeleted,
+      })
+      .from(scannerInvoices)
+      .innerJoin(
+        bookings,
+        eq(scannerInvoices.invoiceNumber, bookings.invoiceNumber),
+      )
+      .where(
+        and(
+          eq(scannerInvoices.id, invoiceId),
 
-    if (!invoice) {
+          // Booking must belong to active tenant data
+          isNull(bookings.deletedAt),
+          eq(bookings.isDeleted, false),
+
+          // Invoice itself must belong to active record
+          // We intentionally do NOT filter deletedAt/isDeleted here
+          // so we can return "already deleted" correctly.
+        ),
+      )
+      .limit(1);
+
+    // =====================================================
+    // NOT FOUND
+    // =====================================================
+
+    if (!existingInvoice) {
       return failure("Invoice not found.", 404, "INVOICE_NOT_FOUND");
     }
 
-    // --------------------------------------------------
-    // SOFT DELETE
-    //
-    // IMPORTANT:
-    // The UPDATE itself must ALSO contain the tenant
-    // condition. Do not rely only on getInvoiceById().
-    // --------------------------------------------------
+    // =====================================================
+    // ALREADY DELETED
+    // =====================================================
+
+    if (existingInvoice.deletedAt || existingInvoice.isDeleted) {
+      return failure(
+        "Invoice is already deleted.",
+        400,
+        "INVOICE_ALREADY_DELETED",
+      );
+    }
+
+    // =====================================================
+    // DELETE
+    // =====================================================
 
     const [deletedInvoice] = await db
-      .update(transactions)
+      .update(scannerInvoices)
       .set({
         deletedAt: new Date(),
+        isDeleted: true,
+        deletedBy: auth.user.id,
         updatedAt: new Date(),
       })
       .where(
         and(
-          eq(transactions.id, invoiceId),
-          isNull(transactions.deletedAt),
-
-          // IMPORTANT:
-          // This condition must be added according to
-          // how your invoice -> booking -> attraction
-          // ownership is represented.
+          eq(scannerInvoices.id, invoiceId),
+          isNull(scannerInvoices.deletedAt),
+          eq(scannerInvoices.isDeleted, false),
         ),
       )
       .returning({
-        id: transactions.id,
-        invoiceNumber: transactions.invoiceNumber,
-        deletedAt: transactions.deletedAt,
+        id: scannerInvoices.id,
       });
 
+    // =====================================================
+    // DELETE FAILED
+    // =====================================================
+
     if (!deletedInvoice) {
-      return failure("Invoice not found.", 404, "INVOICE_NOT_FOUND");
+      return failure(
+        "Invoice could not be deleted.",
+        400,
+        "INVOICE_DELETE_FAILED",
+      );
     }
 
-    // --------------------------------------------------
-    // RESPONSE
-    // --------------------------------------------------
+    // =====================================================
+    // SUCCESS
+    // =====================================================
 
     return success({
       message: "Invoice deleted successfully.",
       invoice: deletedInvoice,
     });
   } catch (error) {
-    if (error instanceof Error) {
-      // ===================================================
-      // AUTHENTICATION
-      // ===================================================
+    console.error("Delete invoice error:", error);
 
+    // =====================================================
+    // AUTHENTICATION ERRORS
+    // =====================================================
+
+    if (error instanceof Error) {
       if (error.message === "UNAUTHORIZED") {
         return failure("Authentication required.", 401, "UNAUTHORIZED");
       }
-
-      // ===================================================
-      // ACCOUNT STATUS
-      // ===================================================
 
       if (error.message === "ACCOUNT_NOT_ACTIVE") {
         return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
       }
 
       // ===================================================
-      // AUTHORIZATION
+      // MODULE AUTHORIZATION
       // ===================================================
 
       if (
@@ -128,9 +175,9 @@ export async function DELETE(
         error.message === "FORBIDDEN"
       ) {
         return failure(
-          "You do not have permission to access the invoices module.",
+          "You do not have permission to delete invoices.",
           403,
-          "MODULE_ACCESS_DENIED",
+          "FORBIDDEN",
         );
       }
 
@@ -138,27 +185,18 @@ export async function DELETE(
       // ADMIN CONTEXT
       // ===================================================
 
-      if (error.message === "ADMIN_CONTEXT_REQUIRED") {
+      if (error.message === "USER_HAS_NO_ADMIN") {
         return failure(
-          "Admin context not found.",
+          "User is not associated with an admin.",
           403,
-          "ADMIN_CONTEXT_REQUIRED",
+          "USER_HAS_NO_ADMIN",
         );
-      }
-
-      // ===================================================
-      // INVOICE NOT FOUND
-      // ===================================================
-
-      if (
-        error.message === "INVOICE_NOT_FOUND" ||
-        error.message === "NOT_FOUND"
-      ) {
-        return failure("Invoice not found.", 404, "INVOICE_NOT_FOUND");
       }
     }
 
-    console.error("Delete invoice error:", error);
+    // =====================================================
+    // INTERNAL ERROR
+    // =====================================================
 
     return failure("Unable to delete invoice.", 500, "INTERNAL_SERVER_ERROR");
   }

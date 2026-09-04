@@ -183,36 +183,54 @@ export async function GET(request: NextRequest) {
       // Tenant isolation
       eq(bookings.createdBy, bookings.createdBy),
 
-      // Booking must contain at least one attraction
-      sql`EXISTS (
-        SELECT 1
-        FROM ${attractionsAgainstBooking}
-        INNER JOIN ${attractionManagement}
-          ON ${attractionsAgainstBooking.attractionManagementId}
-          = ${attractionManagement.id}
-        INNER JOIN ${attractions}
-          ON ${attractionManagement.attractionId}
-          = ${attractions.id}
-        WHERE
-          ${attractionsAgainstBooking.bookingId} = ${bookings.id}
-          AND ${attractions.adminId} = ${adminId}
-      )`,
+      // =====================================================
+      // ACTIVE SCANNER INVOICE
+      // =====================================================
 
-      // User must have access to at least one
-      // attraction belonging to this booking
       sql`EXISTS (
-        SELECT 1
-        FROM ${attractionsAgainstBooking}
-        INNER JOIN ${attractionManagement}
-          ON ${attractionsAgainstBooking.attractionManagementId}
-          = ${attractionManagement.id}
-        INNER JOIN ${attractions}
-          ON ${attractionManagement.attractionId}
-          = ${attractions.id}
-        WHERE
-          ${attractionsAgainstBooking.bookingId} = ${bookings.id}
-          AND ${inArray(attractions.id, accessibleAttractionIds)}
-      )`,
+    SELECT 1
+    FROM ${scannerInvoices}
+    WHERE
+      ${scannerInvoices.invoiceNumber} = ${bookings.invoiceNumber}
+      AND ${scannerInvoices.isDeleted} = false
+      AND ${scannerInvoices.deletedAt} IS NULL
+  )`,
+
+      // =====================================================
+      // BOOKING MUST CONTAIN AT LEAST ONE ATTRACTION
+      // =====================================================
+
+      sql`EXISTS (
+    SELECT 1
+    FROM ${attractionsAgainstBooking}
+    INNER JOIN ${attractionManagement}
+      ON ${attractionsAgainstBooking.attractionManagementId}
+      = ${attractionManagement.id}
+    INNER JOIN ${attractions}
+      ON ${attractionManagement.attractionId}
+      = ${attractions.id}
+    WHERE
+      ${attractionsAgainstBooking.bookingId} = ${bookings.id}
+      AND ${attractions.adminId} = ${adminId}
+  )`,
+
+      // =====================================================
+      // USER MUST HAVE ACCESS TO AT LEAST ONE ATTRACTION
+      // =====================================================
+
+      sql`EXISTS (
+    SELECT 1
+    FROM ${attractionsAgainstBooking}
+    INNER JOIN ${attractionManagement}
+      ON ${attractionsAgainstBooking.attractionManagementId}
+      = ${attractionManagement.id}
+    INNER JOIN ${attractions}
+      ON ${attractionManagement.attractionId}
+      = ${attractions.id}
+    WHERE
+      ${attractionsAgainstBooking.bookingId} = ${bookings.id}
+      AND ${inArray(attractions.id, accessibleAttractionIds)}
+  )`,
     ];
 
     // =====================================================

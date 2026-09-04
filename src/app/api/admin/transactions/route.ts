@@ -552,17 +552,12 @@ export async function GET(request: NextRequest) {
 
       const sNo = offset + index + 1;
 
-      const year = new Date(transaction.dateTime).getFullYear();
-
-      const invoiceNumber = `${year}/${String(sNo).padStart(5, "0")}`;
-
       return {
-        // Serial number
-
+        // Transaction UUID
         id: transaction.id,
 
-        // Same invoice number as booking
-        invoiceNumber,
+        // Actual invoice number from transactions table
+        invoiceNumber: transaction.invoiceNumber,
 
         customer: {
           name: transaction.customerName,

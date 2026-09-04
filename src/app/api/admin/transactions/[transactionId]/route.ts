@@ -2,15 +2,17 @@ import { and, eq, isNull, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 
-import { transactions, bookings, attractions } from "@/db/schema";
+import {
+  transactions,
+  bookings,
+  attractions,
+  attractionsAgainstBooking,
+  attractionManagement,
+} from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
 
-import {
-  requireModuleAccess,
-  getAdminId,
-  getAccessibleAttractionIds,
-} from "@/lib/auth/authorization";
+import { requireModuleAccess, getAdminId } from "@/lib/auth/authorization";
 
 import { success, failure } from "@/lib/api/response";
 
@@ -71,23 +73,33 @@ export async function DELETE(
     }
 
     // =====================================================
-    // 6. FIND TRANSACTION
+    // 6. ACCESSIBLE ATTRACTIONS
     // =====================================================
 
-    /*
-     * bookings.attractionIds is UUID[]
-     *
-     * Therefore we CANNOT do:
-     *
-     * eq(bookings.attractionIds, attractions.id)
-     *
-     * because that becomes:
-     *
-     * uuid[] = uuid
-     *
-     * Instead we check whether the attraction ID
-     * exists inside the booking's attractionIds array.
-     */
+    const accessibleAttractionRows = await db
+      .select({
+        id: attractions.id,
+      })
+      .from(attractions)
+      .where(
+        and(eq(attractions.adminId, adminId), eq(attractions.status, "ACTIVE")),
+      );
+
+    const accessibleAttractionIds = accessibleAttractionRows.map(
+      (item) => item.id,
+    );
+
+    if (accessibleAttractionIds.length === 0) {
+      return failure(
+        "You do not have access to this transaction.",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    // =====================================================
+    // 7. FIND TRANSACTION
+    // =====================================================
 
     const [existingTransaction] = await db
       .select({
@@ -96,34 +108,52 @@ export async function DELETE(
         transactionId: transactions.invoiceNumber,
 
         deletedAt: transactions.deletedAt,
-
-        attractionId: attractions.id,
       })
       .from(transactions)
-
-      // Transaction -> Booking
       .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
-
-      // Booking -> Attractions
-      // bookings.attractionIds is UUID[]
-
       .where(
         and(
-          // Find requested transaction
+          // Requested transaction
           eq(transactions.id, transactionId),
 
-          // Tenant isolation
-          eq(attractions.adminId, adminId),
+          // Transaction not deleted
+          isNull(transactions.deletedAt),
 
-          // Booking must not already be deleted
+          eq(transactions.isDeleted, false),
+
+          // Booking not deleted
           isNull(bookings.deletedAt),
+
+          eq(bookings.isDeleted, false),
+
+          // =================================================
+          // TENANT + ATTRACTION ACCESS
+          // =================================================
+
+          sql`EXISTS (
+            SELECT 1
+            FROM ${attractionsAgainstBooking}
+            INNER JOIN ${attractionManagement}
+              ON ${attractionsAgainstBooking.attractionManagementId}
+              = ${attractionManagement.id}
+            INNER JOIN ${attractions}
+              ON ${attractionManagement.attractionId}
+              = ${attractions.id}
+            WHERE
+              ${attractionsAgainstBooking.bookingId}
+              = ${bookings.id}
+
+              AND ${attractions.adminId}
+              = ${adminId}
+
+              AND ${inArray(attractions.id, accessibleAttractionIds)}
+          )`,
         ),
       )
-
       .limit(1);
 
     // =====================================================
-    // 7. NOT FOUND
+    // 8. NOT FOUND
     // =====================================================
 
     if (!existingTransaction) {
@@ -131,7 +161,7 @@ export async function DELETE(
     }
 
     // =====================================================
-    // 8. ALREADY DELETED
+    // 9. ALREADY DELETED
     // =====================================================
 
     if (existingTransaction.deletedAt) {
@@ -143,7 +173,7 @@ export async function DELETE(
     }
 
     // =====================================================
-    // 9. SOFT DELETE TRANSACTION
+    // 10. SOFT DELETE TRANSACTION
     // =====================================================
 
     const [deletedTransaction] = await db
@@ -157,17 +187,31 @@ export async function DELETE(
 
         updatedAt: new Date(),
       })
-      .where(eq(transactions.id, transactionId))
+      .where(
+        and(
+          eq(transactions.id, transactionId),
+          isNull(transactions.deletedAt),
+          eq(transactions.isDeleted, false),
+        ),
+      )
       .returning({
         id: transactions.id,
-
-        transactionId: transactions.invoiceNumber,
-
-        deletedAt: transactions.deletedAt,
       });
 
     // =====================================================
-    // 10. RESPONSE
+    // 11. DELETE FAILED
+    // =====================================================
+
+    if (!deletedTransaction) {
+      return failure(
+        "Transaction could not be deleted.",
+        400,
+        "TRANSACTION_DELETE_FAILED",
+      );
+    }
+
+    // =====================================================
+    // 12. RESPONSE
     // =====================================================
 
     return success({
