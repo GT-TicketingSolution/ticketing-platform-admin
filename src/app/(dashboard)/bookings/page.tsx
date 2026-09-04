@@ -243,7 +243,7 @@ export default function BookingsPage() {
     }
   };
 
-  const handleSaveEditedBooking = async (bookingId: string, data: { customerName: string; mobileNumber: string; gstNumber?: string }) => {
+  const handleSaveEditedBooking = async (bookingId: string, data: { customerName?: string; mobileNumber?: string; gstNumber?: string }) => {
     try {
       await updateBookingMutation.mutateAsync({ bookingId, payload: data });
       setIsEditOpen(false);
