@@ -48,16 +48,16 @@ function formatDateOnly(val?: string | null): string {
   return isNaN(d.getTime()) ? val : d.toLocaleDateString("en-IN", { dateStyle: "medium" });
 }
 
-// ── Status badge renderer 
 function StatusBadge({ status }: { status: string }) {
   const upper = status?.toUpperCase() || "";
-  const isSuccess = upper === "SUCCESS" || upper === "SUCCESSFUL" || upper === "CONFIRMED" || upper === "PAID";
+  const isSuccess = upper === "SUCCESS" || upper === "SUCCESSFUL" || upper === "CONFIRMED" || upper === "PAID" || upper === "SCANNED";
   const isFailed = upper === "FAILED" || upper === "CANCELLED";
+  const isUnscanned = upper === "UNSCANNED";
 
-  const bg = isSuccess ? "#B5FFE7" : isFailed ? "#FEE2E2" : "rgba(255,248,217,0.93)";
-  const dot = isSuccess ? "#119167" : isFailed ? "rgba(220,38,38,0.88)" : "#D97706";
-  const text = isSuccess ? "#119167" : isFailed ? "rgba(220,38,38,0.86)" : "#D97706";
-  const label = isSuccess ? "Success" : isFailed ? "Failed" : status || "Pending";
+  const bg = isSuccess ? "#B5FFE7" : isFailed ? "#FEE2E2" : isUnscanned ? "rgba(255,248,217,0.93)" : "#E2E8F0";
+  const dot = isSuccess ? "#119167" : isFailed ? "rgba(220,38,38,0.88)" : isUnscanned ? "#D97706" : "#64748B";
+  const text = isSuccess ? "#119167" : isFailed ? "rgba(220,38,38,0.86)" : isUnscanned ? "#D97706" : "#475569";
+  const label = upper === "SCANNED" ? "Scanned" : upper === "UNSCANNED" ? "Unscanned" : isSuccess ? "Success" : isFailed ? "Failed" : status || "Pending";
 
   return (
     <span
@@ -87,7 +87,6 @@ export default function InvoicesPage() {
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedPaymentMode, setSelectedPaymentMode] = useState<string>("All");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -104,7 +103,7 @@ export default function InvoicesPage() {
   // Reset pagination on filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, selectedPaymentMode, fromDate, toDate]);
+  }, [debouncedSearch, fromDate, toDate]);
 
   // Modals & Dropdown State
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceListItem | null>(null);
@@ -133,7 +132,6 @@ export default function InvoicesPage() {
     page: currentPage,
     limit: PAGE_SIZE,
     search: debouncedSearch || undefined,
-    paymentMode: selectedPaymentMode !== "All" ? selectedPaymentMode : undefined,
     dateFrom: fromDate || undefined,
     dateTo: toDate || undefined,
   };
@@ -144,20 +142,19 @@ export default function InvoicesPage() {
   const invoices = data?.items ?? [];
   const pagination = data?.pagination ?? { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 };
 
-  const isFiltered = !!debouncedSearch || selectedPaymentMode !== "All" || !!fromDate || !!toDate;
+  const isFiltered = !!debouncedSearch || !!fromDate || !!toDate;
 
   // Stats from backend summary, fallback to live data calculation
-  const totalRevenue = data?.summary?.totalRevenue ?? invoices.reduce((s, inv) => s + (Number(inv.amount) || 0), 0);
+  const totalRevenue = data?.summary?.totalRevenue ?? invoices.reduce((s, inv) => s + (Number(inv.grandTotalAmount ?? inv.amount) || 0), 0);
   const totalInvoicesCount = data?.summary?.totalInvoices ?? pagination.total ?? invoices.length;
   const paidInvoicesCount = data?.summary?.paidInvoices ?? invoices.filter((inv) => {
-    const u = (inv.status || "").toUpperCase();
-    return u === "SUCCESS" || u === "SUCCESSFUL" || u === "CONFIRMED" || u === "PAID";
+    const u = (inv.scannerInvoice?.scannerInvoiceStatus || inv.status || "").toUpperCase();
+    return u === "SUCCESS" || u === "SUCCESSFUL" || u === "CONFIRMED" || u === "PAID" || u === "SCANNED";
   }).length;
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleResetFilters = () => {
     setSearchQuery("");
-    setSelectedPaymentMode("All");
     setFromDate("");
     setToDate("");
     setCurrentPage(1);
@@ -181,7 +178,6 @@ export default function InvoicesPage() {
   // ── Export Handlers ────────────────────────────────────────────────────────
   const getFilterInfo = () => {
     const parts: string[] = [];
-    if (selectedPaymentMode !== "All") parts.push(`Mode: ${selectedPaymentMode}`);
     if (fromDate || toDate) parts.push(`Date: ${fromDate || "Start"} → ${toDate || "End"}`);
     if (debouncedSearch) parts.push(`Search: "${debouncedSearch}"`);
     return parts.length > 0 ? parts.join(" | ") : undefined;
@@ -190,7 +186,6 @@ export default function InvoicesPage() {
   const getExportData = async (scope: ExportScope): Promise<InvoiceListItem[]> => {
     const base: InvoiceListParams = {
       search: debouncedSearch || undefined,
-      paymentMode: selectedPaymentMode !== "All" ? selectedPaymentMode : undefined,
       dateFrom: fromDate || undefined,
       dateTo: toDate || undefined,
     };
@@ -224,20 +219,18 @@ export default function InvoicesPage() {
         orientation: "landscape",
         columns: [
           { header: "#", accessor: (_, i) => (scope === "all" ? i + 1 : (currentPage - 1) * PAGE_SIZE + i + 1), width: "30px" },
-          { header: "Invoice ID", accessor: (inv) => inv.invoiceId || inv.invoiceNumber || "-" },
-          { header: "Customer", accessor: "customerName" },
+          { header: "Invoice ID", accessor: (inv) => inv.invoiceNumber || inv.invoiceId || "-" },
+          { header: "Customer", accessor: (inv) => inv.customer?.name || inv.customerName || "-" },
           { header: "Date", accessor: (inv) => formatDateOnly(inv.dateTime || inv.invoiceDate) },
-          { header: "Booking ID", accessor: (inv) => inv.bookingId || "-" },
-          { header: "Attraction", accessor: (inv) => inv.attraction?.name || "-" },
+          { header: "Attraction", accessor: (inv) => inv.attractions && inv.attractions.length > 0 ? inv.attractions.map(a => a.name).join(", ") : (inv.attraction?.name || "-") },
           { header: "Visitors", accessor: (inv) => inv.visitors ?? 0, align: "center" },
-          { header: "Amount (₹)", accessor: (inv) => `₹${Number(inv.amount ?? 0).toFixed(2)}`, align: "right" },
-          { header: "Mode", accessor: "paymentMode" },
-          { header: "Status", renderCell: (inv) => renderStatusBadgeHTML(inv.status || "-"), align: "center" },
+          { header: "Amount (₹)", accessor: (inv) => `₹${Number(inv.grandTotalAmount ?? inv.amount ?? 0).toFixed(2)}`, align: "right" },
+          { header: "Scanner Status", renderCell: (inv) => renderStatusBadgeHTML(inv.scannerInvoice?.scannerInvoiceStatus || inv.status || "-"), align: "center" },
         ],
         data: items,
         summaryCards: [
           { label: "Total Invoices", value: items.length },
-          { label: "Total Revenue", value: `₹${items.reduce((s, inv) => s + Number(inv.amount ?? 0), 0).toFixed(2)}` },
+          { label: "Total Revenue", value: `₹${items.reduce((s, inv) => s + Number(inv.grandTotalAmount ?? inv.amount ?? 0), 0).toFixed(2)}` },
         ],
       });
       showToast(`PDF downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
@@ -259,18 +252,16 @@ export default function InvoicesPage() {
       }
       const dateKey = new Date().toISOString().slice(0, 10);
       const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
-      const headers = ["#", "Invoice ID", "Customer", "Date", "Booking ID", "Attraction", "Visitors", "Amount (₹)", "Mode", "Status"];
+      const headers = ["#", "Invoice ID", "Customer", "Date", "Attraction", "Visitors", "Amount (₹)", "Scanner Status"];
       const rows = items.map((inv, i) => [
         scope === "all" ? i + 1 : (currentPage - 1) * PAGE_SIZE + i + 1,
-        inv.invoiceId || inv.invoiceNumber || "-",
-        inv.customerName || "-",
+        inv.invoiceNumber || inv.invoiceId || "-",
+        inv.customer?.name || inv.customerName || "-",
         formatDateOnly(inv.dateTime || inv.invoiceDate),
-        inv.bookingId || "-",
-        inv.attraction?.name || "-",
+        inv.attractions && inv.attractions.length > 0 ? inv.attractions.map(a => a.name).join(", ") : (inv.attraction?.name || "-"),
         inv.visitors ?? 0,
-        Number(inv.amount ?? 0).toFixed(2),
-        inv.paymentMode || "-",
-        inv.status || "-",
+        Number(inv.grandTotalAmount ?? inv.amount ?? 0).toFixed(2),
+        inv.scannerInvoice?.scannerInvoiceStatus || inv.status || "-",
       ]);
       exportToCSV(`Invoices_${scopeLabel}_${dateKey}`, headers, rows);
       showToast(`Excel downloaded (${items.length} record${items.length === 1 ? "" : "s"}).`, "success");
@@ -352,26 +343,25 @@ export default function InvoicesPage() {
           border: "1px solid rgba(179, 175, 175, 0.4)",
         }}
       >
-        {/* Search Input Box */}
+        {/* Search Bar */}
         <div
           style={{
-            boxSizing: "border-box",
-            width: "100%",
-            maxWidth: "340px",
-            height: "40px",
-            background: "#FFFFFF",
-            border: "1.5px solid rgba(179, 175, 175, 0.51)",
-            borderRadius: "4px",
             display: "flex",
             alignItems: "center",
-            padding: "0 14px",
             gap: "10px",
+            background: "#FFFFFF",
+            border: "1px solid #C4C4C4",
+            borderRadius: "4px",
+            padding: "0 14px",
+            height: "40px",
+            flex: "1 1 280px",
+            maxWidth: "420px",
           }}
         >
           <Search size={18} color="#A0A0A0" strokeWidth={2} />
           <input
             type="text"
-            placeholder="Search by Invoice ID, Customer..."
+            placeholder="Search by Invoice Number, Customer Name, Mobile..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
@@ -389,44 +379,6 @@ export default function InvoicesPage() {
 
         {/* Right Filter Controls */}
         <div style={{ display: "flex", alignItems: "flex-end", gap: "14px", flexWrap: "wrap" }}>
-          {/* Payment Mode Select */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <label
-              style={{
-                fontFamily: typography.fontFamily.sans,
-                fontWeight: 600,
-                fontSize: "10px",
-                color: "rgba(81, 82, 82, 0.65)",
-              }}
-            >
-              Payment Mode
-            </label>
-            <select
-              value={selectedPaymentMode}
-              onChange={(e) => setSelectedPaymentMode(e.target.value)}
-              style={{
-                height: "40px",
-                padding: "0 12px",
-                background: "#FFFFFF",
-                border: "0.5px solid rgba(179, 175, 175, 0.66)",
-                borderRadius: "4px",
-                fontFamily: typography.fontFamily.sans,
-                fontWeight: 700,
-                fontSize: "12px",
-                color: "#173F63",
-                outline: "none",
-                cursor: "pointer",
-                minWidth: "120px",
-              }}
-            >
-              <option value="All">All Modes</option>
-              <option value="ONLINE">Online</option>
-              <option value="CASH">Cash</option>
-              <option value="UPI">UPI</option>
-              <option value="CARD">Card</option>
-            </select>
-          </div>
-
           {/* Date Range Picker */}
           <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
             <label
@@ -490,13 +442,13 @@ export default function InvoicesPage() {
                   color: colors.brand.accent,
                 }}
               >
-                {item.invoiceId || item.invoiceNumber || "-"}
+                {item.invoiceNumber || item.invoiceId || "-"}
               </span>
             ),
           },
           {
             header: "Customer Name",
-            cell: (item) => item.customerName || "-",
+            cell: (item) => item.customer?.name || item.customerName || "-",
           },
           {
             header: "Date & Time",
@@ -504,7 +456,10 @@ export default function InvoicesPage() {
           },
           {
             header: "Attraction",
-            cell: (item) => item.attraction?.name || "-",
+            cell: (item) =>
+              item.attractions && item.attractions.length > 0
+                ? item.attractions.map((a) => a.name).join(", ")
+                : item.attraction?.name || "-",
           },
           {
             header: "Visitors",
@@ -533,17 +488,15 @@ export default function InvoicesPage() {
                   color: "#011B2F",
                 }}
               >
-                ₹{Number(item.amount ?? 0).toFixed(2)}
+                ₹{Number(item.grandTotalAmount ?? item.amount ?? 0).toFixed(2)}
               </span>
             ),
           },
           {
-            header: "Payment Mode",
-            cell: (item) => item.paymentMode || "-",
-          },
-          {
             header: "Status",
-            cell: (item) => <StatusBadge status={item.status} />,
+            cell: (item) => (
+              <StatusBadge status={item.scannerInvoice?.scannerInvoiceStatus || item.status || "UNSCANNED"} />
+            ),
           },
           {
             header: "Actions",

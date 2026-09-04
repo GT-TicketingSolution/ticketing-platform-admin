@@ -8,66 +8,58 @@ import { showErrorOnce } from "@/lib/api/axiosConfig";
 
 // ── Types 
 
+export interface InvoiceCustomer {
+  name: string | null;
+  mobileNumber: string | null;
+  gstNumber: string | null;
+}
+
+export interface InvoiceAttractionItem {
+  id: string;
+  name: string;
+}
+
+export interface ScannerInvoice {
+  scannerInvoiceStatus: string;
+  scannedByStaff: string | null;
+  scannedAt: string | null;
+}
+
 export interface InvoiceListItem {
   sNo?: number;
   id: string;
-  invoiceId: string;
-  invoiceNumber?: string;
-  transactionId?: string;
-  customerName: string;
+  invoiceNumber: string;
+  customer: InvoiceCustomer | null;
   dateTime: string;
-  invoiceDate?: string;
-  visitAt?: string;
-  bookingId?: string;
-  attraction: {
-    id: string;
-    name: string;
-  };
-  visitors?: number;
-  amount: number;
-  paymentMode: string;
-  status: string; // "SUCCESSFUL" | "SUCCESS" | "CONFIRMED" | "PENDING" | "FAILED" | etc.
-}
+  attractions: InvoiceAttractionItem[];
+  visitors: number;
+  grandTotalAmount: number;
+  scannerInvoice: ScannerInvoice | null;
 
-export interface InvoiceDetail {
-  id: string;
+  // Compatibility aliases
   invoiceId?: string;
-  invoiceNumber?: string;
-  transactionId: string;
-  dateTime?: string;
-  visitAt?: string;
-  visitors?: number;
-  booking?: {
-    id: string;
-    bookingId: string;
-  };
-  customer: {
-    name: string;
-    mobile: string;
-    gstNumber?: string | null;
-  };
-  attraction: {
-    id: string;
-    name: string;
-  };
-  invoiceDate?: string;
-  payment?: {
-    mode: string;
-    amount: number;
-    status: string;
-  };
+  customerName?: string;
+  mobileNumber?: string;
+  gstNumber?: string;
   amount?: number;
+  attraction?: {
+    id: string;
+    name: string;
+  };
   paymentMode?: string;
   status?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  bookingId?: string;
+  transactionId?: string;
+  invoiceDate?: string;
 }
+
+export interface InvoiceDetail extends InvoiceListItem { }
 
 export interface InvoiceListParams {
   page?: number;
   limit?: number;
   search?: string;
-  paymentMode?: string;
+  attractionId?: string;
   dateFrom?: string;
   dateTo?: string;
 }
@@ -95,8 +87,6 @@ export const invoiceKeys = {
   all: ["invoices"] as const,
   lists: () => [...invoiceKeys.all, "list"] as const,
   list: (params?: InvoiceListParams) => [...invoiceKeys.lists(), params] as const,
-  details: () => [...invoiceKeys.all, "detail"] as const,
-  detail: (id: string) => [...invoiceKeys.details(), id] as const,
 };
 
 // ── Queries ──────────────────────────────────────────────────────────────────
@@ -113,7 +103,7 @@ export async function fetchInvoiceList(params?: InvoiceListParams): Promise<Invo
   sp.set("page", String(page));
   sp.set("limit", String(limit));
   if (params?.search?.trim()) sp.set("search", params.search.trim());
-  if (params?.paymentMode && params.paymentMode !== "All") sp.set("paymentMode", params.paymentMode);
+  if (params?.attractionId && params.attractionId !== "All") sp.set("attractionId", params.attractionId);
   if (params?.dateFrom) sp.set("dateFrom", params.dateFrom);
   if (params?.dateTo) sp.set("dateTo", params.dateTo);
 
@@ -125,21 +115,66 @@ export async function fetchInvoiceList(params?: InvoiceListParams): Promise<Invo
     const total = payload.pagination?.total ?? payload.items.length;
     return {
       summary: payload.summary,
-      items: payload.items.map((item: any, idx: number) => ({
-        ...item,
-        id: item.id || item.invoiceId || item.invoiceNumber || item._id || `inv-${idx + 1 + (page - 1) * (limit || 10)}`,
-        sNo: item.sNo ?? idx + 1 + (page - 1) * (limit || 10),
-        invoiceId: item.invoiceId || item.invoiceNumber || item.id || "",
-        invoiceNumber: item.invoiceNumber || item.invoiceId || item.id || "",
-        bookingId: item.bookingId || item.bookingNumber || item.booking?.bookingId || "",
-        dateTime: item.dateTime || item.invoiceDate || "",
-        invoiceDate: item.dateTime || item.invoiceDate || "",
-        visitAt: item.visitAt || "",
-        visitors: item.visitors ?? 0,
-        amount: Number(item.amount ?? 0),
-        paymentMode: item.paymentMode ?? "-",
-        status: item.status ?? "SUCCESS",
-      })),
+      items: payload.items.map((item: any, idx: number) => {
+        const attractions: InvoiceAttractionItem[] = Array.isArray(item.attractions)
+          ? item.attractions.map((a: any) => ({
+            id: a.id || a.attractionId || "",
+            name: a.name || "",
+          }))
+          : item.attraction
+            ? [{ id: item.attraction.id || "", name: item.attraction.name || "" }]
+            : [];
+
+        const grandTotal = Number(item.grandTotalAmount ?? item.amount ?? 0);
+        const invNum = item.invoiceNumber || item.invoiceId || item.id || "-";
+        const status = item.scannerInvoice?.scannerInvoiceStatus || item.status || "CONFIRMED";
+
+        const cust: InvoiceCustomer | null = item.customer
+          ? {
+            name: item.customer.name ?? null,
+            mobileNumber: item.customer.mobileNumber ?? null,
+            gstNumber: item.customer.gstNumber ?? null,
+          }
+          : item.customerName
+            ? {
+              name: item.customerName,
+              mobileNumber: item.mobileNumber ?? null,
+              gstNumber: item.gstNumber ?? null,
+            }
+            : null;
+
+        const scannerInv: ScannerInvoice | null = item.scannerInvoice
+          ? {
+            scannerInvoiceStatus: item.scannerInvoice.scannerInvoiceStatus || "UNSCANNED",
+            scannedByStaff: item.scannerInvoice.scannedByStaff ?? null,
+            scannedAt: item.scannerInvoice.scannedAt ?? null,
+          }
+          : null;
+
+        return {
+          ...item,
+          id: item.id || invNum,
+          sNo: item.sNo ?? idx + 1 + (page - 1) * (limit || 10),
+          invoiceNumber: invNum,
+          invoiceId: invNum,
+          customer: cust,
+          customerName: cust?.name || "-",
+          mobileNumber: cust?.mobileNumber || "-",
+          gstNumber: cust?.gstNumber || "-",
+          dateTime: item.dateTime || "",
+          invoiceDate: item.dateTime || "",
+          attractions,
+          attraction: attractions[0] || { id: "", name: "-" },
+          visitors: Number(item.visitors ?? 0),
+          grandTotalAmount: grandTotal,
+          amount: grandTotal,
+          scannerInvoice: scannerInv,
+          status,
+          paymentMode: item.paymentMode ?? "CASH",
+          bookingId: item.bookingId || item.bookingNumber || "-",
+          transactionId: item.transactionId || "-",
+        };
+      }),
       pagination: payload.pagination || {
         page,
         limit,
@@ -151,21 +186,66 @@ export async function fetchInvoiceList(params?: InvoiceListParams): Promise<Invo
   if (Array.isArray(payload)) {
     return {
       summary: undefined,
-      items: payload.map((item: any, idx: number) => ({
-        ...item,
-        id: item.id || item.invoiceId || item.invoiceNumber || item._id || `inv-${idx + 1 + (page - 1) * (limit || 10)}`,
-        sNo: item.sNo ?? idx + 1 + (page - 1) * (limit || 10),
-        invoiceId: item.invoiceId || item.invoiceNumber || item.id || "",
-        invoiceNumber: item.invoiceNumber || item.invoiceId || item.id || "",
-        bookingId: item.bookingId || item.bookingNumber || item.booking?.bookingId || "",
-        dateTime: item.dateTime || item.invoiceDate || "",
-        invoiceDate: item.dateTime || item.invoiceDate || "",
-        visitAt: item.visitAt || "",
-        visitors: item.visitors ?? 0,
-        amount: Number(item.amount ?? 0),
-        paymentMode: item.paymentMode ?? "-",
-        status: item.status ?? "SUCCESS",
-      })),
+      items: payload.map((item: any, idx: number) => {
+        const attractions: InvoiceAttractionItem[] = Array.isArray(item.attractions)
+          ? item.attractions.map((a: any) => ({
+            id: a.id || a.attractionId || "",
+            name: a.name || "",
+          }))
+          : item.attraction
+            ? [{ id: item.attraction.id || "", name: item.attraction.name || "" }]
+            : [];
+
+        const grandTotal = Number(item.grandTotalAmount ?? item.amount ?? 0);
+        const invNum = item.invoiceNumber || item.invoiceId || item.id || "-";
+        const status = item.scannerInvoice?.scannerInvoiceStatus || item.status || "CONFIRMED";
+
+        const cust: InvoiceCustomer | null = item.customer
+          ? {
+            name: item.customer.name ?? null,
+            mobileNumber: item.customer.mobileNumber ?? null,
+            gstNumber: item.customer.gstNumber ?? null,
+          }
+          : item.customerName
+            ? {
+              name: item.customerName,
+              mobileNumber: item.mobileNumber ?? null,
+              gstNumber: item.gstNumber ?? null,
+            }
+            : null;
+
+        const scannerInv: ScannerInvoice | null = item.scannerInvoice
+          ? {
+            scannerInvoiceStatus: item.scannerInvoice.scannerInvoiceStatus || "UNSCANNED",
+            scannedByStaff: item.scannerInvoice.scannedByStaff ?? null,
+            scannedAt: item.scannerInvoice.scannedAt ?? null,
+          }
+          : null;
+
+        return {
+          ...item,
+          id: item.id || invNum,
+          sNo: item.sNo ?? idx + 1 + (page - 1) * (limit || 10),
+          invoiceNumber: invNum,
+          invoiceId: invNum,
+          customer: cust,
+          customerName: cust?.name || "-",
+          mobileNumber: cust?.mobileNumber || "-",
+          gstNumber: cust?.gstNumber || "-",
+          dateTime: item.dateTime || "",
+          invoiceDate: item.dateTime || "",
+          attractions,
+          attraction: attractions[0] || { id: "", name: "-" },
+          visitors: Number(item.visitors ?? 0),
+          grandTotalAmount: grandTotal,
+          amount: grandTotal,
+          scannerInvoice: scannerInv,
+          status,
+          paymentMode: item.paymentMode ?? "CASH",
+          bookingId: item.bookingId || item.bookingNumber || "-",
+          transactionId: item.transactionId || "-",
+        };
+      }),
       pagination: {
         page,
         limit,
@@ -194,23 +274,7 @@ export function useInvoiceList(params?: InvoiceListParams) {
     queryFn: () => fetchInvoiceList({ ...params, page, limit }),
     placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
-  });
-}
-
-/**
- * Fetch a single invoice's full detail.
- * GET /api/admin/invoices/:invoiceId
- */
-export function useInvoiceDetail(invoiceId: string, enabled = true) {
-  return useQuery<InvoiceDetail>({
-    queryKey: invoiceKeys.detail(invoiceId),
-    queryFn: async () => {
-      const res = await getData<any>(AppUrl.invoice.get(invoiceId));
-      return res?.data?.invoice ?? res?.invoice ?? res;
-    },
-    enabled: enabled && !!invoiceId,
-    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 

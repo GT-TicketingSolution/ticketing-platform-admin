@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { X, FileText, Download, Printer, Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { X, FileText, Download, Printer, CheckCircle2, XCircle, Clock, Tag, User, QrCode } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
-import { InvoiceListItem, useInvoiceDetail, InvoiceDetail } from "@/hooks/useInvoiceQueries";
+import { InvoiceListItem } from "@/hooks/useInvoiceQueries";
 
 interface InvoiceDetailsModalProps {
   invoice: InvoiceListItem | null;
@@ -19,24 +19,47 @@ function formatDate(iso: string | undefined | null) {
 }
 
 // ── Build branded invoice HTML for PDF & Print ────────────────────────────────
-function buildInvoiceHTML(detail: InvoiceDetail, listItem: InvoiceListItem): string {
-  const status = detail.status ?? detail.payment?.status ?? listItem.status ?? "-";
+function buildInvoiceHTML(invoice: InvoiceListItem): string {
+  const status = invoice.scannerInvoice?.scannerInvoiceStatus || invoice.status || "CONFIRMED";
   const upper = status.toUpperCase();
-  const isSuccess = upper === "SUCCESS" || upper === "SUCCESSFUL" || upper === "CONFIRMED" || upper === "PAID";
+  const isSuccess = upper === "SUCCESS" || upper === "SUCCESSFUL" || upper === "CONFIRMED" || upper === "PAID" || upper === "SCANNED";
   const isFailed = upper === "FAILED" || upper === "CANCELLED";
   const statusBg = isSuccess ? "#B5FFE7" : isFailed ? "#FEE2E2" : "#FFF8D9";
   const statusColor = isSuccess ? "#119167" : isFailed ? "#DC2626" : "#D97706";
 
-  const customerName = detail.customer?.name ?? listItem.customerName ?? "-";
-  const mobile = detail.customer?.mobile ?? "-";
-  const gstn = detail.customer?.gstNumber ?? "N/A";
-  const attractionName = detail.attraction?.name ?? listItem.attraction?.name ?? "-";
-  const bookingId = detail.booking?.bookingId ?? listItem.bookingId ?? "-";
-  const transactionId = detail.transactionId ?? listItem.transactionId ?? "-";
-  const invoiceNumber = detail.invoiceId ?? detail.invoiceNumber ?? listItem.invoiceId ?? listItem.invoiceNumber ?? "-";
-  const invoiceDate = formatDate(detail.dateTime ?? detail.invoiceDate ?? listItem.dateTime ?? listItem.invoiceDate);
-  const paymentMode = detail.paymentMode ?? detail.payment?.mode ?? listItem.paymentMode ?? "-";
-  const amount = Number(detail.amount ?? detail.payment?.amount ?? listItem.amount ?? 0).toFixed(2);
+  const customerName = invoice.customer?.name || invoice.customerName || "-";
+  const mobile = invoice.customer?.mobileNumber || invoice.mobileNumber || "-";
+  const gstn = invoice.customer?.gstNumber || invoice.gstNumber || "-";
+  const invoiceNumber = invoice.invoiceNumber || invoice.invoiceId || invoice.id || "-";
+  const invoiceDate = formatDate(invoice.dateTime || invoice.invoiceDate);
+  const visitors = invoice.visitors ?? 1;
+  const grandTotal = Number(invoice.grandTotalAmount ?? invoice.amount ?? 0).toFixed(2);
+  const paymentMode = invoice.paymentMode || "CASH";
+
+  const attractionsList = invoice.attractions && invoice.attractions.length > 0
+    ? invoice.attractions
+    : invoice.attraction
+    ? [invoice.attraction]
+    : [];
+
+  const attractionsHtml = attractionsList.length > 0
+    ? attractionsList.map((a, i) => `<tr><td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;">${i + 1}</td><td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;font-weight:600;">${a.name}</td></tr>`).join("")
+    : `<tr><td colspan="2" style="padding:6px 8px;color:#64748B;">-</td></tr>`;
+
+  const scannerInfo = invoice.scannerInvoice
+    ? `
+      <div style="background:#F8FAFC;padding:14px;border-radius:8px;border:1px solid #E2E8F0;margin-bottom:16px;">
+        <div style="font-size:12px;font-weight:bold;color:#0C2A42;text-transform:uppercase;margin-bottom:8px;">Scanner Details</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr>
+            <td style="padding:4px 0;width:33.3%;"><strong>Status:</strong> ${invoice.scannerInvoice.scannerInvoiceStatus}</td>
+            <td style="padding:4px 0;width:33.3%;"><strong>Staff:</strong> ${invoice.scannerInvoice.scannedByStaff || "-"}</td>
+            <td style="padding:4px 0;width:33.3%;"><strong>Scanned At:</strong> ${formatDate(invoice.scannerInvoice.scannedAt)}</td>
+          </tr>
+        </table>
+      </div>
+    `
+    : "";
 
   return `
     <div style="font-family:Arial,sans-serif;padding:30px;color:#011B2F;background:#FFFFFF;max-width:680px;margin:auto;">
@@ -49,45 +72,58 @@ function buildInvoiceHTML(detail: InvoiceDetail, listItem: InvoiceListItem): str
           <td style="text-align:right;vertical-align:middle;padding-bottom:12px;">
             <div style="display:inline-block;padding:4px 12px;border-radius:12px;font-weight:bold;font-size:12px;background:${statusBg};color:${statusColor};">${status}</div>
             <div style="font-size:14px;margin-top:4px;font-weight:bold;color:#0C2A42;">${invoiceNumber}</div>
-            <div style="font-size:11px;color:#6B7280;">Txn: ${transactionId}</div>
           </td>
         </tr>
       </table>
 
-      <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+      <!-- Customer & Invoice Info -->
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
         <tr>
           <td style="width:100%;vertical-align:top;">
             <div style="background:#F8FAFC;padding:14px;border-radius:8px;border:1px solid #E2E8F0;">
-              <div style="font-size:14px;font-weight:bold;color:#0C2A42;margin-bottom:10px;">Invoice & Booking Info</div>
+              <div style="font-size:12px;font-weight:bold;color:#0C2A42;text-transform:uppercase;margin-bottom:10px;">Invoice &amp; Customer Information</div>
               <table style="width:100%;border-collapse:collapse;font-size:13px;">
                 <tr>
                   <td style="padding:4px 0;width:50%;"><strong>Invoice ID:</strong> ${invoiceNumber}</td>
                   <td style="padding:4px 0;"><strong>Invoice Date:</strong> ${invoiceDate}</td>
                 </tr>
                 <tr>
-                  <td style="padding:4px 0;"><strong>Attraction:</strong> ${attractionName}</td>
-                  <td style="padding:4px 0;"><strong>Booking ID:</strong> ${bookingId}</td>
+                  <td style="padding:4px 0;"><strong>Customer Name:</strong> ${customerName}</td>
+                  <td style="padding:4px 0;"><strong>Mobile Number:</strong> ${mobile}</td>
                 </tr>
-                <tr>
-                  <td style="padding:4px 0;"><strong>Transaction ID:</strong> ${transactionId}</td>
-                  <td style="padding:4px 0;"></td>
-                </tr>
+                ${gstn && gstn !== "-" ? `<tr><td colspan="2" style="padding:4px 0;"><strong>GST Number:</strong> ${gstn}</td></tr>` : ""}
               </table>
             </div>
           </td>
         </tr>
       </table>
 
+      <!-- Attractions Table -->
+      <div style="background:#F8FAFC;padding:14px;border-radius:8px;border:1px solid #E2E8F0;margin-bottom:16px;">
+        <div style="font-size:12px;font-weight:bold;color:#0C2A42;text-transform:uppercase;margin-bottom:8px;">Attractions (${attractionsList.length})</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#F1F5F9;text-align:left;font-size:11px;color:#64748B;text-transform:uppercase;">
+              <th style="padding:6px 8px;width:40px;">#</th>
+              <th style="padding:6px 8px;">Attraction Name</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${attractionsHtml}
+          </tbody>
+        </table>
+      </div>
+
+      ${scannerInfo}
+
+      <!-- Payment Summary -->
       <div style="border:1.5px solid #0084FF;border-radius:8px;padding:16px 14px;background:#F0F9FF;margin-bottom:20px;">
         <div style="font-size:14px;font-weight:bold;color:#0C2A42;margin-bottom:12px;">Payment Summary</div>
         <table style="width:100%;border-collapse:collapse;font-size:13px;">
           <tr>
-            <td style="padding:4px 0;width:50%;"><strong style="color:#0C2A42;">Payment Mode:</strong> ${paymentMode}</td>
-            <td style="padding:4px 0;text-align:right;"><strong style="color:#0C2A42;">Status:</strong> ${status}</td>
-          </tr>
-          <tr>
-            <td style="padding:4px 0;"><strong style="color:#0C2A42;">Invoice Amount:</strong> &#8377;${amount}</td>
-            <td style="padding:4px 0;text-align:right;"><strong style="color:#0C2A42;">Total Paid:</strong> &#8377;${amount}</td>
+            <td style="padding:4px 0;width:33.3%;"><strong style="color:#0C2A42;">Visitors:</strong> ${visitors}</td>
+            <td style="padding:4px 0;width:33.3%;"><strong style="color:#0C2A42;">Payment Mode:</strong> ${paymentMode}</td>
+            <td style="padding:4px 0;width:33.3%;text-align:right;"><strong style="color:#0C2A42;">Grand Total:</strong> &#8377;${grandTotal}</td>
           </tr>
         </table>
       </div>
@@ -99,7 +135,7 @@ function buildInvoiceHTML(detail: InvoiceDetail, listItem: InvoiceListItem): str
 }
 
 // ── Download PDF via html2pdf.js (CDN) ───────────────────────────────────────
-async function handleDownloadPDF(detail: InvoiceDetail, listItem: InvoiceListItem) {
+async function handleDownloadPDF(invoice: InvoiceListItem) {
   if (!(window as any).html2pdf) {
     await new Promise<void>((resolve, reject) => {
       const script = document.createElement("script");
@@ -112,10 +148,10 @@ async function handleDownloadPDF(detail: InvoiceDetail, listItem: InvoiceListIte
 
   const element = document.createElement("div");
   element.style.width = "700px";
-  element.innerHTML = buildInvoiceHTML(detail, listItem);
+  element.innerHTML = buildInvoiceHTML(invoice);
   document.body.appendChild(element);
 
-  const invNum = detail.invoiceNumber || listItem.invoiceNumber || "Invoice";
+  const invNum = invoice.invoiceNumber || invoice.invoiceId || invoice.id || "Invoice";
   await (window as any).html2pdf().set({
     margin: [10, 10, 10, 10],
     filename: `${invNum}.pdf`,
@@ -128,17 +164,17 @@ async function handleDownloadPDF(detail: InvoiceDetail, listItem: InvoiceListIte
 }
 
 // ── Print via browser ─────────────────────────────────────────────────────────
-function handlePrintInvoice(detail: InvoiceDetail, listItem: InvoiceListItem) {
+function handlePrintInvoice(invoice: InvoiceListItem) {
   const win = window.open("", "_blank");
   if (!win) {
     alert("Please allow pop-ups to print invoices.");
     return;
   }
-  const invNum = detail.invoiceNumber || listItem.invoiceNumber || "Invoice";
+  const invNum = invoice.invoiceNumber || invoice.invoiceId || invoice.id || "Invoice";
   win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/>
     <title>${invNum}</title>
     <style>@media print { body { margin: 0; padding: 0; } }</style>
-    </head><body>${buildInvoiceHTML(detail, listItem)}
+    </head><body>${buildInvoiceHTML(invoice)}
     <script>window.onload = function() { window.print(); };<\/script>
     </body></html>`);
   win.document.close();
@@ -149,11 +185,6 @@ export default function InvoiceDetailsModal({
   isOpen = true,
   onClose,
 }: InvoiceDetailsModalProps) {
-  const { data: detail, isLoading } = useInvoiceDetail(
-    invoice?.id ?? "",
-    Boolean(isOpen && invoice?.id)
-  );
-
   // Prevent body scroll while open
   useEffect(() => {
     if (isOpen) {
@@ -168,13 +199,24 @@ export default function InvoiceDetailsModal({
 
   if (!isOpen || !invoice) return null;
 
-  const status = detail?.status ?? detail?.payment?.status ?? invoice.status ?? "-";
+  const status = invoice.scannerInvoice?.scannerInvoiceStatus || invoice.status || "CONFIRMED";
   const upper = status.toUpperCase();
-  const isSuccess = upper === "SUCCESS" || upper === "SUCCESSFUL" || upper === "CONFIRMED" || upper === "PAID";
+  const isSuccess = upper === "SUCCESS" || upper === "SUCCESSFUL" || upper === "CONFIRMED" || upper === "PAID" || upper === "SCANNED";
   const isFailed = upper === "FAILED" || upper === "CANCELLED";
 
-  const invNumber = detail?.invoiceId ?? detail?.invoiceNumber ?? invoice.invoiceId ?? invoice.invoiceNumber ?? "-";
-  const invDate = formatDate(detail?.dateTime ?? detail?.invoiceDate ?? invoice.dateTime ?? invoice.invoiceDate);
+  const invNumber = invoice.invoiceNumber || invoice.invoiceId || invoice.id || "-";
+  const invDate = formatDate(invoice.dateTime || invoice.invoiceDate);
+  const custName = invoice.customer?.name || invoice.customerName || "-";
+  const mobile = invoice.customer?.mobileNumber || invoice.mobileNumber || "-";
+  const gstNumber = invoice.customer?.gstNumber || invoice.gstNumber || "-";
+  const grandTotal = Number(invoice.grandTotalAmount ?? invoice.amount ?? 0).toFixed(2);
+  const visitors = invoice.visitors ?? 1;
+
+  const attractionsList = invoice.attractions && invoice.attractions.length > 0
+    ? invoice.attractions
+    : invoice.attraction
+    ? [invoice.attraction]
+    : [];
 
   return (
     <div
@@ -196,7 +238,7 @@ export default function InvoiceDetailsModal({
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
-          maxWidth: "560px",
+          maxWidth: "580px",
           background: "#FFFFFF",
           borderRadius: "20px",
           boxShadow: "0 20px 50px rgba(0,0,0,0.2)",
@@ -256,7 +298,7 @@ export default function InvoiceDetailsModal({
             padding: "20px 24px",
             display: "flex",
             flexDirection: "column",
-            gap: "18px",
+            gap: "16px",
             overflowY: "auto",
           }}
         >
@@ -330,133 +372,216 @@ export default function InvoiceDetailsModal({
             </span>
           </div>
 
-          {isLoading ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 0" }}>
-              <Loader2 size={30} color={colors.brand.accent} style={{ animation: "spin 1s linear infinite" }} />
+          {/* Customer Information Card */}
+          <div
+            style={{
+              background: "#F8FAFC",
+              border: "1px solid #E2E8F0",
+              borderRadius: "12px",
+              padding: "16px 18px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "12px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontFamily: typography.fontFamily.sans,
+                fontWeight: 700,
+                fontSize: "12px",
+                color: "#0C2A42",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+                borderBottom: "1px solid #E2E8F0",
+                paddingBottom: "8px",
+              }}
+            >
+              <User size={14} color="#0C2A42" />
+              <span>Customer Information</span>
             </div>
-          ) : (
-            <>
-              {/* Invoice & Booking Information Card */}
-              <div
-                style={{
-                  background: "#F8FAFC",
-                  border: "1px solid #E2E8F0",
-                  borderRadius: "12px",
-                  padding: "16px 18px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px",
-                }}
-              >
-                <div
-                  style={{
-                    fontFamily: typography.fontFamily.sans,
-                    fontWeight: 700,
-                    fontSize: "12px",
-                    color: "#0C2A42",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    borderBottom: "1px solid #E2E8F0",
-                    paddingBottom: "8px",
-                  }}
-                >
-                  Invoice &amp; Booking Information
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", fontSize: "13px" }}>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Invoice ID</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {invNumber}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Invoice Date</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {invDate}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Attraction</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.attraction?.name ?? invoice.attraction?.name ?? "-"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Booking ID</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.booking?.bookingId ?? invoice.bookingId ?? "-"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Transaction ID</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.transactionId ?? invoice.transactionId ?? "-"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Visitors</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.visitors ?? invoice.visitors ?? "-"}
-                    </strong>
-                  </div>
-                </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", fontSize: "13px" }}>
+              <div>
+                <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Customer Name</span>
+                <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
+                  {custName}
+                </strong>
               </div>
+              <div>
+                <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Mobile Number</span>
+                <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
+                  {mobile}
+                </strong>
+              </div>
+              <div>
+                <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Date &amp; Time</span>
+                <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
+                  {invDate}
+                </strong>
+              </div>
+              <div>
+                <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>GST Number</span>
+                <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
+                  {gstNumber}
+                </strong>
+              </div>
+            </div>
+          </div>
 
-              {/* Payment Information Card */}
+          {/* Attractions Card */}
+          {attractionsList.length > 0 && (
+            <div
+              style={{
+                background: "#F8FAFC",
+                border: "1px solid #E2E8F0",
+                borderRadius: "12px",
+                padding: "16px 18px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+              }}
+            >
               <div
                 style={{
-                  background: "#F8FAFC",
-                  border: "1px solid #E2E8F0",
-                  borderRadius: "12px",
-                  padding: "16px 18px",
                   display: "flex",
-                  flexDirection: "column",
-                  gap: "12px",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  fontFamily: typography.fontFamily.sans,
+                  fontWeight: 700,
+                  fontSize: "12px",
+                  color: "#0C2A42",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  borderBottom: "1px solid #E2E8F0",
+                  paddingBottom: "8px",
                 }}
               >
-                <div
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Tag size={14} color="#0C2A42" />
+                  <span>Attractions ({attractionsList.length})</span>
+                </div>
+                <span
                   style={{
-                    fontFamily: typography.fontFamily.sans,
+                    fontSize: "11px",
                     fontWeight: 700,
-                    fontSize: "12px",
                     color: "#0C2A42",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    borderBottom: "1px solid #E2E8F0",
-                    paddingBottom: "8px",
+                    background: "#F4BC43",
+                    padding: "2px 8px",
+                    borderRadius: "12px",
                   }}
                 >
-                  Payment Information
+                  {visitors} Visitor{visitors > 1 ? "s" : ""}
+                </span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                {attractionsList.map((attr, idx) => (
+                  <span
+                    key={attr.id || idx}
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #E2E8F0",
+                      padding: "6px 14px",
+                      borderRadius: "8px",
+                      fontSize: "13px",
+                      color: "#0C2A42",
+                      fontWeight: 600,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <span>{attr.name}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Scanner Invoice Status Card */}
+          {invoice.scannerInvoice && (
+            <div
+              style={{
+                background: "#F8FAFC",
+                border: "1px solid #E2E8F0",
+                borderRadius: "12px",
+                padding: "16px 18px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontFamily: typography.fontFamily.sans,
+                  fontWeight: 700,
+                  fontSize: "12px",
+                  color: "#0C2A42",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  borderBottom: "1px solid #E2E8F0",
+                  paddingBottom: "8px",
+                }}
+              >
+                <QrCode size={14} color="#0C2A42" />
+                <span>Scanner Status</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", fontSize: "13px" }}>
+                <div>
+                  <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Status</span>
+                  <strong style={{ color: invoice.scannerInvoice.scannerInvoiceStatus === "SCANNED" ? "#16A34A" : "#D97706", fontWeight: 700 }}>
+                    {invoice.scannerInvoice.scannerInvoiceStatus}
+                  </strong>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", fontSize: "13px" }}>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Payment Mode</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontFamily: typography.fontFamily.sans }}>
-                      {detail?.payment?.mode ?? invoice.paymentMode ?? "-"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Total Amount</span>
-                    <strong style={{ color: "#0F172A", fontWeight: 700, fontSize: "15px", fontFamily: typography.fontFamily.sans }}>
-                      ₹{Number(detail?.payment?.amount ?? invoice.amount ?? 0).toFixed(2)}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Status</span>
-                    <strong
-                      style={{
-                        color: isSuccess ? "#119167" : isFailed ? "#DC2626" : "#D97706",
-                        fontWeight: 700,
-                        fontFamily: typography.fontFamily.sans,
-                      }}
-                    >
-                      {status}
-                    </strong>
-                  </div>
+                <div>
+                  <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Scanned By</span>
+                  <strong style={{ color: "#0F172A", fontWeight: 700 }}>
+                    {invoice.scannerInvoice.scannedByStaff || "-"}
+                  </strong>
+                </div>
+                <div>
+                  <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", fontFamily: typography.fontFamily.sans }}>Scanned At</span>
+                  <strong style={{ color: "#0F172A", fontWeight: 700 }}>
+                    {formatDate(invoice.scannerInvoice.scannedAt)}
+                  </strong>
                 </div>
               </div>
-            </>
+            </div>
           )}
+
+          {/* Payment & Amount Summary Card */}
+          <div
+            style={{
+              border: "1.5px solid #0084FF",
+              borderRadius: "12px",
+              padding: "16px 18px",
+              background: "#F0F9FF",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <div>
+              <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", textTransform: "uppercase" }}>
+                Grand Total Amount
+              </span>
+              <strong style={{ color: "#0C2A42", fontSize: "20px", fontWeight: 800 }}>
+                ₹{grandTotal}
+              </strong>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <span style={{ color: "#64748B", fontSize: "11px", fontWeight: 600, display: "block", textTransform: "uppercase" }}>
+                Total Visitors
+              </span>
+              <strong style={{ color: "#0C2A42", fontSize: "16px", fontWeight: 700 }}>
+                {visitors}
+              </strong>
+            </div>
+          </div>
         </div>
 
         {/* Footer Actions */}
@@ -491,46 +616,44 @@ export default function InvoiceDetailsModal({
             Close
           </button>
           <button
-            disabled={isLoading || !detail}
-            onClick={() => detail && handleDownloadPDF(detail, invoice)}
+            onClick={() => handleDownloadPDF(invoice)}
             style={{
               height: "40px",
               padding: "0 18px",
               borderRadius: "8px",
               border: "none",
-              background: isLoading || !detail ? "#9CA3AF" : "#0C2A42",
+              background: "#0C2A42",
               color: "#FFFFFF",
               fontFamily: typography.fontFamily.sans,
               fontWeight: 600,
               fontSize: "13px",
-              cursor: isLoading || !detail ? "not-allowed" : "pointer",
+              cursor: "pointer",
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              opacity: isLoading || !detail ? 0.65 : 1,
+              transition: "all 0.15s ease",
             }}
           >
             <Download size={16} />
             <span>Download PDF</span>
           </button>
           <button
-            disabled={isLoading || !detail}
-            onClick={() => detail && handlePrintInvoice(detail, invoice)}
+            onClick={() => handlePrintInvoice(invoice)}
             style={{
               height: "40px",
               padding: "0 18px",
               borderRadius: "8px",
               border: "none",
-              background: isLoading || !detail ? "#e0c97a" : "#F4BC43",
+              background: "#F4BC43",
               color: "#0C2A42",
               fontFamily: typography.fontFamily.sans,
               fontWeight: 700,
               fontSize: "13px",
-              cursor: isLoading || !detail ? "not-allowed" : "pointer",
+              cursor: "pointer",
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              opacity: isLoading || !detail ? 0.65 : 1,
+              transition: "all 0.15s ease",
             }}
           >
             <Printer size={16} />
@@ -542,10 +665,6 @@ export default function InvoiceDetailsModal({
         @keyframes invModalIn {
           from { transform: scale(0.95); opacity: 0; }
           to   { transform: scale(1); opacity: 1; }
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
         }
       `}</style>
     </div>
