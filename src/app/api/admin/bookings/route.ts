@@ -25,6 +25,10 @@ import {
   bookingSeats,
   attractions,
   transactions,
+  attractionsAgainstBooking,
+  categoryOfAttractionAgainstBooking,
+  attractionManagement,
+  attractionCategory,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -553,7 +557,8 @@ export async function GET(request: NextRequest) {
 
     const search = searchParams.get("search")?.trim() || "";
 
-    const attractionId = searchParams.get("attractionId")?.trim() || "";
+    const attractionManagementId =
+      searchParams.get("attractionManagementId")?.trim() || "";
 
     const status = searchParams.get("status")?.trim().toUpperCase() || "";
 
@@ -588,29 +593,23 @@ export async function GET(request: NextRequest) {
 
     // =====================================================
     // 6. BASE CONDITIONS
-    //
-    // IMPORTANT:
-    //
-    // bookings.attractionId is uuid[]
-    //
-    // We DO NOT join:
-    //
-    // eq(bookings.attractionId, attractions.id)
-    //
-    // because uuid[] != uuid.
     // =====================================================
 
     const conditions = [
       isNull(bookings.deletedAt),
       eq(bookings.isDeleted, false),
 
-      // Booking must contain at least one attraction
-      // belonging to this admin.
+      // Booking must have at least one attraction
+      // belonging to this admin
       sql`EXISTS (
         SELECT 1
-        FROM ${attractions}
+        FROM ${attractionsAgainstBooking}
+        INNER JOIN ${attractionManagement}
+          ON ${attractionManagement.id} = ${attractionsAgainstBooking.attractionManagementId}
+        INNER JOIN ${attractions}
+          ON ${attractions.id} = ${attractionManagement.attractionId}
         WHERE
-          ${attractions.id} = ANY(${bookings.attractionId})
+          ${attractionsAgainstBooking.bookingId} = ${bookings.id}
           AND ${attractions.adminId} = ${adminId}
       )`,
     ];
@@ -623,9 +622,13 @@ export async function GET(request: NextRequest) {
       conditions.push(
         sql`EXISTS (
           SELECT 1
-          FROM ${attractions}
+          FROM ${attractionsAgainstBooking}
+          INNER JOIN ${attractionManagement}
+            ON ${attractionManagement.id} = ${attractionsAgainstBooking.attractionManagementId}
+          INNER JOIN ${attractions}
+            ON ${attractions.id} = ${attractionManagement.attractionId}
           WHERE
-            ${attractions.id} = ANY(${bookings.attractionId})
+            ${attractionsAgainstBooking.bookingId} = ${bookings.id}
             AND ${inArray(attractions.id, accessibleAttractionIds)}
         )`,
       );
@@ -640,7 +643,7 @@ export async function GET(request: NextRequest) {
 
       conditions.push(
         or(
-          ilike(bookings.bookingNumber, searchValue),
+          ilike(bookings.invoiceNumber, searchValue),
 
           ilike(bookings.customerName, searchValue),
 
@@ -651,9 +654,13 @@ export async function GET(request: NextRequest) {
           // Search attraction name
           sql`EXISTS (
             SELECT 1
-            FROM ${attractions}
+            FROM ${attractionsAgainstBooking}
+            INNER JOIN ${attractionManagement}
+              ON ${attractionManagement.id} = ${attractionsAgainstBooking.attractionManagementId}
+            INNER JOIN ${attractions}
+              ON ${attractions.id} = ${attractionManagement.attractionId}
             WHERE
-              ${attractions.id} = ANY(${bookings.attractionId})
+              ${attractionsAgainstBooking.bookingId} = ${bookings.id}
               AND ${attractions.name} ILIKE ${searchValue}
           )`,
         )!,
@@ -662,21 +669,17 @@ export async function GET(request: NextRequest) {
 
     // =====================================================
     // 9. ATTRACTION FILTER
-    //
-    // bookings.attractionId is uuid[]
-    //
-    // Example:
-    //
-    // attractionId =
-    // "f72cd0d0-6f56-4e85-..."
-    //
-    // Checks whether that UUID exists inside
-    // bookings.attraction_ids.
     // =====================================================
 
-    if (attractionId) {
+    if (attractionManagementId) {
       conditions.push(
-        sql`${attractionId}::uuid = ANY(${bookings.attractionId})`,
+        sql`EXISTS (
+          SELECT 1
+          FROM ${attractionsAgainstBooking}
+          WHERE
+            ${attractionsAgainstBooking.bookingId} = ${bookings.id}
+            AND ${attractionsAgainstBooking.attractionManagementId} = ${attractionManagementId}::uuid
+        )`,
       );
     }
 
@@ -693,7 +696,7 @@ export async function GET(request: NextRequest) {
     }
 
     // =====================================================
-    // 11. FROM DATE
+    // 11. FROM DATE (using attractionsAgainstBooking.createdAt)
     // =====================================================
 
     if (fromDate) {
@@ -703,11 +706,19 @@ export async function GET(request: NextRequest) {
         return failure("Invalid fromDate.", 400, "INVALID_FROM_DATE");
       }
 
-      conditions.push(gte(bookings.visitAt, startDate));
+      conditions.push(
+        sql`EXISTS (
+          SELECT 1
+          FROM ${attractionsAgainstBooking}
+          WHERE
+            ${attractionsAgainstBooking.bookingId} = ${bookings.id}
+            AND ${attractionsAgainstBooking.createdAt} >= ${startDate}
+        )`,
+      );
     }
 
     // =====================================================
-    // 12. TO DATE
+    // 12. TO DATE (using attractionsAgainstBooking.createdAt)
     // =====================================================
 
     if (toDate) {
@@ -717,7 +728,15 @@ export async function GET(request: NextRequest) {
         return failure("Invalid toDate.", 400, "INVALID_TO_DATE");
       }
 
-      conditions.push(lte(bookings.visitAt, endDate));
+      conditions.push(
+        sql`EXISTS (
+          SELECT 1
+          FROM ${attractionsAgainstBooking}
+          WHERE
+            ${attractionsAgainstBooking.bookingId} = ${bookings.id}
+            AND ${attractionsAgainstBooking.createdAt} <= ${endDate}
+        )`,
+      );
     }
 
     // =====================================================
@@ -728,12 +747,6 @@ export async function GET(request: NextRequest) {
 
     // =====================================================
     // 14. TOTAL COUNT
-    //
-    // IMPORTANT:
-    //
-    // No bookingItems JOIN here.
-    //
-    // Every row in bookings can now be counted directly.
     // =====================================================
 
     const [{ count: totalCount }] = await db
@@ -747,18 +760,13 @@ export async function GET(request: NextRequest) {
 
     // =====================================================
     // 15. GET PAGINATED BOOKINGS
-    //
-    // IMPORTANT:
-    //
-    // Directly from bookings.
-    // No INNER JOIN.
     // =====================================================
 
     const bookingRows = await db
       .select({
         id: bookings.id,
 
-        bookingId: bookings.bookingNumber,
+        invoiceNumber: bookings.invoiceNumber,
 
         customerName: bookings.customerName,
 
@@ -766,29 +774,11 @@ export async function GET(request: NextRequest) {
 
         gstNumber: bookings.gstNumber,
 
-        attractionIds: bookings.attractionId,
-
-        bookingDate: bookings.visitAt,
-
-        subtotal: bookings.subtotal,
-
-        gstAmount: bookings.gstAmount,
-
-        gstAdjustment: bookings.gstAdjustment,
-
-        roundOff: bookings.roundOff,
-
-        discountAmount: bookings.discountAmount,
-
         totalAmount: bookings.totalAmount,
-
-        amountPaid: bookings.amountPaid,
 
         amountReceived: bookings.amountReceived,
 
         returnAmount: bookings.returnAmount,
-
-        paymentMode: bookings.paymentMode,
 
         status: bookings.status,
 
@@ -800,7 +790,7 @@ export async function GET(request: NextRequest) {
       })
       .from(bookings)
       .where(whereClause)
-      .orderBy(desc(bookings.visitAt))
+      .orderBy(desc(bookings.createdAt))
       .limit(limit)
       .offset(offset);
 
@@ -809,10 +799,12 @@ export async function GET(request: NextRequest) {
     // =====================================================
 
     if (bookingRows.length === 0) {
-      const attractionConditions = [eq(attractions.adminId, adminId)];
+      const availableAttractionConditions = [
+        eq(attractions.adminId, adminId),
+      ];
 
       if (auth.user.role !== "ADMIN") {
-        attractionConditions.push(
+        availableAttractionConditions.push(
           inArray(attractions.id, accessibleAttractionIds),
         );
       }
@@ -823,7 +815,7 @@ export async function GET(request: NextRequest) {
           name: attractions.name,
         })
         .from(attractions)
-        .where(and(...attractionConditions));
+        .where(and(...availableAttractionConditions));
 
       return success({
         items: [],
@@ -840,118 +832,144 @@ export async function GET(request: NextRequest) {
     }
 
     // =====================================================
-    // 17. GET BOOKING ITEMS
-    //
-    // This is ONLY for ticket/visitor breakdown.
-    //
-    // It does NOT control whether a booking exists.
+    // 17. GET ATTRACTIONS FOR BOOKINGS
     // =====================================================
 
     const bookingIds = bookingRows.map((booking) => booking.id);
 
-    const ticketRows =
+    const attractionRows =
       bookingIds.length > 0
         ? await db
             .select({
-              id: bookingItems.id,
+              bookingId: attractionsAgainstBooking.bookingId,
 
-              bookingId: bookingItems.bookingId,
+              attractionManagementId:
+                attractionsAgainstBooking.attractionManagementId,
 
-              attractionId: bookingItems.attractionId,
+              attractionName: attractions.name,
 
-              category: bookingItems.category,
+              attractionId: attractionManagement.attractionId,
 
-              quantity: bookingItems.quantity,
+              subtotal: attractionsAgainstBooking.attractionSubtotal,
 
-              unitPrice: bookingItems.unitPrice,
+              gst: attractionsAgainstBooking.attractionGst,
 
-              totalPrice: bookingItems.totalPrice,
+              roundoff: attractionsAgainstBooking.attractionRoundoff,
+
+              roundOffGstAdj:
+                attractionsAgainstBooking.attractionRoundOffGstAdj,
+
+              totalAmount:
+                attractionsAgainstBooking.attractionTotalAmount,
+
+              createdAt: attractionsAgainstBooking.createdAt,
             })
-            .from(bookingItems)
-            .where(inArray(bookingItems.bookingId, bookingIds))
+            .from(attractionsAgainstBooking)
+            .innerJoin(
+              attractionManagement,
+              eq(
+                attractionManagement.id,
+                attractionsAgainstBooking.attractionManagementId,
+              ),
+            )
+            .innerJoin(
+              attractions,
+              eq(attractions.id, attractionManagement.attractionId),
+            )
+            .where(inArray(attractionsAgainstBooking.bookingId, bookingIds))
         : [];
 
     // =====================================================
-    // 18. GET ALL ATTRACTIONS USED BY BOOKINGS
+    // 18. GET VISITOR BREAKDOWN BY ATTRACTION
     // =====================================================
 
-    const allAttractionIds = Array.from(
-      new Set(bookingRows.flatMap((booking) => booking.attractionIds || [])),
-    );
-
-    const attractionConditions = [eq(attractions.adminId, adminId)];
-
-    if (allAttractionIds.length > 0) {
-      attractionConditions.push(inArray(attractions.id, allAttractionIds));
-    }
-
-    if (auth.user.role !== "ADMIN") {
-      attractionConditions.push(
-        inArray(attractions.id, accessibleAttractionIds),
-      );
-    }
-
-    const bookingAttractions =
-      allAttractionIds.length > 0
+    const visitorRows =
+      bookingIds.length > 0
         ? await db
             .select({
-              id: attractions.id,
-              name: attractions.name,
+              bookingId: categoryOfAttractionAgainstBooking.bookingId,
+
+              attractionAgainstBookingId:
+                categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+
+              categoryId: categoryOfAttractionAgainstBooking.categoryId,
+
+              categoryName: attractionCategory.name,
+
+              noOfVisitors:
+                categoryOfAttractionAgainstBooking.noOfVisitors,
             })
-            .from(attractions)
-            .where(and(...attractionConditions))
+            .from(categoryOfAttractionAgainstBooking)
+            .innerJoin(
+              attractionCategory,
+              eq(
+                attractionCategory.id,
+                categoryOfAttractionAgainstBooking.categoryId,
+              ),
+            )
+            .where(inArray(categoryOfAttractionAgainstBooking.bookingId, bookingIds))
         : [];
 
     // =====================================================
-    // 19. ATTRACTION MAP
+    // 19. GROUP ATTRACTIONS BY BOOKING
     // =====================================================
 
-    const attractionMap = new Map<
-      string,
-      {
-        id: string;
-        name: string;
-      }
-    >();
-
-    for (const attraction of bookingAttractions) {
-      attractionMap.set(attraction.id, attraction);
-    }
-
-    // =====================================================
-    // 20. GROUP TICKETS BY BOOKING
-    // =====================================================
-
-    const ticketsByBooking = new Map<
+    const attractionsByBooking = new Map<
       string,
       Array<{
-        id: string;
+        attractionManagementId: string;
+        attractionName: string;
         attractionId: string;
-        category: string;
-        quantity: number;
-        unitPrice: number;
-        totalPrice: number;
+        subtotal: number;
+        gst: number;
+        roundoff: number;
+        roundOffGstAdj: number;
+        totalAmount: number;
+        createdAt: Date;
       }>
     >();
 
-    for (const ticket of ticketRows) {
-      const existing = ticketsByBooking.get(ticket.bookingId) || [];
+    for (const attraction of attractionRows) {
+      const existing = attractionsByBooking.get(attraction.bookingId) || [];
 
       existing.push({
-        id: ticket.id,
-
-        attractionId: ticket.attractionId,
-
-        category: ticket.category,
-
-        quantity: Number(ticket.quantity),
-
-        unitPrice: Number(ticket.unitPrice),
-
-        totalPrice: Number(ticket.totalPrice),
+        attractionManagementId: attraction.attractionManagementId,
+        attractionName: attraction.attractionName,
+        attractionId: attraction.attractionId,
+        subtotal: Number(attraction.subtotal) || 0,
+        gst: Number(attraction.gst) || 0,
+        roundoff: Number(attraction.roundoff) || 0,
+        roundOffGstAdj: Number(attraction.roundOffGstAdj) || 0,
+        totalAmount: Number(attraction.totalAmount) || 0,
+        createdAt: attraction.createdAt,
       });
 
-      ticketsByBooking.set(ticket.bookingId, existing);
+      attractionsByBooking.set(attraction.bookingId, existing);
+    }
+
+    // =====================================================
+    // 20. GROUP VISITORS BY BOOKING
+    // =====================================================
+
+    const visitorsByBooking = new Map<
+      string,
+      Array<{
+        categoryId: string;
+        categoryName: string;
+        noOfVisitors: number;
+      }>
+    >();
+
+    for (const visitor of visitorRows) {
+      const existing = visitorsByBooking.get(visitor.bookingId) || [];
+
+      existing.push({
+        categoryId: visitor.categoryId,
+        categoryName: visitor.categoryName,
+        noOfVisitors: visitor.noOfVisitors,
+      });
+
+      visitorsByBooking.set(visitor.bookingId, existing);
     }
 
     // =====================================================
@@ -959,133 +977,46 @@ export async function GET(request: NextRequest) {
     // =====================================================
 
     const items = bookingRows.map((booking) => {
-      // -------------------------------------------------
-      // Attractions
-      // -------------------------------------------------
+      const bookingAttractions = attractionsByBooking.get(booking.id) || [];
+      const bookingVisitors = visitorsByBooking.get(booking.id) || [];
 
-      const bookingAttractionsList = (booking.attractionIds || [])
-        .map((id) => attractionMap.get(id))
-        .filter(
-          (
-            attraction,
-          ): attraction is {
-            id: string;
-            name: string;
-          } => Boolean(attraction),
-        );
-
-      // -------------------------------------------------
-      // Tickets
-      // -------------------------------------------------
-
-      const ticketItems = ticketsByBooking.get(booking.id) || [];
-
-      // -------------------------------------------------
-      // Visitor breakdown
-      // -------------------------------------------------
-
-      const breakdownMap = new Map<string, number>();
-
-      for (const ticket of ticketItems) {
-        const current = breakdownMap.get(ticket.category) || 0;
-
-        breakdownMap.set(ticket.category, current + ticket.quantity);
-      }
-
-      const visitorBreakdown = Array.from(breakdownMap.entries()).map(
-        ([category, quantity]) => ({
-          category,
-          quantity,
-        }),
-      );
-
-      // -------------------------------------------------
-      // Total visitors
-      // -------------------------------------------------
-
-      const totalVisitors = visitorBreakdown.reduce(
-        (sum, visitor) => sum + visitor.quantity,
+      // Calculate total visitors
+      const totalVisitors = bookingVisitors.reduce(
+        (sum, v) => sum + v.noOfVisitors,
         0,
       );
 
-      // -------------------------------------------------
-      // Financial values
-      // -------------------------------------------------
-
-      const subtotal = Number(booking.subtotal) || 0;
-
-      const gstAmount = Number(booking.gstAmount) || 0;
-
-      const gstAdjustment = Number(booking.gstAdjustment) || 0;
-
-      const roundOff = Number(booking.roundOff) || 0;
-
-      const discountAmount = Number(booking.discountAmount) || 0;
-
-      const totalAmount = Number(booking.totalAmount) || 0;
-
-      const amountPaid = Number(booking.amountPaid) || 0;
-
-      const amountReceived = Number(booking.amountReceived) || 0;
-
-      const returnAmount = Number(booking.returnAmount) || 0;
-
-      const amountDue = totalAmount - amountPaid;
-
-      // -------------------------------------------------
-      // Final booking
-      // -------------------------------------------------
+      // Calculate grand total amount from all attractions
+      const grandTotalAmount = bookingAttractions.reduce(
+        (sum, attr) => sum + attr.totalAmount,
+        0,
+      );
 
       return {
         id: booking.id,
 
-        bookingId: booking.bookingId,
+        invoiceNumber: booking.invoiceNumber,
 
         customer: {
           name: booking.customerName,
-
           mobileNumber: booking.mobileNumber,
-
           gstNumber: booking.gstNumber,
         },
 
-        dateTime: booking.bookingDate,
+        dateTime:
+          bookingAttractions.length > 0
+            ? bookingAttractions[0].createdAt
+            : booking.createdAt,
 
-        attractionIds: booking.attractionIds,
+        attractions: bookingAttractions.map((attr) => ({
+          id: attr.attractionManagementId,
+          name: attr.attractionName,
+          totalAmount: attr.totalAmount,
+        })),
 
-        attractions: bookingAttractionsList,
+        grandTotalAmount,
 
-        visitors: {
-          total: totalVisitors,
-
-          breakdown: visitorBreakdown,
-        },
-
-        tickets: ticketItems,
-
-        amount: {
-          subtotal,
-
-          gstAmount,
-
-          gstAdjustment,
-
-          roundOff,
-
-          discountAmount,
-
-          total: totalAmount,
-
-          paid: amountPaid,
-
-          received: amountReceived,
-
-          due: amountDue,
-
-          returnAmount,
-        },
-
-        paymentMode: booking.paymentMode,
+        visitors: totalVisitors,
 
         status: booking.status,
 
