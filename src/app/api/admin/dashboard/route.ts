@@ -16,8 +16,9 @@ import { db } from "@/db";
 import {
   users,
   bookings,
-  transactions,
   attractions,
+  attractionManagement,
+  attractionsAgainstBooking,
   managerAttractionPermissions,
   staffAttractionAssignments,
 } from "@/db/schema";
@@ -286,7 +287,14 @@ export async function GET(request: Request) {
     }
 
     // =====================================================
-    // ATTRACTION CONDITION
+    // ACCESSIBLE ATTRACTION CONDITION
+    //
+    // New relationship:
+    //
+    // bookings
+    //   -> attractionsAgainstBooking
+    //   -> attractionManagement
+    //   -> attractions
     // =====================================================
 
     const accessibleAttractionCondition =
@@ -502,6 +510,10 @@ export async function GET(request: Request) {
 
     // =====================================================
     // BOOKING CONDITIONS
+    //
+    // Booking -> AttractionAgainstBooking
+    //          -> AttractionManagement
+    //          -> Attractions
     // =====================================================
 
     const bookingConditions = [
@@ -519,14 +531,6 @@ export async function GET(request: Request) {
 
     // -----------------------------------------------------
     // ATTRACTION FILTER
-    //
-    // OLD:
-    // arrayContains(bookings.attractionId, [attractionId])
-    //
-    // NEW:
-    // attractions.id = attractionId
-    //
-    // because the booking is joined using ANY().
     // -----------------------------------------------------
 
     if (attractionId) {
@@ -535,18 +539,26 @@ export async function GET(request: Request) {
 
     // -----------------------------------------------------
     // DATE FILTER
+    //
+    // NEW:
+    // bookings.createdAt
     // -----------------------------------------------------
 
     if (from) {
-      bookingConditions.push(gte(bookings.visitAt, from));
+      bookingConditions.push(gte(bookings.createdAt, from));
     }
 
     if (to) {
-      bookingConditions.push(lte(bookings.visitAt, to));
+      bookingConditions.push(lte(bookings.createdAt, to));
     }
 
     // =====================================================
     // TOTAL BOOKINGS
+    //
+    // One booking can have multiple attraction rows.
+    //
+    // Therefore:
+    // COUNT(DISTINCT bookings.id)
     // =====================================================
 
     const [bookingCount] = await db
@@ -556,23 +568,29 @@ export async function GET(request: Request) {
         `,
       })
       .from(bookings)
-
-      // IMPORTANT:
-      // bookings.attractionIds is UUID[]
+      .innerJoin(
+        attractionsAgainstBooking,
+        eq(attractionsAgainstBooking.bookingId, bookings.id),
+      )
+      .innerJoin(
+        attractionManagement,
+        eq(
+          attractionsAgainstBooking.attractionManagementId,
+          attractionManagement.id,
+        ),
+      )
       .innerJoin(
         attractions,
-        sql`${attractions.id} = ANY(${bookings.attractionId})`,
+        eq(attractionManagement.attractionId, attractions.id),
       )
-
       .where(and(...bookingConditions));
 
     // =====================================================
-    // TRANSACTION CONDITIONS
+    // REVENUE CONDITIONS
     // =====================================================
 
-    const transactionConditions = [
-      isNull(transactions.deletedAt),
-      eq(transactions.status, "SUCCESSFUL"),
+    const revenueConditions = [
+      isNull(bookings.deletedAt),
       eq(attractions.adminId, adminId),
     ];
 
@@ -581,7 +599,7 @@ export async function GET(request: Request) {
     // -----------------------------------------------------
 
     if (isManager) {
-      transactionConditions.push(accessibleAttractionCondition);
+      revenueConditions.push(accessibleAttractionCondition);
     }
 
     // -----------------------------------------------------
@@ -589,96 +607,116 @@ export async function GET(request: Request) {
     // -----------------------------------------------------
 
     if (attractionId) {
-      transactionConditions.push(eq(attractions.id, attractionId));
+      revenueConditions.push(eq(attractions.id, attractionId));
     }
 
     // -----------------------------------------------------
     // DATE FILTER
+    //
+    // Revenue is associated with the booking date.
     // -----------------------------------------------------
 
     if (from) {
-      transactionConditions.push(gte(transactions.createdAt, from));
+      revenueConditions.push(gte(bookings.createdAt, from));
     }
 
     if (to) {
-      transactionConditions.push(lte(transactions.createdAt, to));
+      revenueConditions.push(lte(bookings.createdAt, to));
     }
 
     // =====================================================
     // TOTAL EARNINGS
+    //
+    // IMPORTANT:
+    //
+    // Revenue now comes directly from:
+    //
+    // attractionsAgainstBooking.attractionTotalAmount
+    //
+    // No transactions join.
+    // No SUM(DISTINCT amount).
     // =====================================================
-
-    /*
-     * IMPORTANT:
-     *
-     * A transaction belongs to a booking.
-     *
-     * A booking can contain multiple attractions.
-     *
-     * Joining transactions -> booking -> attractions
-     * can therefore duplicate the transaction.
-     *
-     * DISTINCT transaction ID is used here.
-     */
 
     const [earnings] = await db
       .select({
         total: sql<string>`
           COALESCE(
             SUM(
-              DISTINCT ${transactions.amount}
+              ${attractionsAgainstBooking.attractionTotalAmount}
             ),
             0
           )
         `,
       })
-      .from(transactions)
-      .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+      .from(bookings)
+      .innerJoin(
+        attractionsAgainstBooking,
+        eq(attractionsAgainstBooking.bookingId, bookings.id),
+      )
+      .innerJoin(
+        attractionManagement,
+        eq(
+          attractionsAgainstBooking.attractionManagementId,
+          attractionManagement.id,
+        ),
+      )
       .innerJoin(
         attractions,
-        sql`${attractions.id} = ANY(${bookings.attractionId})`,
+        eq(attractionManagement.attractionId, attractions.id),
       )
-      .where(and(...transactionConditions, isNull(bookings.deletedAt)));
+      .where(and(...revenueConditions));
 
     // =====================================================
     // PERFORMANCE - REVENUE
+    //
+    // Group by booking creation month.
     // =====================================================
 
     const revenueRows = await db
       .select({
         month: sql<number>`
           EXTRACT(
-            MONTH FROM ${transactions.createdAt}
+            MONTH FROM ${bookings.createdAt}
           )
         `,
 
         revenue: sql<string>`
           COALESCE(
             SUM(
-              DISTINCT ${transactions.amount}
+              ${attractionsAgainstBooking.attractionTotalAmount}
             ),
             0
           )
         `,
       })
-      .from(transactions)
-      .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+      .from(bookings)
+      .innerJoin(
+        attractionsAgainstBooking,
+        eq(attractionsAgainstBooking.bookingId, bookings.id),
+      )
+      .innerJoin(
+        attractionManagement,
+        eq(
+          attractionsAgainstBooking.attractionManagementId,
+          attractionManagement.id,
+        ),
+      )
       .innerJoin(
         attractions,
-        sql`${attractions.id} = ANY(${bookings.attractionId})`,
+        eq(attractionManagement.attractionId, attractions.id),
       )
-      .where(and(...transactionConditions, isNull(bookings.deletedAt)))
+      .where(and(...revenueConditions))
       .groupBy(
         sql`
           EXTRACT(
-            MONTH FROM ${transactions.createdAt}
+            MONTH FROM ${bookings.createdAt}
           )
         `,
       )
       .orderBy(
         sql`
           EXTRACT(
-            MONTH FROM ${transactions.createdAt}
+            MONTH FROM ${bookings.createdAt}
           )
         `,
       );
@@ -691,7 +729,7 @@ export async function GET(request: Request) {
       .select({
         month: sql<number>`
           EXTRACT(
-            MONTH FROM ${bookings.visitAt}
+            MONTH FROM ${bookings.createdAt}
           )
         `,
 
@@ -701,21 +739,32 @@ export async function GET(request: Request) {
       })
       .from(bookings)
       .innerJoin(
+        attractionsAgainstBooking,
+        eq(attractionsAgainstBooking.bookingId, bookings.id),
+      )
+      .innerJoin(
+        attractionManagement,
+        eq(
+          attractionsAgainstBooking.attractionManagementId,
+          attractionManagement.id,
+        ),
+      )
+      .innerJoin(
         attractions,
-        sql`${attractions.id} = ANY(${bookings.attractionId})`,
+        eq(attractionManagement.attractionId, attractions.id),
       )
       .where(and(...bookingConditions))
       .groupBy(
         sql`
           EXTRACT(
-            MONTH FROM ${bookings.visitAt}
+            MONTH FROM ${bookings.createdAt}
           )
         `,
       )
       .orderBy(
         sql`
           EXTRACT(
-            MONTH FROM ${bookings.visitAt}
+            MONTH FROM ${bookings.createdAt}
           )
         `,
       );
@@ -755,6 +804,14 @@ export async function GET(request: Request) {
 
     // =====================================================
     // ATTRACTION DISTRIBUTION
+    //
+    // One row in attractionsAgainstBooking represents
+    // the amount belonging to one attraction management.
+    //
+    // Therefore:
+    //
+    // SUM(attractionTotalAmount)
+    // grouped by attractions.id
     // =====================================================
 
     const distributionRows = await db
@@ -765,27 +822,41 @@ export async function GET(request: Request) {
 
         revenue: sql<string>`
           COALESCE(
-            SUM(${transactions.amount}),
+            SUM(
+              ${attractionsAgainstBooking.attractionTotalAmount}
+            ),
             0
           )
         `,
       })
-      .from(transactions)
-      .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+      .from(bookings)
+      .innerJoin(
+        attractionsAgainstBooking,
+        eq(attractionsAgainstBooking.bookingId, bookings.id),
+      )
+      .innerJoin(
+        attractionManagement,
+        eq(
+          attractionsAgainstBooking.attractionManagementId,
+          attractionManagement.id,
+        ),
+      )
       .innerJoin(
         attractions,
         and(
-          sql`${attractions.id} = ANY(${bookings.attractionId})`,
+          eq(attractionManagement.attractionId, attractions.id),
           eq(attractions.adminId, adminId),
         ),
       )
-      .where(and(...transactionConditions, isNull(bookings.deletedAt)))
+      .where(and(...revenueConditions))
       .groupBy(attractions.id, attractions.name)
       .orderBy(
         desc(
           sql`
             COALESCE(
-              SUM(${transactions.amount}),
+              SUM(
+                ${attractionsAgainstBooking.attractionTotalAmount}
+              ),
               0
             )
           `,
@@ -947,8 +1018,6 @@ export async function GET(request: Request) {
 
         joinedDate: manager.joinedDate,
 
-        totalBookings: 0,
-
         status: manager.status,
       }));
 
@@ -981,27 +1050,25 @@ export async function GET(request: Request) {
 
       recentManagers: {
         items: recentManagers,
-
-        total: Number(managerCount?.count ?? 0),
       },
 
-      appliedFilters: {
-        period,
+      // appliedFilters: {
+      //   period,
 
-        attractionId: attractionId || null,
+      //   attractionId: attractionId || null,
 
-        search: search || null,
+      //   search: search || null,
 
-        dateFrom: dateFrom || null,
+      //   dateFrom: dateFrom || null,
 
-        dateTo: dateTo || null,
-      },
+      //   dateTo: dateTo || null,
+      // },
 
-      viewer: {
-        role: auth.user.role,
+      // viewer: {
+      //   role: auth.user.role,
 
-        adminId,
-      },
+      //   adminId,
+      // },
     });
   } catch (error) {
     if (error instanceof Error) {

@@ -309,15 +309,15 @@ export async function getAttractionReports(filter: ReportFilter) {
 
       timing: attractionManagement.timing,
 
-      adultPrice: attractionManagement.adultPrice,
+      // adultPrice: attractionManagement.adultPrice,
 
-      childPrice: attractionManagement.childPrice,
+      // childPrice: attractionManagement.childPrice,
 
-      studentPrice: attractionManagement.studentPrice,
+      // studentPrice: attractionManagement.studentPrice,
 
-      seniorPrice: attractionManagement.seniorPrice,
+      // seniorPrice: attractionManagement.seniorPrice,
 
-      foreignerPrice: attractionManagement.foreignerPrice,
+      // foreignerPrice: attractionManagement.foreignerPrice,
 
       image: attractionManagement.image,
     })
@@ -755,15 +755,15 @@ export async function getAttractionReports(filter: ReportFilter) {
 
         timing: attraction.timing,
 
-        adultRate: Number(attraction.adultPrice ?? 0),
+        // adultRate: Number(attraction.adultPrice ?? 0),
 
-        childRate: Number(attraction.childPrice ?? 0),
+        // childRate: Number(attraction.childPrice ?? 0),
 
-        studentRate: Number(attraction.studentPrice ?? 0),
+        // studentRate: Number(attraction.studentPrice ?? 0),
 
-        seniorRate: Number(attraction.seniorPrice ?? 0),
+        // seniorRate: Number(attraction.seniorPrice ?? 0),
 
-        foreignerRate: Number(attraction.foreignerPrice ?? 0),
+        // foreignerRate: Number(attraction.foreignerPrice ?? 0),
 
         image: attraction.image,
       },
