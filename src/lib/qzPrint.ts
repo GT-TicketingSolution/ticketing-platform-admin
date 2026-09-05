@@ -89,8 +89,7 @@ export async function printViaQZ(
     // --- NEW: INJECT CERTIFICATE FOR DEV FLOW ---
     // This tells QZ Tray who we are so the "Remember this decision" box unlocks.
     const cert = (import.meta.env.VITE_QZ_TRAY_CERT as string | undefined)?.replace(/\\n/g, "\n");
-    console.log("QZ Tray certificate loaded:", cert ? "YES" : "NO");
-    console.log("fgjasdkjsakjdbaskjdkjaskjd:-", cert)
+
     if (cert) {
       qz.security.setCertificatePromise((resolve: Function) => {
         resolve(cert);
