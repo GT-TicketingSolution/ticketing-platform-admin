@@ -85,6 +85,17 @@ export async function printViaQZ(
     const qz = await loadQzScript();
     if (!qz) return false;
 
+    // --- NEW: INJECT CERTIFICATE FOR DEV FLOW ---
+    // This tells QZ Tray who we are so the "Remember this decision" box unlocks.
+    const cert = (import.meta.env.VITE_QZ_TRAY_CERT as string | undefined)?.replace(/\\n/g, "\n");
+    console.log("QZ Tray certificate loaded:", cert ? "YES" : "NO");
+    console.log("fgjasdkjsakjdbaskjdkjaskjd:-", cert)
+    if (cert) {
+      qz.security.setCertificatePromise((resolve: Function) => {
+        resolve(cert);
+      });
+    }
+
     if (!qz.websocket.isActive()) {
       await qz.websocket.connect({ retries: 2, delay: 1 });
     }
