@@ -3577,377 +3577,466 @@ export default function CustomerInfoView({
         </div>
       </div>
 
-      {/* ── Card 1: Select Existing Customer (Rectangle 73) ── */}
+      {/* ── Row: Select Existing Customer & Issue Complimentary Ticket (50% / 50%) ── */}
       <div
+        className="ci-customer-complimentary-row"
         style={{
-          background: "#FFFFFF",
-          border: "1.5px solid rgba(179, 175, 175, 0.51)",
-          borderRadius: "13px",
-          padding: "24px 28px",
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          columnGap: "20px",
+          rowGap: isComplimentary ? 0 : "20px",
+          alignItems: "stretch",
+          width: "100%",
           boxSizing: "border-box",
         }}
       >
-        {/* Section Heading */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "20px" }}>
-          <User size={24} color="#011B2F" strokeWidth={1.75} />
-          <h2
-            style={{
-              margin: 0,
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontWeight: 700,
-              fontSize: "22px",
-              lineHeight: "28px",
-              color: "#011B2F",
-            }}
-          >
-            Select Existing Customer
-          </h2>
-        </div>
-
-        <p
+        {/* ── Card 1: Select Existing Customer (Rectangle 73) ── */}
+        <div
+          className="ci-card-half"
           style={{
-            margin: "0 0 8px 0",
-            fontFamily: "'Plus Jakarta Sans', sans-serif",
-            fontWeight: 600,
-            fontSize: "18px",
-            color: "#011B2F",
+            background: "#FFFFFF",
+            border: "1.5px solid rgba(179, 175, 175, 0.51)",
+            borderRadius: "13px",
+            padding: "20px 24px",
+            boxSizing: "border-box",
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            height: isComplimentary ? "calc(100% - 18px)" : "100%",
+            marginBottom: isComplimentary ? "18px" : 0,
           }}
         >
-          Customer <span style={{ fontSize: "14px", fontWeight: 500, color: "#6B7280" }}>(Optional)</span>
-        </p>
-
-        {/* Dropdown search bar + Add New Customer button */}
-        <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: selectedCustomer ? "20px" : "0", flexWrap: "wrap" }}>
-          <div ref={dropdownRef} style={{ position: "relative", flex: 1, minWidth: "260px" }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                background: "#FFFFFF",
-                border: "1.5px solid rgba(179, 175, 175, 0.84)",
-                borderRadius: "6px",
-                height: "38px",
-                padding: "0 14px",
-                cursor: "text",
-                boxSizing: "border-box",
-              }}
-              onClick={() => setShowDropdown(true)}
-            >
-              <Search size={16} color="#6B7280" style={{ flexShrink: 0 }} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  if (selectedCustomer && e.target.value !== selectedCustomer.name) {
-                    setSelectedCustomer(null);
-                  }
-                  setShowDropdown(true);
-                }}
-                onFocus={() => setShowDropdown(true)}
-                placeholder="Search by name, mobile, or GSTN (optional)..."
-                style={{
-                  flex: 1,
-                  border: "none",
-                  outline: "none",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 500,
-                  fontSize: "12px",
-                  color: "#173F63",
-                  background: "transparent",
-                }}
-              />
-              {(searchQuery || selectedCustomer) && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleClearCustomer();
-                  }}
-                  title="Clear customer selection"
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "2px",
-                    display: "flex",
-                    alignItems: "center",
-                    color: "#94A3B8",
-                  }}
-                >
-                  <X size={16} />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowDropdown((p) => !p);
-                }}
-                style={{ background: "transparent", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center" }}
-              >
-                {showDropdown ? <ChevronUp size={18} color="#173F63" /> : <ChevronDown size={18} color="#173F63" />}
-              </button>
-            </div>
-
-            {showDropdown && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "calc(100% + 4px)",
-                  left: 0,
-                  right: 0,
-                  background: "#FFFFFF",
-                  border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                  borderRadius: "6px",
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
-                  zIndex: 30,
-                  maxHeight: "180px",
-                  overflowY: "auto",
-                }}
-              >
-                {isCustomersLoading ? (
-                  <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <div style={{ height: "12px", width: "60%", background: "#E2E8F0", borderRadius: "4px" }} />
-                    <div style={{ height: "10px", width: "40%", background: "#F1F5F9", borderRadius: "4px" }} />
-                  </div>
-                ) : searchedCustomers.length === 0 ? (
-                  <p style={{ padding: "12px 16px", margin: 0, fontSize: "12px", color: "#6B7280" }}>
-                    No customers found.
-                  </p>
-                ) : (
-                  searchedCustomers.map((c) => (
-                    <div
-                      key={c.id}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleSelectCustomer(c);
-                      }}
-                      style={{
-                        padding: "10px 16px",
-                        cursor: "pointer",
-                        borderBottom: "1px solid rgba(179,175,175,0.2)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                      }}
-                      className="ci-cust-option"
-                    >
-                      <div>
-                        <p style={{ margin: 0, fontWeight: 700, fontSize: "12px", color: "#011B2F" }}>
-                          {c.name} - {c.mobile}
-                        </p>
-                        <p style={{ margin: "2px 0 0", fontWeight: 500, fontSize: "10.5px", color: "#6B7280" }}>
-                          GSTN: {c.gstn || "—"}
-                        </p>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* + Add New Customer Button */}
-          <button
-            onClick={() => setIsAddNewOpen(true)}
-            style={{
-              height: "38px",
-              padding: "0 18px",
-              background: "#FFFFFF",
-              border: "1.5px solid #2576AB",
-              borderRadius: "6px",
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontWeight: 700,
-              fontSize: "14px",
-              color: "#173F63",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              whiteSpace: "nowrap",
-              transition: "background 0.15s",
-            }}
-            className="ci-add-new-btn"
-          >
-            <span style={{ fontSize: "20px", fontWeight: 700, lineHeight: 1 }}>+</span>
-            Add New Customer
-          </button>
-        </div>
-
-        {/* ── Selected Customer Details Box (Rectangle 73) — Only displayed when customer is selected ── */}
-        {selectedCustomer && (
-          <div
-            style={{
-              width: "100%",
-              background: "rgba(217, 217, 217, 0.3)",
-              border: "1px solid rgba(179, 175, 175, 0.54)",
-              borderRadius: "6px",
-              padding: "16px 22px",
-              boxSizing: "border-box",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
-              <h3
+          <div>
+            {/* Section Heading */}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", marginBottom: "12px" }}>
+              <User size={20} color="#011B2F" strokeWidth={1.75} style={{ flexShrink: 0, marginTop: "2px" }} />
+              <h2
+                className="ci-card-title"
                 style={{
                   margin: 0,
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
                   fontWeight: 700,
                   fontSize: "18px",
-                  lineHeight: "23px",
+                  lineHeight: "24px",
                   color: "#011B2F",
                 }}
               >
-                Selected Customer Details
-              </h3>
-              <button
-                type="button"
-                onClick={handleClearCustomer}
-                style={{
-                  background: "#FEE2E2",
-                  color: "#DC2626",
-                  border: "1px solid #FECACA",
-                  borderRadius: "6px",
-                  padding: "4px 10px",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                }}
-              >
-                <X size={14} /> Clear Selection
-              </button>
+                Select Existing Customer
+              </h2>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {/* Row 1: Name */}
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <User size={18} color="#011B2F" style={{ flexShrink: 0 }} />
-                <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
-                  Customer Name:
-                </span>
-                <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
-                  {selectedCustomer.name}
-                </span>
-              </div>
-
-              <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
-
-              {/* Row 2: Mobile */}
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <Phone size={18} color="#011B2F" style={{ flexShrink: 0 }} />
-                <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
-                  Mobile Number:
-                </span>
-                <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
-                  {selectedCustomer.mobile}
-                </span>
-              </div>
-
-              <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
-
-              {/* Row 3: GSTN */}
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <CreditCard size={18} color="#011B2F" style={{ flexShrink: 0 }} />
-                <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
-                  GSTN:
-                </span>
-                <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
-                  {selectedCustomer.gstn || "—"}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── Card 2: Issue Complimentary Ticket? (Rectangle 96) ── */}
-      <div
-        style={{
-          background: "#FFFFFF",
-          border: "1.5px solid rgba(179, 175, 175, 0.51)",
-          borderRadius: "13px",
-          padding: "24px 28px",
-          boxSizing: "border-box",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            cursor: "pointer",
-          }}
-          onClick={() => setIsComplimentary((p) => !p)}
-        >
-          <div>
-            <h3
+            <p
+              className="ci-card-subtitle"
               style={{
-                margin: 0,
+                margin: "0 0 8px 0",
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: 700,
-                fontSize: "18px",
-                lineHeight: "23px",
+                fontWeight: 600,
+                fontSize: "15px",
                 color: "#011B2F",
               }}
             >
-              Issue Complimentary Ticket?
-            </h3>
-            <p
-              style={{
-                margin: "4px 0 0",
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: 600,
-                fontSize: "12px",
-                lineHeight: "15px",
-                color: "#6B7280",
-              }}
-            >
-              Enable this only if the booking is being issued under a complimentary pass/reference
+              Customer <span style={{ fontSize: "13px", fontWeight: 500, color: "#6B7280" }}>(Optional)</span>
             </p>
           </div>
 
-          {/* Checkbox */}
+          {/* Dropdown search bar + Add New Customer button */}
           <div
+            className="ci-search-row"
             style={{
-              width: "18px",
-              height: "18px",
-              borderRadius: "2px",
-              background: isComplimentary ? "#011B2F" : "#FFFFFF",
-              border: isComplimentary ? "none" : "1.5px solid #6B7280",
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              transition: "all 0.15s ease",
+              gap: "12px",
+              marginBottom: selectedCustomer ? "16px" : "0",
+              flexWrap: "wrap",
+              width: "100%",
             }}
           >
-            {isComplimentary && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
+            <div
+              ref={dropdownRef}
+              className="ci-search-dropdown-wrapper"
+              style={{ position: "relative", flex: 1, minWidth: "140px", width: "100%" }}
+            >
+              <div
+                className="ci-search-input-box"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  background: "#FFFFFF",
+                  border: "1.5px solid rgba(179, 175, 175, 0.84)",
+                  borderRadius: "6px",
+                  height: "38px",
+                  padding: "0 14px",
+                  cursor: "text",
+                  boxSizing: "border-box",
+                  width: "100%",
+                }}
+                onClick={() => setShowDropdown(true)}
+              >
+                <Search size={16} color="#6B7280" style={{ flexShrink: 0 }} />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    if (selectedCustomer && e.target.value !== selectedCustomer.name) {
+                      setSelectedCustomer(null);
+                    }
+                    setShowDropdown(true);
+                  }}
+                  onFocus={() => setShowDropdown(true)}
+                  placeholder="Search name, mobile..."
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    width: "100%",
+                    border: "none",
+                    outline: "none",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 500,
+                    fontSize: "12px",
+                    color: "#173F63",
+                    background: "transparent",
+                  }}
+                />
+                {(searchQuery || selectedCustomer) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleClearCustomer();
+                    }}
+                    title="Clear customer selection"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: "2px",
+                      display: "flex",
+                      alignItems: "center",
+                      color: "#94A3B8",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowDropdown((p) => !p);
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  {showDropdown ? <ChevronUp size={18} color="#173F63" /> : <ChevronDown size={18} color="#173F63" />}
+                </button>
+              </div>
+
+              {showDropdown && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 4px)",
+                    left: 0,
+                    right: 0,
+                    background: "#FFFFFF",
+                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                    borderRadius: "6px",
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
+                    zIndex: 30,
+                    maxHeight: "180px",
+                    overflowY: "auto",
+                  }}
+                >
+                  {isCustomersLoading ? (
+                    <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <div style={{ height: "12px", width: "60%", background: "#E2E8F0", borderRadius: "4px" }} />
+                      <div style={{ height: "10px", width: "40%", background: "#F1F5F9", borderRadius: "4px" }} />
+                    </div>
+                  ) : searchedCustomers.length === 0 ? (
+                    <p style={{ padding: "12px 16px", margin: 0, fontSize: "12px", color: "#6B7280" }}>
+                      No customers found.
+                    </p>
+                  ) : (
+                    searchedCustomers.map((c) => (
+                      <div
+                        key={c.id}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSelectCustomer(c);
+                        }}
+                        style={{
+                          padding: "10px 16px",
+                          cursor: "pointer",
+                          borderBottom: "1px solid rgba(179,175,175,0.2)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                        className="ci-cust-option"
+                      >
+                        <div>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: "12px", color: "#011B2F" }}>
+                            {c.name} - {c.mobile}
+                          </p>
+                          <p style={{ margin: "2px 0 0", fontWeight: 500, fontSize: "10.5px", color: "#6B7280" }}>
+                            GSTN: {c.gstn || "—"}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* + Add New Customer Button */}
+            <button
+              onClick={() => setIsAddNewOpen(true)}
+              style={{
+                height: "38px",
+                padding: "0 16px",
+                background: "#FFFFFF",
+                border: "1.5px solid #2576AB",
+                borderRadius: "6px",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                fontWeight: 700,
+                fontSize: "13px",
+                color: "#173F63",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                whiteSpace: "nowrap",
+                transition: "background 0.15s",
+                flexShrink: 0,
+              }}
+              className="ci-add-new-btn"
+            >
+              <span style={{ fontSize: "18px", fontWeight: 700, lineHeight: 1 }}>+</span>
+              Add New Customer
+            </button>
+          </div>
+
+          {/* ── Selected Customer Details Box ── */}
+          {selectedCustomer && (
+            <div
+              style={{
+                width: "100%",
+                background: "rgba(217, 217, 217, 0.3)",
+                border: "1px solid rgba(179, 175, 175, 0.54)",
+                borderRadius: "6px",
+                padding: "14px 18px",
+                boxSizing: "border-box",
+                marginTop: "12px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 700,
+                    fontSize: "16px",
+                    lineHeight: "22px",
+                    color: "#011B2F",
+                  }}
+                >
+                  Selected Customer Details
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleClearCustomer}
+                  style={{
+                    background: "#FEE2E2",
+                    color: "#DC2626",
+                    border: "1px solid #FECACA",
+                    borderRadius: "6px",
+                    padding: "3px 8px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  }}
+                >
+                  <X size={13} /> Clear
+                </button>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <User size={16} color="#011B2F" style={{ flexShrink: 0 }} />
+                  <span style={{ fontWeight: 600, fontSize: "13px", color: "#011B2F", width: "120px" }}>
+                    Customer Name:
+                  </span>
+                  <span style={{ fontWeight: 700, fontSize: "13px", color: "#173F63" }}>
+                    {selectedCustomer.name}
+                  </span>
+                </div>
+
+                <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
+
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <Phone size={16} color="#011B2F" style={{ flexShrink: 0 }} />
+                  <span style={{ fontWeight: 600, fontSize: "13px", color: "#011B2F", width: "120px" }}>
+                    Mobile Number:
+                  </span>
+                  <span style={{ fontWeight: 700, fontSize: "13px", color: "#173F63" }}>
+                    {selectedCustomer.mobile}
+                  </span>
+                </div>
+
+                <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
+
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <CreditCard size={16} color="#011B2F" style={{ flexShrink: 0 }} />
+                  <span style={{ fontWeight: 600, fontSize: "13px", color: "#011B2F", width: "120px" }}>
+                    GSTN:
+                  </span>
+                  <span style={{ fontWeight: 700, fontSize: "13px", color: "#173F63" }}>
+                    {selectedCustomer.gstn || "—"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Card 2: Issue Complimentary Ticket? (Rectangle 96) ── */}
+        <div
+          className="ci-card-half"
+          style={{
+            background: "#FFFFFF",
+            border: isComplimentary ? "1.5px solid #0E4E7A" : "1.5px solid rgba(179, 175, 175, 0.51)",
+            borderBottom: isComplimentary ? "none" : "1.5px solid rgba(179, 175, 175, 0.51)",
+            borderRadius: isComplimentary ? "13px 13px 0 0" : "13px",
+            padding: isComplimentary ? "20px 24px 14px 24px" : "20px 24px",
+            boxSizing: "border-box",
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            cursor: "pointer",
+            height: "100%",
+            position: isComplimentary ? "relative" : undefined,
+            zIndex: isComplimentary ? 2 : undefined,
+            marginBottom: isComplimentary ? "-2px" : 0,
+            transition: "all 0.15s ease",
+          }}
+          onClick={() => setIsComplimentary((p) => !p)}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: "10px",
+            }}
+          >
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <h3
+                className="ci-card-title"
+                style={{
+                  margin: 0,
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 700,
+                  fontSize: "18px",
+                  lineHeight: "24px",
+                  color: "#011B2F",
+                }}
+              >
+                Issue Complimentary Ticket?
+              </h3>
+              <p
+                className="ci-card-desc"
+                style={{
+                  margin: "6px 0 0",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 500,
+                  fontSize: "13px",
+                  lineHeight: "18px",
+                  color: "#6B7280",
+                }}
+              >
+                Enable this only if the booking is being issued under a complimentary pass/reference
+              </p>
+            </div>
+
+            {/* Checkbox */}
+            <div
+              style={{
+                width: "20px",
+                height: "20px",
+                borderRadius: "3px",
+                background: isComplimentary ? "#011B2F" : "#FFFFFF",
+                border: isComplimentary ? "none" : "1.5px solid #6B7280",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                marginTop: "2px",
+                transition: "all 0.15s ease",
+              }}
+            >
+              {isComplimentary && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
+            </div>
           </div>
         </div>
 
-        {/* Expanded Complimentary Form Fields */}
+        {/* ── Expanded Complimentary Form (Full Width - Seamlessly Connected L-Shape) ── */}
         {isComplimentary && (
           <div
+            className="ci-complimentary-expanded-card"
             style={{
-              marginTop: "24px",
-              paddingTop: "20px",
-              borderTop: "1px solid rgba(179, 175, 175, 0.3)",
+              gridColumn: "1 / -1",
+              background: "#FFFFFF",
+              border: "1.5px solid #0E4E7A",
+              borderTop: "none",
+              borderRadius: "0 0 13px 13px",
+              padding: "18px 28px 26px 28px",
+              boxSizing: "border-box",
               display: "flex",
               flexDirection: "column",
-              gap: "24px",
+              gap: "22px",
+              position: "relative",
+              zIndex: 1,
             }}
           >
+            {/* Top shelf border connecting from left edge across to Card 2's left border */}
+            <div
+              className="ci-complimentary-top-shelf"
+              style={{
+                position: "absolute",
+                top: "-1.5px",
+                left: "-1.5px",
+                width: "calc(50% + (var(--ci-gap, 20px) / 2) + 1.5px)",
+                height: "13px",
+                borderTop: "1.5px solid #0E4E7A",
+                borderLeft: "1.5px solid #0E4E7A",
+                borderTopLeftRadius: "13px",
+                pointerEvents: "none",
+                boxSizing: "border-box",
+              }}
+            />
             {/* 1. PASS DETAILS */}
             <div>
               <h4 style={{ margin: "0 0 12px", fontWeight: 700, fontSize: "14px", color: "#2D6B92" }}>
                 PASS DETAILS
               </h4>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "6px" }}>
                     Pass No.
@@ -3996,7 +4085,7 @@ export default function CustomerInfoView({
               <h4 style={{ margin: "0 0 12px", fontWeight: 700, fontSize: "14px", color: "#2D6B92" }}>
                 GUEST DETAILS
               </h4>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "6px" }}>
                     Guest Name
@@ -4057,7 +4146,7 @@ export default function CustomerInfoView({
               <h4 style={{ margin: "0 0 12px", fontWeight: 700, fontSize: "14px", color: "#2D6B92" }}>
                 VISITOR COUNT
               </h4>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "6px" }}>
                     Adults/Senior Citizen
@@ -4103,7 +4192,7 @@ export default function CustomerInfoView({
               <h4 style={{ margin: "0 0 12px", fontWeight: 700, fontSize: "14px", color: "#2D6B92" }}>
                 Reference By
               </h4>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "6px" }}>
                     Reference Person Name
@@ -4460,6 +4549,53 @@ export default function CustomerInfoView({
         .ci-continue-btn:hover { background: #e5af36 !important; transform: translateY(-1px); }
         .ci-add-new-btn:hover { background: #EFF6FF !important; }
         .pay-confirm-btn:hover { background: #e5af36 !important; transform: translateY(-1px); }
+        .ci-customer-complimentary-row {
+          --ci-gap: 20px;
+        }
+        @media (max-width: 640px) {
+          .ci-customer-complimentary-row {
+            --ci-gap: 10px;
+            column-gap: 10px !important;
+          }
+          .ci-card-half {
+            padding: 12px 10px !important;
+          }
+          .ci-card-title {
+            font-size: 13.5px !important;
+            line-height: 17px !important;
+          }
+          .ci-card-subtitle {
+            font-size: 11.5px !important;
+            margin-bottom: 6px !important;
+          }
+          .ci-card-desc {
+            font-size: 10.5px !important;
+            line-height: 14px !important;
+            margin-top: 4px !important;
+          }
+          .ci-search-row {
+            gap: 6px !important;
+          }
+          .ci-search-dropdown-wrapper {
+            min-width: 0 !important;
+            width: 100% !important;
+          }
+          .ci-search-input-box {
+            padding: 0 8px !important;
+            gap: 6px !important;
+            height: 34px !important;
+          }
+          .ci-add-new-btn {
+            width: 100% !important;
+            justify-content: center !important;
+            height: 32px !important;
+            font-size: 11px !important;
+            padding: 0 6px !important;
+          }
+          .ci-complimentary-expanded-card {
+            padding: 14px 10px !important;
+          }
+        }
       `}</style>
     </div>
   );
