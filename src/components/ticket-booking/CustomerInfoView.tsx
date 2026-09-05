@@ -562,17 +562,18 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
             font-family: 'Courier New', Courier, monospace;
             color: #000000;
             background: #FFFFFF;
-            width: 76mm;
-            max-width: 78mm;
+            width: 70mm;
+            max-width: 70mm;
             margin: 0 auto;
-            padding: 2mm 1mm;
+            padding: 3mm 4.5mm;
+            box-sizing: border-box;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             font-weight: 600;
-            font-size: 12px;
+            font-size: 11.5px;
             line-height: 1.35;
           }
-          table { width: 100%; border-collapse: collapse; }
+          table { width: 100%; border-collapse: collapse; table-layout: fixed; }
           img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
         </style>
       </head>
@@ -621,6 +622,8 @@ function TicketGeneratedModal({
   roundOff = 0,
   attractionRoundOffGstAdj = 0,
   businessName = "",
+  cin = "",
+  gst = "",
   timeSlot = "",
   seatDetails = [],
 }: {
@@ -630,6 +633,8 @@ function TicketGeneratedModal({
   grandTotal: number;
   totalPax: number;
   businessName?: string;
+  cin?: string | null;
+  gst?: string | null;
   confirmedData?: {
     booking?: {
       id?: string;
@@ -692,6 +697,9 @@ function TicketGeneratedModal({
       : typeof rawQr === "string"
         ? [{ qrCode: rawQr }]
         : [];
+
+  const displayCin = typeof cin === "string" ? cin.trim() : "";
+  const displayGst = typeof gst === "string" ? gst.trim() : "";
 
   const invoiceNum =
     booking?.invoiceNumber ||
@@ -930,7 +938,7 @@ function TicketGeneratedModal({
               background: "#FFFFFF",
               border: "1.5px solid #000000",
               borderRadius: "10px",
-              padding: "14px 10px",
+              padding: "14px 18px",
               fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Courier New', Courier, monospace",
               color: "#000000",
               fontSize: "12px",
@@ -973,21 +981,23 @@ function TicketGeneratedModal({
                 </div>
               )}
 
-              {/* CIN & GST info */}
-              <div
-                style={{
-                  margin: "3px 0 2px 0",
-                  fontSize: "11.5px",
-                  fontWeight: 800,
-                  lineHeight: "1.4",
-                  color: "#000000",
-                  fontFamily: "'Courier New', Courier, monospace",
-                  letterSpacing: "0.02em",
-                }}
-              >
-                <div>CIN: U15532RJ1998PLC015036</div>
-                <div>GST: 08AAKCS3004M1Z7</div>
-              </div>
+              {/* CIN & GST info (from profile API response) */}
+              {(displayCin || displayGst) && (
+                <div
+                  style={{
+                    margin: "3px 0 2px 0",
+                    fontSize: "11.5px",
+                    fontWeight: 800,
+                    lineHeight: "1.4",
+                    color: "#000000",
+                    fontFamily: "'Courier New', Courier, monospace",
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  {displayCin ? <div>CIN: {displayCin}</div> : null}
+                  {displayGst ? <div>GST: {displayGst}</div> : null}
+                </div>
+              )}
 
               {/* Seat Allocation Info – shown below GST number */}
               {seatDetails && seatDetails.length > 0 && (
@@ -1314,10 +1324,11 @@ function TicketGeneratedModal({
             left: 0 !important;
             right: 0 !important;
             top: 0 !important;
-            width: 80mm !important;
-            max-width: 80mm !important;
+            width: 70mm !important;
+            max-width: 70mm !important;
             margin: 0 auto !important;
-            padding: 4px !important;
+            padding: 3mm 4.5mm !important;
+            box-sizing: border-box !important;
             box-shadow: none !important;
             border: none !important;
             font-size: 11px !important;
@@ -1340,16 +1351,48 @@ function TicketGeneratedModal({
   );
 }
 
-// ── Profile-aware wrapper — reads businessName from the auth cache and injects it
+// ── Profile-aware wrapper — reads businessName, cin & gst from the auth cache and injects them
 function TicketGeneratedModalWithProfile(props: Parameters<typeof TicketGeneratedModal>[0]) {
   const { data: profileData } = useProfileQuery();
+  const profile =
+    profileData?.profile ||
+    (profileData as any)?.data?.profile ||
+    (profileData as any)?.data ||
+    (profileData as any) ||
+    {};
+
   const businessName =
+    profile?.businessName ||
     profileData?.profile?.businessName ||
     (profileData as any)?.businessName ||
     (profileData as any)?.data?.profile?.businessName ||
     (profileData as any)?.data?.businessName ||
     "";
-  return <TicketGeneratedModal {...props} businessName={businessName} />;
+
+  const cin =
+    profile?.cin ||
+    profileData?.profile?.cin ||
+    (profileData as any)?.cin ||
+    (profileData as any)?.data?.profile?.cin ||
+    (profileData as any)?.data?.cin ||
+    "";
+
+  const gst =
+    profile?.gst ||
+    profileData?.profile?.gst ||
+    (profileData as any)?.gst ||
+    (profileData as any)?.data?.profile?.gst ||
+    (profileData as any)?.data?.gst ||
+    "";
+
+  return (
+    <TicketGeneratedModal
+      {...props}
+      businessName={businessName}
+      cin={cin}
+      gst={gst}
+    />
+  );
 }
 
 // ── Selected Seat Object Type 
@@ -1920,96 +1963,96 @@ function SeatAllocationPanel({
                 )}
                 {sectionsList.map((section) => {
                   const isSecActive = (section.attractionSeatId || String(section.seatOrder)) === activeSectionId;
-                const bookedList = Array.isArray(section.bookedSeats) ? section.bookedSeats : [];
-                const bookedCount = bookedList.length;
-                const totalSecSeats = totalSectionSeats || 1;
-                const availCount = Math.max(0, totalSecSeats - bookedCount);
-                const isFull = availCount === 0;
+                  const bookedList = Array.isArray(section.bookedSeats) ? section.bookedSeats : [];
+                  const bookedCount = bookedList.length;
+                  const totalSecSeats = totalSectionSeats || 1;
+                  const availCount = Math.max(0, totalSecSeats - bookedCount);
+                  const isFull = availCount === 0;
 
-                const secAllocatedSeats = activeAttractionSelectedSeatObjs.filter((s) => {
-                  if (section.attractionSeatId && s.attractionSeatId) {
-                    return s.attractionSeatId === section.attractionSeatId;
-                  }
-                  return s.sectionName === (section.name || `Seat ${section.seatOrder}`);
-                });
-                const allocatedCount = secAllocatedSeats.length;
-                const hasAllocated = allocatedCount > 0;
-                const isCardDisabled = isFull && !hasAllocated;
+                  const secAllocatedSeats = activeAttractionSelectedSeatObjs.filter((s) => {
+                    if (section.attractionSeatId && s.attractionSeatId) {
+                      return s.attractionSeatId === section.attractionSeatId;
+                    }
+                    return s.sectionName === (section.name || `Seat ${section.seatOrder}`);
+                  });
+                  const allocatedCount = secAllocatedSeats.length;
+                  const hasAllocated = allocatedCount > 0;
+                  const isCardDisabled = isFull && !hasAllocated;
 
-                const statusLabel = isFull && !hasAllocated
-                  ? "Booked"
-                  : isSecActive
-                    ? "Selected"
-                    : isFull
-                      ? "Booked"
-                      : hasAllocated
-                        ? `Selected`
-                        : "Available";
-
-                const statusBg = isFull && !hasAllocated
-                  ? "rgba(179,175,175,0.4)"
-                  : isSecActive || hasAllocated
-                    ? "rgba(244,188,67,0.61)"
-                    : "rgba(34,197,94,0.15)";
-
-                const statusColor = isFull && !hasAllocated
-                  ? "#475569"
-                  : isSecActive || hasAllocated
-                    ? "#173F63"
-                    : "#15803D";
-
-                return (
-                  <div
-                    key={section.attractionSeatId || section.seatOrder}
-                    onClick={() => {
-                      if (!isCardDisabled) {
-                        setActiveSectionId(section.attractionSeatId || String(section.seatOrder));
-                      }
-                    }}
-                    style={{
-                      background: isCardDisabled ? "#F8FAFC" : "#FFFFFF",
-                      border: isSecActive
-                        ? "1.5px solid #173F63"
+                  const statusLabel = isFull && !hasAllocated
+                    ? "Booked"
+                    : isSecActive
+                      ? "Selected"
+                      : isFull
+                        ? "Booked"
                         : hasAllocated
-                          ? "1.5px solid #D99B1E"
-                          : isCardDisabled
-                            ? "1.5px solid #E2E8F0"
-                            : "1.5px solid rgba(179,175,175,0.51)",
-                      borderRadius: "13px",
-                      padding: "10px 14px",
-                      cursor: isCardDisabled ? "not-allowed" : "pointer",
-                      opacity: isCardDisabled ? 0.6 : 1,
-                      transition: "all 0.15s ease",
-                      boxSizing: "border-box",
-                      boxShadow: isSecActive ? "0 2px 8px rgba(0, 42, 69, 0.1)" : "none",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                      <span style={{ fontWeight: 600, fontSize: "13px", color: isCardDisabled ? "#64748B" : "#011B2F" }}>
-                        {section.name || `Seat ${section.seatOrder}`}
-                      </span>
-                      <span style={{ background: statusBg, color: statusColor, fontSize: "8px", fontWeight: 700, padding: "2px 6px", borderRadius: "5px" }}>
-                        {statusLabel}
-                      </span>
+                          ? `Selected`
+                          : "Available";
+
+                  const statusBg = isFull && !hasAllocated
+                    ? "rgba(179,175,175,0.4)"
+                    : isSecActive || hasAllocated
+                      ? "rgba(244,188,67,0.61)"
+                      : "rgba(34,197,94,0.15)";
+
+                  const statusColor = isFull && !hasAllocated
+                    ? "#475569"
+                    : isSecActive || hasAllocated
+                      ? "#173F63"
+                      : "#15803D";
+
+                  return (
+                    <div
+                      key={section.attractionSeatId || section.seatOrder}
+                      onClick={() => {
+                        if (!isCardDisabled) {
+                          setActiveSectionId(section.attractionSeatId || String(section.seatOrder));
+                        }
+                      }}
+                      style={{
+                        background: isCardDisabled ? "#F8FAFC" : "#FFFFFF",
+                        border: isSecActive
+                          ? "1.5px solid #173F63"
+                          : hasAllocated
+                            ? "1.5px solid #D99B1E"
+                            : isCardDisabled
+                              ? "1.5px solid #E2E8F0"
+                              : "1.5px solid rgba(179,175,175,0.51)",
+                        borderRadius: "13px",
+                        padding: "10px 14px",
+                        cursor: isCardDisabled ? "not-allowed" : "pointer",
+                        opacity: isCardDisabled ? 0.6 : 1,
+                        transition: "all 0.15s ease",
+                        boxSizing: "border-box",
+                        boxShadow: isSecActive ? "0 2px 8px rgba(0, 42, 69, 0.1)" : "none",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                        <span style={{ fontWeight: 600, fontSize: "13px", color: isCardDisabled ? "#64748B" : "#011B2F" }}>
+                          {section.name || `Seat ${section.seatOrder}`}
+                        </span>
+                        <span style={{ background: statusBg, color: statusColor, fontSize: "8px", fontWeight: 700, padding: "2px 6px", borderRadius: "5px" }}>
+                          {statusLabel}
+                        </span>
+                      </div>
+                      <p style={{ margin: "1px 0", fontSize: "10px", fontWeight: 600, color: isCardDisabled ? "#94A3B8" : "#6B7280" }}>
+                        Available: {availCount} / {totalSecSeats} Seats
+                        &nbsp;&nbsp;
+                        Booked: {bookedCount}
+                      </p>
+                      <p style={{ margin: "1px 0 0", fontSize: "10px", fontWeight: 600, color: hasAllocated ? "#92400E" : isCardDisabled ? "#94A3B8" : "#6B7280" }}>
+                        {hasAllocated
+                          ? `Seat No: ${secAllocatedSeats.map((s) => String(s.seatOrder).padStart(2, "0")).join(", ")} Allocated`
+                          : isFull
+                            ? "All seats booked"
+                            : "Click to view and allocate"}
+                      </p>
+                      <p style={{ margin: 0, fontSize: "9.5px", fontWeight: 500, color: "#94A3B8" }}>
+                        {hasAllocated ? "Assigned to passenger" : isFull ? "Section is full" : isSecActive ? "Currently viewing section" : "Section available"}
+                      </p>
                     </div>
-                    <p style={{ margin: "1px 0", fontSize: "10px", fontWeight: 600, color: isCardDisabled ? "#94A3B8" : "#6B7280" }}>
-                      Available: {availCount} / {totalSecSeats} Seats
-                      &nbsp;&nbsp;
-                      Booked: {bookedCount}
-                    </p>
-                    <p style={{ margin: "1px 0 0", fontSize: "10px", fontWeight: 600, color: hasAllocated ? "#92400E" : isCardDisabled ? "#94A3B8" : "#6B7280" }}>
-                      {hasAllocated
-                        ? `Seat No: ${secAllocatedSeats.map((s) => String(s.seatOrder).padStart(2, "0")).join(", ")} Allocated`
-                        : isFull
-                          ? "All seats booked"
-                          : "Click to view and allocate"}
-                    </p>
-                    <p style={{ margin: 0, fontSize: "9.5px", fontWeight: 500, color: "#94A3B8" }}>
-                      {hasAllocated ? "Assigned to passenger" : isFull ? "Section is full" : isSecActive ? "Currently viewing section" : "Section available"}
-                    </p>
-                  </div>
-                );
-              })}
+                  );
+                })}
               </>
             )}
           </div>

@@ -480,17 +480,18 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
             font-family: 'Courier New', Courier, monospace;
             color: #000000;
             background: #FFFFFF;
-            width: 76mm;
-            max-width: 78mm;
+            width: 70mm;
+            max-width: 70mm;
             margin: 0 auto;
-            padding: 2mm 1mm;
+            padding: 3mm 4.5mm;
+            box-sizing: border-box;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             font-weight: 600;
-            font-size: 12px;
+            font-size: 11.5px;
             line-height: 1.35;
           }
-          table { width: 100%; border-collapse: collapse; }
+          table { width: 100%; border-collapse: collapse; table-layout: fixed; }
           img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
         </style>
       </head>
@@ -538,6 +539,8 @@ function TicketGeneratedModal({
   gstAmount = 0,
   roundOff = 0,
   businessName = "",
+  cin = "",
+  gst = "",
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -545,6 +548,8 @@ function TicketGeneratedModal({
   grandTotal: number;
   totalPax: number;
   businessName?: string;
+  cin?: string | null;
+  gst?: string | null;
   confirmedData?: {
     booking?: {
       id?: string;
@@ -581,6 +586,9 @@ function TicketGeneratedModal({
   const booking = confirmedData?.booking || (confirmedData as any)?.data || (confirmedData as any);
   const qrCodes: Array<{ attractionId?: string; qrCode: string; [key: string]: unknown }> =
     confirmedData?.qrCodes || (confirmedData as any)?.data?.qrCodes || [];
+
+  const displayCin = typeof cin === "string" ? cin.trim() : "";
+  const displayGst = typeof gst === "string" ? gst.trim() : "";
 
   const invoiceNum =
     (booking as any)?.invoiceNumber ||
@@ -781,7 +789,7 @@ function TicketGeneratedModal({
               background: "#FFFFFF",
               border: "1.5px solid #000000",
               borderRadius: "10px",
-              padding: "14px 10px",
+              padding: "14px 18px",
               fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Courier New', Courier, monospace",
               color: "#000000",
               fontSize: "12px",
@@ -825,21 +833,23 @@ function TicketGeneratedModal({
                 </div>
               )}
 
-              {/* CIN & GST info */}
-              <div
-                style={{
-                  margin: "3px 0 2px 0",
-                  fontSize: "11.5px",
-                  fontWeight: 800,
-                  lineHeight: "1.4",
-                  color: "#000000",
-                  fontFamily: "'Courier New', Courier, monospace",
-                  letterSpacing: "0.02em",
-                }}
-              >
-                <div>CIN: U15532RJ1998PLC015036</div>
-                <div>GST: 08AAKCS3004M1Z7</div>
-              </div>
+              {/* CIN & GST info (from profile API response) */}
+              {(displayCin || displayGst) && (
+                <div
+                  style={{
+                    margin: "3px 0 2px 0",
+                    fontSize: "11.5px",
+                    fontWeight: 800,
+                    lineHeight: "1.4",
+                    color: "#000000",
+                    fontFamily: "'Courier New', Courier, monospace",
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  {displayCin ? <div>CIN: {displayCin}</div> : null}
+                  {displayGst ? <div>GST: {displayGst}</div> : null}
+                </div>
+              )}
             </div>
 
             {/* Prominent Total Header */}
@@ -1092,10 +1102,11 @@ function TicketGeneratedModal({
             position: fixed !important;
             left: 0 !important;
             top: 0 !important;
-            width: 80mm !important;
-            max-width: 80mm !important;
+            width: 70mm !important;
+            max-width: 70mm !important;
             margin: 0 auto !important;
-            padding: 4px !important;
+            padding: 3mm 4.5mm !important;
+            box-sizing: border-box !important;
             box-shadow: none !important;
             border: none !important;
             font-size: 11px !important;
@@ -1118,16 +1129,48 @@ function TicketGeneratedModal({
   );
 }
 
-// ── Profile-aware wrapper — reads businessName from the auth cache and injects it
+// ── Profile-aware wrapper — reads businessName, cin & gst from the auth cache and injects them
 function TicketGeneratedModalWithProfile(props: Parameters<typeof TicketGeneratedModal>[0]) {
   const { data: profileData } = useProfileQuery();
+  const profile =
+    profileData?.profile ||
+    (profileData as any)?.data?.profile ||
+    (profileData as any)?.data ||
+    (profileData as any) ||
+    {};
+
   const businessName =
+    profile?.businessName ||
     profileData?.profile?.businessName ||
     (profileData as any)?.businessName ||
     (profileData as any)?.data?.profile?.businessName ||
     (profileData as any)?.data?.businessName ||
     "";
-  return <TicketGeneratedModal {...props} businessName={businessName} />;
+
+  const cin =
+    profile?.cin ||
+    profileData?.profile?.cin ||
+    (profileData as any)?.cin ||
+    (profileData as any)?.data?.profile?.cin ||
+    (profileData as any)?.data?.cin ||
+    "";
+
+  const gst =
+    profile?.gst ||
+    profileData?.profile?.gst ||
+    (profileData as any)?.gst ||
+    (profileData as any)?.data?.profile?.gst ||
+    (profileData as any)?.data?.gst ||
+    "";
+
+  return (
+    <TicketGeneratedModal
+      {...props}
+      businessName={businessName}
+      cin={cin}
+      gst={gst}
+    />
+  );
 }
 
 // ── Bogie Seat Allocation Panel ────────────────────────────────────────────────
