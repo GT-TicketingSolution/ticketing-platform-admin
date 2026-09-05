@@ -24,6 +24,8 @@ import {
 export async function generateInvoiceNumber(userId: string): Promise<string> {
   const [user] = await db
     .select({
+      role: users.role,
+      admin_id: users.adminId,
       invoicePrefix: users.invoiceNumberForUsersInitialPart,
     })
     .from(users)
@@ -33,6 +35,20 @@ export async function generateInvoiceNumber(userId: string): Promise<string> {
   if (!user) {
     throw new Error("USER_NOT_FOUND");
   }
+
+  if (user.role === "STAFF" && user.admin_id) {
+      const [admin] = await db
+        .select({
+          invoiceNumberForUsersInitialPart: users.invoiceNumberForUsersInitialPart,
+        })
+        .from(users)
+        .where(eq(users.id, user.admin_id))
+        .limit(1);
+  
+      if (admin) {
+        user.invoicePrefix = admin.invoiceNumberForUsersInitialPart;
+      }
+    }
 
   if (!user.invoicePrefix) {
     throw new Error("INVOICE_PREFIX_NOT_CONFIGURED");

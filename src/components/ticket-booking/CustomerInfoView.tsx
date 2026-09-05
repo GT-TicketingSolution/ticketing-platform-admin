@@ -1401,16 +1401,30 @@ function SeatAllocationPanel({
     return seatAvailData.find((d) => d.attractionId === activeAttId) || seatAvailData[0] || null;
   }, [seatAvailData, activeAttId]);
 
-  const seatLayout: AttractionSeatLayout | null = useMemo(
-    () => currentSeatData?.seatLayout || null,
-    [currentSeatData]
-  );
+  // Track selected layout per attraction: Map<attractionId, layoutId>
+  const [selectedLayoutMap, setSelectedLayoutMap] = useState<Map<string, string>>(new Map());
+
+  const seatLayout: AttractionSeatLayout | null = useMemo(() => {
+    const layouts = currentSeatData?.seatLayout || [];
+    if (layouts.length === 0) return null;
+
+    const selectedLayoutId = selectedLayoutMap.get(activeAttId) || layouts[0]?.seatLayoutId;
+    const selected = layouts.find(l => l.seatLayoutId === selectedLayoutId) || layouts[0];
+
+    return selected || null;
+  }, [currentSeatData, activeAttId, selectedLayoutMap]);
 
   // Sections (e.g. "Seat 1", "Seat 2" coaches/compartments)
   const sectionsList: AttractionSeatItem[] = useMemo(() => {
-    const raw = currentSeatData?.seatLayout?.seats || currentSeatData?.seats || [];
+    const layouts = currentSeatData?.seatLayout || [];
+    if (layouts.length === 0) return [];
+
+    const selectedLayoutId = selectedLayoutMap.get(activeAttId) || layouts[0]?.seatLayoutId;
+    const selected = layouts.find(l => l.seatLayoutId === selectedLayoutId) || layouts[0];
+
+    const raw = selected?.seats || currentSeatData?.seats || [];
     return raw.slice().sort((a, b) => a.seatOrder - b.seatOrder);
-  }, [currentSeatData]);
+  }, [currentSeatData, activeAttId, selectedLayoutMap]);
 
   // Active section selected on the left Layout Overview
   const [activeSectionId, setActiveSectionId] = useState<string>("");
@@ -1675,9 +1689,9 @@ function SeatAllocationPanel({
 
               // Calculate available seats for this attraction on current trip
               const attData = seatAvailData.find((d) => d.attractionId === att.attractionId);
-              const attSecs: AttractionSeatItem[] = (attData?.seatLayout?.seats || attData?.seats || []).slice();
-              const r = attData?.seatLayout?.rows || 0;
-              const c = attData?.seatLayout?.cols || 0;
+              const attSecs: AttractionSeatItem[] = (attData?.seatLayout?.[0]?.seats || attData?.seats || []).slice();
+              const r = attData?.seatLayout?.[0]?.rows || 0;
+              const c = attData?.seatLayout?.[0]?.cols || 0;
               const tSecSeats = (r > 0 && c > 0) ? (r * c) : (attSecs.length > 0 ? 4 : 0);
               let attAvail = 0;
               attSecs.forEach((sec) => {
@@ -1791,7 +1805,7 @@ function SeatAllocationPanel({
             Layout Overview
           </p>
 
-          {/* Section cards — each section in seatLayout.seats */}
+          {/* Section/Layout cards — each section in seatLayout.seats + layout selector if multiple */}
           <div
             style={{
               display: "flex",
@@ -1803,13 +1817,65 @@ function SeatAllocationPanel({
               paddingRight: "2px",
             }}
           >
-            {sectionsList.length === 0 ? (
+            {sectionsList.length === 0 && ((currentSeatData?.seatLayout?.length ?? 0) <= 1) ? (
               <p style={{ margin: "12px 0", fontSize: "12px", color: "#94A3B8", textAlign: "center" }}>
                 No sections found
               </p>
             ) : (
-              sectionsList.map((section) => {
-                const isSecActive = (section.attractionSeatId || String(section.seatOrder)) === activeSectionId;
+              <>
+                {((currentSeatData?.seatLayout?.length ?? 0) > 1) && (
+                  <>
+                    {currentSeatData?.seatLayout?.map((layout) => {
+                      const isLayoutSelected = (selectedLayoutMap.get(activeAttId) || currentSeatData?.seatLayout?.[0]?.seatLayoutId) === layout.seatLayoutId;
+                      const totalLayoutSeats = (layout.rows ?? 0) * (layout.cols ?? 0);
+                      const layoutSeatsBooked = layout.seats?.reduce((sum, seat) => sum + (Array.isArray(seat.bookedSeats) ? seat.bookedSeats.length : 0), 0) ?? 0;
+                      const layoutSeatsAvailable = totalLayoutSeats - layoutSeatsBooked;
+
+                      return (
+                        <div
+                          key={layout.seatLayoutId}
+                          onClick={() => {
+                            setSelectedLayoutMap((prev: Map<string, string>) => new Map(prev).set(activeAttId, layout.seatLayoutId));
+                            setActiveSectionId("");
+                          }}
+                          style={{
+                            background: "#FFFFFF",
+                            border: isLayoutSelected ? "1.5px solid #173F63" : "1.5px solid rgba(179,175,175,0.51)",
+                            borderRadius: "13px",
+                            padding: "10px 14px",
+                            cursor: "pointer",
+                            opacity: 1,
+                            transition: "all 0.15s ease",
+                            boxSizing: "border-box",
+                            boxShadow: isLayoutSelected ? "0 2px 8px rgba(0, 42, 69, 0.1)" : "none",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                            <span style={{ fontWeight: 600, fontSize: "13px", color: "#011B2F" }}>
+                              {layout.name}
+                            </span>
+                            <span style={{ background: "transparent", color: "transparent", fontSize: "8px", fontWeight: 700, padding: "2px 6px", borderRadius: "5px" }}>
+
+                            </span>
+                          </div>
+                          <p style={{ margin: "1px 0", fontSize: "10px", fontWeight: 600, color: "#6B7280" }}>
+                            Available: {layoutSeatsAvailable} / {totalLayoutSeats} Seats
+                            &nbsp;&nbsp;
+                            Booked: {layoutSeatsBooked}
+                          </p>
+                          <p style={{ margin: "1px 0 0", fontSize: "10px", fontWeight: 600, color: "#6B7280" }}>
+                            Click to view and allocate
+                          </p>
+                          <p style={{ margin: 0, fontSize: "9.5px", fontWeight: 500, color: "#94A3B8" }}>
+                            {isLayoutSelected ? "Currently viewing layout" : "Layout available"}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+                {sectionsList.map((section) => {
+                  const isSecActive = (section.attractionSeatId || String(section.seatOrder)) === activeSectionId;
                 const bookedList = Array.isArray(section.bookedSeats) ? section.bookedSeats : [];
                 const bookedCount = bookedList.length;
                 const totalSecSeats = totalSectionSeats || 1;
@@ -1899,7 +1965,8 @@ function SeatAllocationPanel({
                     </p>
                   </div>
                 );
-              })
+              })}
+              </>
             )}
           </div>
 
@@ -2656,9 +2723,9 @@ export default function CustomerInfoView({
       // Only trigger once per trip
       if (autoNewTripDoneRef.current[attId] === currentTripNo) return;
 
-      const sections: AttractionSeatItem[] = (attData.seatLayout?.seats || attData.seats || []).slice();
-      const rows = attData.seatLayout?.rows || 0;
-      const cols = attData.seatLayout?.cols || 0;
+      const sections: AttractionSeatItem[] = (attData.seatLayout?.[0]?.seats || attData.seats || []).slice();
+      const rows = attData.seatLayout?.[0]?.rows || 0;
+      const cols = attData.seatLayout?.[0]?.cols || 0;
       const totalSecSeats = (rows > 0 && cols > 0) ? (rows * cols) : (sections.length > 0 ? 4 : 0);
 
       if (sections.length === 0 || totalSecSeats === 0) return;
@@ -2711,9 +2778,9 @@ export default function CustomerInfoView({
       if (!attData) return;
 
       const currentTripNo = attData.currentTripNo || tripMap[attId] || 1;
-      const sections: AttractionSeatItem[] = (attData.seatLayout?.seats || attData.seats || []).slice().sort((a, b) => a.seatOrder - b.seatOrder);
-      const rows = attData.seatLayout?.rows || 0;
-      const cols = attData.seatLayout?.cols || 0;
+      const sections: AttractionSeatItem[] = (attData.seatLayout?.[0]?.seats || attData.seats || []).slice().sort((a, b) => a.seatOrder - b.seatOrder);
+      const rows = attData.seatLayout?.[0]?.rows || 0;
+      const cols = attData.seatLayout?.[0]?.cols || 0;
       const totalSecSeats = (rows > 0 && cols > 0) ? (rows * cols) : (sections.length > 0 ? 4 : 0);
 
       // Calculate available unbooked seats across all sections in this attraction
@@ -2999,9 +3066,9 @@ export default function CustomerInfoView({
         const attId = missingAttraction.attractionId!;
         const attCurTrip = tripMap[attId] || 1;
         const attData = seatAvailData.find((d) => d.attractionId === attId);
-        const secList = attData?.seatLayout?.seats || attData?.seats || [];
-        const rows = attData?.seatLayout?.rows || 0;
-        const cols = attData?.seatLayout?.cols || 0;
+        const secList = attData?.seatLayout?.[0]?.seats || attData?.seats || [];
+        const rows = attData?.seatLayout?.[0]?.rows || 0;
+        const cols = attData?.seatLayout?.[0]?.cols || 0;
         const totalSecSeats = (rows > 0 && cols > 0) ? (rows * cols) : (secList.length > 0 ? 4 : 0);
         let availSeats = 0;
         secList.forEach((sec) => {
@@ -3101,7 +3168,7 @@ export default function CustomerInfoView({
           const attId = att.attractionId!;
           const tripNo = tripMap[attId] || 1;
           const attAvail = seatAvailData?.find((d) => d.attractionId === attId);
-          const sections: AttractionSeatItem[] = attAvail?.seatLayout?.seats || attAvail?.seats || [];
+          const sections: AttractionSeatItem[] = attAvail?.seatLayout?.[0]?.seats || attAvail?.seats || [];
 
           sections.forEach((sec) => {
             const secSeatObjs = selectedSeatObjs.filter(
