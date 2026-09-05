@@ -378,7 +378,7 @@ export interface AttractionSeatAvailabilityData {
   attractionId: string;
   currentTripNo: number;
   seats?: AttractionSeatItem[];
-  seatLayout: AttractionSeatLayout;
+  seatLayout: AttractionSeatLayout[];
   bookedSeats?: number[];
 }
 

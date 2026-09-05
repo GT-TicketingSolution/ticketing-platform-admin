@@ -776,6 +776,9 @@ export default function TicketBookingView() {
   // Available trips counter per attraction (decrements on booking)
   const [availableTripsMap, setAvailableTripsMap] = useState<Record<string, number>>({});
 
+  // Selected seat layout per attraction: Map<attractionId, layoutId>
+  const [selectedLayoutMap, setSelectedLayoutMap] = useState<Map<string, string>>(new Map());
+
   useEffect(() => {
     document.title = "Ticket Booking | Ticketing Solution";
   }, []);
@@ -884,15 +887,31 @@ export default function TicketBookingView() {
   // Derived seats from seat availability API for the active attraction
   const derivedSeats = useMemo(() => {
     if (!activeAttractionId) return null;
+
     const dataItem =
       seatAvailData?.find((d) => d.attractionId === activeAttractionId) ||
       seatAvailData?.[0];
-    if (dataItem?.seats && dataItem.seats.length > 0) return String(dataItem.seats.length);
-    if (dataItem?.seatLayout?.rows && dataItem?.seatLayout?.cols) {
-      return String(dataItem.seatLayout.rows * dataItem.seatLayout.cols);
+
+    if (!dataItem) return null;
+
+    // Handle array of seat layouts (new format)
+    if (Array.isArray(dataItem.seatLayout) && dataItem.seatLayout.length > 0) {
+      // Get selected layout or use first one
+      const selectedLayoutId = selectedLayoutMap.get(activeAttractionId);
+      const selectedLayout = selectedLayoutId
+        ? dataItem.seatLayout.find((l) => l.seatLayoutId === selectedLayoutId)
+        : dataItem.seatLayout[0];
+
+      if (selectedLayout && selectedLayout.rows && selectedLayout.cols) {
+        return String(selectedLayout.rows * selectedLayout.cols);
+      }
     }
+
+    // Fallback for old single layout format
+    if (dataItem?.seats && dataItem.seats.length > 0) return String(dataItem.seats.length);
+
     return null;
-  }, [seatAvailData, activeAttractionId]);
+  }, [seatAvailData, activeAttractionId, selectedLayoutMap]);
 
 
   const selectedAttractionsList = useMemo(
