@@ -432,11 +432,16 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
 
   const innerHtml = element.innerHTML;
 
-  // ── Try QZ Tray first (silent, no dialog) ──
+  // ── Try QZ Tray first (silent, no dialog) with a fast timeout ──
+  // If QZ Tray is not running it used to wait for CDN load + websocket retries
+  // which caused a long delay before falling back to the iframe dialog.
+  // Now we race it against a 500ms timeout so we fail fast.
   try {
-    const { printViaQZ } = await import("@/lib/qzPrint");
-    const success = await printViaQZ(innerHtml);
-    if (success) {
+    const qzResult = await Promise.race([
+      import("@/lib/qzPrint").then(({ printViaQZ }) => printViaQZ(innerHtml)),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 500)),
+    ]);
+    if (qzResult) {
       onDone?.();
       return;
     }
@@ -496,7 +501,8 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
   let hasDone = false;
   const finish = () => { if (!hasDone) { hasDone = true; onDone?.(); } };
 
-  setTimeout(() => {
+  // Wait for images in the iframe to load, then print
+  const triggerPrint = () => {
     try {
       if (iframe.contentWindow) {
         iframe.contentWindow.onafterprint = () => finish();
@@ -508,7 +514,12 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
       console.error("Iframe print error:", err);
       finish();
     }
-  }, 250);
+  };
+
+  // Use onload on the iframe to ensure all content (including images) is rendered
+  iframe.onload = () => triggerPrint();
+  // Safety fallback in case onload doesn't fire
+  setTimeout(triggerPrint, 400);
 }
 
 
@@ -640,13 +651,46 @@ function TicketGeneratedModal({
     });
   };
 
-  // Automatically trigger printing as soon as ticket popup opens
+  // Automatically trigger printing as soon as ticket popup opens.
+  // We wait for QR code images to finish loading before printing so the
+  // print dialog contains the QR codes. We fall back to a 1.5s max wait.
   useEffect(() => {
     if (isOpen && typeof window !== "undefined" && !hasAutoPrintedRef.current) {
       hasAutoPrintedRef.current = true;
-      const t = setTimeout(() => {
-        handlePrint();
-      }, 350);
+
+      const triggerWhenReady = () => {
+        const printEl = document.getElementById("printable-ticket-receipt");
+        if (!printEl) {
+          // Element not in DOM yet, retry after a short tick
+          setTimeout(triggerWhenReady, 50);
+          return;
+        }
+        const imgs = Array.from(printEl.querySelectorAll<HTMLImageElement>("img"));
+        if (imgs.length === 0 || imgs.every((img) => img.complete)) {
+          // No images or all already loaded — print right away
+          handlePrint();
+          return;
+        }
+        // Wait for all images to load (or error) before printing
+        let settled = 0;
+        const check = () => {
+          settled++;
+          if (settled >= imgs.length) handlePrint();
+        };
+        imgs.forEach((img) => {
+          if (img.complete) {
+            check();
+          } else {
+            img.addEventListener("load", check, { once: true });
+            img.addEventListener("error", check, { once: true });
+          }
+        });
+        // Hard cap: print after 1.5 s regardless of image status
+        setTimeout(() => { if (!hasAutoPrintedRef.current || settled < imgs.length) handlePrint(); }, 1500);
+      };
+
+      // Give React one render tick to mount the printable element
+      const t = setTimeout(triggerWhenReady, 80);
       return () => clearTimeout(t);
     }
     if (!isOpen) {
