@@ -1355,7 +1355,7 @@ export default function TicketBookingView() {
                       style={{
                         display: "flex",
                         alignItems: "flex-start",
-                        gap: "16px",
+                        gap: "14px",
                         flexWrap: "wrap",
                       }}
                     >
@@ -1367,6 +1367,7 @@ export default function TicketBookingView() {
                           fontWeight: 600,
                           padding: "2.5px 7px",
                           borderRadius: "4px",
+                          alignSelf: "flex-start",
                         }}
                       >
                         {activeAttraction.category}
@@ -1375,36 +1376,48 @@ export default function TicketBookingView() {
                       <div
                         style={{
                           display: "flex",
-                          flexDirection: "column",
-                          gap: "3px",
-                          fontSize: "11.5px",
-                          color: "#64748B",
+                          alignItems: "flex-start",
+                          gap: "14px",
+                          flexWrap: "wrap",
+                          flex: 1,
+                          minWidth: 0,
                         }}
                       >
-                        <div>
-                          <span>Base Rate: </span>
-                          <span style={{ color: "#0E4E7A", fontWeight: 700 }}>{meta.baseRate}</span>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "3px",
+                            fontSize: "11.5px",
+                            color: "#64748B",
+                            minWidth: "110px",
+                          }}
+                        >
+                          <div>
+                            <span>Base Rate: </span>
+                            <span style={{ color: "#0E4E7A", fontWeight: 700, whiteSpace: "nowrap" }}>{meta.baseRate}</span>
+                          </div>
+                          <div>
+                            <span>Duration: </span>
+                            <span style={{ color: "#0E4E7A", fontWeight: 700, whiteSpace: "nowrap" }}>
+                              {derivedDuration ?? "—"}
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <span>Duration: </span>
-                          <span style={{ color: "#0E4E7A", fontWeight: 700 }}>
-                            {derivedDuration ?? "—"}
-                          </span>
-                        </div>
-                      </div>
 
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "3px",
-                          fontSize: "11.5px",
-                          color: "#64748B",
-                        }}
-                      >
-                        <div>
-                          <span>Ongoing Trips: </span>
-                          <span style={{ color: "#0E4E7A", fontWeight: 700 }}>{tripsToday}</span>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "3px",
+                            fontSize: "11.5px",
+                            color: "#64748B",
+                          }}
+                        >
+                          <div>
+                            <span>Ongoing Trips: </span>
+                            <span style={{ color: "#0E4E7A", fontWeight: 700, whiteSpace: "nowrap" }}>{tripsToday}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1428,20 +1441,18 @@ export default function TicketBookingView() {
             );
           })()}
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: "6px",
-              flexShrink: 0,
-            }}
-          >
-            <div>
+          <div style={{ flexShrink: 0 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "8px",
+              }}
+            >
               <h3
                 style={{
-                  margin: "0 0 3px",
+                  margin: 0,
                   fontSize: "14.5px",
                   fontWeight: 800,
                   color: "#011B2F",
@@ -1450,21 +1461,12 @@ export default function TicketBookingView() {
               >
                 Visitor Categories {activeAttraction ? `(${activeAttraction.name})` : ""}
               </h3>
-              <p style={{ margin: 0, fontSize: "11px", fontWeight: 600, color: "#64748B" }}>
-                Click cards to select visitor categories for this attraction
-              </p>
-            </div>
 
-            {activeAttraction && (
-              <div style={{ display: "flex", gap: "6px" }}>
+              {activeAttraction && selectedCategoryKeysForActive.size > 0 && (
                 <button
                   onClick={() => {
                     (activeAttraction.categories || []).forEach((c) => {
-                      const cartEntry = cart.find((e) => e.attraction.id === activeAttraction.id);
-                      const curQty = cartEntry?.quantities[c.id] || 0;
-                      if (curQty === 0) {
-                        setQuantity(c.id, 1, activeAttraction);
-                      }
+                      setQuantity(c.id, 0, activeAttraction);
                     });
                   }}
                   style={{
@@ -1474,35 +1476,19 @@ export default function TicketBookingView() {
                     padding: "3px 9px",
                     fontSize: "10.5px",
                     fontWeight: 700,
-                    color: "#173F63",
+                    color: "#64748B",
                     cursor: "pointer",
+                    flexShrink: 0,
                   }}
                 >
-                  All
+                  Clear
                 </button>
-                {selectedCategoryKeysForActive.size > 0 && (
-                  <button
-                    onClick={() => {
-                      (activeAttraction.categories || []).forEach((c) => {
-                        setQuantity(c.id, 0, activeAttraction);
-                      });
-                    }}
-                    style={{
-                      background: "transparent",
-                      border: "1px solid #CBD5E1",
-                      borderRadius: "5px",
-                      padding: "3px 9px",
-                      fontSize: "10.5px",
-                      fontWeight: 700,
-                      color: "#64748B",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-            )}
+              )}
+            </div>
+
+            <p style={{ margin: "3px 0 0", fontSize: "11px", fontWeight: 600, color: "#64748B" }}>
+              Click cards to select visitor categories for this attraction
+            </p>
           </div>
 
           <div

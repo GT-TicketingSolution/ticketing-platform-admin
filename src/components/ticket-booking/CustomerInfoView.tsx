@@ -514,11 +514,16 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
 
   const innerHtml = element.innerHTML;
 
-  // ── Try QZ Tray first (silent, no dialog) ──
+  // ── Try QZ Tray first (silent, no dialog) with a fast timeout ──
+  // If QZ Tray is not running it used to wait for CDN load + websocket retries
+  // which caused a long delay before falling back to the iframe dialog.
+  // Now we race it against a 500ms timeout so we fail fast.
   try {
-    const { printViaQZ } = await import("@/lib/qzPrint");
-    const success = await printViaQZ(innerHtml);
-    if (success) {
+    const qzResult = await Promise.race([
+      import("@/lib/qzPrint").then(({ printViaQZ }) => printViaQZ(innerHtml)),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 500)),
+    ]);
+    if (qzResult) {
       onDone?.();
       return;
     }
@@ -557,17 +562,18 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
             font-family: 'Courier New', Courier, monospace;
             color: #000000;
             background: #FFFFFF;
-            width: 76mm;
-            max-width: 78mm;
+            width: 70mm;
+            max-width: 70mm;
             margin: 0 auto;
-            padding: 2mm 1mm;
+            padding: 3mm 4.5mm;
+            box-sizing: border-box;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             font-weight: 600;
-            font-size: 12px;
+            font-size: 11.5px;
             line-height: 1.35;
           }
-          table { width: 100%; border-collapse: collapse; }
+          table { width: 100%; border-collapse: collapse; table-layout: fixed; }
           img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
         </style>
       </head>
@@ -578,7 +584,8 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
   let hasDone = false;
   const finish = () => { if (!hasDone) { hasDone = true; onDone?.(); } };
 
-  setTimeout(() => {
+  // Wait for images in the iframe to load, then print
+  const triggerPrint = () => {
     try {
       if (iframe.contentWindow) {
         iframe.contentWindow.onafterprint = () => finish();
@@ -590,7 +597,12 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
       console.error("Iframe print error:", err);
       finish();
     }
-  }, 250);
+  };
+
+  // Use onload on the iframe to ensure all content (including images) is rendered
+  iframe.onload = () => triggerPrint();
+  // Safety fallback in case onload doesn't fire
+  setTimeout(triggerPrint, 400);
 }
 
 
@@ -610,6 +622,8 @@ function TicketGeneratedModal({
   roundOff = 0,
   attractionRoundOffGstAdj = 0,
   businessName = "",
+  cin = "",
+  gst = "",
   timeSlot = "",
   seatDetails = [],
 }: {
@@ -619,6 +633,8 @@ function TicketGeneratedModal({
   grandTotal: number;
   totalPax: number;
   businessName?: string;
+  cin?: string | null;
+  gst?: string | null;
   confirmedData?: {
     booking?: {
       id?: string;
@@ -681,6 +697,9 @@ function TicketGeneratedModal({
       : typeof rawQr === "string"
         ? [{ qrCode: rawQr }]
         : [];
+
+  const displayCin = typeof cin === "string" ? cin.trim() : "";
+  const displayGst = typeof gst === "string" ? gst.trim() : "";
 
   const invoiceNum =
     booking?.invoiceNumber ||
@@ -789,13 +808,46 @@ function TicketGeneratedModal({
     });
   };
 
-  // Automatically trigger printing as soon as ticket popup opens
+  // Automatically trigger printing as soon as ticket popup opens.
+  // We wait for QR code images to finish loading before printing so the
+  // print dialog contains the QR codes. We fall back to a 1.5s max wait.
   useEffect(() => {
     if (isOpen && typeof window !== "undefined" && !hasAutoPrintedRef.current) {
       hasAutoPrintedRef.current = true;
-      const t = setTimeout(() => {
-        handlePrint();
-      }, 350);
+
+      const triggerWhenReady = () => {
+        const printEl = document.getElementById("printable-ticket-receipt");
+        if (!printEl) {
+          // Element not in DOM yet, retry after a short tick
+          setTimeout(triggerWhenReady, 50);
+          return;
+        }
+        const imgs = Array.from(printEl.querySelectorAll<HTMLImageElement>("img"));
+        if (imgs.length === 0 || imgs.every((img) => img.complete)) {
+          // No images or all already loaded — print right away
+          handlePrint();
+          return;
+        }
+        // Wait for all images to load (or error) before printing
+        let settled = 0;
+        const check = () => {
+          settled++;
+          if (settled >= imgs.length) handlePrint();
+        };
+        imgs.forEach((img) => {
+          if (img.complete) {
+            check();
+          } else {
+            img.addEventListener("load", check, { once: true });
+            img.addEventListener("error", check, { once: true });
+          }
+        });
+        // Hard cap: print after 1.5 s regardless of image status
+        setTimeout(() => { if (!hasAutoPrintedRef.current || settled < imgs.length) handlePrint(); }, 1500);
+      };
+
+      // Give React one render tick to mount the printable element
+      const t = setTimeout(triggerWhenReady, 80);
       return () => clearTimeout(t);
     }
     if (!isOpen) {
@@ -886,7 +938,7 @@ function TicketGeneratedModal({
               background: "#FFFFFF",
               border: "1.5px solid #000000",
               borderRadius: "10px",
-              padding: "14px 10px",
+              padding: "14px 18px",
               fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Courier New', Courier, monospace",
               color: "#000000",
               fontSize: "12px",
@@ -929,21 +981,23 @@ function TicketGeneratedModal({
                 </div>
               )}
 
-              {/* CIN & GST info */}
-              <div
-                style={{
-                  margin: "3px 0 2px 0",
-                  fontSize: "11.5px",
-                  fontWeight: 800,
-                  lineHeight: "1.4",
-                  color: "#000000",
-                  fontFamily: "'Courier New', Courier, monospace",
-                  letterSpacing: "0.02em",
-                }}
-              >
-                <div>CIN: U15532RJ1998PLC015036</div>
-                <div>GST: 08AAKCS3004M1Z7</div>
-              </div>
+              {/* CIN & GST info (from profile API response) */}
+              {(displayCin || displayGst) && (
+                <div
+                  style={{
+                    margin: "3px 0 2px 0",
+                    fontSize: "11.5px",
+                    fontWeight: 800,
+                    lineHeight: "1.4",
+                    color: "#000000",
+                    fontFamily: "'Courier New', Courier, monospace",
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  {displayCin ? <div>CIN: {displayCin}</div> : null}
+                  {displayGst ? <div>GST: {displayGst}</div> : null}
+                </div>
+              )}
 
               {/* Seat Allocation Info – shown below GST number */}
               {seatDetails && seatDetails.length > 0 && (
@@ -1270,10 +1324,11 @@ function TicketGeneratedModal({
             left: 0 !important;
             right: 0 !important;
             top: 0 !important;
-            width: 80mm !important;
-            max-width: 80mm !important;
+            width: 70mm !important;
+            max-width: 70mm !important;
             margin: 0 auto !important;
-            padding: 4px !important;
+            padding: 3mm 4.5mm !important;
+            box-sizing: border-box !important;
             box-shadow: none !important;
             border: none !important;
             font-size: 11px !important;
@@ -1296,16 +1351,48 @@ function TicketGeneratedModal({
   );
 }
 
-// ── Profile-aware wrapper — reads businessName from the auth cache and injects it
+// ── Profile-aware wrapper — reads businessName, cin & gst from the auth cache and injects them
 function TicketGeneratedModalWithProfile(props: Parameters<typeof TicketGeneratedModal>[0]) {
   const { data: profileData } = useProfileQuery();
+  const profile =
+    profileData?.profile ||
+    (profileData as any)?.data?.profile ||
+    (profileData as any)?.data ||
+    (profileData as any) ||
+    {};
+
   const businessName =
+    profile?.businessName ||
     profileData?.profile?.businessName ||
     (profileData as any)?.businessName ||
     (profileData as any)?.data?.profile?.businessName ||
     (profileData as any)?.data?.businessName ||
     "";
-  return <TicketGeneratedModal {...props} businessName={businessName} />;
+
+  const cin =
+    profile?.cin ||
+    profileData?.profile?.cin ||
+    (profileData as any)?.cin ||
+    (profileData as any)?.data?.profile?.cin ||
+    (profileData as any)?.data?.cin ||
+    "";
+
+  const gst =
+    profile?.gst ||
+    profileData?.profile?.gst ||
+    (profileData as any)?.gst ||
+    (profileData as any)?.data?.profile?.gst ||
+    (profileData as any)?.data?.gst ||
+    "";
+
+  return (
+    <TicketGeneratedModal
+      {...props}
+      businessName={businessName}
+      cin={cin}
+      gst={gst}
+    />
+  );
 }
 
 // ── Selected Seat Object Type 
@@ -1401,41 +1488,73 @@ function SeatAllocationPanel({
     return seatAvailData.find((d) => d.attractionId === activeAttId) || seatAvailData[0] || null;
   }, [seatAvailData, activeAttId]);
 
-  // Track selected layout per attraction: Map<attractionId, layoutId>
-  const [selectedLayoutMap, setSelectedLayoutMap] = useState<Map<string, string>>(new Map());
-
-  const seatLayout: AttractionSeatLayout | null = useMemo(() => {
+  // Sections: all seats from all seatLayouts (or currentSeatData.seats), ordered by seatOrder
+  const sectionsList: (AttractionSeatItem & { layout?: AttractionSeatLayout })[] = useMemo(() => {
     const layouts = currentSeatData?.seatLayout || [];
-    if (layouts.length === 0) return null;
-
-    const selectedLayoutId = selectedLayoutMap.get(activeAttId) || layouts[0]?.seatLayoutId;
-    const selected = layouts.find(l => l.seatLayoutId === selectedLayoutId) || layouts[0];
-
-    return selected || null;
-  }, [currentSeatData, activeAttId, selectedLayoutMap]);
-
-  // Sections (e.g. "Seat 1", "Seat 2" coaches/compartments)
-  const sectionsList: AttractionSeatItem[] = useMemo(() => {
-    const layouts = currentSeatData?.seatLayout || [];
-    if (layouts.length === 0) return [];
-
-    const selectedLayoutId = selectedLayoutMap.get(activeAttId) || layouts[0]?.seatLayoutId;
-    const selected = layouts.find(l => l.seatLayoutId === selectedLayoutId) || layouts[0];
-
-    const raw = selected?.seats || currentSeatData?.seats || [];
+    if (layouts.length > 0) {
+      const allSeats: (AttractionSeatItem & { layout?: AttractionSeatLayout })[] = [];
+      layouts.forEach((layout) => {
+        (layout.seats || []).forEach((seat) => {
+          allSeats.push({
+            ...seat,
+            layout,
+          });
+        });
+      });
+      return allSeats.sort((a, b) => a.seatOrder - b.seatOrder);
+    }
+    const raw = currentSeatData?.seats || [];
     return raw.slice().sort((a, b) => a.seatOrder - b.seatOrder);
-  }, [currentSeatData, activeAttId, selectedLayoutMap]);
+  }, [currentSeatData]);
 
   // Active section selected on the left Layout Overview
   const [activeSectionId, setActiveSectionId] = useState<string>("");
+
+  const activeSection: (AttractionSeatItem & { layout?: AttractionSeatLayout }) | null = useMemo(() => {
+    if (sectionsList.length === 0) return null;
+    return (
+      sectionsList.find((s) => (s.attractionSeatId || String(s.seatOrder)) === activeSectionId) ||
+      sectionsList[0] ||
+      null
+    );
+  }, [sectionsList, activeSectionId]);
+
+  const seatLayout: AttractionSeatLayout | null = useMemo(() => {
+    if (activeSection?.layout) return activeSection.layout;
+    const layouts = currentSeatData?.seatLayout || [];
+    if (layouts.length === 0) return null;
+    if (activeSection) {
+      const found = layouts.find((l) =>
+        (l.seats || []).some(
+          (s) => (s.attractionSeatId && s.attractionSeatId === activeSection.attractionSeatId) || s.seatOrder === activeSection.seatOrder
+        )
+      );
+      if (found) return found;
+    }
+    return layouts[0] || null;
+  }, [activeSection, currentSeatData]);
 
   const rowsCount = seatLayout?.rows || 0;
   const colsCount = seatLayout?.cols || 0;
   const hasAisle = Boolean(seatLayout?.hasAisle);
   const aisleAfterCol = typeof seatLayout?.aisleAfterCol === "number" ? seatLayout.aisleAfterCol : null;
+  const aisleAfterRow = typeof seatLayout?.aisleAfterRow === "number" ? seatLayout.aisleAfterRow : null;
+
+  // Vertical Aisle:
   // aisleAfterCol === 0 means aisle is at the very START (no left seats, all seats on right)
   // aisleAfterCol > 0  means aisle splits left/right at that column position
-  const isAisleActive = Boolean(hasAisle && aisleAfterCol !== null && aisleAfterCol >= 0 && colsCount > aisleAfterCol);
+  const isVerticalAisleActive = Boolean(
+    hasAisle && aisleAfterCol !== null && aisleAfterCol >= 0 && colsCount > aisleAfterCol
+  );
+
+  // Horizontal Aisle:
+  // aisleAfterRow === 0 means horizontal aisle is before row 1
+  // aisleAfterRow > 0  means horizontal aisle appears after row index (e.g. 1 means after row 1)
+  const isHorizontalAisleActive = Boolean(
+    hasAisle && aisleAfterRow !== null && aisleAfterRow >= 0 && rowsCount > aisleAfterRow
+  );
+
+  const isAisleActive = isVerticalAisleActive || isHorizontalAisleActive;
 
   // Grid capacity per section
   const totalSectionSeats = (rowsCount > 0 && colsCount > 0) ? (rowsCount * colsCount) : (sectionsList.length > 0 ? 4 : 0);
@@ -1459,8 +1578,11 @@ function SeatAllocationPanel({
 
       // First section that is not fully booked
       const firstAvailableSec = sectionsList.find((sec) => {
+        const secRows = sec.layout?.rows ?? rowsCount;
+        const secCols = sec.layout?.cols ?? colsCount;
+        const cap = (secRows > 0 && secCols > 0) ? (secRows * secCols) : (totalSectionSeats || 1);
         const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats.length : 0;
-        return (totalSectionSeats - booked) > 0;
+        return (cap - booked) > 0;
       });
 
       const bestSec = sectionWithAllocated || firstAvailableSec || sectionsList[0];
@@ -1474,8 +1596,11 @@ function SeatAllocationPanel({
           (s) => (s.attractionSeatId || String(s.seatOrder)) === activeSectionId
         );
         if (currentSec) {
+          const secRows = currentSec.layout?.rows ?? rowsCount;
+          const secCols = currentSec.layout?.cols ?? colsCount;
+          const cap = (secRows > 0 && secCols > 0) ? (secRows * secCols) : (totalSectionSeats || 1);
           const currentBooked = Array.isArray(currentSec.bookedSeats) ? currentSec.bookedSeats.length : 0;
-          const currentAvail = Math.max(0, totalSectionSeats - currentBooked);
+          const currentAvail = Math.max(0, cap - currentBooked);
           const hasCurrentAllocated = selectedSeatObjs.some(
             (s) =>
               s.attractionId === activeAttId &&
@@ -1488,16 +1613,7 @@ function SeatAllocationPanel({
         }
       }
     }
-  }, [sectionsList, activeSectionId, activeAttId, totalSectionSeats, selectedSeatObjs]);
-
-  const activeSection: AttractionSeatItem | null = useMemo(() => {
-    if (sectionsList.length === 0) return null;
-    return (
-      sectionsList.find((s) => (s.attractionSeatId || String(s.seatOrder)) === activeSectionId) ||
-      sectionsList[0] ||
-      null
-    );
-  }, [sectionsList, activeSectionId]);
+  }, [sectionsList, activeSectionId, activeAttId, totalSectionSeats, selectedSeatObjs, rowsCount, colsCount]);
 
   // Booked seat numbers for the currently active section
   const activeSectionBookedSeats: number[] = useMemo(() => {
@@ -1529,13 +1645,15 @@ function SeatAllocationPanel({
     let totalCap = 0;
     let totalAvail = 0;
     sectionsList.forEach((sec) => {
+      const secRows = sec.layout?.rows ?? rowsCount;
+      const secCols = sec.layout?.cols ?? colsCount;
+      const cap = (secRows > 0 && secCols > 0) ? (secRows * secCols) : (totalSectionSeats || 1);
       const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats.length : 0;
-      const cap = totalSectionSeats || 1;
       totalCap += cap;
       totalAvail += Math.max(0, cap - booked);
     });
     return { totalCapacityAllSections: totalCap, totalAvailSeatsAllSections: totalAvail };
-  }, [sectionsList, totalSectionSeats]);
+  }, [sectionsList, totalSectionSeats, rowsCount, colsCount]);
 
   // Handle clicking a seat button in the active section grid
   const handleSeatToggle = (seatOrder: number) => {
@@ -1689,17 +1807,26 @@ function SeatAllocationPanel({
 
               // Calculate available seats for this attraction on current trip
               const attData = seatAvailData.find((d) => d.attractionId === att.attractionId);
-              const attSecs: AttractionSeatItem[] = (attData?.seatLayout?.[0]?.seats || attData?.seats || []).slice();
-              const r = attData?.seatLayout?.[0]?.rows || 0;
-              const c = attData?.seatLayout?.[0]?.cols || 0;
-              const tSecSeats = (r > 0 && c > 0) ? (r * c) : (attSecs.length > 0 ? 4 : 0);
               let attAvail = 0;
-              attSecs.forEach((sec) => {
-                const b = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
-                for (let o = 1; o <= tSecSeats; o++) {
-                  if (!b.includes(o)) attAvail++;
-                }
-              });
+              if (Array.isArray(attData?.seatLayout) && attData.seatLayout.length > 0) {
+                attData.seatLayout.forEach((l) => {
+                  const t = (l.rows > 0 && l.cols > 0) ? (l.rows * l.cols) : 4;
+                  (l.seats || []).forEach((sec) => {
+                    const b = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
+                    for (let o = 1; o <= t; o++) {
+                      if (!b.includes(o)) attAvail++;
+                    }
+                  });
+                });
+              } else {
+                const attSecs: AttractionSeatItem[] = (attData?.seats || []).slice();
+                attSecs.forEach((sec) => {
+                  const b = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
+                  for (let o = 1; o <= 4; o++) {
+                    if (!b.includes(o)) attAvail++;
+                  }
+                });
+              }
               const isAttInsufficient = attAvail < attPax;
 
               return (
@@ -1817,68 +1944,18 @@ function SeatAllocationPanel({
               paddingRight: "2px",
             }}
           >
-            {sectionsList.length === 0 && ((currentSeatData?.seatLayout?.length ?? 0) <= 1) ? (
+            {sectionsList.length === 0 ? (
               <p style={{ margin: "12px 0", fontSize: "12px", color: "#94A3B8", textAlign: "center" }}>
                 No sections found
               </p>
             ) : (
-              <>
-                {((currentSeatData?.seatLayout?.length ?? 0) > 1) && (
-                  <>
-                    {currentSeatData?.seatLayout?.map((layout) => {
-                      const isLayoutSelected = (selectedLayoutMap.get(activeAttId) || currentSeatData?.seatLayout?.[0]?.seatLayoutId) === layout.seatLayoutId;
-                      const totalLayoutSeats = (layout.rows ?? 0) * (layout.cols ?? 0);
-                      const layoutSeatsBooked = layout.seats?.reduce((sum, seat) => sum + (Array.isArray(seat.bookedSeats) ? seat.bookedSeats.length : 0), 0) ?? 0;
-                      const layoutSeatsAvailable = totalLayoutSeats - layoutSeatsBooked;
-
-                      return (
-                        <div
-                          key={layout.seatLayoutId}
-                          onClick={() => {
-                            setSelectedLayoutMap((prev: Map<string, string>) => new Map(prev).set(activeAttId, layout.seatLayoutId));
-                            setActiveSectionId("");
-                          }}
-                          style={{
-                            background: "#FFFFFF",
-                            border: isLayoutSelected ? "1.5px solid #173F63" : "1.5px solid rgba(179,175,175,0.51)",
-                            borderRadius: "13px",
-                            padding: "10px 14px",
-                            cursor: "pointer",
-                            opacity: 1,
-                            transition: "all 0.15s ease",
-                            boxSizing: "border-box",
-                            boxShadow: isLayoutSelected ? "0 2px 8px rgba(0, 42, 69, 0.1)" : "none",
-                          }}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                            <span style={{ fontWeight: 600, fontSize: "13px", color: "#011B2F" }}>
-                              {layout.name}
-                            </span>
-                            <span style={{ background: "transparent", color: "transparent", fontSize: "8px", fontWeight: 700, padding: "2px 6px", borderRadius: "5px" }}>
-
-                            </span>
-                          </div>
-                          <p style={{ margin: "1px 0", fontSize: "10px", fontWeight: 600, color: "#6B7280" }}>
-                            Available: {layoutSeatsAvailable} / {totalLayoutSeats} Seats
-                            &nbsp;&nbsp;
-                            Booked: {layoutSeatsBooked}
-                          </p>
-                          <p style={{ margin: "1px 0 0", fontSize: "10px", fontWeight: 600, color: "#6B7280" }}>
-                            Click to view and allocate
-                          </p>
-                          <p style={{ margin: 0, fontSize: "9.5px", fontWeight: 500, color: "#94A3B8" }}>
-                            {isLayoutSelected ? "Currently viewing layout" : "Layout available"}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </>
-                )}
-                {sectionsList.map((section) => {
-                  const isSecActive = (section.attractionSeatId || String(section.seatOrder)) === activeSectionId;
+              sectionsList.map((section) => {
+                const isSecActive = (section.attractionSeatId || String(section.seatOrder)) === activeSectionId;
                 const bookedList = Array.isArray(section.bookedSeats) ? section.bookedSeats : [];
                 const bookedCount = bookedList.length;
-                const totalSecSeats = totalSectionSeats || 1;
+                const secRows = section.layout?.rows ?? rowsCount;
+                const secCols = section.layout?.cols ?? colsCount;
+                const totalSecSeats = (secRows > 0 && secCols > 0) ? (secRows * secCols) : (totalSectionSeats || 1);
                 const availCount = Math.max(0, totalSecSeats - bookedCount);
                 const isFull = availCount === 0;
 
@@ -1965,8 +2042,7 @@ function SeatAllocationPanel({
                     </p>
                   </div>
                 );
-              })}
-              </>
+              })
             )}
           </div>
 
@@ -2359,95 +2435,86 @@ function SeatAllocationPanel({
                     gap: "12px",
                   }}
                 >
-                  <div style={{ display: "inline-flex", gap: isAisleActive ? "16px" : "10px", alignItems: "flex-start" }}>
-                    {/* Left Side Section — hidden when aisleAfterCol === 0 (aisle at start) */}
-                    {(() => {
-                      const leftColsCount = isAisleActive && aisleAfterCol !== null ? aisleAfterCol : (!isAisleActive ? colsCount || 1 : 0);
-                      if (leftColsCount === 0) return null;
-                      return (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
-                          {isAisleActive && (
-                            <div
-                              style={{
-                                width: "100%",
-                                textAlign: "center",
-                                fontSize: "11.5px",
-                                fontWeight: 700,
-                                color: "#173F63",
-                                background: "rgba(23, 63, 99, 0.08)",
-                                padding: "4px 8px",
-                                borderRadius: "6px",
-                                letterSpacing: "0.3px",
-                              }}
-                            >
-                              Left Side
-                            </div>
-                          )}
-                          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                            {Array.from({ length: rowsCount || 1 }, (_, i) => i + 1).map((r) => {
-                              const leftCells = Array.from({ length: leftColsCount }, (_, ci) => {
-                                const order = (r - 1) * (colsCount || leftColsCount) + (ci + 1);
-                                return { order, col: ci + 1 };
-                              });
-                              return (
-                                <div key={r} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                                  {leftCells.map(({ order }) => renderSeatButton(order))}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Center AISLE — height matches seat grid exactly */}
-                    {isAisleActive && (() => {
-                      // Seat button height = 34px, row gap = 6px
-                      const seatRowH = 34;
-                      const rowGap = 6;
-                      const aisleHeight = (rowsCount || 1) * seatRowH + Math.max(0, (rowsCount || 1) - 1) * rowGap;
-                      // paddingTop accounts for the "Left Side" / "Right Side" label (only when aisleAfterCol > 0)
-                      const labelPaddingTop = aisleAfterCol !== null && aisleAfterCol > 0 ? 27 : 0;
-                      return (
+                  {isHorizontalAisleActive ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "center" }}>
+                      {/* Horizontal aisle at start (aisleAfterRow === 0) */}
+                      {aisleAfterRow === 0 && (
                         <div
                           style={{
+                            width: "100%",
+                            minWidth: `${(colsCount || 1) * (colsCount >= 10 ? 44 : colsCount >= 8 ? 48 : 52) + Math.max(0, (colsCount || 1) - 1) * 6}px`,
+                            height: "32px",
+                            border: "1.5px dashed #CBD5E1",
+                            borderRadius: "6px",
+                            background: "rgba(241, 245, 249, 0.85)",
                             display: "flex",
-                            flexDirection: "column",
-                            paddingTop: `${labelPaddingTop}px`,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "11px",
+                            fontWeight: 800,
+                            color: "#64748B",
+                            letterSpacing: "3px",
+                            textTransform: "uppercase",
+                            boxSizing: "border-box",
+                            userSelect: "none",
+                            marginBottom: "2px",
                           }}
                         >
-                          <div
-                            style={{
-                              width: "44px",
-                              height: `${aisleHeight}px`,
-                              border: "1.5px dashed #CBD5E1",
-                              borderRadius: "6px",
-                              background: "rgba(241, 245, 249, 0.8)",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontSize: "11px",
-                              fontWeight: 800,
-                              color: "#64748B",
-                              letterSpacing: "4px",
-                              writingMode: "vertical-rl",
-                              textTransform: "uppercase",
-                              boxSizing: "border-box",
-                              userSelect: "none",
-                              flexShrink: 0,
-                            }}
-                          >
-                            AISLE
-                          </div>
+                          AISLE
                         </div>
-                      );
-                    })()}
+                      )}
 
-                    {/* Right Side Section if aisle exists */}
-                    {isAisleActive && aisleAfterCol !== null && (colsCount - aisleAfterCol) > 0 && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
-                        {/* Only show "Right Side" label when there's also a left side (i.e., aisleAfterCol > 0) */}
-                        {aisleAfterCol > 0 && (
+                      {Array.from({ length: rowsCount || 1 }, (_, i) => i + 1).map((r) => {
+                        const isAisleAfterThisRow = aisleAfterRow === r;
+                        return (
+                          <React.Fragment key={r}>
+                            <div style={{ display: "flex", gap: "6px", alignItems: "center", justifyContent: "center" }}>
+                              {Array.from({ length: colsCount || 1 }, (_, ci) => {
+                                const order = (r - 1) * (colsCount || 1) + (ci + 1);
+                                return renderSeatButton(order);
+                              })}
+                            </div>
+
+                            {isAisleAfterThisRow && (
+                              <div
+                                style={{
+                                  width: "100%",
+                                  minWidth: `${(colsCount || 1) * (colsCount >= 10 ? 44 : colsCount >= 8 ? 48 : 52) + Math.max(0, (colsCount || 1) - 1) * 6}px`,
+                                  height: "32px",
+                                  border: "1.5px dashed #CBD5E1",
+                                  borderRadius: "6px",
+                                  background: "rgba(241, 245, 249, 0.85)",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontSize: "11px",
+                                  fontWeight: 800,
+                                  color: "#64748B",
+                                  letterSpacing: "3px",
+                                  textTransform: "uppercase",
+                                  boxSizing: "border-box",
+                                  userSelect: "none",
+                                  margin: "3px 0",
+                                }}
+                              >
+                                AISLE
+                              </div>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  ) : isVerticalAisleActive ? (
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        gap: "16px",
+                        alignItems: aisleAfterCol !== null && aisleAfterCol > 0 ? "flex-start" : "center",
+                      }}
+                    >
+                      {/* Left Side Section — hidden when aisleAfterCol === 0 (aisle at start) */}
+                      {aisleAfterCol !== null && aisleAfterCol > 0 && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
                           <div
                             style={{
                               width: "100%",
@@ -2459,29 +2526,147 @@ function SeatAllocationPanel({
                               padding: "4px 8px",
                               borderRadius: "6px",
                               letterSpacing: "0.3px",
+                              height: "25px",
+                              boxSizing: "border-box",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
                             }}
                           >
-                            Right Side
+                            Left Side
                           </div>
-                        )}
-                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                          {Array.from({ length: rowsCount }, (_, i) => i + 1).map((r) => {
-                            const rightColsCount = colsCount - aisleAfterCol;
-                            const rightCells = Array.from({ length: rightColsCount }, (_, ci) => {
-                              const order = (r - 1) * colsCount + (aisleAfterCol + ci + 1);
-                              return { order, col: aisleAfterCol + ci + 1 };
-                            });
-
-                            return (
-                              <div key={r} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                                {rightCells.map(({ order }) => renderSeatButton(order))}
-                              </div>
-                            );
-                          })}
+                          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                            {Array.from({ length: rowsCount || 1 }, (_, i) => i + 1).map((r) => {
+                              const leftCells = Array.from({ length: aisleAfterCol }, (_, ci) => {
+                                const order = (r - 1) * colsCount + (ci + 1);
+                                return { order, col: ci + 1 };
+                              });
+                              return (
+                                <div key={r} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                  {leftCells.map(({ order }) => renderSeatButton(order))}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
+
+                      {/* Center / Start Vertical AISLE */}
+                      {(() => {
+                        const seatRowH = 34;
+                        const rowGap = 6;
+                        const aisleHeight = (rowsCount || 1) * seatRowH + Math.max(0, (rowsCount || 1) - 1) * rowGap;
+                        // paddingTop accounts for the "Left Side" / "Right Side" label (only when aisleAfterCol > 0)
+                        const topOffset = aisleAfterCol !== null && aisleAfterCol > 0 ? 33 : 0;
+                        const isSingleRow = (rowsCount || 1) === 1;
+
+                        return (
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              paddingTop: `${topOffset}px`,
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: "44px",
+                                height: `${aisleHeight}px`,
+                                minHeight: `${aisleHeight}px`,
+                                maxHeight: `${aisleHeight}px`,
+                                border: "1.5px dashed #CBD5E1",
+                                borderRadius: "6px",
+                                background: "rgba(241, 245, 249, 0.85)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                boxSizing: "border-box",
+                                userSelect: "none",
+                                flexShrink: 0,
+                                padding: "2px",
+                                overflow: "hidden",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: isSingleRow ? "8.5px" : "11px",
+                                  fontWeight: 800,
+                                  color: "#64748B",
+                                  letterSpacing: isSingleRow ? "1px" : ((rowsCount || 1) >= 3 ? "4px" : "2px"),
+                                  writingMode: "vertical-rl",
+                                  textOrientation: "mixed",
+                                  textTransform: "uppercase",
+                                  lineHeight: 1,
+                                  display: "inline-block",
+                                  userSelect: "none",
+                                }}
+                              >
+                                AISLE
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Right Side Section */}
+                      {aisleAfterCol !== null && (colsCount - aisleAfterCol) > 0 && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
+                          {/* Only show "Right Side" label when there's also a left side (i.e., aisleAfterCol > 0) */}
+                          {aisleAfterCol > 0 && (
+                            <div
+                              style={{
+                                width: "100%",
+                                textAlign: "center",
+                                fontSize: "11.5px",
+                                fontWeight: 700,
+                                color: "#173F63",
+                                background: "rgba(23, 63, 99, 0.08)",
+                                padding: "4px 8px",
+                                borderRadius: "6px",
+                                letterSpacing: "0.3px",
+                                height: "25px",
+                                boxSizing: "border-box",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              Right Side
+                            </div>
+                          )}
+                          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                            {Array.from({ length: rowsCount || 1 }, (_, i) => i + 1).map((r) => {
+                              const rightColsCount = colsCount - aisleAfterCol;
+                              const rightCells = Array.from({ length: rightColsCount }, (_, ci) => {
+                                const order = (r - 1) * colsCount + (aisleAfterCol + ci + 1);
+                                return { order, col: aisleAfterCol + ci + 1 };
+                              });
+
+                              return (
+                                <div key={r} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                  {rightCells.map(({ order }) => renderSeatButton(order))}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* No Aisle: standard seat grid */
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "center" }}>
+                      {Array.from({ length: rowsCount || 1 }, (_, i) => i + 1).map((r) => {
+                        return (
+                          <div key={r} style={{ display: "flex", gap: "6px", alignItems: "center", justifyContent: "center" }}>
+                            {Array.from({ length: colsCount || 1 }, (_, ci) => {
+                              const order = (r - 1) * (colsCount || 1) + (ci + 1);
+                              return renderSeatButton(order);
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2723,19 +2908,24 @@ export default function CustomerInfoView({
       // Only trigger once per trip
       if (autoNewTripDoneRef.current[attId] === currentTripNo) return;
 
-      const sections: AttractionSeatItem[] = (attData.seatLayout?.[0]?.seats || attData.seats || []).slice();
-      const rows = attData.seatLayout?.[0]?.rows || 0;
-      const cols = attData.seatLayout?.[0]?.cols || 0;
-      const totalSecSeats = (rows > 0 && cols > 0) ? (rows * cols) : (sections.length > 0 ? 4 : 0);
-
-      if (sections.length === 0 || totalSecSeats === 0) return;
-
       let totalCapacity = 0;
       let totalBooked = 0;
-      for (const sec of sections) {
-        totalCapacity += totalSecSeats;
-        const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
-        totalBooked += booked.length;
+      if (Array.isArray(attData.seatLayout) && attData.seatLayout.length > 0) {
+        attData.seatLayout.forEach((l) => {
+          const t = (l.rows > 0 && l.cols > 0) ? (l.rows * l.cols) : 4;
+          (l.seats || []).forEach((sec) => {
+            totalCapacity += t;
+            const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
+            totalBooked += booked.length;
+          });
+        });
+      } else {
+        const sections: AttractionSeatItem[] = (attData.seats || []).slice();
+        for (const sec of sections) {
+          totalCapacity += 4;
+          const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
+          totalBooked += booked.length;
+        }
       }
 
       // All seats fully booked on this trip and trip has actual bookings
@@ -2778,16 +2968,27 @@ export default function CustomerInfoView({
       if (!attData) return;
 
       const currentTripNo = attData.currentTripNo || tripMap[attId] || 1;
-      const sections: AttractionSeatItem[] = (attData.seatLayout?.[0]?.seats || attData.seats || []).slice().sort((a, b) => a.seatOrder - b.seatOrder);
-      const rows = attData.seatLayout?.[0]?.rows || 0;
-      const cols = attData.seatLayout?.[0]?.cols || 0;
-      const totalSecSeats = (rows > 0 && cols > 0) ? (rows * cols) : (sections.length > 0 ? 4 : 0);
+      const sections: (AttractionSeatItem & { totalSecSeats: number })[] = [];
+      if (Array.isArray(attData.seatLayout) && attData.seatLayout.length > 0) {
+        attData.seatLayout.forEach((l) => {
+          const cap = (l.rows > 0 && l.cols > 0) ? (l.rows * l.cols) : 4;
+          (l.seats || []).forEach((s) => {
+            sections.push({ ...s, totalSecSeats: cap });
+          });
+        });
+      } else {
+        const raw = attData.seats || [];
+        raw.forEach((s) => {
+          sections.push({ ...s, totalSecSeats: 4 });
+        });
+      }
+      sections.sort((a, b) => a.seatOrder - b.seatOrder);
 
       // Calculate available unbooked seats across all sections in this attraction
       let availableSeats = 0;
       for (const sec of sections) {
         const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
-        for (let order = 1; order <= totalSecSeats; order++) {
+        for (let order = 1; order <= sec.totalSecSeats; order++) {
           if (!booked.includes(order)) {
             availableSeats++;
           }
@@ -2817,7 +3018,7 @@ export default function CustomerInfoView({
         const sec = sections.find((sc) => (sc.attractionSeatId && sc.attractionSeatId === so.attractionSeatId) || (sc.name || `Seat ${sc.seatOrder}`) === so.sectionName);
         if (!sec) return false;
         const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
-        return !booked.includes(so.seatOrder) && so.seatOrder >= 1 && so.seatOrder <= totalSecSeats;
+        return !booked.includes(so.seatOrder) && so.seatOrder >= 1 && so.seatOrder <= sec.totalSecSeats;
       });
 
       // If user has NOT manually edited seats, or if the trip has changed, perform fresh sequential allocation
@@ -2829,7 +3030,7 @@ export default function CustomerInfoView({
           const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
           const secName = sec.name || `Seat ${sec.seatOrder}`;
 
-          for (let order = 1; order <= totalSecSeats; order++) {
+          for (let order = 1; order <= sec.totalSecSeats; order++) {
             if (newObjs.length >= totalPax) break;
             if (booked.includes(order)) continue;
 
@@ -2880,7 +3081,7 @@ export default function CustomerInfoView({
             const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
             const secName = sec.name || `Seat ${sec.seatOrder}`;
 
-            for (let order = 1; order <= totalSecSeats; order++) {
+            for (let order = 1; order <= sec.totalSecSeats; order++) {
               if (newObjs.length >= totalPax) break;
               if (booked.includes(order)) continue;
 
@@ -3066,17 +3267,26 @@ export default function CustomerInfoView({
         const attId = missingAttraction.attractionId!;
         const attCurTrip = tripMap[attId] || 1;
         const attData = seatAvailData.find((d) => d.attractionId === attId);
-        const secList = attData?.seatLayout?.[0]?.seats || attData?.seats || [];
-        const rows = attData?.seatLayout?.[0]?.rows || 0;
-        const cols = attData?.seatLayout?.[0]?.cols || 0;
-        const totalSecSeats = (rows > 0 && cols > 0) ? (rows * cols) : (secList.length > 0 ? 4 : 0);
         let availSeats = 0;
-        secList.forEach((sec) => {
-          const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
-          for (let order = 1; order <= totalSecSeats; order++) {
-            if (!booked.includes(order)) availSeats++;
-          }
-        });
+        if (Array.isArray(attData?.seatLayout) && attData.seatLayout.length > 0) {
+          attData.seatLayout.forEach((l) => {
+            const cap = (l.rows > 0 && l.cols > 0) ? (l.rows * l.cols) : 4;
+            (l.seats || []).forEach((sec) => {
+              const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
+              for (let order = 1; order <= cap; order++) {
+                if (!booked.includes(order)) availSeats++;
+              }
+            });
+          });
+        } else {
+          const secList = attData?.seats || [];
+          secList.forEach((sec) => {
+            const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
+            for (let order = 1; order <= 4; order++) {
+              if (!booked.includes(order)) availSeats++;
+            }
+          });
+        }
 
         let errMsg = "";
         if (availSeats < req) {
@@ -3168,7 +3378,14 @@ export default function CustomerInfoView({
           const attId = att.attractionId!;
           const tripNo = tripMap[attId] || 1;
           const attAvail = seatAvailData?.find((d) => d.attractionId === attId);
-          const sections: AttractionSeatItem[] = attAvail?.seatLayout?.[0]?.seats || attAvail?.seats || [];
+          const sections: AttractionSeatItem[] = [];
+          if (Array.isArray(attAvail?.seatLayout) && attAvail.seatLayout.length > 0) {
+            attAvail.seatLayout.forEach((l) => {
+              (l.seats || []).forEach((s) => sections.push(s));
+            });
+          } else {
+            (attAvail?.seats || []).forEach((s) => sections.push(s));
+          }
 
           sections.forEach((sec) => {
             const secSeatObjs = selectedSeatObjs.filter(
@@ -3360,377 +3577,466 @@ export default function CustomerInfoView({
         </div>
       </div>
 
-      {/* ── Card 1: Select Existing Customer (Rectangle 73) ── */}
+      {/* ── Row: Select Existing Customer & Issue Complimentary Ticket (50% / 50%) ── */}
       <div
+        className="ci-customer-complimentary-row"
         style={{
-          background: "#FFFFFF",
-          border: "1.5px solid rgba(179, 175, 175, 0.51)",
-          borderRadius: "13px",
-          padding: "24px 28px",
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          columnGap: "20px",
+          rowGap: isComplimentary ? 0 : "20px",
+          alignItems: "stretch",
+          width: "100%",
           boxSizing: "border-box",
         }}
       >
-        {/* Section Heading */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "20px" }}>
-          <User size={24} color="#011B2F" strokeWidth={1.75} />
-          <h2
-            style={{
-              margin: 0,
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontWeight: 700,
-              fontSize: "22px",
-              lineHeight: "28px",
-              color: "#011B2F",
-            }}
-          >
-            Select Existing Customer
-          </h2>
-        </div>
-
-        <p
+        {/* ── Card 1: Select Existing Customer (Rectangle 73) ── */}
+        <div
+          className="ci-card-half"
           style={{
-            margin: "0 0 8px 0",
-            fontFamily: "'Plus Jakarta Sans', sans-serif",
-            fontWeight: 600,
-            fontSize: "18px",
-            color: "#011B2F",
+            background: "#FFFFFF",
+            border: "1.5px solid rgba(179, 175, 175, 0.51)",
+            borderRadius: "13px",
+            padding: "20px 24px",
+            boxSizing: "border-box",
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            height: isComplimentary ? "calc(100% - 18px)" : "100%",
+            marginBottom: isComplimentary ? "18px" : 0,
           }}
         >
-          Customer <span style={{ fontSize: "14px", fontWeight: 500, color: "#6B7280" }}>(Optional)</span>
-        </p>
-
-        {/* Dropdown search bar + Add New Customer button */}
-        <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: selectedCustomer ? "20px" : "0", flexWrap: "wrap" }}>
-          <div ref={dropdownRef} style={{ position: "relative", flex: 1, minWidth: "260px" }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                background: "#FFFFFF",
-                border: "1.5px solid rgba(179, 175, 175, 0.84)",
-                borderRadius: "6px",
-                height: "38px",
-                padding: "0 14px",
-                cursor: "text",
-                boxSizing: "border-box",
-              }}
-              onClick={() => setShowDropdown(true)}
-            >
-              <Search size={16} color="#6B7280" style={{ flexShrink: 0 }} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  if (selectedCustomer && e.target.value !== selectedCustomer.name) {
-                    setSelectedCustomer(null);
-                  }
-                  setShowDropdown(true);
-                }}
-                onFocus={() => setShowDropdown(true)}
-                placeholder="Search by name, mobile, or GSTN (optional)..."
-                style={{
-                  flex: 1,
-                  border: "none",
-                  outline: "none",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 500,
-                  fontSize: "12px",
-                  color: "#173F63",
-                  background: "transparent",
-                }}
-              />
-              {(searchQuery || selectedCustomer) && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleClearCustomer();
-                  }}
-                  title="Clear customer selection"
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "2px",
-                    display: "flex",
-                    alignItems: "center",
-                    color: "#94A3B8",
-                  }}
-                >
-                  <X size={16} />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowDropdown((p) => !p);
-                }}
-                style={{ background: "transparent", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center" }}
-              >
-                {showDropdown ? <ChevronUp size={18} color="#173F63" /> : <ChevronDown size={18} color="#173F63" />}
-              </button>
-            </div>
-
-            {showDropdown && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "calc(100% + 4px)",
-                  left: 0,
-                  right: 0,
-                  background: "#FFFFFF",
-                  border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                  borderRadius: "6px",
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
-                  zIndex: 30,
-                  maxHeight: "180px",
-                  overflowY: "auto",
-                }}
-              >
-                {isCustomersLoading ? (
-                  <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <div style={{ height: "12px", width: "60%", background: "#E2E8F0", borderRadius: "4px" }} />
-                    <div style={{ height: "10px", width: "40%", background: "#F1F5F9", borderRadius: "4px" }} />
-                  </div>
-                ) : searchedCustomers.length === 0 ? (
-                  <p style={{ padding: "12px 16px", margin: 0, fontSize: "12px", color: "#6B7280" }}>
-                    No customers found.
-                  </p>
-                ) : (
-                  searchedCustomers.map((c) => (
-                    <div
-                      key={c.id}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleSelectCustomer(c);
-                      }}
-                      style={{
-                        padding: "10px 16px",
-                        cursor: "pointer",
-                        borderBottom: "1px solid rgba(179,175,175,0.2)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                      }}
-                      className="ci-cust-option"
-                    >
-                      <div>
-                        <p style={{ margin: 0, fontWeight: 700, fontSize: "12px", color: "#011B2F" }}>
-                          {c.name} - {c.mobile}
-                        </p>
-                        <p style={{ margin: "2px 0 0", fontWeight: 500, fontSize: "10.5px", color: "#6B7280" }}>
-                          GSTN: {c.gstn || "—"}
-                        </p>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* + Add New Customer Button */}
-          <button
-            onClick={() => setIsAddNewOpen(true)}
-            style={{
-              height: "38px",
-              padding: "0 18px",
-              background: "#FFFFFF",
-              border: "1.5px solid #2576AB",
-              borderRadius: "6px",
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontWeight: 700,
-              fontSize: "14px",
-              color: "#173F63",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              whiteSpace: "nowrap",
-              transition: "background 0.15s",
-            }}
-            className="ci-add-new-btn"
-          >
-            <span style={{ fontSize: "20px", fontWeight: 700, lineHeight: 1 }}>+</span>
-            Add New Customer
-          </button>
-        </div>
-
-        {/* ── Selected Customer Details Box (Rectangle 73) — Only displayed when customer is selected ── */}
-        {selectedCustomer && (
-          <div
-            style={{
-              width: "100%",
-              background: "rgba(217, 217, 217, 0.3)",
-              border: "1px solid rgba(179, 175, 175, 0.54)",
-              borderRadius: "6px",
-              padding: "16px 22px",
-              boxSizing: "border-box",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
-              <h3
+          <div>
+            {/* Section Heading */}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", marginBottom: "12px" }}>
+              <User size={20} color="#011B2F" strokeWidth={1.75} style={{ flexShrink: 0, marginTop: "2px" }} />
+              <h2
+                className="ci-card-title"
                 style={{
                   margin: 0,
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
                   fontWeight: 700,
                   fontSize: "18px",
-                  lineHeight: "23px",
+                  lineHeight: "24px",
                   color: "#011B2F",
                 }}
               >
-                Selected Customer Details
-              </h3>
-              <button
-                type="button"
-                onClick={handleClearCustomer}
-                style={{
-                  background: "#FEE2E2",
-                  color: "#DC2626",
-                  border: "1px solid #FECACA",
-                  borderRadius: "6px",
-                  padding: "4px 10px",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                }}
-              >
-                <X size={14} /> Clear Selection
-              </button>
+                Select Existing Customer
+              </h2>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {/* Row 1: Name */}
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <User size={18} color="#011B2F" style={{ flexShrink: 0 }} />
-                <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
-                  Customer Name:
-                </span>
-                <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
-                  {selectedCustomer.name}
-                </span>
-              </div>
-
-              <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
-
-              {/* Row 2: Mobile */}
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <Phone size={18} color="#011B2F" style={{ flexShrink: 0 }} />
-                <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
-                  Mobile Number:
-                </span>
-                <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
-                  {selectedCustomer.mobile}
-                </span>
-              </div>
-
-              <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
-
-              {/* Row 3: GSTN */}
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <CreditCard size={18} color="#011B2F" style={{ flexShrink: 0 }} />
-                <span style={{ fontWeight: 600, fontSize: "14px", color: "#011B2F", width: "140px" }}>
-                  GSTN:
-                </span>
-                <span style={{ fontWeight: 700, fontSize: "14px", color: "#173F63" }}>
-                  {selectedCustomer.gstn || "—"}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── Card 2: Issue Complimentary Ticket? (Rectangle 96) ── */}
-      <div
-        style={{
-          background: "#FFFFFF",
-          border: "1.5px solid rgba(179, 175, 175, 0.51)",
-          borderRadius: "13px",
-          padding: "24px 28px",
-          boxSizing: "border-box",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            cursor: "pointer",
-          }}
-          onClick={() => setIsComplimentary((p) => !p)}
-        >
-          <div>
-            <h3
+            <p
+              className="ci-card-subtitle"
               style={{
-                margin: 0,
+                margin: "0 0 8px 0",
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: 700,
-                fontSize: "18px",
-                lineHeight: "23px",
+                fontWeight: 600,
+                fontSize: "15px",
                 color: "#011B2F",
               }}
             >
-              Issue Complimentary Ticket?
-            </h3>
-            <p
-              style={{
-                margin: "4px 0 0",
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: 600,
-                fontSize: "12px",
-                lineHeight: "15px",
-                color: "#6B7280",
-              }}
-            >
-              Enable this only if the booking is being issued under a complimentary pass/reference
+              Customer <span style={{ fontSize: "13px", fontWeight: 500, color: "#6B7280" }}>(Optional)</span>
             </p>
           </div>
 
-          {/* Checkbox */}
+          {/* Dropdown search bar + Add New Customer button */}
           <div
+            className="ci-search-row"
             style={{
-              width: "18px",
-              height: "18px",
-              borderRadius: "2px",
-              background: isComplimentary ? "#011B2F" : "#FFFFFF",
-              border: isComplimentary ? "none" : "1.5px solid #6B7280",
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              transition: "all 0.15s ease",
+              gap: "12px",
+              marginBottom: selectedCustomer ? "16px" : "0",
+              flexWrap: "wrap",
+              width: "100%",
             }}
           >
-            {isComplimentary && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
+            <div
+              ref={dropdownRef}
+              className="ci-search-dropdown-wrapper"
+              style={{ position: "relative", flex: 1, minWidth: "140px", width: "100%" }}
+            >
+              <div
+                className="ci-search-input-box"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  background: "#FFFFFF",
+                  border: "1.5px solid rgba(179, 175, 175, 0.84)",
+                  borderRadius: "6px",
+                  height: "38px",
+                  padding: "0 14px",
+                  cursor: "text",
+                  boxSizing: "border-box",
+                  width: "100%",
+                }}
+                onClick={() => setShowDropdown(true)}
+              >
+                <Search size={16} color="#6B7280" style={{ flexShrink: 0 }} />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    if (selectedCustomer && e.target.value !== selectedCustomer.name) {
+                      setSelectedCustomer(null);
+                    }
+                    setShowDropdown(true);
+                  }}
+                  onFocus={() => setShowDropdown(true)}
+                  placeholder="Search name, mobile..."
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    width: "100%",
+                    border: "none",
+                    outline: "none",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 500,
+                    fontSize: "12px",
+                    color: "#173F63",
+                    background: "transparent",
+                  }}
+                />
+                {(searchQuery || selectedCustomer) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleClearCustomer();
+                    }}
+                    title="Clear customer selection"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: "2px",
+                      display: "flex",
+                      alignItems: "center",
+                      color: "#94A3B8",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowDropdown((p) => !p);
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  {showDropdown ? <ChevronUp size={18} color="#173F63" /> : <ChevronDown size={18} color="#173F63" />}
+                </button>
+              </div>
+
+              {showDropdown && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 4px)",
+                    left: 0,
+                    right: 0,
+                    background: "#FFFFFF",
+                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                    borderRadius: "6px",
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
+                    zIndex: 30,
+                    maxHeight: "180px",
+                    overflowY: "auto",
+                  }}
+                >
+                  {isCustomersLoading ? (
+                    <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <div style={{ height: "12px", width: "60%", background: "#E2E8F0", borderRadius: "4px" }} />
+                      <div style={{ height: "10px", width: "40%", background: "#F1F5F9", borderRadius: "4px" }} />
+                    </div>
+                  ) : searchedCustomers.length === 0 ? (
+                    <p style={{ padding: "12px 16px", margin: 0, fontSize: "12px", color: "#6B7280" }}>
+                      No customers found.
+                    </p>
+                  ) : (
+                    searchedCustomers.map((c) => (
+                      <div
+                        key={c.id}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSelectCustomer(c);
+                        }}
+                        style={{
+                          padding: "10px 16px",
+                          cursor: "pointer",
+                          borderBottom: "1px solid rgba(179,175,175,0.2)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                        className="ci-cust-option"
+                      >
+                        <div>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: "12px", color: "#011B2F" }}>
+                            {c.name} - {c.mobile}
+                          </p>
+                          <p style={{ margin: "2px 0 0", fontWeight: 500, fontSize: "10.5px", color: "#6B7280" }}>
+                            GSTN: {c.gstn || "—"}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* + Add New Customer Button */}
+            <button
+              onClick={() => setIsAddNewOpen(true)}
+              style={{
+                height: "38px",
+                padding: "0 16px",
+                background: "#FFFFFF",
+                border: "1.5px solid #2576AB",
+                borderRadius: "6px",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                fontWeight: 700,
+                fontSize: "13px",
+                color: "#173F63",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                whiteSpace: "nowrap",
+                transition: "background 0.15s",
+                flexShrink: 0,
+              }}
+              className="ci-add-new-btn"
+            >
+              <span style={{ fontSize: "18px", fontWeight: 700, lineHeight: 1 }}>+</span>
+              Add New Customer
+            </button>
+          </div>
+
+          {/* ── Selected Customer Details Box ── */}
+          {selectedCustomer && (
+            <div
+              style={{
+                width: "100%",
+                background: "rgba(217, 217, 217, 0.3)",
+                border: "1px solid rgba(179, 175, 175, 0.54)",
+                borderRadius: "6px",
+                padding: "14px 18px",
+                boxSizing: "border-box",
+                marginTop: "12px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 700,
+                    fontSize: "16px",
+                    lineHeight: "22px",
+                    color: "#011B2F",
+                  }}
+                >
+                  Selected Customer Details
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleClearCustomer}
+                  style={{
+                    background: "#FEE2E2",
+                    color: "#DC2626",
+                    border: "1px solid #FECACA",
+                    borderRadius: "6px",
+                    padding: "3px 8px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  }}
+                >
+                  <X size={13} /> Clear
+                </button>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <User size={16} color="#011B2F" style={{ flexShrink: 0 }} />
+                  <span style={{ fontWeight: 600, fontSize: "13px", color: "#011B2F", width: "120px" }}>
+                    Customer Name:
+                  </span>
+                  <span style={{ fontWeight: 700, fontSize: "13px", color: "#173F63" }}>
+                    {selectedCustomer.name}
+                  </span>
+                </div>
+
+                <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
+
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <Phone size={16} color="#011B2F" style={{ flexShrink: 0 }} />
+                  <span style={{ fontWeight: 600, fontSize: "13px", color: "#011B2F", width: "120px" }}>
+                    Mobile Number:
+                  </span>
+                  <span style={{ fontWeight: 700, fontSize: "13px", color: "#173F63" }}>
+                    {selectedCustomer.mobile}
+                  </span>
+                </div>
+
+                <div style={{ width: "100%", height: "0.5px", background: "rgba(179, 175, 175, 0.72)" }} />
+
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <CreditCard size={16} color="#011B2F" style={{ flexShrink: 0 }} />
+                  <span style={{ fontWeight: 600, fontSize: "13px", color: "#011B2F", width: "120px" }}>
+                    GSTN:
+                  </span>
+                  <span style={{ fontWeight: 700, fontSize: "13px", color: "#173F63" }}>
+                    {selectedCustomer.gstn || "—"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Card 2: Issue Complimentary Ticket? (Rectangle 96) ── */}
+        <div
+          className="ci-card-half"
+          style={{
+            background: "#FFFFFF",
+            border: isComplimentary ? "1.5px solid #0E4E7A" : "1.5px solid rgba(179, 175, 175, 0.51)",
+            borderBottom: isComplimentary ? "none" : "1.5px solid rgba(179, 175, 175, 0.51)",
+            borderRadius: isComplimentary ? "13px 13px 0 0" : "13px",
+            padding: isComplimentary ? "20px 24px 14px 24px" : "20px 24px",
+            boxSizing: "border-box",
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            cursor: "pointer",
+            height: "100%",
+            position: isComplimentary ? "relative" : undefined,
+            zIndex: isComplimentary ? 2 : undefined,
+            marginBottom: isComplimentary ? "-2px" : 0,
+            transition: "all 0.15s ease",
+          }}
+          onClick={() => setIsComplimentary((p) => !p)}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: "10px",
+            }}
+          >
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <h3
+                className="ci-card-title"
+                style={{
+                  margin: 0,
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 700,
+                  fontSize: "18px",
+                  lineHeight: "24px",
+                  color: "#011B2F",
+                }}
+              >
+                Issue Complimentary Ticket?
+              </h3>
+              <p
+                className="ci-card-desc"
+                style={{
+                  margin: "6px 0 0",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 500,
+                  fontSize: "13px",
+                  lineHeight: "18px",
+                  color: "#6B7280",
+                }}
+              >
+                Enable this only if the booking is being issued under a complimentary pass/reference
+              </p>
+            </div>
+
+            {/* Checkbox */}
+            <div
+              style={{
+                width: "20px",
+                height: "20px",
+                borderRadius: "3px",
+                background: isComplimentary ? "#011B2F" : "#FFFFFF",
+                border: isComplimentary ? "none" : "1.5px solid #6B7280",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                marginTop: "2px",
+                transition: "all 0.15s ease",
+              }}
+            >
+              {isComplimentary && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
+            </div>
           </div>
         </div>
 
-        {/* Expanded Complimentary Form Fields */}
+        {/* ── Expanded Complimentary Form (Full Width - Seamlessly Connected L-Shape) ── */}
         {isComplimentary && (
           <div
+            className="ci-complimentary-expanded-card"
             style={{
-              marginTop: "24px",
-              paddingTop: "20px",
-              borderTop: "1px solid rgba(179, 175, 175, 0.3)",
+              gridColumn: "1 / -1",
+              background: "#FFFFFF",
+              border: "1.5px solid #0E4E7A",
+              borderTop: "none",
+              borderRadius: "0 0 13px 13px",
+              padding: "18px 28px 26px 28px",
+              boxSizing: "border-box",
               display: "flex",
               flexDirection: "column",
-              gap: "24px",
+              gap: "22px",
+              position: "relative",
+              zIndex: 1,
             }}
           >
+            {/* Top shelf border connecting from left edge across to Card 2's left border */}
+            <div
+              className="ci-complimentary-top-shelf"
+              style={{
+                position: "absolute",
+                top: "-1.5px",
+                left: "-1.5px",
+                width: "calc(50% + (var(--ci-gap, 20px) / 2) + 1.5px)",
+                height: "13px",
+                borderTop: "1.5px solid #0E4E7A",
+                borderLeft: "1.5px solid #0E4E7A",
+                borderTopLeftRadius: "13px",
+                pointerEvents: "none",
+                boxSizing: "border-box",
+              }}
+            />
             {/* 1. PASS DETAILS */}
             <div>
               <h4 style={{ margin: "0 0 12px", fontWeight: 700, fontSize: "14px", color: "#2D6B92" }}>
                 PASS DETAILS
               </h4>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "6px" }}>
                     Pass No.
@@ -3779,7 +4085,7 @@ export default function CustomerInfoView({
               <h4 style={{ margin: "0 0 12px", fontWeight: 700, fontSize: "14px", color: "#2D6B92" }}>
                 GUEST DETAILS
               </h4>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "6px" }}>
                     Guest Name
@@ -3840,7 +4146,7 @@ export default function CustomerInfoView({
               <h4 style={{ margin: "0 0 12px", fontWeight: 700, fontSize: "14px", color: "#2D6B92" }}>
                 VISITOR COUNT
               </h4>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "6px" }}>
                     Adults/Senior Citizen
@@ -3886,7 +4192,7 @@ export default function CustomerInfoView({
               <h4 style={{ margin: "0 0 12px", fontWeight: 700, fontSize: "14px", color: "#2D6B92" }}>
                 Reference By
               </h4>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "6px" }}>
                     Reference Person Name
@@ -4243,6 +4549,53 @@ export default function CustomerInfoView({
         .ci-continue-btn:hover { background: #e5af36 !important; transform: translateY(-1px); }
         .ci-add-new-btn:hover { background: #EFF6FF !important; }
         .pay-confirm-btn:hover { background: #e5af36 !important; transform: translateY(-1px); }
+        .ci-customer-complimentary-row {
+          --ci-gap: 20px;
+        }
+        @media (max-width: 640px) {
+          .ci-customer-complimentary-row {
+            --ci-gap: 10px;
+            column-gap: 10px !important;
+          }
+          .ci-card-half {
+            padding: 12px 10px !important;
+          }
+          .ci-card-title {
+            font-size: 13.5px !important;
+            line-height: 17px !important;
+          }
+          .ci-card-subtitle {
+            font-size: 11.5px !important;
+            margin-bottom: 6px !important;
+          }
+          .ci-card-desc {
+            font-size: 10.5px !important;
+            line-height: 14px !important;
+            margin-top: 4px !important;
+          }
+          .ci-search-row {
+            gap: 6px !important;
+          }
+          .ci-search-dropdown-wrapper {
+            min-width: 0 !important;
+            width: 100% !important;
+          }
+          .ci-search-input-box {
+            padding: 0 8px !important;
+            gap: 6px !important;
+            height: 34px !important;
+          }
+          .ci-add-new-btn {
+            width: 100% !important;
+            justify-content: center !important;
+            height: 32px !important;
+            font-size: 11px !important;
+            padding: 0 6px !important;
+          }
+          .ci-complimentary-expanded-card {
+            padding: 14px 10px !important;
+          }
+        }
       `}</style>
     </div>
   );

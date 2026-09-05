@@ -52,17 +52,18 @@ function buildReceiptHtml(innerHtml: string): string {
       font-family: 'Courier New', Courier, monospace;
       color: #000;
       background: #fff;
-      width: 76mm;
-      max-width: 78mm;
+      width: 70mm;
+      max-width: 70mm;
       margin: 0 auto;
-      padding: 2mm 1mm;
-      font-size: 12px;
+      padding: 3mm 4.5mm;
+      box-sizing: border-box;
+      font-size: 11.5px;
       font-weight: 600;
       line-height: 1.35;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
-    table { width: 100%; border-collapse: collapse; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
   </style>
 </head>
@@ -84,6 +85,16 @@ export async function printViaQZ(
   try {
     const qz = await loadQzScript();
     if (!qz) return false;
+
+    // --- NEW: INJECT CERTIFICATE FOR DEV FLOW ---
+    // This tells QZ Tray who we are so the "Remember this decision" box unlocks.
+    const cert = (import.meta.env.VITE_QZ_TRAY_CERT as string | undefined)?.replace(/\\n/g, "\n");
+
+    if (cert) {
+      qz.security.setCertificatePromise((resolve: Function) => {
+        resolve(cert);
+      });
+    }
 
     if (!qz.websocket.isActive()) {
       await qz.websocket.connect({ retries: 2, delay: 1 });
