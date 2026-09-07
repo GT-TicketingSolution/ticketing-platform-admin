@@ -70,6 +70,9 @@ const MODULE_REGISTRY: Record<string, { label: string; href: string; icon: any }
   records_reports: { label: "Reports", href: "/reports", icon: BarChart2 },
   ticket_booking: { label: "Ticket Booking", href: "/ticket-booking", icon: Ticket },
   tickets: { label: "Ticket Booking", href: "/ticket-booking", icon: Ticket },
+  ticket_layout: { label: "Ticket Layout Management", href: "/ticket-layout-management", icon: Ticket },
+  ticket_layout_management: { label: "Ticket Layout Management", href: "/ticket-layout-management", icon: Ticket },
+  ticketlayout: { label: "Ticket Layout Management", href: "/ticket-layout-management", icon: Ticket },
   scanner: { label: "Scanner", href: "/scanner", icon: ScanLine },
 };
 

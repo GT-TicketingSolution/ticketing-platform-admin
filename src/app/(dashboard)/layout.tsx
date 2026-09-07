@@ -33,6 +33,7 @@ const PATH_TITLE_MAP: Record<string, string> = {
   "/cctv-monitoring":      "CCTV Monitoring | Ticketing Solution",
   "/reports":              "Reports & Analytics | Ticketing Solution",
   "/scanner":              "Ticket Scanner | Ticketing Solution",
+  "/ticket-layout-management": "Ticket Layout Management | Ticketing Solution",
 };
 
 /** Breakpoint below which we switch to mobile/tablet drawer mode */
@@ -69,6 +70,7 @@ function resolveModuleTitle(pathname: string): string {
   if (clean.includes("cctv")) return "CCTV Monitoring";
   if (clean.includes("report")) return "Reports & Analytics";
   if (clean.includes("scanner") || clean.includes("scan")) return "Ticket Scanner";
+  if (clean.includes("ticket-layout") || clean.includes("ticket_layout") || clean.includes("ticketlayout")) return "Ticket Layout Management";
   if (clean.includes("manager")) return "Manager Management";
   if (clean.includes("staff")) return "Staff Management";
   if (clean.includes("dashboard")) return "Dashboard";
@@ -99,6 +101,7 @@ const ROUTE_DEFINITIONS: { prefix: string; label: string }[] = [
   { prefix: "/cctv-monitoring", label: "CCTV Monitoring" },
   { prefix: "/reports", label: "Reports & Analytics" },
   { prefix: "/scanner", label: "Ticket Scanner" },
+  { prefix: "/ticket-layout-management", label: "Ticket Layout Management" },
   { prefix: "/dashboard", label: "Dashboard" },
 ];
 

@@ -51,6 +51,7 @@ export async function GET(request: Request) {
         "SEAT_MANAGEMENT",
         "SCANNER_INVOICES",
         "MANAGER_MANAGEMENT",
+        "TICKET_LAYOUT_MANAGEMENT"
       ];
 
       // ---------------------------------------------------

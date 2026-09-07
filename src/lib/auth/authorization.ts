@@ -311,6 +311,7 @@ export const DEFAULT_ADMIN_MODULES = [
   "SEAT_MANAGEMENT",
   "SCANNER_INVOICES",
   "MANAGER_MANAGEMENT",
+  "TICKET_LAYOUT_MANAGEMENT"
 ] as const;
 
 /* =========================================================
