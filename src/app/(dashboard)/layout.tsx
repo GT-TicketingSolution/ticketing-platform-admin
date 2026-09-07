@@ -369,7 +369,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           style={{
             flex: 1,
             padding: isMobile ? "16px" : "24px",
-            paddingTop: `${spacing.headerHeight + (isMobile ? 16 : 24)}px`,
+            // Header height + renewal banner height (when present) + breathing room.
+            // The renewal banner is fixed-positioned just below the header;
+            // the dashboard layout must reserve enough top padding so page
+            // content does not sit underneath it.
+            paddingTop: `${
+              spacing.headerHeight +
+              (isMobile ? 56 : 48) +
+              (isMobile ? 16 : 24)
+            }px`,
             boxSizing: "border-box",
             background: colors.bg.page,
           }}
