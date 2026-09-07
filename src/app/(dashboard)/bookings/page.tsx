@@ -707,10 +707,25 @@ export default function BookingsPage() {
 
       {/* ── Bookings Data Table ── */}
       <GlobalDataTable
+        defaultSort={{ key: "invoiceNumber", order: "desc" }}
         columns={[
           {
             header: "Invoice Number",
-            cell: (item: BookingListItem) => item.invoiceNumber || item.bookingId || "-",
+            sortable: true,
+            sortKey: "invoiceNumber",
+            accessor: (item: BookingListItem) => item.invoiceNumber || "",
+            cell: (item: BookingListItem) => (
+              <span
+                style={{
+                  fontFamily: typography.fontFamily.sans,
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  color: colors.brand.accent,
+                }}
+              >
+                {item.invoiceNumber || item.bookingId || "-"}
+              </span>
+            ),
           },
           {
             header: "Customer Name",
@@ -718,6 +733,14 @@ export default function BookingsPage() {
           },
           {
             header: "Date & Time",
+            sortable: true,
+            sortKey: "dateTime",
+            accessor: (item: BookingListItem) => {
+              const dStr = item.dateTime || item.bookingDate || item.createdAt;
+              if (!dStr) return "";
+              const t = new Date(dStr).getTime();
+              return isNaN(t) ? dStr : t;
+            },
             cell: (item: BookingListItem) => {
               const dStr = item.dateTime || item.bookingDate || item.createdAt;
               if (!dStr) return "-";
@@ -739,6 +762,9 @@ export default function BookingsPage() {
           },
           {
             header: "Amount",
+            sortable: true,
+            sortKey: "amount",
+            accessor: (item: BookingListItem) => Number(item.grandTotalAmount ?? item.amount ?? 0),
             cell: (item: BookingListItem) => `₹${item.grandTotalAmount ?? item.amount ?? 0}`,
           },
           { header: "Status", cell: (item: BookingListItem) => renderStatusBadge(item.status) },

@@ -478,9 +478,13 @@ export default function TransactionsPage() {
 
       {/* ── Table ── */}
       <GlobalDataTable
+        defaultSort={{ key: "invoiceNumber", order: "desc" }}
         columns={[
           {
             header: "Invoice Number",
+            sortable: true,
+            sortKey: "invoiceNumber",
+            accessor: (item: TransactionListItem) => item.invoiceNumber || "",
             cell: (item) => (
               <span style={{ fontFamily: typography.fontFamily.sans, fontWeight: 600, fontSize: "13px", color: colors.brand.accent }}>
                 {item.invoiceNumber || item.transactionId}
@@ -497,6 +501,14 @@ export default function TransactionsPage() {
           },
           {
             header: "Date & Time",
+            sortable: true,
+            sortKey: "dateTime",
+            accessor: (item) => {
+              const dStr = item.dateTime || item.transactionDate;
+              if (!dStr) return "";
+              const t = new Date(dStr).getTime();
+              return isNaN(t) ? "" : t;
+            },
             cell: (item) => {
               const dStr = item.dateTime || item.transactionDate;
               return (
@@ -518,6 +530,9 @@ export default function TransactionsPage() {
           },
           {
             header: "Amount",
+            sortable: true,
+            sortKey: "amount",
+            accessor: (item) => Number(item.grandTotalAmount ?? item.amount ?? 0),
             cell: (item) => (
               <span style={{ fontFamily: typography.fontFamily.sans, fontWeight: 700, fontSize: "13px", color: "#011B2F" }}>
                 ₹{Number(item.grandTotalAmount ?? item.amount ?? 0).toFixed(2)}

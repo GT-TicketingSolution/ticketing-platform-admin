@@ -1,15 +1,33 @@
 "use client";
 
 import React, { useState } from "react";
-import { ChevronLeft, ChevronRight, FolderOpen, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, FolderOpen, Loader2 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 
 export interface GlobalColumn<T> {
   header: string;
   accessorKey?: keyof T;
+  /** Optional value extractor for sorting. Falls back to accessorKey when omitted. */
+  accessor?: (item: T) => unknown;
   cell?: (item: T, index: number) => React.ReactNode;
   align?: "left" | "center" | "right";
   width?: string;
+  /**
+   * When true, the column header becomes clickable and shows a sort
+   * indicator. Click toggles between asc/desc.
+   */
+  sortable?: boolean;
+  /**
+   * Stable identifier used as the sort key. Required when sortable is true
+   * so the parent can pass `defaultSort={{ key: 'invoice', order: 'desc' }}`.
+   */
+  sortKey?: string;
+}
+
+export type SortOrder = "asc" | "desc";
+export interface SortState {
+  key: string;
+  order: SortOrder;
 }
 
 interface GlobalDataTableProps<T> {
@@ -31,6 +49,13 @@ interface GlobalDataTableProps<T> {
   sNoHeader?: string;
   itemLabel?: string;
   onRowClick?: (item: T) => void;
+  /**
+   * Initial sort state. When provided AND the matching column has
+   * `sortable: true`, the table starts sorted by this column.
+   * Clicking a different sortable column switches to it (descending by
+   * default); clicking the same column toggles asc <-> desc.
+   */
+  defaultSort?: SortState;
 }
 
 export function GlobalDataTable<T>({
@@ -52,12 +77,62 @@ export function GlobalDataTable<T>({
   sNoHeader = "S.No",
   itemLabel = "items",
   onRowClick,
+  defaultSort,
 }: GlobalDataTableProps<T>) {
   const [internalCurrentPage, setInternalCurrentPage] = useState(1);
+  const [sort, setSort] = useState<SortState | null>(defaultSort ?? null);
+
+  // ── Sorting (client-side) ─────────────────────────────────────────────
+  // When the user clicks a sortable header, decide:
+  //  - clicking a different column: switch to it, descending
+  //  - clicking the same column: toggle asc <-> desc
+  const handleHeaderClick = (col: GlobalColumn<T>) => {
+    if (!col.sortable || !col.sortKey) return;
+    setSort((prev) => {
+      if (prev && prev.key === col.sortKey) {
+        return { key: col.sortKey!, order: prev.order === "asc" ? "desc" : "asc" };
+      }
+      // Switching to a new column starts at "desc" (most recent first)
+      return { key: col.sortKey!, order: "desc" };
+    });
+  };
+
+  const getSortValue = (item: T, col: GlobalColumn<T>): unknown => {
+    if (col.accessor) return col.accessor(item);
+    if (col.accessorKey) return item[col.accessorKey];
+    return undefined;
+  };
+
+  const compareValues = (a: unknown, b: unknown): number => {
+    // Handle null/undefined — sort them to the end regardless of order
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    if (typeof a === "number" && typeof b === "number") {
+      return a - b;
+    }
+    // String compare (case-insensitive). Invoice numbers like "INV-001" and
+    // "INV-002" sort lexicographically — which matches what users expect
+    // for invoice numbers since the leading zero-padding keeps order stable.
+    return String(a).toLowerCase().localeCompare(String(b).toLowerCase());
+  };
+
+  // Apply sort to the full data set when a sort state is active.
+  const sortedData = React.useMemo(() => {
+    if (!sort) return data;
+    const col = columns.find((c) => c.sortKey === sort.key);
+    if (!col) return data;
+    const copy = [...data];
+    copy.sort((a, b) => {
+      const cmp = compareValues(getSortValue(a, col), getSortValue(b, col));
+      return sort.order === "asc" ? cmp : -cmp;
+    });
+    return copy;
+  }, [data, sort, columns]);
 
   const isControlled = onPageChange !== undefined || propCurrentPage !== undefined;
   const isServerPaged = propTotalItems !== undefined || propTotalPages !== undefined;
-  const totalItems = propTotalItems !== undefined ? propTotalItems : data.length;
+  const totalItems = propTotalItems !== undefined ? propTotalItems : sortedData.length;
   const totalPages =
     propTotalPages !== undefined
       ? Math.max(1, propTotalPages)
@@ -67,7 +142,7 @@ export function GlobalDataTable<T>({
     : Math.min(internalCurrentPage, totalPages);
 
   const startIndex = (activePage - 1) * pageSize;
-  const currentData = isServerPaged ? data : data.slice(startIndex, startIndex + pageSize);
+  const currentData = isServerPaged ? sortedData : sortedData.slice(startIndex, startIndex + pageSize);
 
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {
@@ -162,22 +237,71 @@ export function GlobalDataTable<T>({
                   {sNoHeader}
                 </th>
               )}
-              {columns.map((col, idx) => (
-                <th
-                  key={idx}
-                  style={{
-                    padding: "0 16px",
-                    textAlign: col.align || "left",
-                    width: col.width,
-                    fontWeight: 500,
-                    color: "#374151",
-                    fontSize: "12px",
-                    fontFamily: "'Inter', sans-serif",
-                  }}
-                >
-                  {col.header}
-                </th>
-              ))}
+              {columns.map((col, idx) => {
+                const isSortable = col.sortable && Boolean(col.sortKey);
+                const isActiveSort = isSortable && sort?.key === col.sortKey;
+                const sortOrder = isActiveSort ? sort!.order : null;
+                // Default direction shown when not the active sort column.
+                // Matches the visual style of the Invoice Number column.
+                const inactiveOrder: "asc" | "desc" = "desc";
+                const displayOrder = sortOrder ?? (isSortable ? inactiveOrder : null);
+                const thAlign = col.align || "left";
+                return (
+                  <th
+                    key={idx}
+                    onClick={isSortable ? () => handleHeaderClick(col) : undefined}
+                    aria-sort={
+                      isActiveSort
+                        ? sortOrder === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : isSortable
+                          ? "none"
+                          : undefined
+                    }
+                    style={{
+                      padding: "0 16px",
+                      textAlign: thAlign,
+                      width: col.width,
+                      fontWeight: 500,
+                      color: "#374151",
+                      fontSize: "12px",
+                      fontFamily: "'Inter', sans-serif",
+                      cursor: isSortable ? "pointer" : "default",
+                      userSelect: isSortable ? "none" : "auto",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={isSortable ? `Sort by ${col.header}` : undefined}
+                  >
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        flexDirection: thAlign === "right" ? "row-reverse" : "row",
+                      }}
+                    >
+                      <span>{col.header}</span>
+                      {isSortable && displayOrder === "asc" && (
+                        <ChevronUp
+                          size={14}
+                          strokeWidth={2}
+                          color="#94A3B8"
+                          aria-hidden="true"
+                        />
+                      )}
+                      {isSortable && displayOrder === "desc" && (
+                        <ChevronDown
+                          size={14}
+                          strokeWidth={2}
+                          color="#94A3B8"
+                          aria-hidden="true"
+                        />
+                      )}
+                    </span>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
 
