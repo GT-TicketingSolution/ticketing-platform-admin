@@ -1,0 +1,2 @@
+ALTER TABLE "staff_system_module_permissions" ADD COLUMN "report_access_timing" integer;--> statement-breakpoint
+ALTER TABLE "staff_system_module_permissions" ADD COLUMN "report_access_unit" varchar(20);

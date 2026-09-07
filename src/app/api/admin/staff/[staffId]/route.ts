@@ -49,6 +49,10 @@ const createStaffSchema = z.object({
   attractionIds: z.array(z.string().uuid()).optional().default([]),
 
   status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
+
+  reportAccessTiming: z.number().int().positive().optional(),
+
+  reportAccessUnit: z.string().max(20).optional(),
 });
 
 /* =========================================================
@@ -604,6 +608,10 @@ const updateStaffSchema = z.object({
   attractionIds: z.array(z.string().uuid()).optional(),
 
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+
+  reportAccessTiming: z.number().int().positive().optional(),
+
+  reportAccessUnit: z.enum(["HOURS", "DAYS"]).optional(),
 });
 
 export async function PATCH(
@@ -683,8 +691,17 @@ export async function PATCH(
       return failure("Invalid staff details.", 400, "VALIDATION_ERROR");
     }
 
-    const { name, email, phone, password, roles, attractionIds, status } =
-      parsed.data;
+    const {
+      name,
+      email,
+      phone,
+      password,
+      roles,
+      attractionIds,
+      status,
+      reportAccessTiming,
+      reportAccessUnit,
+    } = parsed.data;
 
     // -----------------------------------------------------
     // Check duplicate email
@@ -883,6 +900,9 @@ export async function PATCH(
             roleModules.map((module) => ({
               staffId,
               moduleId: module.id,
+
+              reportAccessTiming: reportAccessTiming ?? null,
+              reportAccessUnit: reportAccessUnit ?? null,
             })),
           )
           .onConflictDoNothing();

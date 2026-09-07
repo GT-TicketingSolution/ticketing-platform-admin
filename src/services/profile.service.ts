@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { users, staffSystemModulePermissions } from "@/db/schema";
 
 /* =========================================================
 GET PROFILE
@@ -22,7 +22,7 @@ export async function getProfile(userId: string) {
       profileLink: users.profileLink,
       invoiceNumberForUsersInitialPart: users.invoiceNumberForUsersInitialPart,
 
-      next_renewal_date: users.next_renewal_date,
+      next_renewal_date: users.nextRenewalDate,
       lastLoginAt: users.lastLoginAt,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
@@ -39,14 +39,31 @@ export async function getProfile(userId: string) {
     throw new Error("ACCOUNT_NOT_ACTIVE");
   }
 
+  if (user.role === "STAFF") {
+    const [reportAccess] = await db
+      .select({
+        reportAccessTiming: staffSystemModulePermissions.reportAccessTiming,
+        reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
+      })
+      .from(staffSystemModulePermissions)
+      .where(eq(staffSystemModulePermissions.staffId, userId))
+      .limit(1);
+
+    return {
+      ...user,
+      reportAccessTiming: reportAccess?.reportAccessTiming ?? null,
+      reportAccessUnit: reportAccess?.reportAccessUnit ?? null,
+    };
+  }
+
   const today = new Date();
 
   let userRenewalData:
     | {
-      next_renewal_date: Date;
-      days_left_for_renewal: number;
-      message: string;
-    }
+        next_renewal_date: Date;
+        days_left_for_renewal: number;
+        message: string;
+      }
     | undefined;
 
   if (user.next_renewal_date) {
@@ -65,12 +82,9 @@ export async function getProfile(userId: string) {
       renewalDate.getDate(),
     );
 
-    const differenceInMs =
-      renewalDateOnly.getTime() - todayDate.getTime();
+    const differenceInMs = renewalDateOnly.getTime() - todayDate.getTime();
 
-    const daysLeft = Math.ceil(
-      differenceInMs / (1000 * 60 * 60 * 24),
-    );
+    const daysLeft = Math.ceil(differenceInMs / (1000 * 60 * 60 * 24));
 
     if (daysLeft <= 30) {
       userRenewalData = {
@@ -186,7 +200,7 @@ export async function updateProfile(
 
     invoiceNumberForUsersInitialPart:
       data.invoiceNumberForUsersInitialPart &&
-        data.invoiceNumberForUsersInitialPart.trim().length > 0
+      data.invoiceNumberForUsersInitialPart.trim().length > 0
         ? data.invoiceNumberForUsersInitialPart.trim()
         : null,
   };

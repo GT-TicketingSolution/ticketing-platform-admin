@@ -19,6 +19,8 @@ import {
   attractionsAgainstBooking,
   categoryOfAttractionAgainstBooking,
   attractionCategory,
+  staffSystemModulePermissions,
+  systemModules,
 } from "@/db/schema";
 
 export interface ReportFilter {
@@ -689,9 +691,7 @@ export async function getAttractionReports(filter: ReportFilter) {
 
     existing.push({
       mode: row.mode,
-
       transactions: Number(row.transactions ?? 0),
-
       amount: Number(row.amount ?? 0),
     });
 
@@ -921,4 +921,548 @@ export async function getTicketBreakdown(filter: ReportFilter) {
 
     revenue: 0,
   }));
+}
+
+type GetReportParams = {
+  adminId: string;
+  staffId?: string;
+  startDateTime: Date;
+  endDateTime: Date;
+};
+
+export async function getReport({
+  adminId,
+  staffId,
+  startDateTime,
+  endDateTime,
+}: GetReportParams) {
+  // =====================================================
+  // STAFF REPORT ACCESS
+  // =====================================================
+
+  // Only STAFF has report access timing restrictions.
+  // ADMIN and MANAGER bypass this section.
+  if (staffId) {
+    const permission = await db
+      .select({
+        reportAccessTiming: staffSystemModulePermissions.reportAccessTiming,
+        reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
+      })
+      .from(staffSystemModulePermissions)
+      .innerJoin(
+        systemModules,
+        eq(staffSystemModulePermissions.moduleId, systemModules.id),
+      )
+      .where(
+        and(
+          eq(staffSystemModulePermissions.staffId, staffId),
+          eq(systemModules.name, "REPORTS"),
+        ),
+      )
+      .limit(1);
+
+    if (!permission.length) {
+      throw new Error("REPORT_ACCESS_NOT_CONFIGURED");
+    }
+
+    const reportAccessTiming = permission[0].reportAccessTiming;
+
+    const reportAccessUnit = permission[0].reportAccessUnit;
+
+    if (
+      reportAccessTiming === null ||
+      reportAccessTiming <= 0 ||
+      !reportAccessUnit ||
+      !["HOURS", "DAYS"].includes(reportAccessUnit)
+    ) {
+      throw new Error("REPORT_ACCESS_NOT_CONFIGURED");
+    }
+
+    // =====================================================
+    // CALCULATE STAFF REPORT ACCESS WINDOW
+    // =====================================================
+
+    const now = new Date();
+    const accessStart = new Date(now);
+
+    if (reportAccessUnit === "HOURS") {
+      accessStart.setHours(accessStart.getHours() - reportAccessTiming);
+    } else {
+      accessStart.setDate(accessStart.getDate() - reportAccessTiming);
+    }
+
+    if (startDateTime < accessStart || endDateTime > now) {
+      throw new Error("REPORT_ACCESS_EXPIRED");
+    }
+  }
+
+  // =====================================================
+  // FETCH ALL ATTRACTIONS
+  // =====================================================
+
+  const attractionRows = await db
+    .select({
+      id: attractions.id,
+      name: attractions.name,
+      type: attractions.type,
+      attractionManagementId: attractionManagement.id,
+    })
+    .from(attractions)
+    .innerJoin(
+      attractionManagement,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
+    .where(eq(attractions.adminId, adminId));
+
+  // =====================================================
+  // FETCH BOOKINGS IN DATE/TIME RANGE
+  // AND SCOPE THEM TO CURRENT ADMIN
+  // =====================================================
+
+  const bookingRows = await db
+    .selectDistinct({
+      id: bookings.id,
+      totalAmount: bookings.totalAmount,
+    })
+    .from(bookings)
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(attractionsAgainstBooking.bookingId, bookings.id),
+    )
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(
+      attractions,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
+    .where(
+      and(
+        gte(bookings.createdAt, startDateTime),
+        lte(bookings.createdAt, endDateTime),
+        eq(bookings.isDeleted, false),
+        eq(attractions.adminId, adminId),
+      ),
+    );
+
+  const bookingIds = bookingRows.map((booking) => booking.id);
+
+  // =====================================================
+  // GRAND TOTAL AMOUNT
+  // =====================================================
+
+  const grandTotalAmount = bookingRows.reduce(
+    (sum, booking) => sum + Number(booking.totalAmount ?? 0),
+    0,
+  );
+
+  // =====================================================
+  // GRAND TOTAL BOOKINGS
+  // =====================================================
+
+  const grandTotalBooking = bookingRows.length;
+
+  // =====================================================
+  // NO BOOKINGS
+  // =====================================================
+
+  if (!bookingIds.length) {
+    return {
+      attractions: attractionRows.map((attraction) => ({
+        id: attraction.id,
+        name: attraction.name,
+        type: attraction.type,
+      })),
+
+      bookings: {
+        grand_total_amount: grandTotalAmount.toFixed(2),
+
+        grand_total_booking: grandTotalBooking,
+
+        attraction_against_booking: [],
+      },
+
+      transactions: attractionRows.map((attraction) => ({
+        attraction_management_id: attraction.attractionManagementId,
+
+        transactions: [],
+      })),
+    };
+  }
+
+  // =====================================================
+  // ATTRACTIONS AGAINST BOOKINGS
+  // =====================================================
+
+  const attractionBookingRows = await db
+    .select({
+      id: attractionsAgainstBooking.id,
+
+      bookingId: attractionsAgainstBooking.bookingId,
+
+      attractionManagementId: attractionsAgainstBooking.attractionManagementId,
+
+      attractionSubtotal: attractionsAgainstBooking.attractionSubtotal,
+
+      attractionGst: attractionsAgainstBooking.attractionGst,
+
+      attractionRoundoff: attractionsAgainstBooking.attractionRoundoff,
+
+      attractionRoundOffGstAdj:
+        attractionsAgainstBooking.attractionRoundOffGstAdj,
+
+      attractionTotalAmount: attractionsAgainstBooking.attractionTotalAmount,
+
+      attractionName: attractions.name,
+    })
+    .from(attractionsAgainstBooking)
+    .innerJoin(bookings, eq(attractionsAgainstBooking.bookingId, bookings.id))
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(
+      attractions,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
+    .where(
+      and(
+        inArray(attractionsAgainstBooking.bookingId, bookingIds),
+        eq(bookings.isDeleted, false),
+        eq(attractions.adminId, adminId),
+      ),
+    );
+
+  const attractionBookingIds = attractionBookingRows.map((row) => row.id);
+
+  // =====================================================
+  // CATEGORY BOOKING DATA
+  // =====================================================
+
+  const categoryBookingRows = attractionBookingIds.length
+    ? await db
+        .select({
+          id: categoryOfAttractionAgainstBooking.id,
+
+          attractionAgainstBookingId:
+            categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+
+          bookingId: categoryOfAttractionAgainstBooking.bookingId,
+
+          categoryId: categoryOfAttractionAgainstBooking.categoryId,
+
+          noOfVisitors: categoryOfAttractionAgainstBooking.noOfVisitors,
+
+          categoryName: attractionCategory.name,
+
+          basePrice: attractionCategory.basePrice,
+        })
+        .from(categoryOfAttractionAgainstBooking)
+        .innerJoin(
+          attractionCategory,
+          eq(
+            categoryOfAttractionAgainstBooking.categoryId,
+            attractionCategory.id,
+          ),
+        )
+        .where(
+          inArray(
+            categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+            attractionBookingIds,
+          ),
+        )
+    : [];
+
+  // =====================================================
+  // TRANSACTIONS
+  // ONLY FOR THE BOOKINGS IN THIS REPORT
+  // =====================================================
+
+  const transactionRows = await db
+    .select({
+      invoiceId: transactions.invoiceNumber,
+
+      customerName: bookings.customerName,
+
+      amount: transactions.amount,
+
+      paymentMode: transactions.paymentMode,
+
+      status: transactions.status,
+
+      createdAt: transactions.createdAt,
+
+      bookingId: transactions.bookingId,
+
+      attractionManagementId: attractionsAgainstBooking.attractionManagementId,
+    })
+    .from(transactions)
+    .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(attractionsAgainstBooking.bookingId, bookings.id),
+    )
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(
+      attractions,
+      eq(attractionManagement.attractionId, attractions.id),
+    )
+    .where(
+      and(
+        inArray(transactions.bookingId, bookingIds),
+
+        gte(transactions.createdAt, startDateTime),
+
+        lte(transactions.createdAt, endDateTime),
+
+        eq(transactions.isDeleted, false),
+
+        eq(bookings.isDeleted, false),
+
+        eq(attractions.adminId, adminId),
+      ),
+    );
+
+  // =====================================================
+  // BOOKINGS
+  // GROUPED BY ATTRACTION
+  // =====================================================
+
+  const attractionAgainstBookingReport = attractionRows.map((attraction) => {
+    const attractionBookings = attractionBookingRows.filter(
+      (row) => row.attractionManagementId === attraction.attractionManagementId,
+    );
+
+    // ===================================================
+    // CATEGORY DATA
+    // ===================================================
+
+    const attractionBookingIdSet = new Set(
+      attractionBookings.map((row) => row.id),
+    );
+
+    const categories = categoryBookingRows.filter((row) =>
+      attractionBookingIdSet.has(row.attractionAgainstBookingId),
+    );
+
+    const categoryMap = new Map<
+      string,
+      {
+        name: string;
+        noOfTickets: number;
+        basePrice: number;
+      }
+    >();
+
+    for (const category of categories) {
+      const existing = categoryMap.get(category.categoryId);
+
+      const noOfTickets = Number(category.noOfVisitors ?? 0);
+      const basePrice = Number(category.basePrice ?? 0);
+
+      if (existing) {
+        existing.noOfTickets += noOfTickets;
+      } else {
+        categoryMap.set(category.categoryId, {
+          name: category.categoryName,
+          noOfTickets,
+          basePrice,
+        });
+      }
+    }
+
+    // ===================================================
+    // ATTRACTION SUBTOTAL
+    // ===================================================
+
+    const attractionSubtotal = attractionBookings.reduce(
+      (sum, row) => sum + Number(row.attractionSubtotal ?? 0),
+      0,
+    );
+
+    // ===================================================
+    // ATTRACTION GST
+    // ===================================================
+
+    const attractionGst = attractionBookings.reduce(
+      (sum, row) => sum + Number(row.attractionGst ?? 0),
+      0,
+    );
+
+    // ===================================================
+    // ATTRACTION ROUNDOFF
+    // ===================================================
+
+    const attractionRoundoff = attractionBookings.reduce(
+      (sum, row) => sum + Number(row.attractionRoundoff ?? 0),
+      0,
+    );
+
+    // ===================================================
+    // ATTRACTION ROUND OFF GST ADJUSTMENT
+    // ===================================================
+
+    const attractionRoundOffGstAdj = attractionBookings.reduce(
+      (sum, row) => sum + Number(row.attractionRoundOffGstAdj ?? 0),
+      0,
+    );
+
+    // ===================================================
+    // ATTRACTION TOTAL AMOUNT
+    // ===================================================
+
+    const attractionTotalAmount = attractionBookings.reduce(
+      (sum, row) => sum + Number(row.attractionTotalAmount ?? 0),
+      0,
+    );
+
+    // ===================================================
+    // PAYMENT DISTRIBUTION
+    // ===================================================
+
+    const attractionBookingIdSetForPayment = new Set(
+      attractionBookings.map((row) => row.bookingId),
+    );
+
+    const attractionTransactions = transactionRows.filter((transaction) =>
+      attractionBookingIdSetForPayment.has(transaction.bookingId),
+    );
+
+    const paymentMap = new Map<
+      string,
+      {
+        count: number;
+        totalAmount: number;
+      }
+    >();
+
+    for (const transaction of attractionTransactions) {
+      const paymentMode = transaction.paymentMode;
+      const amount = Number(transaction.amount ?? 0);
+
+      const existing = paymentMap.get(paymentMode);
+
+      if (existing) {
+        existing.count += 1;
+        existing.totalAmount += amount;
+      } else {
+        paymentMap.set(paymentMode, {
+          count: 1,
+          totalAmount: amount,
+        });
+      }
+    }
+
+    // ===================================================
+    // ATTRACTION AGAINST BOOKING RESPONSE
+    // ===================================================
+
+    return {
+      attraction_management_id: attraction.attractionManagementId,
+
+      category_of_attraction_against_booking: Array.from(
+        categoryMap.values(),
+      ).map((category) => ({
+        name: category.name,
+
+        no_of_tickets: category.noOfTickets,
+
+        base_price: category.basePrice.toFixed(2),
+      })),
+
+      attraction_sub_total: attractionSubtotal.toFixed(2),
+
+      attraction_gst_total: attractionGst.toFixed(2),
+
+      attraction_roundoff_total: attractionRoundoff.toFixed(2),
+
+      attraction_round_off_gst_adj_total: attractionRoundOffGstAdj.toFixed(2),
+
+      attraction_grand_total: attractionTotalAmount.toFixed(2),
+
+      payment_distribution: Array.from(paymentMap.entries()).map(
+        ([paymentMode, data]) => ({
+          payment_mode: paymentMode,
+          count: data.count,
+          total_amount: data.totalAmount.toFixed(2),
+        }),
+      ),
+    };
+  });
+
+  // =====================================================
+  // TOP 6 TRANSACTIONS AGAINST EACH ATTRACTION
+  // =====================================================
+
+  const attractionTransactionsReport = attractionRows.map((attraction) => {
+    const latestTransactions = transactionRows
+      .filter(
+        (transaction) =>
+          transaction.attractionManagementId ===
+          attraction.attractionManagementId,
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      )
+      .slice(0, 6);
+
+    return {
+      attraction_management_id: attraction.attractionManagementId,
+
+      transactions: latestTransactions.map((transaction) => ({
+        invoice_id: transaction.invoiceId,
+
+        customer_name: transaction.customerName,
+
+        date: transaction.createdAt.toISOString().split("T")[0],
+
+        time: transaction.createdAt.toISOString().split("T")[1].substring(0, 8),
+
+        payment_mode: transaction.paymentMode,
+
+        amount: Number(transaction.amount ?? 0).toFixed(2),
+
+        status: transaction.status,
+      })),
+    };
+  });
+
+  // =====================================================
+  // FINAL RESPONSE
+  // =====================================================
+
+  return {
+    attractions: attractionRows.map((attraction) => ({
+      id: attraction.id,
+      attraction_management_id: attraction.attractionManagementId,
+
+      name: attraction.name,
+
+      type: attraction.type,
+    })),
+
+    bookings: {
+      grand_total_amount: grandTotalAmount.toFixed(2),
+
+      grand_total_booking: grandTotalBooking,
+
+      attraction_against_booking: attractionAgainstBookingReport,
+    },
+
+    transactions: attractionTransactionsReport,
+  };
 }
