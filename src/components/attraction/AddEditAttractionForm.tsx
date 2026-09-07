@@ -15,6 +15,16 @@ const Req = () => <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>
 export interface AllocatedSeatItem {
   instanceId: string;
   layoutId: string;
+  /**
+   * The `attraction_seats.id` (per-coach row id) when this allocation
+   * already exists on the server. Undefined for new allocations that
+   * have not been saved yet — in that case `layoutId` (the seat-layout
+   * template id) is sent in the PATCH payload.
+   */
+  attractionSeatId?: string;
+  /** Server-provided seat name e.g. "2S - A". When present, used as the
+   * chip display name without recomputing a suffix. */
+  serverName?: string;
   isDisabled?: boolean;
   suffix?: string;
 }
@@ -466,10 +476,12 @@ export default function AddEditAttractionForm({
   const [openTime, setOpenTime] = useState("09:00");
   const [closeTime, setCloseTime] = useState("18:00");
 
-  // ── Fetch active seat layouts from backend API (skipped during edit — seat data comes from the attraction GET response) ────
-  const { data: seatData, isLoading: isSeatsLoading } = useSeatLayouts({
-    enabled: !attractionToEdit, // disable API call in edit mode; use embedded seatLayouts instead
-  });
+  // ── Fetch active seat layouts from backend API.
+  // The dropdown is populated from /api/admin/seats in BOTH create and edit modes
+  // so the user can add more seat layouts when editing. Embedded
+  // `attractionToEdit.seatLayouts` are still merged below in decoratedAllocatedSeats
+  // so any layout referenced by this attraction but missing from the API stays visible.
+  const { data: seatData, isLoading: isSeatsLoading } = useSeatLayouts();
   const availableSeats: SeatConfigData[] = useMemo(() => {
     if (!seatData?.items || !Array.isArray(seatData.items)) return [];
     return seatData.items
@@ -527,6 +539,24 @@ export default function AddEditAttractionForm({
       const seat = combinedSeats.find((s) => s.id === item.layoutId);
       const baseName = seat ? seat.name : "Seat Layout";
       const totalForThisLayout = totalCounts[item.layoutId] || 0;
+
+      // If the server already gave us a name (e.g. "2S - A") use it
+      // directly — this guarantees the chip label matches the
+      // `attraction_seats.name` row we are tracking by attractionSeatId.
+      if (item.serverName) {
+        return {
+          ...item,
+          index,
+          seat,
+          baseName,
+          suffix: "",
+          displayName: item.serverName,
+          capacity: seat ? seat.rows * seat.cols : 0,
+          rows: seat?.rows ?? 0,
+          cols: seat?.cols ?? 0,
+          hasAisle: !!seat?.hasAisle,
+        };
+      }
 
       // Use the instance's own assigned suffix, or fallback if multiple exist
       let suffix = item.suffix || "";
@@ -606,37 +636,70 @@ export default function AddEditAttractionForm({
           : []) ||
         [];
 
-      const existingAllocations: any[] = (attractionToEdit as any).seatAllocations;
-      if (Array.isArray(existingAllocations) && existingAllocations.length > 0) {
+      // ── PREFERRED SOURCE: attractionSeats[] from the GET response.
+      // Each row has { id, seatLayoutId, name, seatOrder, isActive }.
+      // We use seatOrder to drive the chip ordering and isActive to drive
+      // the enabled/disabled badge. The `id` (attraction_seats.id) is what
+      // gets sent back in the PATCH payload as seatLayoutIds[*].id.
+      const attractionSeatRows: any[] = (attractionToEdit as any).attractionSeats;
+      if (Array.isArray(attractionSeatRows) && attractionSeatRows.length > 0) {
+        const sorted = [...attractionSeatRows].sort(
+          (a, b) => Number(a.seatOrder ?? 0) - Number(b.seatOrder ?? 0)
+        );
         setAllocatedSeats(
-          existingAllocations.map((a, idx) => ({
-            instanceId: a.instanceId || `seat_${idx}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-            layoutId: a.layoutId || a.id,
-            isDisabled: !!a.isDisabled,
-            suffix: a.suffix || (existingAllocations.filter((x: any) => (x.layoutId || x.id) === (a.layoutId || a.id)).length > 1 ? ` - ${String.fromCharCode(65 + (idx % 26))}` : ""),
+          sorted.map((row, idx) => ({
+            instanceId:
+              row.id
+                ? `seat_${row.id}`
+                : `seat_${idx}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            // The seat-layout TEMPLATE id (FK) — used for dropdown lookups
+            // and as the payload id when no attraction_seats row exists yet.
+            layoutId: row.seatLayoutId,
+            // The per-coach attraction_seats row id — what we send back
+            // in the PATCH payload's seatLayoutIds[*].id.
+            attractionSeatId: row.id,
+            // Server-provided display name e.g. "2S - A" — used directly
+            // as the chip's display name so it matches what the server stores.
+            serverName: row.name || undefined,
+            isDisabled: !row.isActive,
+            // Suffix is recovered from the server name when present, so
+            // re-orders don't lose the "- A"/"- B" labelling.
+            suffix: row.name ? "" : "",
           }))
         );
       } else {
-        const counts: Record<string, number> = {};
-        rawLayoutIds.forEach((id) => (counts[id] = (counts[id] || 0) + 1));
-        const currentOccs: Record<string, number> = {};
+        const existingAllocations: any[] = (attractionToEdit as any).seatAllocations;
+        if (Array.isArray(existingAllocations) && existingAllocations.length > 0) {
+          setAllocatedSeats(
+            existingAllocations.map((a, idx) => ({
+              instanceId: a.instanceId || `seat_${idx}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              layoutId: a.layoutId || a.id,
+              isDisabled: !!a.isDisabled,
+              suffix: a.suffix || (existingAllocations.filter((x: any) => (x.layoutId || x.id) === (a.layoutId || a.id)).length > 1 ? ` - ${String.fromCharCode(65 + (idx % 26))}` : ""),
+            }))
+          );
+        } else {
+          const counts: Record<string, number> = {};
+          rawLayoutIds.forEach((id) => (counts[id] = (counts[id] || 0) + 1));
+          const currentOccs: Record<string, number> = {};
 
-        setAllocatedSeats(
-          rawLayoutIds.map((id, idx) => {
-            let suf = "";
-            if (counts[id] > 1) {
-              const occ = currentOccs[id] || 0;
-              currentOccs[id] = occ + 1;
-              suf = ` - ${String.fromCharCode(65 + (occ % 26))}`;
-            }
-            return {
-              instanceId: `seat_${idx}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-              layoutId: id,
-              isDisabled: false,
-              suffix: suf,
-            };
-          })
-        );
+          setAllocatedSeats(
+            rawLayoutIds.map((id, idx) => {
+              let suf = "";
+              if (counts[id] > 1) {
+                const occ = currentOccs[id] || 0;
+                currentOccs[id] = occ + 1;
+                suf = ` - ${String.fromCharCode(65 + (occ % 26))}`;
+              }
+              return {
+                instanceId: `seat_${idx}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                layoutId: id,
+                isDisabled: false,
+                suffix: suf,
+              };
+            })
+          );
+        }
       }
 
       setImagePreview(attractionToEdit.image || null);
@@ -953,9 +1016,13 @@ export default function AddEditAttractionForm({
     const assignedSeatNames = activeAllocated.map((s) => s.displayName);
 
     // Build seatLayoutIds as array of objects with id, name, status, and position
-    // Include ALL allocated seats (both enabled and disabled) so backend can handle enable/disable
+    // Include ALL allocated seats (both enabled and disabled) so backend can handle enable/disable.
+    // For each row, prefer the per-coach `attraction_seats.id` (attractionSeatId)
+    // when present — that's the row the server already created. For new
+    // allocations added in this session we still send the seat-layout TEMPLATE
+    // id (layoutId) as a fallback.
     const seatLayoutIdsAsObjects = decoratedAllocatedSeats.map((seat, index) => ({
-      id: seat.layoutId,
+      id: seat.attractionSeatId || seat.layoutId,
       name: seat.displayName,
       status: seat.isDisabled ? "inactive" : "active",
       position: index + 1,

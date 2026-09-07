@@ -222,7 +222,7 @@ export default function InvoicesPage() {
         orientation: "landscape",
         columns: [
           { header: "#", accessor: (_, i) => (scope === "all" ? i + 1 : (currentPage - 1) * PAGE_SIZE + i + 1), width: "30px" },
-          { header: "Invoice ID", accessor: (inv) => inv.invoiceNumber || inv.invoiceId || "-" },
+          { header: "Invoice Number", accessor: (inv) => inv.invoiceNumber  || "-" },
           { header: "Customer", accessor: (inv) => inv.customer?.name || inv.customerName || "-" },
           { header: "Date", accessor: (inv) => formatDateOnly(inv.dateTime || inv.invoiceDate) },
           { header: "Attraction", accessor: (inv) => inv.attractions && inv.attractions.length > 0 ? inv.attractions.map(a => a.name).join(", ") : (inv.attraction?.name || "-") },
@@ -255,7 +255,7 @@ export default function InvoicesPage() {
       }
       const dateKey = new Date().toISOString().slice(0, 10);
       const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
-      const headers = ["#", "Invoice ID", "Customer", "Date", "Attraction", "Visitors", "Amount (₹)", "Scanner Status"];
+      const headers = ["#", "Invoice Number", "Customer", "Date", "Attraction", "Visitors", "Amount (₹)", "Scanner Status"];
       const rows = items.map((inv, i) => [
         scope === "all" ? i + 1 : (currentPage - 1) * PAGE_SIZE + i + 1,
         inv.invoiceNumber || inv.invoiceId || "-",
@@ -471,9 +471,13 @@ export default function InvoicesPage() {
 
       {/* ── Global Data Table Component ── */}
       <GlobalDataTable
+        defaultSort={{ key: "invoiceId", order: "desc" }}
         columns={[
           {
-            header: "Invoice ID",
+            header: "Invoice Number",
+            sortable: true,
+            sortKey: "invoiceId",
+            accessor: (item: InvoiceListItem) => item.invoiceNumber || item.invoiceId || "",
             cell: (item) => (
               <span
                 style={{
@@ -493,6 +497,14 @@ export default function InvoicesPage() {
           },
           {
             header: "Date & Time",
+            sortable: true,
+            sortKey: "dateTime",
+            accessor: (item) => {
+              const dStr = item.dateTime || item.invoiceDate;
+              if (!dStr) return "";
+              const t = new Date(dStr).getTime();
+              return isNaN(t) ? "" : t;
+            },
             cell: (item) => formatDateVal(item.dateTime || item.invoiceDate),
           },
           {
@@ -520,6 +532,9 @@ export default function InvoicesPage() {
           },
           {
             header: "Amount",
+            sortable: true,
+            sortKey: "amount",
+            accessor: (item) => Number(item.grandTotalAmount ?? item.amount ?? 0),
             cell: (item) => (
               <span
                 style={{
