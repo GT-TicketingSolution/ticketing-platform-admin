@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { db } from "@/db";
 
@@ -8,6 +8,8 @@ import {
   attractions,
   attractionManagement,
   attractionCategory,
+  bookings,
+  attractionsAgainstBooking,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";

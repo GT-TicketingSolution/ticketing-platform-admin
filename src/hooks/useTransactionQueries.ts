@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getData, deleteData } from "@/lib/api/apiService";
 import { AppUrl } from "@/lib/api/endpoints";
 import { showSuccessNotify } from "@/lib/notify";
@@ -8,46 +8,50 @@ import { showErrorOnce } from "@/lib/api/axiosConfig";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export interface TransactionListItem {
-  id: string;
-  transactionId: string;
-  customerName: string;
-  transactionDate: string;
-  bookingId: string;
-  attraction: {
-    id: string;
-    name: string;
-  };
-  amount: number;
-  paymentMode: string;
-  status: string; // "SUCCESS" | "FAILED" | "PENDING" | etc.
+export interface TransactionCustomer {
+  name: string | null;
+  mobileNumber: string | null;
+  gstNumber: string | null;
 }
 
-export interface TransactionDetail {
+export interface TransactionAttractionItem {
   id: string;
-  transactionId: string;
+  name: string;
+  attractionSubtotal?: number;
+  attractionGst?: number;
+  attractionRoundoff?: number;
+  attractionRoundOffGstAdj?: number;
+  attractionTotalAmount?: number;
+}
+
+export interface TransactionCategoryItem {
+  id: string;
+  name: string;
+  noOfSeats: number;
+}
+
+export interface TransactionListItem {
+  id: string;
   invoiceNumber: string;
-  booking: {
+  customer?: TransactionCustomer | null;
+  dateTime: string;
+  attractions: TransactionAttractionItem[];
+  grandTotalAmount: number;
+  paymentMode: string;
+  status: string; // "SUCCESSFUL" | "FAILED" | "PENDING" | "CANCELLED"
+  categories?: TransactionCategoryItem[];
+
+  // Compatibility aliases
+  transactionId?: string;
+  customerName?: string;
+  mobileNumber?: string;
+  transactionDate?: string;
+  bookingId?: string;
+  amount?: number;
+  attraction?: {
     id: string;
-    bookingId: string;
-  };
-  customer: {
-    name: string;
-    mobile: string;
-    gstNumber?: string | null;
-  };
-  attraction: {
-    id: string;
     name: string;
   };
-  transactionDate: string;
-  payment: {
-    mode: string;
-    amount: number;
-    status: string;
-  };
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface TransactionListParams {
@@ -55,6 +59,7 @@ export interface TransactionListParams {
   limit?: number;
   search?: string;
   attractionId?: string;
+  attractionManagementId?: string;
   paymentMode?: string;
   status?: string;
   fromDate?: string;
@@ -63,6 +68,10 @@ export interface TransactionListParams {
 
 export interface TransactionListResponse {
   items: TransactionListItem[];
+  attractions?: Array<{
+    id: string;
+    name: string;
+  }>;
   pagination: {
     page: number;
     limit: number;
@@ -77,9 +86,74 @@ export const transactionKeys = {
   all: ["transactions"] as const,
   lists: () => [...transactionKeys.all, "list"] as const,
   list: (params?: TransactionListParams) => [...transactionKeys.lists(), params] as const,
-  details: () => [...transactionKeys.all, "detail"] as const,
-  detail: (id: string) => [...transactionKeys.details(), id] as const,
 };
+
+// ── Normalization Helper ─────────────────────────────────────────────────────
+
+function mapTransactionItem(raw: any): TransactionListItem {
+  const invoiceNum = raw.invoiceNumber || raw.transactionId || raw.id || "";
+  const custName = raw.customer?.name || raw.customerName || "-";
+  const dateStr = raw.dateTime || raw.transactionDate || raw.createdAt || "";
+  const grandTotal = Number(raw.grandTotalAmount ?? raw.amount ?? 0);
+
+  // Normalize attractions array
+  let attractionsList: TransactionAttractionItem[] = [];
+  if (Array.isArray(raw.attractions)) {
+    attractionsList = raw.attractions.map((a: any) => ({
+      id: a.id || a.attractionId || "",
+      name: a.name || "",
+      attractionSubtotal: Number(a.attractionSubtotal ?? a.subtotal ?? 0),
+      attractionGst: Number(a.attractionGst ?? a.gst ?? 0),
+      attractionRoundoff: Number(a.attractionRoundoff ?? 0),
+      attractionRoundOffGstAdj: Number(a.attractionRoundOffGstAdj ?? 0),
+      attractionTotalAmount: Number(a.attractionTotalAmount ?? a.totalAmount ?? 0),
+    }));
+  } else if (raw.attraction) {
+    attractionsList = [
+      {
+        id: raw.attraction.id || "",
+        name: raw.attraction.name || "",
+        attractionTotalAmount: grandTotal,
+      },
+    ];
+  }
+
+  // Normalize categories
+  const categoriesList: TransactionCategoryItem[] = Array.isArray(raw.categories)
+    ? raw.categories.map((c: any) => ({
+        id: c.id || "",
+        name: c.name || "",
+        noOfSeats: Number(c.noOfSeats ?? c.seats ?? 0),
+      }))
+    : [];
+
+  return {
+    id: raw.id,
+    invoiceNumber: invoiceNum,
+    customer: raw.customer
+      ? {
+          name: raw.customer.name ?? null,
+          mobileNumber: raw.customer.mobileNumber ?? raw.customer.mobile ?? null,
+          gstNumber: raw.customer.gstNumber ?? null,
+        }
+      : null,
+    dateTime: dateStr,
+    attractions: attractionsList,
+    grandTotalAmount: grandTotal,
+    paymentMode: raw.paymentMode || "CASH",
+    status: raw.status || "SUCCESSFUL",
+    categories: categoriesList,
+
+    // Aliases
+    transactionId: invoiceNum,
+    customerName: custName,
+    mobileNumber: raw.customer?.mobileNumber || raw.customer?.mobile || raw.mobileNumber,
+    transactionDate: dateStr,
+    bookingId: raw.bookingId || raw.booking?.bookingId || invoiceNum,
+    amount: grandTotal,
+    attraction: attractionsList[0] ? { id: attractionsList[0].id, name: attractionsList[0].name } : undefined,
+  };
+}
 
 // ── Queries ──────────────────────────────────────────────────────────────────
 
@@ -95,9 +169,15 @@ export async function fetchTransactionList(params?: TransactionListParams): Prom
   sp.set("page", String(page));
   sp.set("limit", String(limit));
   if (params?.search?.trim()) sp.set("search", params.search.trim());
-  if (params?.attractionId && params.attractionId !== "All") sp.set("attractionId", params.attractionId);
-  if (params?.paymentMode && params.paymentMode !== "All") sp.set("paymentMode", params.paymentMode);
-  if (params?.status && params.status !== "All") sp.set("status", params.status);
+  if (params?.attractionId && params.attractionId !== "All" && params.attractionId !== "ALL") {
+    sp.set("attractionId", params.attractionId);
+  }
+  if (params?.paymentMode && params.paymentMode !== "All" && params.paymentMode !== "ALL") {
+    sp.set("paymentMode", params.paymentMode);
+  }
+  if (params?.status && params.status !== "All" && params.status !== "ALL") {
+    sp.set("status", params.status);
+  }
   if (params?.fromDate) sp.set("fromDate", params.fromDate);
   if (params?.toDate) sp.set("toDate", params.toDate);
 
@@ -108,7 +188,8 @@ export async function fetchTransactionList(params?: TransactionListParams): Prom
   if (payload && Array.isArray(payload.items)) {
     const total = payload.pagination?.total ?? payload.items.length;
     return {
-      items: payload.items,
+      items: payload.items.map(mapTransactionItem),
+      attractions: Array.isArray(payload.attractions) ? payload.attractions : [],
       pagination: payload.pagination || {
         page,
         limit,
@@ -119,7 +200,8 @@ export async function fetchTransactionList(params?: TransactionListParams): Prom
   }
   if (Array.isArray(payload)) {
     return {
-      items: payload,
+      items: payload.map(mapTransactionItem),
+      attractions: [],
       pagination: {
         page,
         limit,
@@ -130,6 +212,7 @@ export async function fetchTransactionList(params?: TransactionListParams): Prom
   }
   return {
     items: [],
+    attractions: [],
     pagination: { page: 1, limit, total: 0, totalPages: 0 },
   };
 }
@@ -145,25 +228,8 @@ export function useTransactionList(params?: TransactionListParams) {
   return useQuery<TransactionListResponse>({
     queryKey: transactionKeys.list({ ...params, page, limit }),
     queryFn: () => fetchTransactionList({ ...params, page, limit }),
-    placeholderData: keepPreviousData,
-    staleTime: 30 * 1000,
+    staleTime: 0,
     refetchOnWindowFocus: true,
-  });
-}
-
-/**
- * Fetch a single transaction's full detail.
- * GET /api/admin/transactions/:transactionId
- */
-export function useTransactionDetail(transactionId: string, enabled = true) {
-  return useQuery<TransactionDetail>({
-    queryKey: transactionKeys.detail(transactionId),
-    queryFn: async () => {
-      const res = await getData<any>(AppUrl.transaction.get(transactionId));
-      return res?.data?.transaction ?? res?.transaction ?? res;
-    },
-    enabled: enabled && !!transactionId,
-    staleTime: 30 * 1000,
   });
 }
 

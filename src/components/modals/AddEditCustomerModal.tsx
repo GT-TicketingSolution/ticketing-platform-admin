@@ -338,8 +338,10 @@ export default function AddEditCustomerModal({
                 type="text"
                 placeholder="Enter GSTN (Optional)"
                 value={gstn}
+                maxLength={15}
                 onChange={(e) => {
-                  setGstn(e.target.value.toUpperCase());
+                  const val = e.target.value.toUpperCase().slice(0, 15);
+                  setGstn(val);
                   if (errors.gstn) setErrors((prev) => ({ ...prev, gstn: "" }));
                 }}
                 style={{

@@ -1819,7 +1819,7 @@ function ManagerManagementInner() {
                       tabIndex={-1}
                       aria-label={showAddPassword ? "Hide password" : "Show password"}
                     >
-                      {showAddPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      {showAddPassword ? <Eye size={18} /> : <EyeOff size={18} />}
                     </button>
                   </div>
                   <FieldError message={errors.password?.message} />

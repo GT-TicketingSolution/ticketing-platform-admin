@@ -301,6 +301,9 @@ export function useProfileQuery(enabled = true) {
     // Never run when logout is in progress — prevents the profile API from
     // being called after the user clicks logout but before the page unloads.
     enabled: enabled && !_isLoggingOut,
-    staleTime: 5 * 60 * 1000,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
   });
 }

@@ -1,5 +1,5 @@
 // Booking types — re-exported from hooks for backward compatibility
-export type { BookingListItem, BookingDetailItem, BookingListParams, BookingListResponse, UpdateBookingPayload } from "@/hooks/useBookingQueries";
+export type { BookingListItem, BookingDetailItem, BookingAttractionItem, BookingListParams, BookingListResponse, UpdateBookingPayload } from "@/hooks/useBookingQueries";
 
 // Legacy status type
 export type BookingStatus = "PENDING" | "CONFIRMED" | "CANCELLED";

@@ -75,7 +75,11 @@ export function useUserRole() {
         const cleanMod = moduleName.toLowerCase().replace(/[^a-z0-9]/g, "");
         for (const allowed of managerAllowedModules) {
           const cleanAllowed = allowed.toLowerCase().replace(/[^a-z0-9]/g, "");
-          if (cleanMod === cleanAllowed || (cleanMod.includes("inventory") && cleanAllowed.includes("inventory"))) {
+          if (
+            cleanMod === cleanAllowed ||
+            (cleanMod.includes("inventory") && cleanAllowed.includes("inventory")) ||
+            (cleanMod.includes("invoice") && cleanAllowed.includes("invoice"))
+          ) {
             return true;
           }
         }

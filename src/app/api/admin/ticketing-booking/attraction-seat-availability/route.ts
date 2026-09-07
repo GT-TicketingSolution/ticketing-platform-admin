@@ -216,40 +216,59 @@ export async function POST(request: NextRequest) {
         item.attractionId,
       )!;
 
-      const firstSeat = attractionSeatsForAttraction[0];
+      // =====================================================
+      // Group seats by layout ID (support multiple layouts)
+      // =====================================================
 
-      const seatLayout = seatLayoutMap.get(firstSeat.seatLayoutId)!;
+      const seatsByLayout = new Map<string, typeof attractionSeatsForAttraction>();
+
+      for (const seat of attractionSeatsForAttraction) {
+        const existing = seatsByLayout.get(seat.seatLayoutId) ?? [];
+        existing.push(seat);
+        seatsByLayout.set(seat.seatLayoutId, existing);
+      }
+
+      // =====================================================
+      // Build array of layouts for this attraction
+      // =====================================================
+
+      const seatLayouts = Array.from(seatsByLayout.entries()).map(
+        ([layoutId, seatsForLayout]) => {
+          const seatLayout = seatLayoutMap.get(layoutId)!;
+
+          return {
+            seatLayoutId: seatLayout.id,
+            name: seatLayout.name,
+            rows: seatLayout.rows,
+            cols: seatLayout.cols,
+            hasAisle: seatLayout.hasAisle,
+            aisleAfterCol: seatLayout.aisleAfterCol,
+            aisleAfterRow: seatLayout.aisleAfterRow,
+
+            // ---------------------------------------------
+            // Seats for this specific layout
+            // ---------------------------------------------
+
+            seats: seatsForLayout.map((seat) => {
+              const key = [item.attractionId, item.currentTripNo, seat.id].join(
+                ":",
+              );
+
+              return {
+                attractionSeatId: seat.id,
+                name: seat.name,
+                seatOrder: seat.seatOrder,
+                bookedSeats: bookedSeatsMap.get(key) ?? [],
+              };
+            }),
+          };
+        },
+      );
 
       return {
         attractionId: item.attractionId,
         currentTripNo: item.currentTripNo,
-
-        seatLayout: {
-          seatLayoutId: seatLayout.id,
-          name: seatLayout.name,
-          rows: seatLayout.rows,
-          cols: seatLayout.cols,
-          hasAisle: seatLayout.hasAisle,
-          aisleAfterCol: seatLayout.aisleAfterCol,
-          aisleAfterRow: seatLayout.aisleAfterRow,
-
-          // --------------------------------------------------
-          // Every attractionSeat gets its own bookedSeats
-          // --------------------------------------------------
-
-          seats: attractionSeatsForAttraction.map((seat) => {
-            const key = [item.attractionId, item.currentTripNo, seat.id].join(
-              ":",
-            );
-
-            return {
-              attractionSeatId: seat.id,
-              name: seat.name,
-              seatOrder: seat.seatOrder,
-              bookedSeats: bookedSeatsMap.get(key) ?? [],
-            };
-          }),
-        },
+        seatLayout: seatLayouts,
       };
     });
 

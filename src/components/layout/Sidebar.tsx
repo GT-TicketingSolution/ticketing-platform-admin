@@ -40,8 +40,14 @@ const MODULE_REGISTRY: Record<string, { label: string; href: string; icon: any }
   booking: { label: "Bookings", href: "/bookings", icon: BookOpen },
   transactions: { label: "Transactions", href: "/transactions", icon: CircleDollarSign },
   transaction: { label: "Transactions", href: "/transactions", icon: CircleDollarSign },
-  invoices: { label: "Invoices", href: "/invoices", icon: FileText },
-  invoice: { label: "Invoices", href: "/invoices", icon: FileText },
+  invoices: { label: "Scanner Invoices", href: "/invoices", icon: FileText },
+  invoice: { label: "Scanner Invoices", href: "/invoices", icon: FileText },
+  scanner_invoices: { label: "Scanner Invoices", href: "/invoices", icon: FileText },
+  scanner_invoice: { label: "Scanner Invoices", href: "/invoices", icon: FileText },
+  scannerinvoices: { label: "Scanner Invoices", href: "/invoices", icon: FileText },
+  scannerinvoice: { label: "Scanner Invoices", href: "/invoices", icon: FileText },
+  "scanner invoices": { label: "Scanner Invoices", href: "/invoices", icon: FileText },
+  "scanner invoice": { label: "Scanner Invoices", href: "/invoices", icon: FileText },
   inventory: { label: "Inventory & Capacity", href: "/inventory", icon: Boxes },
   inventory_capacity: { label: "Inventory & Capacity", href: "/inventory", icon: Boxes },
   inventory__capacity: { label: "Inventory & Capacity", href: "/inventory", icon: Boxes },
@@ -346,13 +352,17 @@ export default function Sidebar({
           const slugKey = rawKey.replace(/[^a-z0-9]/g, "");
           const slugName = rawName.replace(/[^a-z0-9]/g, "");
 
-          const match =
+          let match =
             MODULE_REGISTRY[cleanKey] ||
             MODULE_REGISTRY[cleanName] ||
             MODULE_REGISTRY[slugKey] ||
             MODULE_REGISTRY[slugName] ||
             MODULE_REGISTRY[rawKey] ||
             MODULE_REGISTRY[rawName];
+
+          if (!match && (cleanKey.includes("invoice") || cleanName.includes("invoice"))) {
+            match = MODULE_REGISTRY["scanner_invoices"] || MODULE_REGISTRY["invoices"];
+          }
 
           if (match) {
             return {
@@ -581,7 +591,7 @@ export default function Sidebar({
                 (item.href !== "/dashboard" && pathname.startsWith(item.href));
               return (
                 <NavItem
-                  key={item.href}
+                  key={item.key || item.href}
                   label={item.label}
                   href={item.href}
                   icon={item.icon}
