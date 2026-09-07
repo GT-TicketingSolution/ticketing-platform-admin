@@ -926,8 +926,8 @@ export async function getTicketBreakdown(filter: ReportFilter) {
 type GetReportParams = {
   adminId: string;
   staffId?: string;
-  startDateTime: Date;
-  endDateTime: Date;
+  startDateTime?: Date;
+  endDateTime?: Date;
 };
 
 export async function getReport({
@@ -991,7 +991,10 @@ export async function getReport({
       accessStart.setDate(accessStart.getDate() - reportAccessTiming);
     }
 
-    if (startDateTime < accessStart || endDateTime > now) {
+    if (
+      (startDateTime && startDateTime < accessStart) ||
+      (endDateTime && endDateTime > now)
+    ) {
       throw new Error("REPORT_ACCESS_EXPIRED");
     }
   }
@@ -1042,8 +1045,10 @@ export async function getReport({
     )
     .where(
       and(
-        gte(bookings.createdAt, startDateTime),
-        lte(bookings.createdAt, endDateTime),
+        startDateTime ? gte(bookings.createdAt, startDateTime) : undefined,
+
+        endDateTime ? lte(bookings.createdAt, endDateTime) : undefined,
+
         eq(bookings.isDeleted, false),
         eq(attractions.adminId, adminId),
       ),
@@ -1224,9 +1229,9 @@ export async function getReport({
       and(
         inArray(transactions.bookingId, bookingIds),
 
-        gte(transactions.createdAt, startDateTime),
+        startDateTime ? gte(transactions.createdAt, startDateTime) : undefined,
 
-        lte(transactions.createdAt, endDateTime),
+        endDateTime ? lte(transactions.createdAt, endDateTime) : undefined,
 
         eq(transactions.isDeleted, false),
 

@@ -54,25 +54,31 @@ export async function GET(req: Request) {
     const toTime = params.get("toTime")?.trim();
 
     // =====================================================
-    // REQUIRED PARAMETERS
-    // =====================================================
-
-    if (!fromDate || !fromTime || !toDate || !toTime) {
-      return failure(
-        "fromDate, fromTime, toDate and toTime are required.",
-        400,
-        "REPORT_DATE_TIME_REQUIRED",
-      );
-    }
-
-    // =====================================================
     // DATE/TIME VALIDATION
     // =====================================================
 
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     const timeRegex = /^\d{2}:\d{2}(:\d{2})?$/;
 
-    if (!dateRegex.test(fromDate)) {
+    // fromDate/fromTime must be provided together
+    if ((fromDate && !fromTime) || (!fromDate && fromTime)) {
+      return failure(
+        "fromDate and fromTime must be provided together.",
+        400,
+        "INVALID_FROM_DATETIME",
+      );
+    }
+
+    // toDate/toTime must be provided together
+    if ((toDate && !toTime) || (!toDate && toTime)) {
+      return failure(
+        "toDate and toTime must be provided together.",
+        400,
+        "INVALID_TO_DATETIME",
+      );
+    }
+
+    if (fromDate && !dateRegex.test(fromDate)) {
       return failure(
         "Invalid fromDate. Expected format: YYYY-MM-DD.",
         400,
@@ -80,7 +86,7 @@ export async function GET(req: Request) {
       );
     }
 
-    if (!dateRegex.test(toDate)) {
+    if (toDate && !dateRegex.test(toDate)) {
       return failure(
         "Invalid toDate. Expected format: YYYY-MM-DD.",
         400,
@@ -88,7 +94,7 @@ export async function GET(req: Request) {
       );
     }
 
-    if (!timeRegex.test(fromTime)) {
+    if (fromTime && !timeRegex.test(fromTime)) {
       return failure(
         "Invalid fromTime. Expected format: HH:mm or HH:mm:ss.",
         400,
@@ -96,7 +102,7 @@ export async function GET(req: Request) {
       );
     }
 
-    if (!timeRegex.test(toTime)) {
+    if (toTime && !timeRegex.test(toTime)) {
       return failure(
         "Invalid toTime. Expected format: HH:mm or HH:mm:ss.",
         400,
@@ -104,36 +110,47 @@ export async function GET(req: Request) {
       );
     }
 
-    const normalizedFromTime =
-      fromTime.length === 5 ? `${fromTime}:00` : fromTime;
+    // =====================================================
+    // OPTIONAL DATE/TIME RANGE
+    // =====================================================
 
-    const normalizedToTime = toTime.length === 5 ? `${toTime}:59` : toTime;
+    let startDateTime: Date | undefined;
+    let endDateTime: Date | undefined;
 
-    const startDateTime = new Date(`${fromDate}T${normalizedFromTime}.000Z`);
+    if (fromDate && fromTime) {
+      const normalizedFromTime =
+        fromTime.length === 5 ? `${fromTime}:00` : fromTime;
 
-    const endDateTime = new Date(`${toDate}T${normalizedToTime}.999Z`);
+      startDateTime = new Date(`${fromDate}T${normalizedFromTime}.000Z`);
 
-    if (Number.isNaN(startDateTime.getTime())) {
-      return failure(
-        "Invalid report start date/time.",
-        400,
-        "INVALID_REPORT_START_DATETIME",
-      );
+      if (Number.isNaN(startDateTime.getTime())) {
+        return failure(
+          "Invalid report start date/time.",
+          400,
+          "INVALID_REPORT_START_DATETIME",
+        );
+      }
     }
 
-    if (Number.isNaN(endDateTime.getTime())) {
-      return failure(
-        "Invalid report end date/time.",
-        400,
-        "INVALID_REPORT_END_DATETIME",
-      );
+    if (toDate && toTime) {
+      const normalizedToTime = toTime.length === 5 ? `${toTime}:59` : toTime;
+
+      endDateTime = new Date(`${toDate}T${normalizedToTime}.999Z`);
+
+      if (Number.isNaN(endDateTime.getTime())) {
+        return failure(
+          "Invalid report end date/time.",
+          400,
+          "INVALID_REPORT_END_DATETIME",
+        );
+      }
     }
 
     // =====================================================
     // DATE/TIME RANGE VALIDATION
     // =====================================================
 
-    if (startDateTime > endDateTime) {
+    if (startDateTime && endDateTime && startDateTime > endDateTime) {
       return failure(
         "fromDate/fromTime cannot be later than toDate/toTime.",
         400,
@@ -142,8 +159,9 @@ export async function GET(req: Request) {
     }
 
     // =====================================================
-    // STAFF REPORT ACCESS VALIDATION + REPORT
+    // REPORT
     // =====================================================
+
     const data = await getReport({
       adminId,
       staffId: auth.user.role === "STAFF" ? auth.user.id : undefined,
