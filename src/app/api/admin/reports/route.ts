@@ -90,7 +90,7 @@ export async function GET(req: Request) {
     // const endDateTime = toDate;
 
     // if toDate is today, cap endDateTime at current time
-    if (toDate === new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });) {
+    if (toDate === new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })) {
       endDateTime = new Date();
     }
 
