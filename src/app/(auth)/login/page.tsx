@@ -87,7 +87,7 @@ export default function LoginPage() {
         />
 
         {/* ── Top-Right Language Picker Header Bar ── */}
-        <div
+        {/* <div
           style={{
             position: "absolute",
             top: 0,
@@ -132,8 +132,6 @@ export default function LoginPage() {
                 }}
               />
             </button>
-
-            {/* Language Dropdown */}
             {langDropdownOpen && (
               <div
                 style={{
@@ -176,7 +174,7 @@ export default function LoginPage() {
               </div>
             )}
           </div>
-        </div>
+        </div> */}
 
         {/* ── Main Login Container ── */}
         <main
