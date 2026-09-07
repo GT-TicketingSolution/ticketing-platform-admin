@@ -986,9 +986,9 @@ export async function getReport({
     const accessStart = new Date(now);
 
     if (reportAccessUnit === "HOURS") {
-      accessStart.setHours(accessStart.getHours() - reportAccessTiming);
+      accessStart.setUTCHours(accessStart.getUTCHours() - reportAccessTiming);
     } else {
-      accessStart.setDate(accessStart.getDate() - reportAccessTiming);
+      accessStart.setUTCDate(accessStart.getUTCDate() - reportAccessTiming);
     }
 
     // INFO: Keep this log for future debugging. It will help us understand if the report access validation is working correctly.

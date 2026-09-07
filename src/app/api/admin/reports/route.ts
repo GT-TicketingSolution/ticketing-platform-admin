@@ -85,13 +85,13 @@ export async function GET(req: Request) {
       );
     }
 
-    const startDateTime = new Date(`${fromDate}T00:00:00.000`);
+    const startDateTime = new Date(`${fromDate}T00:00:00.000Z`);
     // const startDateTime = fromDate;
-    let endDateTime = new Date(`${toDate}T23:59:59.999`);
+    let endDateTime = new Date(`${toDate}T23:59:59.999Z`);
     // const endDateTime = toDate;
 
     // if toDate is today, cap endDateTime at current time
-    if (toDate === new Date().toLocaleDateString('en-CA')) {
+    if (toDate === new Date().toISOString().split('T')[0]) {
       endDateTime = new Date();
     }
 
