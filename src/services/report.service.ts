@@ -956,7 +956,7 @@ export async function getReport({
       .where(
         and(
           eq(staffSystemModulePermissions.staffId, staffId),
-          eq(systemModules.name, "REPORTS"),
+          eq(systemModules.key, "REPORTS"),
         ),
       )
       .limit(1);
@@ -990,7 +990,7 @@ export async function getReport({
     } else {
       accessStart.setDate(accessStart.getDate() - reportAccessTiming);
     }
-
+    console.log("startDateTime",startDateTime,"\nendDateTime",endDateTime,"\naccessStart",accessStart,"\nnow",now)
     if (startDateTime < accessStart || endDateTime > now) {
       throw new Error("REPORT_ACCESS_EXPIRED");
     }
