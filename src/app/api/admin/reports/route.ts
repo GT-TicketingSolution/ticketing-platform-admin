@@ -36,12 +36,12 @@ export async function GET(req: Request) {
 
     const params = new URL(req.url).searchParams;
 
-    const allowedParams = new Set(["fromDate", "fromTime", "toDate", "toTime"]);
+    const allowedParams = new Set(["fromDate", "toDate"]);
 
     for (const key of params.keys()) {
       if (!allowedParams.has(key)) {
         return failure(
-          `Invalid query parameter: ${key}. Only fromDate, fromTime, toDate and toTime are allowed.`,
+          `Invalid query parameter: ${key}. Only fromDate and toDate are allowed.`,
           400,
           "INVALID_REPORT_PARAMETER",
         );
@@ -49,17 +49,15 @@ export async function GET(req: Request) {
     }
 
     const fromDate = params.get("fromDate")?.trim();
-    const fromTime = params.get("fromTime")?.trim();
     const toDate = params.get("toDate")?.trim();
-    const toTime = params.get("toTime")?.trim();
 
     // =====================================================
     // REQUIRED PARAMETERS
     // =====================================================
 
-    if (!fromDate || !fromTime || !toDate || !toTime) {
+    if (!fromDate || !toDate) {
       return failure(
-        "fromDate, fromTime, toDate and toTime are required.",
+        "fromDate and toDate are required.",
         400,
         "REPORT_DATE_TIME_REQUIRED",
       );
@@ -70,7 +68,6 @@ export async function GET(req: Request) {
     // =====================================================
 
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    const timeRegex = /^\d{2}:\d{2}(:\d{2})?$/;
 
     if (!dateRegex.test(fromDate)) {
       return failure(
@@ -88,32 +85,17 @@ export async function GET(req: Request) {
       );
     }
 
-    if (!timeRegex.test(fromTime)) {
-      return failure(
-        "Invalid fromTime. Expected format: HH:mm or HH:mm:ss.",
-        400,
-        "INVALID_FROM_TIME",
-      );
+    const startDateTime = new Date(`${fromDate}T00:00:00.000`);
+    // const startDateTime = fromDate;
+    let endDateTime = new Date(`${toDate}T23:59:59.999`);
+    // const endDateTime = toDate;
+
+    // if toDate is today, cap endDateTime at current time
+    if (toDate === new Date().toLocaleDateString('en-CA')) {
+      endDateTime = new Date();
     }
 
-    if (!timeRegex.test(toTime)) {
-      return failure(
-        "Invalid toTime. Expected format: HH:mm or HH:mm:ss.",
-        400,
-        "INVALID_TO_TIME",
-      );
-    }
-
-    const normalizedFromTime =
-      fromTime.length === 5 ? `${fromTime}:00` : fromTime;
-
-    const normalizedToTime = toTime.length === 5 ? `${toTime}:59` : toTime;
-
-    const startDateTime = new Date(`${fromDate}T${normalizedFromTime}.000Z`);
-
-    const endDateTime = new Date(`${toDate}T${normalizedToTime}.999Z`);
-
-    if (Number.isNaN(startDateTime.getTime())) {
+    if (Number.isNaN(startDateTime)) {
       return failure(
         "Invalid report start date/time.",
         400,
@@ -121,7 +103,7 @@ export async function GET(req: Request) {
       );
     }
 
-    if (Number.isNaN(endDateTime.getTime())) {
+    if (Number.isNaN(endDateTime)) {
       return failure(
         "Invalid report end date/time.",
         400,

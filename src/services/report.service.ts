@@ -211,10 +211,10 @@ export async function getReportSummary(filter: ReportFilter) {
 
     topAttraction: topAttraction
       ? {
-          id: topAttraction.id,
-          name: topAttraction.name,
-          revenue: Number(topAttraction.revenue ?? 0),
-        }
+        id: topAttraction.id,
+        name: topAttraction.name,
+        revenue: Number(topAttraction.revenue ?? 0),
+      }
       : null,
 
     attractions: attractionReports,
@@ -990,8 +990,13 @@ export async function getReport({
     } else {
       accessStart.setDate(accessStart.getDate() - reportAccessTiming);
     }
-    console.log("startDateTime",startDateTime,"\nendDateTime",endDateTime,"\naccessStart",accessStart,"\nnow",now)
-    if (startDateTime < accessStart || endDateTime > now) {
+
+    // INFO: Keep this log for future debugging. It will help us understand if the report access validation is working correctly.
+    console.log("Logging this for future debugging:", { "now": now, "accessStart": accessStart, "startDateTime": startDateTime, "endDateTime": endDateTime });
+
+    const isValid = startDateTime >= accessStart && endDateTime <= now;
+
+    if (!isValid) {
       throw new Error("REPORT_ACCESS_EXPIRED");
     }
   }
@@ -1148,36 +1153,36 @@ export async function getReport({
 
   const categoryBookingRows = attractionBookingIds.length
     ? await db
-        .select({
-          id: categoryOfAttractionAgainstBooking.id,
+      .select({
+        id: categoryOfAttractionAgainstBooking.id,
 
-          attractionAgainstBookingId:
-            categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+        attractionAgainstBookingId:
+          categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
 
-          bookingId: categoryOfAttractionAgainstBooking.bookingId,
+        bookingId: categoryOfAttractionAgainstBooking.bookingId,
 
-          categoryId: categoryOfAttractionAgainstBooking.categoryId,
+        categoryId: categoryOfAttractionAgainstBooking.categoryId,
 
-          noOfVisitors: categoryOfAttractionAgainstBooking.noOfVisitors,
+        noOfVisitors: categoryOfAttractionAgainstBooking.noOfVisitors,
 
-          categoryName: attractionCategory.name,
+        categoryName: attractionCategory.name,
 
-          basePrice: attractionCategory.basePrice,
-        })
-        .from(categoryOfAttractionAgainstBooking)
-        .innerJoin(
-          attractionCategory,
-          eq(
-            categoryOfAttractionAgainstBooking.categoryId,
-            attractionCategory.id,
-          ),
-        )
-        .where(
-          inArray(
-            categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
-            attractionBookingIds,
-          ),
-        )
+        basePrice: attractionCategory.basePrice,
+      })
+      .from(categoryOfAttractionAgainstBooking)
+      .innerJoin(
+        attractionCategory,
+        eq(
+          categoryOfAttractionAgainstBooking.categoryId,
+          attractionCategory.id,
+        ),
+      )
+      .where(
+        inArray(
+          categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+          attractionBookingIds,
+        ),
+      )
     : [];
 
   // =====================================================
