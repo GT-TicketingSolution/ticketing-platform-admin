@@ -8,6 +8,20 @@
       "when": 1788553411594,
       "tag": "0000_sharp_typhoid_mary",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788779732196,
+      "tag": "0001_clumsy_blacklash",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788780934953,
+      "tag": "0002_spicy_wasp",
+      "breakpoints": true
     }
   ]
 }

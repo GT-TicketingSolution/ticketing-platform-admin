@@ -128,6 +128,7 @@ export const AppUrl = {
     attractions: "/admin/reports/attractions",
     payment: "/admin/reports/payment",
     tickets: "/admin/reports/tickets",
+    staff: "/admin/reports",
   },
 
   // Ticketing Booking 

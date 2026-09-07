@@ -4342,7 +4342,20 @@ export default function CustomerInfoView({
                   const attSeats = selectedSeatObjs.filter((s) => s.attractionId === att.attractionId);
                   if (attSeats.length === 0) return null;
                   return (
-                    <div key={att.attractionId} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                    // flexWrap: "wrap" lets the chips wrap to a new line when
+                    // there are many seats (14+ here) so nothing overflows
+                    // off-screen on small devices.
+                    <div
+                      key={att.attractionId}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: "4px",
+                        flex: "1 1 auto",
+                        minWidth: 0,
+                      }}
+                    >
                       {seatingAttractions.length > 1 && (
                         <span style={{ fontSize: "11px", fontWeight: 700, color: "#475569" }}>
                           {att.attractionName}:
@@ -4360,6 +4373,7 @@ export default function CustomerInfoView({
                             fontWeight: 700,
                             color: "#9A5C00",
                             letterSpacing: "0.3px",
+                            whiteSpace: "nowrap",
                           }}
                         >
                           {sk.name}
