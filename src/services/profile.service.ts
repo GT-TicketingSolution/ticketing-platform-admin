@@ -22,6 +22,7 @@ export async function getProfile(userId: string) {
       profileLink: users.profileLink,
       invoiceNumberForUsersInitialPart: users.invoiceNumberForUsersInitialPart,
 
+      next_renewal_date: users.nextRenewalDate,
       lastLoginAt: users.lastLoginAt,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
@@ -55,7 +56,56 @@ export async function getProfile(userId: string) {
     };
   }
 
-  return user;
+  const today = new Date();
+
+  let userRenewalData:
+    | {
+        next_renewal_date: Date;
+        days_left_for_renewal: number;
+        message: string;
+      }
+    | undefined;
+
+  if (user.next_renewal_date) {
+    const renewalDate = new Date(user.next_renewal_date);
+
+    // Removing time portion so we're comparing calendar days
+    const todayDate = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+    );
+
+    const renewalDateOnly = new Date(
+      renewalDate.getFullYear(),
+      renewalDate.getMonth(),
+      renewalDate.getDate(),
+    );
+
+    const differenceInMs = renewalDateOnly.getTime() - todayDate.getTime();
+
+    const daysLeft = Math.ceil(differenceInMs / (1000 * 60 * 60 * 24));
+
+    if (daysLeft <= 30) {
+      userRenewalData = {
+        next_renewal_date: user.next_renewal_date,
+        days_left_for_renewal: Math.max(daysLeft, 0),
+        message:
+          daysLeft < 0
+            ? "Your application renewal has expired. Please pay the renewal amount immediately to continue using the platform."
+            : daysLeft === 0
+              ? "Your subscription is due for renewal today."
+              : `Your application renewal is due soon. Please pay the renewal amount to continue using the platform without interruption.`,
+      };
+    }
+  }
+
+  return {
+    ...user,
+    ...(userRenewalData && {
+      user_renewal_data: userRenewalData,
+    }),
+  };
 }
 
 /* =========================================================

@@ -143,6 +143,10 @@ export const users = pgTable(
       },
     ),
 
+    nextRenewalDate: timestamp("next_renewal_date", {
+      withTimezone: true,
+    }),
+
     lastLoginAt: timestamp("last_login_at", {
       withTimezone: true,
     }),
