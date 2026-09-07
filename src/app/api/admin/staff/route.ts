@@ -40,6 +40,10 @@ const createStaffSchema = z.object({
   attractionIds: z.array(z.string().uuid()).optional().default([]),
 
   status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
+
+  reportAccessTiming: z.number().int().positive().optional(),
+
+  reportAccessUnit: z.enum(["HOURS", "DAYS"]).optional(),
 });
 
 /* =========================================================
@@ -73,7 +77,11 @@ function canCreateStaff(role: string) {
  * - CUSTOMER_VIEW: View customer details
  * - SCANNER_USE: Use QR scanner for admission
  */
-async function grantStaffDefaultModulePermissions(staffId: string) {
+async function grantStaffDefaultModulePermissions(
+  staffId: string,
+  reportAccessTiming?: number,
+  reportAccessUnit?: string,
+) {
   const STAFF_ALLOWED_MODULES = [
     "TICKET_BOOKING",
     "BOOKINGS_VIEW",
@@ -105,6 +113,8 @@ async function grantStaffDefaultModulePermissions(staffId: string) {
       staffModules.map((module) => ({
         staffId,
         moduleId: module.id,
+        reportAccessTiming: reportAccessTiming ?? null,
+        reportAccessUnit: reportAccessUnit ?? null,
       })),
     );
 
@@ -461,8 +471,17 @@ export async function POST(request: Request) {
       return failure("Invalid staff details.", 400, "VALIDATION_ERROR");
     }
 
-    const { name, email, phone, password, roles, attractionIds, status } =
-      parsed.data;
+    const {
+      name,
+      email,
+      phone,
+      password,
+      roles,
+      attractionIds,
+      status,
+      reportAccessTiming,
+      reportAccessUnit,
+    } = parsed.data;
 
     const normalizedEmail = email.trim().toLowerCase();
 
@@ -644,7 +663,11 @@ export async function POST(request: Request) {
     // Grant staff default module permissions
     // -----------------------------------------------------
 
-    await grantStaffDefaultModulePermissions(staff.id);
+    await grantStaffDefaultModulePermissions(
+      staff.id,
+      reportAccessTiming,
+      reportAccessUnit,
+    );
 
     // -----------------------------------------------------
     // Response

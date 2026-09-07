@@ -7,7 +7,6 @@ import {
   Ticket,
   CreditCard,
   Building2,
-  Clock,
   Download,
   Printer,
   ExternalLink,
@@ -42,7 +41,7 @@ export default function AttractionReportCard({
     e.stopPropagation();
     const headers = ["Transaction ID", "Customer Name", "Date/Time", "Amount (₹)", "Payment Mode", "Status"];
     const rows: (string | number | boolean)[][] = transactions.map((t) => [
-      t.id || "",
+      t.invoiceId || t.id || "",
       t.customerName || "",
       t.dateTime || t.transactionDate || "",
       t.amount ?? 0,
@@ -175,10 +174,11 @@ export default function AttractionReportCard({
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: "16px", marginTop: "6px", fontSize: "13px", color: colors.text.muted }}>
-              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                <Clock size={14} color="#64748B" />
-                {attraction.timing}
-              </span>
+              {attraction.timing ? (
+                <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  {attraction.timing}
+                </span>
+              ) : null}
               {/* <span>•</span>
               <span style={{ fontWeight: 500, color: "#475569" }}>
                 Adult Rate: ₹{attraction.pricing?.adult ?? 100}
@@ -425,10 +425,10 @@ export default function AttractionReportCard({
                         {pm.mode}
                       </span>
                       <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                        <span style={{ fontSize: "12px", color: colors.text.muted }}>
-                          {pm.count} txns
+                        <span style={{ fontSize: "12px", color: colors.text.muted, whiteSpace: "nowrap" }}>
+                          {pm.count} txn
                         </span>
-                        <span style={{ fontWeight: 700, color: "#0F172A" }}>
+                        <span style={{ fontWeight: 700, color: "#0F172A", minWidth: "85px", textAlign: "right" }}>
                           ₹{pm.revenue.toLocaleString("en-IN")}
                         </span>
                       </div>
@@ -454,7 +454,7 @@ export default function AttractionReportCard({
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                   <thead>
                     <tr style={{ backgroundColor: "#F1F5F9", textTransform: "uppercase", fontSize: "11px", letterSpacing: "0.05em", color: "#475569" }}>
-                      <th style={{ padding: "10px 14px", textAlign: "left" }}>Txn ID</th>
+                      <th style={{ padding: "10px 14px", textAlign: "left" }}>INV Number</th>
                       <th style={{ padding: "10px 14px", textAlign: "left" }}>Customer</th>
                       <th style={{ padding: "10px 14px", textAlign: "left" }}>Date & Time</th>
                       <th style={{ padding: "10px 14px", textAlign: "left" }}>Payment Mode</th>
@@ -465,14 +465,14 @@ export default function AttractionReportCard({
                   <tbody>
                     {transactions.slice(0, 5).map((t, idx) => (
                       <tr
-                        key={t.id}
+                        key={`${t.id}-${idx}`}
                         style={{
                           borderBottom: idx === transactions.length - 1 ? "none" : "1px solid #F1F5F9",
                           backgroundColor: idx % 2 === 0 ? "#FFFFFF" : "#FAFAFA",
                         }}
                       >
                         <td style={{ padding: "10px 14px", fontWeight: 600, color: "#0284C7" }}>
-                          {t.id}
+                          {t.invoiceId || t.id}
                         </td>
                         <td style={{ padding: "10px 14px", fontWeight: 500, color: colors.text.primary }}>
                           {t.customerName}

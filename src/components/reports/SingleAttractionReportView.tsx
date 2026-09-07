@@ -51,7 +51,7 @@ export default function SingleAttractionReportView({
       if (!searchQuery) return true;
       const q = searchQuery.toLowerCase();
       return (
-        t.id.toLowerCase().includes(q) ||
+        (t.invoiceId || t.id).toLowerCase().includes(q) ||
         t.customerName.toLowerCase().includes(q) ||
         t.paymentMode.toLowerCase().includes(q) ||
         t.amount.toString().includes(q)
@@ -83,7 +83,7 @@ export default function SingleAttractionReportView({
       accessorKey: "id",
       cell: (t) => (
         <span style={{ fontWeight: 600, color: "#0284C7" }}>
-          {t.id}
+          {t.invoiceId || t.id}
         </span>
       ),
     },
@@ -496,7 +496,7 @@ export default function SingleAttractionReportView({
         <GlobalDataTable
           columns={columns}
           data={filteredTransactions}
-          keyExtractor={(t) => t.id}
+          keyExtractor={(t, idx) => `${t.id}-${idx}`}
           emptyMessage={`No transactions found for ${attraction.name}.`}
         />
       </div>
