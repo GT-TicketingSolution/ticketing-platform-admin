@@ -380,40 +380,40 @@ export async function GET(request: Request) {
         // SEAT LAYOUTS
         // =================================================
 
-        seatLayouts: mappings.map((mapping) => ({
-          ...mapping.seatLayout,
+        // seatLayouts: mappings.map((mapping) => ({
+        //   ...mapping.seatLayout,
 
-          quantity: mapping.quantity ?? 1,
-        })),
+        //   quantity: mapping.quantity ?? 1,
+        // })),
 
         // =================================================
         // EXPANDED IDS
         // =================================================
 
-        seatLayoutIds,
+        // seatLayoutIds,
 
         // =================================================
         // SEAT ALLOCATIONS
         // =================================================
 
-        seatAllocations: seatLayoutIds.map((layout, idx) => {
-          const count = seatLayoutIds.filter((l) => l.id === layout.id).length;
+        // seatAllocations: seatLayoutIds.map((layout, idx) => {
+        //   const count = seatLayoutIds.filter((l) => l.id === layout.id).length;
 
-          const indexOfThisId =
-            seatLayoutIds.slice(0, idx + 1).filter((l) => l.id === layout.id)
-              .length - 1;
+        //   const indexOfThisId =
+        //     seatLayoutIds.slice(0, idx + 1).filter((l) => l.id === layout.id)
+        //       .length - 1;
 
-          return {
-            instanceId: `alloc_${item.id}_${layout.id}_${idx}`,
+        //   return {
+        //     instanceId: `alloc_${item.id}_${layout.id}_${idx}`,
 
-            layoutId: layout.id,
+        //     layoutId: layout.id,
 
-            isDisabled: layout.status === "inactive",
+        //     isDisabled: layout.status === "inactive",
 
-            suffix:
-              count > 1 ? ` - ${String.fromCharCode(65 + indexOfThisId)}` : "",
-          };
-        }),
+        //     suffix:
+        //       count > 1 ? ` - ${String.fromCharCode(65 + indexOfThisId)}` : "",
+        //   };
+        // }),
 
         // =================================================
         // ATTRACTION SEATS
@@ -425,7 +425,7 @@ export async function GET(request: Request) {
         // TIME SLOTS
         // =================================================
 
-        timeSlots: timeSlotsByAttractionId.get(item.attractionId) ?? [],
+        // timeSlots: timeSlotsByAttractionId.get(item.attractionId) ?? [],
       };
     });
 
