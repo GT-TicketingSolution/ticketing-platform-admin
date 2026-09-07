@@ -143,6 +143,10 @@ export const users = pgTable(
       },
     ),
 
+    nextRenewalDate: timestamp("next_renewal_date", {
+      withTimezone: true,
+    }),
+
     lastLoginAt: timestamp("last_login_at", {
       withTimezone: true,
     }),
@@ -1273,6 +1277,12 @@ export const staffSystemModulePermissions = pgTable(
       .references(() => systemModules.id, {
         onDelete: "cascade",
       }),
+
+    reportAccessTiming: integer("report_access_timing"),
+
+    reportAccessUnit: varchar("report_access_unit", {
+      length: 20,
+    }),
 
     createdAt: timestamp("created_at", {
       withTimezone: true,

@@ -303,6 +303,14 @@ export default function AttractionManagementPage() {
       const durationUnitVal = data.durationUnit ?? "minutes";
 
       const rawCategories = data.categories || data.visitorCategories || [];
+      // Categories loaded from the API carry `id` = the existing
+      // `attractionCategory.id` (e.g. "1551c01b-…") in their `id` field.
+      // New categories added in this session have a local id like
+      // `cat_<timestamp>` — we must NOT send those up as DB ids.
+      const isApiCategoryId = (v: unknown): v is string =>
+        typeof v === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
       const categoriesPayload = rawCategories.map((cat: any) => {
         const numFuture =
           cat.futurePrice !== undefined &&
@@ -335,6 +343,10 @@ export default function AttractionManagementPage() {
           : null;
 
         return {
+          // Preserve the existing `attractionCategory.id` from the GET
+          // response so the backend can match and update the same row
+          // instead of deleting+recreating. Omit for new categories.
+          ...(isApiCategoryId(cat.id) ? { id: cat.id } : {}),
           name: cat.name,
           basePrice: Number(cat.basePrice) || 0,
           futurePrice,

@@ -25,10 +25,6 @@ import {
   validateSeatLayoutsForAdmin,
 } from "@/services/attraction-management.service";
 
-// =====================================================
-// UPDATE ATTRACTION
-// =====================================================
-
 export async function PATCH(
   request: Request,
   context: {
@@ -73,22 +69,18 @@ export async function PATCH(
     }
 
     if (!existing) {
-      return failure(
-        "Attraction not found or access denied",
-        403,
-        "FORBIDDEN",
-      );
+      return failure("Attraction not found or access denied", 403, "FORBIDDEN");
     }
 
     // =====================================================
     // CATEGORIES
     // =====================================================
 
-    const shouldSyncCategories =
-      body.categories !== undefined;
+    const shouldSyncCategories = body.categories !== undefined;
 
-    let categoriesToInsert:
+    let categoriesToUpdate:
       | {
+          id?: string;
           name: string;
           basePrice: number;
           futurePrice?: number | null;
@@ -100,11 +92,7 @@ export async function PATCH(
 
     if (shouldSyncCategories) {
       if (!Array.isArray(body.categories)) {
-        return failure(
-          "categories must be an array.",
-          400,
-          "VALIDATION_ERROR",
-        );
+        return failure("categories must be an array.", 400, "VALIDATION_ERROR");
       }
 
       if (body.categories.length === 0) {
@@ -117,11 +105,9 @@ export async function PATCH(
 
       const categoryNames = new Set<string>();
 
-      for (const category of body.categories) {
-        // ---------------------------------------------
-        // CATEGORY NAME
-        // ---------------------------------------------
+      categoriesToUpdate = [];
 
+      for (const category of body.categories) {
         if (
           !category ||
           typeof category.name !== "string" ||
@@ -134,8 +120,7 @@ export async function PATCH(
           );
         }
 
-        const normalizedName =
-          category.name.trim().toLowerCase();
+        const normalizedName = category.name.trim().toLowerCase();
 
         if (categoryNames.has(normalizedName)) {
           return failure(
@@ -146,10 +131,6 @@ export async function PATCH(
         }
 
         categoryNames.add(normalizedName);
-
-        // ---------------------------------------------
-        // BASE PRICE
-        // ---------------------------------------------
 
         const basePrice = Number(category.basePrice);
 
@@ -167,10 +148,6 @@ export async function PATCH(
           );
         }
 
-        // ---------------------------------------------
-        // FUTURE PRICE
-        // ---------------------------------------------
-
         let futurePrice: number | null = null;
 
         if (
@@ -180,10 +157,7 @@ export async function PATCH(
         ) {
           futurePrice = Number(category.futurePrice);
 
-          if (
-            !Number.isFinite(futurePrice) ||
-            futurePrice < 0
-          ) {
+          if (!Number.isFinite(futurePrice) || futurePrice < 0) {
             return failure(
               `Invalid futurePrice for category: ${category.name}`,
               400,
@@ -191,10 +165,6 @@ export async function PATCH(
             );
           }
         }
-
-        // ---------------------------------------------
-        // SEAT COUNT
-        // ---------------------------------------------
 
         const noOfSeats = Number(category.noOfSeats);
 
@@ -211,10 +181,6 @@ export async function PATCH(
             "VALIDATION_ERROR",
           );
         }
-
-        // ---------------------------------------------
-        // EFFECTIVE DATE
-        // ---------------------------------------------
 
         let effectiveFrom: string | null = null;
 
@@ -236,92 +202,112 @@ export async function PATCH(
           effectiveFrom = category.effectiveFrom;
         }
 
-        // ---------------------------------------------
-        // PREPARE CATEGORY
-        // ---------------------------------------------
-
-        categoriesToInsert ??= [];
-
-        categoriesToInsert.push({
+        categoriesToUpdate.push({
+          id: category.id,
           name: category.name.trim(),
           basePrice,
           futurePrice,
           effectiveFrom,
           noOfSeats,
           imageLink:
-            category.imageLink !== undefined
-              ? category.imageLink
-              : null,
+            category.imageLink !== undefined ? category.imageLink : null,
         });
       }
     }
 
     // =====================================================
-    // SEAT LAYOUTS
+    // ATTRACTION SEATS
+    // =====================================================
+    //
+    // body.seatLayoutIds[].id is treated as:
+    //
+    //     attraction_seats.id
+    //
+    // FIRST:
+    //     Check attraction_seats.id
+    //
+    // If found:
+    //     UPDATE existing row.
+    //
+    // If NOT found:
+    //     Check the SAME ID in seat_layouts.id.
+    //
+    // If seat_layouts.id exists:
+    //     INSERT attraction_seats with:
+    //
+    //     id            = incoming ID
+    //     seatLayoutId  = incoming ID
+    //
+    // Therefore the frontend does NOT need to send
+    // seatLayoutId for a new seat.
+    //
     // =====================================================
 
-    const shouldSyncSeatLayouts =
-      body.seatLayoutIds !== undefined ||
-      body.hasSeating !== undefined;
+    const shouldUpdateAttractionSeats = body.seatLayoutIds !== undefined;
 
-    let seatLayoutAssignments:
+    let seatUpdates:
       | {
-          seatLayoutId: string;
-          quantity: number;
+          id: string;
           name?: string;
+          status?: string;
           position?: number;
         }[]
       | null = null;
 
-    let expandedSeatLayoutIds: string[] | null = null;
-
-    let resolvedSeatLayouts:
-      | ReturnType<typeof resolveSeatLayoutIds>
-      | null = null;
-
-    if (shouldSyncSeatLayouts) {
-      const hasSeating =
-        body.hasSeating === false ? false : true;
-
-      resolvedSeatLayouts = resolveSeatLayoutIds({
-        hasSeating,
-        seatLayoutIds: body.seatLayoutIds ?? [],
-      });
-
-      if (!resolvedSeatLayouts.ok) {
+    if (shouldUpdateAttractionSeats) {
+      if (!Array.isArray(body.seatLayoutIds)) {
         return failure(
-          resolvedSeatLayouts.message ===
-            "At least one seat layout is required when seating is enabled"
-            ? "Seat allocation is required. Select at least one seat layout."
-            : resolvedSeatLayouts.message,
+          "seatLayoutIds must be an array.",
           400,
           "VALIDATION_ERROR",
         );
       }
 
-      seatLayoutAssignments =
-        resolvedSeatLayouts.assignments;
+      seatUpdates = [];
 
-      expandedSeatLayoutIds =
-        resolvedSeatLayouts.expandedIds;
+      for (const seat of body.seatLayoutIds) {
+        if (!seat || typeof seat.id !== "string" || !seat.id.trim()) {
+          return failure(
+            "Each seat must contain a valid attraction_seats.id.",
+            400,
+            "VALIDATION_ERROR",
+          );
+        }
 
-      // ---------------------------------------------
-      // VALIDATE LAYOUT OWNERSHIP
-      // ---------------------------------------------
+        if (
+          seat.position !== undefined &&
+          (!Number.isInteger(Number(seat.position)) ||
+            Number(seat.position) < 1)
+        ) {
+          return failure(
+            `Invalid position for seat ${seat.id}.`,
+            400,
+            "VALIDATION_ERROR",
+          );
+        }
 
-      const seatLayoutOwnership =
-        await validateSeatLayoutsForAdmin(
-          db,
-          existing.adminId,
-          resolvedSeatLayouts.uniqueIds,
-        );
+        if (
+          seat.status !== undefined &&
+          seat.status !== "active" &&
+          seat.status !== "inactive"
+        ) {
+          return failure(
+            `Invalid status for seat ${seat.id}.`,
+            400,
+            "VALIDATION_ERROR",
+          );
+        }
 
-      if (!seatLayoutOwnership.ok) {
-        return failure(
-          seatLayoutOwnership.message,
-          400,
-          "VALIDATION_ERROR",
-        );
+        seatUpdates.push({
+          id: seat.id.trim(),
+
+          name: seat.name !== undefined ? String(seat.name) : undefined,
+
+          status: seat.status !== undefined ? String(seat.status) : undefined,
+
+          position:
+            seat.position !== undefined ? Number(seat.position) : undefined,
+        });
       }
     }
 
@@ -329,15 +315,10 @@ export async function PATCH(
     // TIME SLOTS
     // =====================================================
 
-    const timeSlotsParsed =
-      parseTimeSlotsPayload(body);
+    const timeSlotsParsed = parseTimeSlotsPayload(body);
 
     if (!timeSlotsParsed.ok) {
-      return failure(
-        timeSlotsParsed.message,
-        400,
-        "VALIDATION_ERROR",
-      );
+      return failure(timeSlotsParsed.message, 400, "VALIDATION_ERROR");
     }
 
     // =====================================================
@@ -349,10 +330,7 @@ export async function PATCH(
       // UPDATE ATTRACTION
       // =====================================================
 
-      if (
-        body.name !== undefined ||
-        body.category !== undefined
-      ) {
+      if (body.name !== undefined || body.category !== undefined) {
         await tx
           .update(attractions)
           .set({
@@ -370,9 +348,7 @@ export async function PATCH(
 
             updatedAt: new Date(),
           })
-          .where(
-            eq(attractions.id, existing.attractionId),
-          );
+          .where(eq(attractions.id, existing.attractionId));
       }
 
       // =====================================================
@@ -385,72 +361,34 @@ export async function PATCH(
         updatedAt: new Date(),
       };
 
-      // ---------------------------------------------
-      // BASIC DATA
-      // ---------------------------------------------
-
       if (body.image !== undefined) {
         managementUpdate.image = body.image;
       }
 
       if (body.description !== undefined) {
-        managementUpdate.description =
-          body.description;
+        managementUpdate.description = body.description;
       }
 
       if (body.timing !== undefined) {
         managementUpdate.timing = body.timing;
       }
 
-      // ---------------------------------------------
-      // DURATION
-      // ---------------------------------------------
-
       if (body.duration !== undefined) {
         managementUpdate.duration = body.duration;
       }
 
       if (body.durationUnit !== undefined) {
-        managementUpdate.durationUnit =
-          body.durationUnit;
+        managementUpdate.durationUnit = body.durationUnit;
       }
-
-      // ---------------------------------------------
-      // SEATING
-      // ---------------------------------------------
 
       if (body.hasSeating !== undefined) {
-        managementUpdate.hasSeating =
-          Boolean(body.hasSeating);
+        managementUpdate.hasSeating = Boolean(body.hasSeating);
       }
-
-      // =====================================================
-      // LEGACY SEAT LAYOUT
-      // =====================================================
-
-      if (
-        seatLayoutAssignments !== null &&
-        expandedSeatLayoutIds !== null
-      ) {
-        managementUpdate.seatLayoutId =
-          getLegacySeatLayoutId(
-            expandedSeatLayoutIds,
-          );
-
-        managementUpdate.hasSeating =
-          expandedSeatLayoutIds.length > 0;
-      }
-
-      // =====================================================
-      // UPDATE MANAGEMENT ROW
-      // =====================================================
 
       const updatedRows = await tx
         .update(attractionManagement)
         .set(managementUpdate)
-        .where(
-          eq(attractionManagement.id, id),
-        )
+        .where(eq(attractionManagement.id, id))
         .returning();
 
       const updated = updatedRows[0];
@@ -463,193 +401,202 @@ export async function PATCH(
         | (typeof attractionCategory.$inferSelect)[]
         | undefined;
 
-      if (categoriesToInsert !== null) {
-        // ---------------------------------------------
-        // DELETE OLD CATEGORIES
-        // ---------------------------------------------
+      if (categoriesToUpdate !== null) {
+        for (const category of categoriesToUpdate) {
+          if (category.id) {
+            await tx
+              .update(attractionCategory)
+              .set({
+                name: category.name,
 
-        await tx
-          .delete(attractionCategory)
-          .where(
-            eq(
-              attractionCategory.attractionManagementId,
-              id,
-            ),
-          );
+                basePrice: String(category.basePrice),
 
-        // ---------------------------------------------
-        // INSERT NEW CATEGORIES
-        // ---------------------------------------------
+                futurePrice:
+                  category.futurePrice !== undefined &&
+                  category.futurePrice !== null
+                    ? String(category.futurePrice)
+                    : null,
 
-        updatedCategories =
-          await tx
-            .insert(attractionCategory)
-            .values(
-              categoriesToInsert.map(
-                (category) => ({
-                  attractionManagementId: id,
+                effectiveFrom: category.effectiveFrom ?? null,
 
-                  name: category.name,
+                noOfSeats: category.noOfSeats,
 
-                  basePrice:
-                    String(category.basePrice),
+                imageLink: category.imageLink ?? null,
+              })
+              .where(
+                and(
+                  eq(attractionCategory.id, category.id),
+                  eq(attractionCategory.attractionManagementId, id),
+                ),
+              );
+          } else {
+            await tx.insert(attractionCategory).values({
+              attractionManagementId: id,
 
-                  futurePrice:
-                    category.futurePrice !==
-                      undefined &&
-                    category.futurePrice !== null
-                      ? String(
-                          category.futurePrice,
-                        )
-                      : null,
+              name: category.name,
 
-                  effectiveFrom:
-                    category.effectiveFrom ??
-                    null,
+              basePrice: String(category.basePrice),
 
-                  noOfSeats:
-                    category.noOfSeats,
+              futurePrice:
+                category.futurePrice !== undefined &&
+                category.futurePrice !== null
+                  ? String(category.futurePrice)
+                  : null,
 
-                  imageLink:
-                    category.imageLink ??
-                    null,
-                }),
-              ),
-            )
-            .returning();
+              effectiveFrom: category.effectiveFrom ?? null,
+
+              noOfSeats: category.noOfSeats,
+
+              imageLink: category.imageLink ?? null,
+            });
+          }
+        }
+
+        updatedCategories = await tx
+          .select()
+          .from(attractionCategory)
+          .where(eq(attractionCategory.attractionManagementId, id));
       } else {
-        // ---------------------------------------------
-        // KEEP EXISTING CATEGORIES
-        // ---------------------------------------------
-
-        updatedCategories =
-          await tx
-            .select()
-            .from(attractionCategory)
-            .where(
-              eq(
-                attractionCategory.attractionManagementId,
-                id,
-              ),
-            );
+        updatedCategories = await tx
+          .select()
+          .from(attractionCategory)
+          .where(eq(attractionCategory.attractionManagementId, id));
       }
 
       // =====================================================
-      // SYNC SEAT LAYOUT JUNCTION
-      // =====================================================
-
-      let seatLayoutMappings:
-        | Awaited<
-            ReturnType<
-              typeof replaceAttractionSeatLayouts
-            >
-          >
-        | undefined;
-
-      if (
-        seatLayoutAssignments !== null &&
-        resolvedSeatLayouts?.ok
-      ) {
-        seatLayoutMappings =
-          await replaceAttractionSeatLayouts(
-            tx,
-            id,
-            seatLayoutAssignments,
-            resolvedSeatLayouts.fullObjects,
-          );
-      }
-
-      // =====================================================
-      // SYNC ATTRACTION SEATS
+      // UPDATE / INSERT ATTRACTION SEATS
       // =====================================================
 
       let updatedAttractionSeats:
         | (typeof attractionSeats.$inferSelect)[]
         | undefined;
 
-      if (seatLayoutAssignments !== null) {
-        // ---------------------------------------------
-        // DELETE OLD SEATS
-        // ---------------------------------------------
+      if (seatUpdates !== null) {
+        // ---------------------------------------------------
+        // GET ALL EXISTING ATTRACTION SEATS
+        // ---------------------------------------------------
 
-        await tx
-          .delete(attractionSeats)
-          .where(
-            eq(
-              attractionSeats.attractionId,
-              existing.attractionId,
-            ),
-          );
+        const existingSeats = await tx
+          .select()
+          .from(attractionSeats)
+          .where(eq(attractionSeats.attractionId, existing.attractionId));
 
-        const attractionSeatRows: {
-          attractionId: string;
-          seatLayoutId: string;
-          name: string;
-          seatOrder: number;
-        }[] = [];
+        // ---------------------------------------------------
+        // MAP BY attraction_seats.id
+        // ---------------------------------------------------
 
-        let seatOrder = 1;
+        const existingSeatMap = new Map(
+          existingSeats.map((seat) => [seat.id, seat]),
+        );
 
-        // ---------------------------------------------
-        // CREATE NEW SEATS
-        // ---------------------------------------------
+        // ---------------------------------------------------
+        // PROCESS EACH SEAT
+        // ---------------------------------------------------
 
-        for (
-          const [
-            index,
-            assignment,
-          ] of seatLayoutAssignments.entries()
-        ) {
-          const quantity =
-            assignment.quantity ?? 1;
+        for (const seat of seatUpdates) {
+          const existingSeat = existingSeatMap.get(seat.id);
 
-          const layout =
-            resolvedSeatLayouts?.fullObjects[index];
+          // =================================================
+          // CASE 1:
+          // attraction_seats.id EXISTS
+          // =================================================
 
-          if (!layout) {
-            throw new Error(
-              `Seat layout not found at position ${
-                index + 1
-              }`,
-            );
+          if (existingSeat) {
+            const updateData: Partial<typeof attractionSeats.$inferInsert> = {};
+
+            if (seat.name !== undefined) {
+              updateData.name = seat.name;
+            }
+
+            if (seat.position !== undefined) {
+              updateData.seatOrder = seat.position;
+            }
+
+            if (seat.status !== undefined) {
+              updateData.isActive = seat.status === "active";
+            }
+
+            // IMPORTANT:
+            //
+            // We DO NOT update:
+            //
+            // id
+            // attractionId
+            // seatLayoutId
+            //
+            // Therefore the existing IDs and
+            // relationships remain unchanged.
+
+            if (Object.keys(updateData).length > 0) {
+              await tx
+                .update(attractionSeats)
+                .set(updateData)
+                .where(
+                  and(
+                    eq(attractionSeats.id, existingSeat.id),
+                    eq(attractionSeats.attractionId, existing.attractionId),
+                  ),
+                );
+            }
+
+            continue;
           }
 
-          for (
-            let i = 0;
-            i < quantity;
-            i++
-          ) {
-            attractionSeatRows.push({
-              attractionId:
-                existing.attractionId,
+          // =================================================
+          // CASE 2:
+          // attraction_seats.id DOES NOT EXIST
+          //
+          // Check the SAME ID in seat_layouts.id
+          // =================================================
 
-              seatLayoutId:
-                assignment.seatLayoutId,
+          const seatLayout = await tx
+            .select({
+              id: seatLayouts.id,
+            })
+            .from(seatLayouts)
+            .where(eq(seatLayouts.id, seat.id))
+            .limit(1);
 
-              // Use the actual seat/layout name
-              // instead of "Seat 1", "Seat 2", etc.
-              name: layout.name ?? "",
+          // =================================================
+          // seat_layouts.id ALSO DOES NOT EXIST
+          // =================================================
 
-              seatOrder,
-            });
-
-            seatOrder++;
+          if (!seatLayout.length) {
+            throw new Error(`SEAT_LAYOUT_NOT_FOUND:${seat.id}`);
           }
+
+          const newAttractionSeatId = crypto.randomUUID();
+          // =================================================
+          // seat_layouts.id EXISTS
+          //
+          // CREATE attraction_seats USING SAME ID
+          // =================================================
+
+          await tx.insert(attractionSeats).values({
+            // SAME ID AS INCOMING ID
+            id: newAttractionSeatId,
+
+            attractionId: existing.attractionId,
+
+            // SAME ID AS seat_layouts.id
+            seatLayoutId: seat.id,
+
+            name: seat.name ?? "",
+
+            seatOrder: seat.position ?? 1,
+
+            isActive: seat.status === "active",
+          });
         }
 
-        // ---------------------------------------------
-        // INSERT NEW SEATS
-        // ---------------------------------------------
+        // ---------------------------------------------------
+        // GET UPDATED ATTRACTION SEATS
+        // ---------------------------------------------------
 
-        if (attractionSeatRows.length > 0) {
-          updatedAttractionSeats =
-            await tx
-              .insert(attractionSeats)
-              .values(attractionSeatRows)
-              .returning();
-        } else {
-          updatedAttractionSeats = [];
-        }
+        updatedAttractionSeats = await tx
+          .select()
+          .from(attractionSeats)
+          .where(eq(attractionSeats.attractionId, existing.attractionId));
       }
 
       // =====================================================
@@ -657,89 +604,21 @@ export async function PATCH(
       // =====================================================
 
       let timeSlots:
-        | Awaited<
-            ReturnType<
-              typeof syncAttractionTimeSlots
-            >
-          >
+        | Awaited<ReturnType<typeof syncAttractionTimeSlots>>
         | undefined;
 
       if (timeSlotsParsed.sync) {
-        timeSlots =
-          await syncAttractionTimeSlots(
-            tx,
-            existing.attractionId,
-            timeSlotsParsed.slots,
-          );
+        timeSlots = await syncAttractionTimeSlots(
+          tx,
+          existing.attractionId,
+          timeSlotsParsed.slots,
+        );
       } else {
-        const map =
-          await listTimeSlotsByAttractionIds(
-            tx,
-            [existing.attractionId],
-          );
+        const map = await listTimeSlotsByAttractionIds(tx, [
+          existing.attractionId,
+        ]);
 
-        timeSlots =
-          map.get(
-            existing.attractionId,
-          ) ?? [];
-      }
-
-      // =====================================================
-      // GET SEAT LAYOUT RESPONSE
-      // =====================================================
-
-      let seatLayoutsResponse:
-        | {
-            id: string;
-            quantity: number;
-            [key: string]: unknown;
-          }[]
-        | undefined;
-
-      if (seatLayoutMappings !== undefined) {
-        const layoutIds =
-          seatLayoutMappings.map(
-            (mapping) =>
-              mapping.seatLayoutId,
-          );
-
-        if (layoutIds.length > 0) {
-          const layouts =
-            await tx
-              .select()
-              .from(seatLayouts)
-              .where(
-                inArray(
-                  seatLayouts.id,
-                  layoutIds,
-                ),
-              );
-
-          const layoutMap = new Map(
-            layouts.map((layout) => [
-              layout.id,
-              layout,
-            ]),
-          );
-
-          seatLayoutsResponse =
-            seatLayoutMappings.map(
-              (mapping) => ({
-                ...(layoutMap.get(
-                  mapping.seatLayoutId,
-                ) ?? {}),
-
-                quantity:
-                  mapping.quantity ?? 1,
-              }),
-            ) as {
-              id: string;
-              quantity: number;
-              [key: string]: unknown;
-            }[];
-        } else {
-          seatLayoutsResponse = [];
-        }
+        timeSlots = map.get(existing.attractionId) ?? [];
       }
 
       // =====================================================
@@ -749,18 +628,9 @@ export async function PATCH(
       return {
         management: updated,
 
-        categories:
-          updatedCategories,
+        categories: updatedCategories,
 
-        seatLayouts:
-          seatLayoutsResponse,
-
-        seatLayoutIds:
-          expandedSeatLayoutIds ??
-          undefined,
-
-        attractionSeats:
-          updatedAttractionSeats,
+        attractionSeats: updatedAttractionSeats,
 
         timeSlots,
       };
@@ -773,207 +643,140 @@ export async function PATCH(
     const sanitizedResponse = {
       ...result.management,
 
-      // ---------------------------------------------
-      // DYNAMIC CATEGORIES
-      // ---------------------------------------------
+      // ===================================================
+      // CATEGORIES
+      // ===================================================
 
-      categories:
-        Array.isArray(result.categories)
-          ? result.categories.map(
-              (category) => ({
-                id: category.id,
+      categories: Array.isArray(result.categories)
+        ? result.categories.map((category) => ({
+            id: category.id,
 
-                name: category.name,
+            name: category.name,
 
-                basePrice:
-                  Number(
-                    category.basePrice,
-                  ),
+            basePrice: Number(category.basePrice),
 
-                futurePrice:
-                  category.futurePrice !==
-                  null
-                    ? Number(
-                        category.futurePrice,
-                      )
-                    : null,
+            futurePrice:
+              category.futurePrice !== null
+                ? Number(category.futurePrice)
+                : null,
 
-                effectiveFrom:
-                  category.effectiveFrom,
+            effectiveFrom: category.effectiveFrom,
 
-                noOfSeats:
-                  category.noOfSeats,
+            noOfSeats: category.noOfSeats,
 
-                imageLink:
-                  category.imageLink,
-              }),
-            )
-          : [],
+            imageLink: category.imageLink,
+          }))
+        : [],
 
-      // ---------------------------------------------
-      // SEAT LAYOUTS
-      // ---------------------------------------------
+      // ===================================================
+      // ATTRACTION SEAT IDS
+      // ===================================================
+      //
+      // IMPORTANT:
+      //
+      // This returns attraction_seats.id.
+      //
+      // NOT seat_layouts.id.
+      //
+      // ===================================================
 
-      ...(Array.isArray(
-        result.seatLayouts,
-      )
-        ? {
-            seatLayouts:
-              result.seatLayouts.map(
-                (layout: any) => ({
-                  id: layout.id,
-                  name: layout.name,
-                  rows: layout.rows,
-                  cols: layout.cols,
-                  hasAisle:
-                    layout.hasAisle,
-                  aisleAfterCol:
-                    layout.aisleAfterCol,
-                  status: layout.status,
-                  quantity:
-                    layout.quantity,
-                  totalSeats:
-                    layout.totalSeats,
-                }),
-              ),
-          }
-        : {}),
+      // seatLayoutIds: Array.isArray(result.attractionSeats)
+      //   ? result.attractionSeats.map((seat) => ({
+      //       id: seat.id,
 
-      // ---------------------------------------------
-      // SEAT LAYOUT IDS
-      // ---------------------------------------------
+      //       name: seat.name,
 
-      ...(Array.isArray(
-        result.seatLayoutIds,
-      ) &&
-      result.seatLayoutIds.length > 0
-        ? {
-            seatLayoutIds:
-              result.seatLayoutIds,
-          }
-        : {}),
+      //       status: seat.isActive ? "active" : "inactive",
 
-      // ---------------------------------------------
+      //       position: seat.seatOrder,
+      //     }))
+      //   : [],
+
+      // ===================================================
       // ATTRACTION SEATS
-      // ---------------------------------------------
+      // ===================================================
 
-      ...(Array.isArray(
-        result.attractionSeats,
-      )
-        ? {
-            attractionSeats:
-              result.attractionSeats.map(
-                (seat: any) => ({
-                  id: seat.id,
+      attractionSeats: Array.isArray(result.attractionSeats)
+        ? result.attractionSeats.map((seat) => ({
+            id: seat.id,
 
-                  attractionId:
-                    seat.attractionId,
+            attractionId: seat.attractionId,
 
-                  seatLayoutId:
-                    seat.seatLayoutId,
+            seatLayoutId: seat.seatLayoutId,
 
-                  name: seat.name,
+            name: seat.name,
 
-                  seatOrder:
-                    seat.seatOrder,
+            seatOrder: seat.seatOrder,
 
-                  createdAt:
-                    seat.createdAt,
-                }),
-              ),
-          }
-        : {}),
+            isActive: seat.isActive,
+          }))
+        : [],
 
-      // ---------------------------------------------
+      // ===================================================
       // TIME SLOTS
-      // ---------------------------------------------
+      // ===================================================
 
-      timeSlots:
-        Array.isArray(
-          result.timeSlots,
-        )
-          ? result.timeSlots.map(
-              (slot: any) => ({
-                id: slot.id,
+      // timeSlots: Array.isArray(result.timeSlots)
+      //   ? result.timeSlots.map((slot: any) => ({
+      //       id: slot.id,
 
-                attractionId:
-                  slot.attractionId,
+      //       attractionId: slot.attractionId,
 
-                slotTime:
-                  slot.slotTime,
+      //       // slotTime: slot.slotTime,
 
-                isActive:
-                  slot.isActive,
-              }),
-            )
-          : [],
+      //       isActive: slot.isActive,
+      //     }))
+      //   : [],
     };
 
-    return success(
-      sanitizedResponse,
-    );
+    return success(sanitizedResponse);
   } catch (error) {
-    console.error(
-      "Update attraction error:",
-      error,
-    );
+    console.error("Update attraction error:", error);
 
     if (error instanceof Error) {
-      console.error(
-        "Error message:",
-        error.message,
-      );
+      console.error("Error message:", error.message);
 
-      console.error(
-        "Error code:",
-        (error as any).code,
-      );
+      // ===================================================
+      // SEAT LAYOUT NOT FOUND
+      // ===================================================
 
-      console.error(
-        "Error detail:",
-        (error as any).detail,
-      );
-    }
+      if (error.message.startsWith("SEAT_LAYOUT_NOT_FOUND:")) {
+        const seatId = error.message.replace("SEAT_LAYOUT_NOT_FOUND:", "");
 
-    if (error instanceof Error) {
-      // =====================================================
+        return failure(
+          `Seat layout ${seatId} not found. Cannot create attraction seat.`,
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
+      // ===================================================
       // DATABASE CONSTRAINT ERROR
-      // =====================================================
+      // ===================================================
 
-      const errorStr =
-        error.message.toLowerCase();
+      const errorStr = error.message.toLowerCase();
 
-      if (
-        errorStr.includes("foreign key") ||
-        errorStr.includes("23503")
-      ) {
+      if (errorStr.includes("foreign key") || errorStr.includes("23503")) {
         return failure(
-          "One or more seat layouts do not exist in the database.",
+          "Invalid attraction seat reference.",
           400,
           "VALIDATION_ERROR",
         );
       }
 
-      if (
-        errorStr.includes("unique") ||
-        errorStr.includes("23505")
-      ) {
+      if (errorStr.includes("unique") || errorStr.includes("23505")) {
         return failure(
-          "Duplicate seat layout assignment detected.",
+          "Duplicate attraction seat assignment detected.",
           400,
           "VALIDATION_ERROR",
         );
       }
 
-      // =====================================================
+      // ===================================================
       // TIME SLOT ERROR
-      // =====================================================
+      // ===================================================
 
-      if (
-        error.message.startsWith(
-          "TIME_SLOT_NOT_FOUND:",
-        )
-      ) {
+      if (error.message.startsWith("TIME_SLOT_NOT_FOUND:")) {
         return failure(
           `Unknown timeSlots.id: ${error.message.replace(
             "TIME_SLOT_NOT_FOUND:",
@@ -984,44 +787,27 @@ export async function PATCH(
         );
       }
 
-      // =====================================================
+      // ===================================================
       // AUTHENTICATION
-      // =====================================================
+      // ===================================================
 
-      if (
-        error.message ===
-        "UNAUTHORIZED"
-      ) {
-        return failure(
-          "Authentication required.",
-          401,
-          "UNAUTHORIZED",
-        );
+      if (error.message === "UNAUTHORIZED") {
+        return failure("Authentication required.", 401, "UNAUTHORIZED");
       }
 
-      // =====================================================
+      // ===================================================
       // ACCOUNT STATUS
-      // =====================================================
+      // ===================================================
 
-      if (
-        error.message ===
-        "ACCOUNT_NOT_ACTIVE"
-      ) {
-        return failure(
-          "Account is not active.",
-          403,
-          "ACCOUNT_NOT_ACTIVE",
-        );
+      if (error.message === "ACCOUNT_NOT_ACTIVE") {
+        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
       }
 
-      // =====================================================
+      // ===================================================
       // AUTHORIZATION
-      // =====================================================
+      // ===================================================
 
-      if (
-        error.message ===
-        "FORBIDDEN"
-      ) {
+      if (error.message === "FORBIDDEN") {
         return failure(
           "You are not authorized to access attraction management.",
           403,
@@ -1037,7 +823,6 @@ export async function PATCH(
     );
   }
 }
-
 // =====================================================
 // DELETE ATTRACTION
 // =====================================================
