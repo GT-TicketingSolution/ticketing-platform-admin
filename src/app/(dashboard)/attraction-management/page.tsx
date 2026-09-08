@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Search,
   SearchX,
@@ -13,6 +13,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { colors } from "@/lib/theme";
+import StatusBadge from "@/components/ui/StatusBadge";
 import { AttractionManagement } from "./types";
 import type { CreateAttractionPayload, UpdateAttractionPayload } from "./types";
 import AttractionEmptyState from "@/components/attraction/AttractionEmptyState";
@@ -117,7 +118,8 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
         background: "#FFFFFF",
         border: "1.5px solid rgba(179, 175, 175, 0.51)",
         borderRadius: "8px",
-        padding: "6px",
+        padding: "0",
+        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
         justifyContent: "space-between",
@@ -134,20 +136,30 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
             position: "relative",
             width: "100%",
             height: "150px",
-            borderRadius: "8px",
-            overflow: "hidden",
             background: "#F8FAFC",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
           }}
         >
+          {/* Status Badge floating on top right of the card */}
+          <div
+            style={{
+              position: "absolute",
+              top: "8px",
+              right: "8px",
+              zIndex: 3,
+            }}
+          >
+            <StatusBadge status={attraction.status || "Active"} size="sm" />
+          </div>
+
           {hasValidImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={attraction.image!}
               alt={attraction.name}
-              style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "8px" }}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
               onError={() => setImgError(true)}
             />
           ) : (
@@ -169,7 +181,7 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
         </div>
 
         {/* Content */}
-        <div style={{ padding: "10px 8px 4px 8px" }}>
+        <div style={{ padding: "12px 10px 4px 10px" }}>
           <h3
             style={{
               margin: 0,
@@ -214,7 +226,7 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
       </div>
 
       {/* Action Buttons */}
-      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "14px", padding: "0 4px 4px 4px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "14px", padding: "0 10px 10px 10px" }}>
         <button
           onClick={() => onEdit(attraction)}
           style={{ boxSizing: "border-box", flex: 1, height: "34px", background: "#FFFFFF", border: "1px solid #2372A5", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", cursor: "pointer", transition: "all 0.18s ease" }}
@@ -257,7 +269,7 @@ export default function AttractionManagementPage() {
   const deleteMutation = useDeleteAttraction();
   const bulkMutation = useBulkUploadAttractions();
 
-  // ── UI State ────────────────────────────────────────────────────
+  // UI State 
   const [viewMode, setViewMode] = useState<"list" | "add" | "edit">("list");
   const [attractionToEdit, setAttractionToEdit] = useState<AttractionManagement | null>(null);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
@@ -268,6 +280,21 @@ export default function AttractionManagementPage() {
 
   const isSearchActive = debouncedSearch.trim() !== "";
   const showEmptyState = !isLoading && !isError && attractions.length === 0 && !isSearchActive && viewMode === "list";
+
+  // ── Sorted Attractions: Active first, Inactive last 
+  const sortedAttractions = useMemo(() => {
+    return [...attractions].sort((a, b) => {
+      const isAActive = String(a.status || "ACTIVE").toUpperCase() === "ACTIVE";
+      const isBActive = String(b.status || "ACTIVE").toUpperCase() === "ACTIVE";
+
+      if (isAActive && !isBActive) return -1;
+      if (!isAActive && isBActive) return 1;
+
+      const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      return timeB - timeA;
+    });
+  }, [attractions]);
 
   // ── Handlers 
   const handleOpenAdd = () => {
@@ -314,10 +341,10 @@ export default function AttractionManagementPage() {
       const categoriesPayload = rawCategories.map((cat: any) => {
         const numFuture =
           cat.futurePrice !== undefined &&
-          cat.futurePrice !== null &&
-          cat.futurePrice !== "" &&
-          cat.futurePrice !== "00.00" &&
-          cat.futurePrice !== "0"
+            cat.futurePrice !== null &&
+            cat.futurePrice !== "" &&
+            cat.futurePrice !== "00.00" &&
+            cat.futurePrice !== "0"
             ? Number(cat.futurePrice)
             : null;
         const futurePrice =
@@ -360,21 +387,21 @@ export default function AttractionManagementPage() {
       const seatLayoutIdsPayload = hasSeating
         ? Array.isArray(rawSeatLayouts)
           ? rawSeatLayouts.map((seat: any, idx: number) => {
-              if (typeof seat === "string") {
-                return {
-                  id: seat,
-                  name: `Seat Layout ${idx + 1}`,
-                  status: "active",
-                  position: idx + 1,
-                };
-              }
+            if (typeof seat === "string") {
               return {
-                id: seat.id || seat.layoutId,
-                name: seat.name || seat.displayName || `Seat ${idx + 1}`,
-                status: seat.status || (seat.isDisabled ? "inactive" : "active"),
-                position: Number(seat.position) || idx + 1,
+                id: seat,
+                name: `Seat Layout ${idx + 1}`,
+                status: "active",
+                position: idx + 1,
               };
-            })
+            }
+            return {
+              id: seat.id || seat.layoutId,
+              name: seat.name || seat.displayName || `Seat ${idx + 1}`,
+              status: seat.status || (seat.isDisabled ? "inactive" : "active"),
+              position: Number(seat.position) || idx + 1,
+            };
+          })
           : []
         : [];
 
@@ -679,7 +706,7 @@ export default function AttractionManagementPage() {
           </div>
 
           {/* Cards Grid or No-search-results */}
-          {attractions.length > 0 ? (
+          {sortedAttractions.length > 0 ? (
             <div
               style={{
                 display: "grid",
@@ -690,7 +717,7 @@ export default function AttractionManagementPage() {
                 transition: "opacity 0.2s ease",
               }}
             >
-              {attractions.map((attraction) => (
+              {sortedAttractions.map((attraction) => (
                 <AttractionCard
                   key={attraction.id}
                   attraction={attraction}

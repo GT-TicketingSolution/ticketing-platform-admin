@@ -246,11 +246,29 @@ export default function StaffReportsView() {
     return transformStaffReportResponse(reportData, selectedAttraction);
   }, [reportData, selectedAttraction]);
 
-  // Attraction options dropdown — built from API response
+  // Attraction options dropdown — built from API response (excluding INACTIVE attractions)
   const attractionDropdownOptions = useMemo(() => {
     if (!reportData?.attractions?.length) return ["All Attractions"];
-    return ["All Attractions", ...reportData.attractions.map((a) => a.name)];
+    const activeAttractions = reportData.attractions.filter(
+      (a) => !a.status || a.status.toUpperCase() !== "INACTIVE"
+    );
+    return ["All Attractions", ...activeAttractions.map((a) => a.name)];
   }, [reportData]);
+
+  // If currently selected attraction is INACTIVE, reset to "All Attractions"
+  useEffect(() => {
+    if (
+      selectedAttraction !== "All Attractions" &&
+      reportData?.attractions?.length
+    ) {
+      const found = reportData.attractions.find(
+        (a) => a.name.toLowerCase() === selectedAttraction.toLowerCase()
+      );
+      if (found && found.status && found.status.toUpperCase() === "INACTIVE") {
+        setSelectedAttraction("All Attractions");
+      }
+    }
+  }, [reportData, selectedAttraction]);
 
   // Accordion Toggle Handlers
   const handleToggleCardExpand = (id: string) => {

@@ -73,8 +73,14 @@ export function useAttractionManagementList(
       })) as AttractionManagement[];
 
       return mapped.sort((a: any, b: any) => {
-        const timeA = new Date(a.updatedAt || 0).getTime();
-        const timeB = new Date(b.updatedAt || 0).getTime();
+        const isAActive = String(a.status || "ACTIVE").toUpperCase() === "ACTIVE";
+        const isBActive = String(b.status || "ACTIVE").toUpperCase() === "ACTIVE";
+
+        if (isAActive && !isBActive) return -1;
+        if (!isAActive && isBActive) return 1;
+
+        const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
         return timeB - timeA;
       });
     },

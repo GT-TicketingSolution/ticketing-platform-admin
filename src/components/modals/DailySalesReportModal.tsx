@@ -221,20 +221,30 @@ export default function DailySalesReportModal({
       : 0;
 
   const totalBookings = attractionReport
-    ? attractionReport.transactions.length
+    ? (attractionReport.totalBookings ?? attractionReport.transactions.length)
     : overallSummary
       ? overallSummary.totalBookings
-      : 20;
+      : 0;
 
-  // Invoice numbers formatted as requested:
-  // Invoice numbers formatted as requested:
-  // "Invoice: 20" and "Invoice Range: 2026-2027/001 - 2026-2027/020"
-  const totalInvoicesCount = Math.max(1, totalBookings);
-  const startInvoiceSeq = "001";
-  const endInvoiceSeq = String(totalInvoicesCount).padStart(3, "0");
-  const cleanInvoicePrefix = invoicePrefix ? invoicePrefix.trim() : "2026-2027";
-  const startInvoiceNumber = `${cleanInvoicePrefix}/${startInvoiceSeq}`;
-  const endInvoiceNumber = `${cleanInvoicePrefix}/${endInvoiceSeq}`;
+  // Real Invoice Range from API response - NO MOCK DATA OR FALLBACK DATA
+  const activeInvoiceRange = attractionReport
+    ? (attractionReport.invoiceRange || overallSummary?.overallInvoiceRange)
+    : overallSummary?.overallInvoiceRange;
+
+  let invoiceRangeDisplay = "-";
+  if (activeInvoiceRange?.from && activeInvoiceRange?.to) {
+    if (activeInvoiceRange.from === activeInvoiceRange.to) {
+      invoiceRangeDisplay = activeInvoiceRange.from;
+    } else {
+      invoiceRangeDisplay = `${activeInvoiceRange.from} - ${activeInvoiceRange.to}`;
+    }
+  } else if (activeInvoiceRange?.from) {
+    invoiceRangeDisplay = activeInvoiceRange.from;
+  } else if (activeInvoiceRange?.to) {
+    invoiceRangeDisplay = activeInvoiceRange.to;
+  }
+
+  const invoiceCountDisplay = totalBookings > 0 ? String(totalBookings) : "-";
 
   // Determine items list formatted strictly as Attraction/Category (e.g. Train/Adult, Train/Child, Boat/Adult, Boat/Child)
   let items: Array<{ name: string; qty: number; amount: number }> = [];
@@ -505,13 +515,27 @@ export default function DailySalesReportModal({
                 <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>Printed On:</span>
                 <span style={{ fontWeight: 600, textAlign: "right", wordBreak: "break-word" }}>{printTimestamp}</span>
 
+                {/* Specific Attraction: Hide Invoice and Invoice Range (code kept commented). Shown only for All Attractions (overall report). */}
+                {/*
                 <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>Invoice:</span>
-                <span style={{ fontWeight: 600, textAlign: "right", wordBreak: "break-word" }}>{totalInvoicesCount}</span>
+                <span style={{ fontWeight: 600, textAlign: "right", wordBreak: "break-word" }}>{invoiceCountDisplay}</span>
 
                 <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>Invoice Range:</span>
                 <span style={{ fontWeight: 600, textAlign: "right", wordBreak: "break-word" }}>
-                  {startInvoiceNumber} - {endInvoiceNumber}
+                  {invoiceRangeDisplay}
                 </span>
+                */}
+                {!attractionReport && (
+                  <>
+                    <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>Invoice:</span>
+                    <span style={{ fontWeight: 600, textAlign: "right", wordBreak: "break-word" }}>{invoiceCountDisplay}</span>
+
+                    <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>Invoice Range:</span>
+                    <span style={{ fontWeight: 600, textAlign: "right", wordBreak: "break-word" }}>
+                      {invoiceRangeDisplay}
+                    </span>
+                  </>
+                )}
               </div>
 
               {/* Items Breakdown Table */}
@@ -549,11 +573,10 @@ export default function DailySalesReportModal({
                             textAlign: "center",
                             color: "#666666",
                             fontWeight: 600,
-                            fontStyle: "italic",
                             fontSize: "11px",
                           }}
                         >
-                          No sales recorded for this period
+                          -
                         </td>
                       </tr>
                     )}
@@ -563,79 +586,79 @@ export default function DailySalesReportModal({
 
               {/* Tax and Adjustment Breakdown — only when there is real revenue */}
               {hasData && (
-              <div
-                style={{
-                  padding: "8px 0",
-                  borderBottom: "1px dashed #000000",
-                  fontSize: "11.5px",
-                  fontWeight: 600,
-                  color: "#000000",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
-                  <span>Sub-Total</span>
-                  <span>₹{baseSubTotal.toFixed(2)}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
-                  <span>Round-off Sub-Total Adj</span>
-                  <span>+₹{roundOffSubTotalAdj.toFixed(2)}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px", fontWeight: 700 }}>
-                  <span>Adjusted Sub-Total</span>
-                  <span>₹{adjustedSubTotal.toFixed(2)}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
-                  <span>Total GST</span>
-                  <span>₹{totalGst.toFixed(2)}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
-                  <span>Round-off GST Adj</span>
-                  <span>+₹{roundOffGstAdj.toFixed(2)}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px", fontWeight: 700 }}>
-                  <span>Effective GST</span>
-                  <span>₹{effectiveGst.toFixed(2)}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
-                  <span>Total Roundoff</span>
-                  <span>+₹{totalRoundoff.toFixed(2)}</span>
-                </div>
-
                 <div
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: "13px",
-                    fontWeight: 900,
-                    borderTop: "1.5px solid #000000",
-                    paddingTop: "6px",
-                    marginTop: "4px",
+                    padding: "8px 0",
+                    borderBottom: "1px dashed #000000",
+                    fontSize: "11.5px",
+                    fontWeight: 600,
+                    color: "#000000",
                   }}
                 >
-                  <span>Net Sales</span>
-                  <span>
-                    ₹{netSales.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                    <span>Sub-Total</span>
+                    <span>₹{baseSubTotal.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                    <span>Round-off Sub-Total Adj</span>
+                    <span>+₹{roundOffSubTotalAdj.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px", fontWeight: 700 }}>
+                    <span>Adjusted Sub-Total</span>
+                    <span>₹{adjustedSubTotal.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                    <span>Total GST</span>
+                    <span>₹{totalGst.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                    <span>Round-off GST Adj</span>
+                    <span>+₹{roundOffGstAdj.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px", fontWeight: 700 }}>
+                    <span>Effective GST</span>
+                    <span>₹{effectiveGst.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                    <span>Total Roundoff</span>
+                    <span>+₹{totalRoundoff.toFixed(2)}</span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: "13px",
+                      fontWeight: 900,
+                      borderTop: "1.5px solid #000000",
+                      paddingTop: "6px",
+                      marginTop: "4px",
+                    }}
+                  >
+                    <span>Net Sales</span>
+                    <span>
+                      ₹{netSales.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
                 </div>
-              </div>
               )}
 
               {/* Net Sales = ₹0 when no data */}
               {!hasData && (
-              <div
-                style={{
-                  padding: "8px 0",
-                  borderBottom: "1px dashed #000000",
-                  fontSize: "13px",
-                  fontWeight: 900,
-                  color: "#000000",
-                  display: "flex",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span>Net Sales</span>
-                <span>₹0.00</span>
-              </div>
+                <div
+                  style={{
+                    padding: "8px 0",
+                    borderBottom: "1px dashed #000000",
+                    fontSize: "13px",
+                    fontWeight: 900,
+                    color: "#000000",
+                    display: "flex",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span>Net Sales</span>
+                  <span>₹0.00</span>
+                </div>
               )}
 
               {/* End of Report */}

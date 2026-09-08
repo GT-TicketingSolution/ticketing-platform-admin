@@ -15,6 +15,11 @@ export interface PaymentModeStat {
   revenue: number;
 }
 
+export interface InvoiceRangeData {
+  from: string | null;
+  to: string | null;
+}
+
 export interface AttractionReportData {
   attraction: Attraction;
   totalRevenue: number;
@@ -25,6 +30,7 @@ export interface AttractionReportData {
   paymentBreakdown: PaymentModeStat[];
   transactions: Transaction[];
   bookings: Booking[];
+  invoiceRange?: InvoiceRangeData | null;
 }
 
 export interface OverallReportSummary {
@@ -35,4 +41,5 @@ export interface OverallReportSummary {
   topAttractionRevenue: number;
   avgOrderValue: number;
   attractionReports: AttractionReportData[];
+  overallInvoiceRange?: InvoiceRangeData | null;
 }

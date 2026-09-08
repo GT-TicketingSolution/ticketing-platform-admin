@@ -8,6 +8,7 @@ export interface StaffReportAttraction {
   attraction_management_id?: string; // absent in the "no bookings" API response
   name: string;
   type: string;
+  status?: string; // "ACTIVE" | "INACTIVE" — used to filter out inactive attractions
 }
 
 export interface StaffReportCategory {
@@ -43,8 +44,14 @@ export interface StaffReportTransaction {
   status: string;
 }
 
+export interface StaffReportInvoiceRange {
+  from: string | null;
+  to: string | null;
+}
+
 export interface StaffReportAttractionTransactions {
   attraction_management_id: string;
+  invoice_range?: StaffReportInvoiceRange[];
   transactions: StaffReportTransaction[];
 }
 
