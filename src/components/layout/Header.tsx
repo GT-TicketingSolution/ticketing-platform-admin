@@ -654,200 +654,191 @@ export default function Header({
       </header>
 
       {/* ── Renewal notice banner (Admin / Manager / Staff) ─────────────
-          Days-left chip + urgency-tinted palette, capped at 30 days:
+          Rendered ONLY when `user_renewal_data` is returned by GET /api/auth/profile.
+          If `user_renewal_data` is null/undefined or missing, NO banner is shown.
+          No fallback or mock data is displayed.
+          Urgency-tinted palette:
             • expired         → solid dark red
             • 0–7 days left   → red (within one week)
             • 8–15 days left  → orange/amber
-            • 16–30 days left → yellow
-            • 31+ days left   → banner is HIDDEN (more than 30 days away)
-          `RENEWAL_DUE_DATE` is a static placeholder until the super-admin
-          starts assigning renewal dates via the API — swap it for a
-          useQuery / useState fed by a backend endpoint.
-          ───────────────────────────────────────────────────────────────
-          TESTING: To preview a specific urgency state, change the
-          `RENEWAL_DUE_DATE` value to one of the pre-canned TEST CASES
-          in the comment block. The palette + chip + body text will
-          follow automatically, or the banner will hide for 31+ days. */}
-      {userRole && userRole !== "-" &&
-        (() => {
-          // ─── Renewal due date (placeholder) 
-          // ACTIVE (16–30 days left → YELLOW palette):
-          const RENEWAL_DUE_DATE = new Date("2026-09-25T23:59:59");
-          // state (today is 2026-09-07):
-          //   • 16–30 days → YELLOW palette:       "2026-09-25T23:59:59"
-          //   • 8–15 days  → ORANGE palette:       "2026-09-18T23:59:59"
-          //   • 0–7 days   → RED palette:          "2026-09-12T23:59:59"
+            • 16+ days left   → yellow
+          ─────────────────────────────────────────────────────────────── */}
+      {(() => {
+        if (isProfileError) return null;
+        const renewalData = profile?.user_renewal_data;
+        if (!renewalData) return null;
 
-          const msPerDay = 24 * 60 * 60 * 1000;
-          const now = new Date();
-          const daysLeft = Math.ceil(
-            (RENEWAL_DUE_DATE.getTime() - now.getTime()) / msPerDay
-          );
-          // Hide the banner once we are more than 30 days away.
-          const isHidden = daysLeft > 30;
-          if (isHidden) return null;
+        const rawDaysLeft = renewalData.days_left_for_renewal;
+        if (rawDaysLeft === undefined || rawDaysLeft === null || isNaN(Number(rawDaysLeft))) {
+          return null;
+        }
 
-          const isExpired = daysLeft < 0;
-          // Red: 0–7 days (within one week)
-          const isRed = !isExpired && daysLeft <= 7;
-          // Orange/amber: 8–15 days
-          const isOrange = !isExpired && !isRed && daysLeft <= 15;
-          // Yellow: 16–30 days (default branch below)
+        const daysLeft = Number(rawDaysLeft);
+        const isExpired = daysLeft < 0 || (renewalData.message?.toLowerCase().includes("expired") ?? false);
+        // Red: 0–7 days (within one week)
+        const isRed = !isExpired && daysLeft <= 7;
+        // Orange/amber: 8–15 days
+        const isOrange = !isExpired && !isRed && daysLeft <= 15;
+        // Yellow: 16+ days
 
-          // ─── Urgency colour palette (all cases — pick via date) ────
-          const palette = isExpired
+        // ─── Urgency colour palette (matches urgency level) ────
+        const palette = isExpired
+          ? {
+              // ── Expired → SOLID DARK RED ────────────────────────
+              bg: "linear-gradient(90deg, #B91C1C 0%, #DC2626 100%)",
+              border: "#7F1D1D",
+              text: "#FFFFFF",
+              chip: "#7F1D1D",
+              chipText: "#FFFFFF",
+              iconBg: "rgba(255, 255, 255, 0.18)",
+              iconColor: "#FFFFFF",
+              shadow: "0 2px 8px rgba(127, 29, 29, 0.35)",
+            }
+          : isRed
             ? {
-                // ── Expired → SOLID DARK RED ────────────────────────
-                bg: "linear-gradient(90deg, #B91C1C 0%, #DC2626 100%)",
-                border: "#7F1D1D",
-                text: "#FFFFFF",
-                chip: "#7F1D1D",
+                // ── 0–7 days left → RED (within one week) ───────────
+                bg:
+                  "linear-gradient(90deg, rgba(254, 226, 226, 0.95) 0%, rgba(254, 215, 170, 0.95) 100%)",
+                border: "rgba(220, 38, 38, 0.35)",
+                text: "#7F1D1D",
+                chip: "#B91C1C",
                 chipText: "#FFFFFF",
-                iconBg: "rgba(255, 255, 255, 0.18)",
-                iconColor: "#FFFFFF",
-                shadow: "0 2px 8px rgba(127, 29, 29, 0.35)",
+                iconBg: "rgba(220, 38, 38, 0.12)",
+                iconColor: "#B91C1C",
+                shadow: "0 2px 6px rgba(220, 38, 38, 0.12)",
               }
-            : isRed
+            : isOrange
               ? {
-                  // ── 0–7 days left → RED (within one week) ───────────
+                  // ── 8–15 days left → ORANGE ───────────────────────
                   bg:
-                    "linear-gradient(90deg, rgba(254, 226, 226, 0.95) 0%, rgba(254, 215, 170, 0.95) 100%)",
-                  border: "rgba(220, 38, 38, 0.35)",
-                  text: "#7F1D1D",
-                  chip: "#B91C1C",
+                    "linear-gradient(90deg, rgba(255, 237, 213, 0.95) 0%, rgba(254, 215, 170, 0.95) 100%)",
+                  border: "rgba(234, 88, 12, 0.35)",
+                  text: "#7C2D12",
+                  chip: "#EA580C",
                   chipText: "#FFFFFF",
-                  iconBg: "rgba(220, 38, 38, 0.12)",
-                  iconColor: "#B91C1C",
-                  shadow: "0 2px 6px rgba(220, 38, 38, 0.12)",
+                  iconBg: "rgba(234, 88, 12, 0.12)",
+                  iconColor: "#EA580C",
+                  shadow: "0 2px 6px rgba(234, 88, 12, 0.12)",
                 }
-              : isOrange
-                ? {
-                    // ── 8–15 days left → ORANGE ───────────────────────
-                    bg:
-                      "linear-gradient(90deg, rgba(255, 237, 213, 0.95) 0%, rgba(254, 215, 170, 0.95) 100%)",
-                    border: "rgba(234, 88, 12, 0.35)",
-                    text: "#7C2D12",
-                    chip: "#EA580C",
-                    chipText: "#FFFFFF",
-                    iconBg: "rgba(234, 88, 12, 0.12)",
-                    iconColor: "#EA580C",
-                    shadow: "0 2px 6px rgba(234, 88, 12, 0.12)",
-                  }
-                : {
-                    // ── 16–30 days left → YELLOW (active) ─────────────
-                    bg:
-                      "linear-gradient(90deg, rgba(254, 249, 195, 0.95) 0%, rgba(253, 224, 71, 0.85) 100%)",
-                    border: "rgba(202, 138, 4, 0.4)",
-                    text: "#713F12",
-                    chip: "#CA8A04",
-                    chipText: "#FFFFFF",
-                    iconBg: "rgba(202, 138, 4, 0.14)",
-                    iconColor: "#CA8A04",
-                    shadow: "0 2px 6px rgba(202, 138, 4, 0.1)",
-                  };
+              : {
+                  // ── 16–30 days left → YELLOW ──────────────────────
+                  bg:
+                    "linear-gradient(90deg, rgba(254, 249, 195, 0.95) 0%, rgba(253, 224, 71, 0.85) 100%)",
+                  border: "rgba(202, 138, 4, 0.4)",
+                  text: "#713F12",
+                  chip: "#CA8A04",
+                  chipText: "#FFFFFF",
+                  iconBg: "rgba(202, 138, 4, 0.14)",
+                  iconColor: "#CA8A04",
+                  shadow: "0 2px 6px rgba(202, 138, 4, 0.1)",
+                };
 
-          const daysLabel = isExpired
-            ? `Expired ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"} ago`
-            : daysLeft === 0
-              ? "Due today"
-              : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`;
+        const daysLabel = isExpired
+          ? `Expired ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"} ago`
+          : daysLeft === 0
+            ? "Due today"
+            : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`;
 
-          return (
-            <div
-              role="alert"
-              aria-live="polite"
+        const renewalMessage = renewalData.message || (
+          isExpired
+            ? "Your application renewal has expired. Please pay the renewal amount immediately to continue using the platform."
+            : "Your application renewal is due soon. Please pay the renewal amount to continue using the platform without interruption."
+        );
+
+        return (
+          <div
+            role="alert"
+            aria-live="polite"
+            style={{
+              position: "fixed",
+              top: `${spacing.headerHeight}px`,
+              left: isMobile ? 0 : sidebarWidth,
+              right: 0,
+              zIndex: 49,
+              display: "flex",
+              alignItems: "center",
+              gap: isMobile ? "8px" : "12px",
+              padding: isMobile ? "8px 12px" : "10px 32px",
+              background: palette.bg,
+              borderBottom: `1px solid ${palette.border}`,
+              boxShadow: palette.shadow,
+              boxSizing: "border-box",
+              fontFamily: typography.fontFamily.sans,
+              transition: "left 0.25s cubic-bezier(0.4,0,0.2,1)",
+            }}
+          >
+            <span
               style={{
-                position: "fixed",
-                top: `${spacing.headerHeight}px`,
-                left: isMobile ? 0 : sidebarWidth,
-                right: 0,
-                zIndex: 49,
-                display: "flex",
+                display: "inline-flex",
                 alignItems: "center",
-                gap: isMobile ? "8px" : "12px",
-                padding: isMobile ? "8px 12px" : "10px 32px",
-                background: palette.bg,
-                borderBottom: `1px solid ${palette.border}`,
-                boxShadow: palette.shadow,
-                boxSizing: "border-box",
-                fontFamily: typography.fontFamily.sans,
-                transition: "left 0.25s cubic-bezier(0.4,0,0.2,1)",
+                justifyContent: "center",
+                width: isMobile ? "26px" : "30px",
+                height: isMobile ? "26px" : "30px",
+                borderRadius: "50%",
+                background: palette.iconBg,
+                flexShrink: 0,
+              }}
+            >
+              <AlertTriangle
+                size={isMobile ? 14 : 16}
+                color={palette.iconColor}
+                strokeWidth={2.4}
+                aria-hidden="true"
+              />
+            </span>
+            <p
+              style={{
+                margin: 0,
+                flex: 1,
+                minWidth: 0,
+                fontWeight: 600,
+                fontSize: isMobile ? "12px" : "13px",
+                lineHeight: isMobile ? "16px" : "18px",
+                color: palette.text,
+                whiteSpace: isMobile ? "normal" : "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
               }}
             >
               <span
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: isMobile ? "26px" : "30px",
-                  height: isMobile ? "26px" : "30px",
-                  borderRadius: "50%",
-                  background: palette.iconBg,
-                  flexShrink: 0,
+                  display: "inline-block",
+                  padding: "2px 8px",
+                  marginRight: isMobile ? "6px" : "8px",
+                  background: palette.chip,
+                  color: palette.chipText,
+                  borderRadius: "4px",
+                  fontSize: isMobile ? "10px" : "11px",
+                  fontWeight: 700,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  verticalAlign: "middle",
                 }}
               >
-                <AlertTriangle
-                  size={isMobile ? 14 : 16}
-                  color={palette.iconColor}
-                  strokeWidth={2.4}
-                  aria-hidden="true"
-                />
+                Important
               </span>
-              <p
+              <span
                 style={{
-                  margin: 0,
-                  flex: 1,
-                  minWidth: 0,
-                  fontWeight: 600,
-                  fontSize: isMobile ? "12px" : "13px",
-                  lineHeight: isMobile ? "16px" : "18px",
-                  color: palette.text,
-                  whiteSpace: isMobile ? "normal" : "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
+                  display: "inline-block",
+                  padding: "2px 8px",
+                  marginRight: isMobile ? "6px" : "10px",
+                  background: "rgba(255, 255, 255, 0.7)",
+                  color: palette.chip,
+                  border: `1px solid ${palette.chip}`,
+                  borderRadius: "4px",
+                  fontSize: isMobile ? "10px" : "11px",
+                  fontWeight: 700,
+                  letterSpacing: "0.02em",
+                  verticalAlign: "middle",
                 }}
               >
-                <span
-                  style={{
-                    display: "inline-block",
-                    padding: "2px 8px",
-                    marginRight: isMobile ? "6px" : "8px",
-                    background: palette.chip,
-                    color: palette.chipText,
-                    borderRadius: "4px",
-                    fontSize: isMobile ? "10px" : "11px",
-                    fontWeight: 700,
-                    letterSpacing: "0.04em",
-                    textTransform: "uppercase",
-                    verticalAlign: "middle",
-                  }}
-                >
-                  Important
-                </span>
-                <span
-                  style={{
-                    display: "inline-block",
-                    padding: "2px 8px",
-                    marginRight: isMobile ? "6px" : "10px",
-                    background: "rgba(255, 255, 255, 0.7)",
-                    color: palette.chip,
-                    border: `1px solid ${palette.chip}`,
-                    borderRadius: "4px",
-                    fontSize: isMobile ? "10px" : "11px",
-                    fontWeight: 700,
-                    letterSpacing: "0.02em",
-                    verticalAlign: "middle",
-                  }}
-                >
-                  {daysLabel}
-                </span>
-                {isExpired
-                  ? "Your application renewal has expired. Please pay the renewal amount immediately to continue using the platform."
-                  : "Your application renewal is due soon. Please pay the renewal amount to continue using the platform without interruption."}
-              </p>
-            </div>
-          );
-        })()}
+                {daysLabel}
+              </span>
+              {renewalMessage}
+            </p>
+          </div>
+        );
+      })()}
 
       {/* ── Modals ── */}
       <ChangePasswordModal

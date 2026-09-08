@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useUserRole } from "./useUserRole";
+import { useProfileQuery } from "./useAuthQueries";
 
 export interface StaffReportAccess {
   /** True if the user is a staff member */
@@ -10,91 +11,121 @@ export interface StaffReportAccess {
   hasAccess: boolean;
   /** Restricted window in hours (null for Admin/Manager who have unrestricted access) */
   durationHours: number | null;
+  /** Raw report access timing from profile (e.g. 72) */
+  reportAccessTiming: number | null;
+  /** Raw report access unit from profile (e.g. "HOURS") */
+  reportAccessUnit: string | null;
   /** Earliest date permitted in "YYYY-MM-DD" format (null for Admin/Manager) */
   minDate: string | null;
-  /** Formatted duration label (e.g. "Past 24 Hours (1 Day)") */
+  /** Formatted duration label (e.g. "Past 72 Hours (3 Days)") */
   accessLabel: string;
   /** Loading state while role or profile or staff data is loading */
   isLoading: boolean;
 }
 
 export function useStaffReportAccess(): StaffReportAccess {
-  const { role, isStaff, isLoading: isRoleLoading } = useUserRole();
+  const { role, isStaff: isStaffRole, isLoading: isRoleLoading } = useUserRole();
+  const { data: profileData, isLoading: isProfileLoading } = useProfileQuery();
+  const profile = profileData?.profile;
 
   return useMemo(() => {
+    const isStaff =
+      isStaffRole ||
+      role === "Staff" ||
+      profile?.role?.toUpperCase() === "STAFF";
+
+    if (isRoleLoading || isProfileLoading) {
+      return {
+        isStaff,
+        hasAccess: false,
+        durationHours: null,
+        reportAccessTiming: null,
+        reportAccessUnit: null,
+        minDate: null,
+        accessLabel: "",
+        isLoading: true,
+      };
+    }
+
     // If not staff (Admin or Manager), full unrestricted access
-    if (!isStaff && role !== "Staff") {
+    if (!isStaff) {
       return {
         isStaff: false,
         hasAccess: true,
         durationHours: null,
+        reportAccessTiming: null,
+        reportAccessUnit: null,
         minDate: null,
         accessLabel: "Full Historical Access",
-        isLoading: isRoleLoading,
+        isLoading: false,
       };
     }
 
-    let durationHours = 24; // default 24h
+    // Strictly read reportAccessTiming & reportAccessUnit from the profile API response
+    const timing = profile?.reportAccessTiming;
+    const rawUnit = profile?.reportAccessUnit
+      ? String(profile.reportAccessUnit).toUpperCase()
+      : "";
 
-    // Check explicit timing saved in session or local storage
-    if (typeof window !== "undefined") {
-      const explicitHours =
-        sessionStorage.getItem("staffReportTimingHours") ||
-        sessionStorage.getItem("lastAssignedReportDurationHours") ||
-        localStorage.getItem("staffReportTimingHours");
-      if (explicitHours) {
-        const parsedHours = Number(explicitHours);
-        if (!isNaN(parsedHours) && parsedHours > 0) {
-          durationHours = parsedHours;
-        }
+    // No mock data or frontend defaults allowed
+    if (
+      timing === null ||
+      timing === undefined ||
+      typeof timing !== "number" ||
+      timing <= 0 ||
+      !rawUnit ||
+      (rawUnit !== "HOURS" && rawUnit !== "DAYS")
+    ) {
+      return {
+        isStaff: true,
+        hasAccess: false,
+        durationHours: null,
+        reportAccessTiming: null,
+        reportAccessUnit: null,
+        minDate: null,
+        accessLabel: "Access Not Configured",
+        isLoading: false,
+      };
+    }
+
+    const durationHours = rawUnit === "DAYS" ? timing * 24 : timing;
+    const days = rawUnit === "DAYS" ? timing : Math.round((timing / 24) * 10) / 10;
+
+    let accessLabel = "";
+    if (rawUnit === "HOURS") {
+      if (timing >= 24 && timing % 24 === 0) {
+        const d = timing / 24;
+        accessLabel = `Past ${timing} Hours (${d} ${d === 1 ? "Day" : "Days"})`;
       } else {
-        // Check role string in session storage if available
-        try {
-          const stored = sessionStorage.getItem("staffRoles");
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            if (Array.isArray(parsed)) {
-              for (const r of parsed) {
-                const lower = String(r).toLowerCase();
-                const match = lower.match(/(\d+)\s*(h|hours?|d|days?)?/);
-                if (match) {
-                  const val = parseInt(match[1], 10);
-                  const unit = match[2] || "h";
-                  durationHours = unit.startsWith("d") ? val * 24 : val;
-                  break;
-                }
-              }
-            }
-          }
-        } catch {
-          /* ignore */
-        }
+        accessLabel = `Past ${timing} Hours`;
       }
+    } else {
+      // DAYS
+      accessLabel = `Past ${timing * 24} Hours (${timing} ${timing === 1 ? "Day" : "Days"})`;
     }
 
-    // Ensure valid duration
-    if (!durationHours || isNaN(durationHours) || durationHours <= 0) {
-      durationHours = 24;
+    // Compute minDate (YYYY-MM-DD) based on authorized window
+    const now = new Date();
+    const minDateObj = new Date(now);
+    if (rawUnit === "HOURS") {
+      minDateObj.setHours(minDateObj.getHours() - timing);
+    } else {
+      minDateObj.setDate(minDateObj.getDate() - timing);
     }
-
-    // Compute minDate (YYYY-MM-DD)
-    const minTimestamp = Date.now() - durationHours * 60 * 60 * 1000;
-    const minDateObj = new Date(minTimestamp);
-    const minDate = minDateObj.toISOString().split("T")[0];
-
-    const days = Math.round((durationHours / 24) * 10) / 10;
-    const accessLabel =
-      durationHours % 24 === 0
-        ? `Past ${durationHours} Hours (${days} ${days === 1 ? "Day" : "Days"})`
-        : `Past ${durationHours} Hours`;
+    const y = minDateObj.getFullYear();
+    const m = String(minDateObj.getMonth() + 1).padStart(2, "0");
+    const d = String(minDateObj.getDate()).padStart(2, "0");
+    const minDate = `${y}-${m}-${d}`;
 
     return {
       isStaff: true,
       hasAccess: true,
       durationHours,
+      reportAccessTiming: timing,
+      reportAccessUnit: rawUnit,
       minDate,
       accessLabel,
       isLoading: false,
     };
-  }, [role, isStaff, isRoleLoading]);
+  }, [role, isStaffRole, isRoleLoading, isProfileLoading, profile]);
 }

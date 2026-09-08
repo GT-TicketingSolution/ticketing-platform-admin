@@ -36,6 +36,7 @@ export default function AttractionReportCard({
   onPrint,
 }: AttractionReportCardProps) {
   const { attraction, totalRevenue, totalTicketsSold, totalBookings, categoryBreakdown, paymentBreakdown, transactions } = report;
+  const hasData = totalRevenue > 0 || totalTicketsSold > 0 || totalBookings > 0;
 
   const handleExportAttractionCSV = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -257,49 +258,30 @@ export default function AttractionReportCard({
               Sales & Ticket Category Breakdown
             </div>
             <div style={{ display: "flex", gap: "10px" }}>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectSingle(attraction.name);
-                }}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "6px 14px",
-                  borderRadius: "8px",
-                  backgroundColor: "#F0F9FF",
-                  color: "#0284C7",
-                  border: "1px solid #BAE6FD",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                <ExternalLink size={14} />
-                Detailed View
-              </button>
               {onPrint ? (
                 <button
                   type="button"
+                  disabled={!hasData}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (!hasData) return;
                     onPrint(report);
                   }}
+                  title={!hasData ? "No sales data available to print" : undefined}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "6px",
                     padding: "6px 14px",
                     borderRadius: "8px",
-                    backgroundColor: "#0C2A42",
-                    color: "#F4BC43",
-                    border: "1px solid #0C2A42",
+                    backgroundColor: !hasData ? "#94A3B8" : "#0C2A42",
+                    color: !hasData ? "#E2E8F0" : "#F4BC43",
+                    border: !hasData ? "1px solid #94A3B8" : "1px solid #0C2A42",
                     fontSize: "12px",
                     fontWeight: 700,
-                    cursor: "pointer",
-                    boxShadow: "0 2px 6px rgba(12, 42, 66, 0.2)",
+                    cursor: !hasData ? "not-allowed" : "pointer",
+                    boxShadow: !hasData ? "none" : "0 2px 6px rgba(12, 42, 66, 0.2)",
+                    opacity: !hasData ? 0.6 : 1,
                     transition: "all 0.15s ease",
                   }}
                 >
@@ -309,7 +291,13 @@ export default function AttractionReportCard({
               ) : (
                 <button
                   type="button"
-                  onClick={handleExportAttractionCSV}
+                  disabled={!hasData}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!hasData) return;
+                    handleExportAttractionCSV(e);
+                  }}
+                  title={!hasData ? "No sales data available to export" : undefined}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -317,11 +305,12 @@ export default function AttractionReportCard({
                     padding: "6px 14px",
                     borderRadius: "8px",
                     backgroundColor: "#F8FAFC",
-                    color: "#334155",
+                    color: !hasData ? "#94A3B8" : "#334155",
                     border: "1px solid #CBD5E1",
                     fontSize: "12px",
                     fontWeight: 600,
-                    cursor: "pointer",
+                    cursor: !hasData ? "not-allowed" : "pointer",
+                    opacity: !hasData ? 0.6 : 1,
                   }}
                 >
                   <Download size={14} />
@@ -443,63 +432,88 @@ export default function AttractionReportCard({
             </div>
           </div>
 
-          {/* Transactions Log for this Attraction */}
-          <div>
-            <h4 style={{ margin: "0 0 12px 0", fontSize: "14px", fontWeight: 700, color: colors.text.primary }}>
-              Recent Sales & Transactions ({transactions.length})
-            </h4>
+          {/* Transactions Log for this Attraction (recent 6 only) */}
+          {(() => {
+            const recentTransactions = transactions.slice(0, 6);
+            return (
+              <div>
+                <h4 style={{ margin: "0 0 12px 0", fontSize: "14px", fontWeight: 700, color: colors.text.primary }}>
+                  Recent Sales & Transactions ({recentTransactions.length})
+                </h4>
 
-            {transactions.length > 0 ? (
-              <div style={{ overflowX: "auto", borderRadius: "8px", border: "1px solid #E2E8F0" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-                  <thead>
-                    <tr style={{ backgroundColor: "#F1F5F9", textTransform: "uppercase", fontSize: "11px", letterSpacing: "0.05em", color: "#475569" }}>
-                      <th style={{ padding: "10px 14px", textAlign: "left" }}>INV Number</th>
-                      <th style={{ padding: "10px 14px", textAlign: "left" }}>Customer</th>
-                      <th style={{ padding: "10px 14px", textAlign: "left" }}>Date & Time</th>
-                      <th style={{ padding: "10px 14px", textAlign: "left" }}>Payment Mode</th>
-                      <th style={{ padding: "10px 14px", textAlign: "right" }}>Amount</th>
-                      <th style={{ padding: "10px 14px", textAlign: "center" }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {transactions.slice(0, 5).map((t, idx) => (
-                      <tr
-                        key={`${t.id}-${idx}`}
-                        style={{
-                          borderBottom: idx === transactions.length - 1 ? "none" : "1px solid #F1F5F9",
-                          backgroundColor: idx % 2 === 0 ? "#FFFFFF" : "#FAFAFA",
-                        }}
-                      >
-                        <td style={{ padding: "10px 14px", fontWeight: 600, color: "#0284C7" }}>
-                          {t.invoiceId || t.id}
-                        </td>
-                        <td style={{ padding: "10px 14px", fontWeight: 500, color: colors.text.primary }}>
-                          {t.customerName}
-                        </td>
-                        <td style={{ padding: "10px 14px", color: colors.text.muted }}>
-                          {t.dateTime}
-                        </td>
-                        <td style={{ padding: "10px 14px", color: colors.text.primary }}>
-                          {t.paymentMode}
-                        </td>
-                        <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 700, color: "#16A34A" }}>
-                          ₹{t.amount}
-                        </td>
-                        <td style={{ padding: "10px 14px", textAlign: "center" }}>
-                          <StatusBadge status={t.status} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {recentTransactions.length > 0 ? (
+                  <div style={{ overflowX: "auto", borderRadius: "8px", border: "1px solid #E2E8F0" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                      <thead>
+                        <tr style={{ backgroundColor: "#F1F5F9", textTransform: "uppercase", fontSize: "11px", letterSpacing: "0.05em", color: "#475569" }}>
+                          <th style={{ padding: "10px 14px", textAlign: "left" }}>INV Number</th>
+                          <th style={{ padding: "10px 14px", textAlign: "left" }}>Customer</th>
+                          <th style={{ padding: "10px 14px", textAlign: "left" }}>Date & Time</th>
+                          <th style={{ padding: "10px 14px", textAlign: "left" }}>Payment Mode</th>
+                          <th style={{ padding: "10px 14px", textAlign: "right" }}>Amount</th>
+                          <th style={{ padding: "10px 14px", textAlign: "center" }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recentTransactions.map((t, idx) => {
+                          const rawInv = t.invoiceId || (t as any).invoiceNumber || t.id;
+                          const invNumber = rawInv && String(rawInv).trim() !== "" && String(rawInv).trim() !== "-" ? String(rawInv).trim() : "-";
+
+                          const rawCustomer = t.customerName;
+                          const customer = rawCustomer && String(rawCustomer).trim() !== "" && String(rawCustomer).trim() !== "-" ? String(rawCustomer).trim() : "-";
+
+                          const rawDateTime = t.dateTime || t.transactionDate || (t as any).date;
+                          const dateTime = rawDateTime && String(rawDateTime).trim() !== "" && String(rawDateTime).trim() !== "-" ? String(rawDateTime).trim() : "-";
+
+                          const rawPayment = t.paymentMode;
+                          const paymentMode = rawPayment && String(rawPayment).trim() !== "" && String(rawPayment).trim() !== "-" ? String(rawPayment).trim() : "-";
+
+                          const hasAmount = t.amount !== undefined && t.amount !== null && !isNaN(Number(t.amount)) && String(t.amount).trim() !== "";
+                          const displayAmount = hasAmount ? `₹${Number(t.amount).toLocaleString("en-IN")}` : "-";
+
+                          const rawStatus = t.status;
+                          const hasStatus = Boolean(rawStatus && String(rawStatus).trim() !== "" && String(rawStatus).trim() !== "-");
+
+                          return (
+                            <tr
+                              key={`${t.id || idx}-${idx}`}
+                              style={{
+                                borderBottom: idx === recentTransactions.length - 1 ? "none" : "1px solid #F1F5F9",
+                                backgroundColor: idx % 2 === 0 ? "#FFFFFF" : "#FAFAFA",
+                              }}
+                            >
+                              <td style={{ padding: "10px 14px", fontWeight: 600, color: invNumber !== "-" ? "#0284C7" : colors.text.muted }}>
+                                {invNumber}
+                              </td>
+                              <td style={{ padding: "10px 14px", fontWeight: 500, color: customer !== "-" ? colors.text.primary : colors.text.muted }}>
+                                {customer}
+                              </td>
+                              <td style={{ padding: "10px 14px", color: colors.text.muted }}>
+                                {dateTime}
+                              </td>
+                              <td style={{ padding: "10px 14px", color: paymentMode !== "-" ? colors.text.primary : colors.text.muted }}>
+                                {paymentMode}
+                              </td>
+                              <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 700, color: hasAmount ? "#16A34A" : colors.text.muted }}>
+                                {displayAmount}
+                              </td>
+                              <td style={{ padding: "10px 14px", textAlign: "center" }}>
+                                {hasStatus ? <StatusBadge status={String(rawStatus).trim()} /> : <span style={{ color: colors.text.muted }}>-</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{ padding: "16px", textAlign: "center", color: colors.text.muted, fontSize: "13px", backgroundColor: "#F8FAFC", borderRadius: "8px" }}>
+                    No recent transactions found for {attraction.name} in this date range.
+                  </div>
+                )}
               </div>
-            ) : (
-              <div style={{ padding: "16px", textAlign: "center", color: colors.text.muted, fontSize: "13px", backgroundColor: "#F8FAFC", borderRadius: "8px" }}>
-                No recent transactions found for {attraction.name} in this date range.
-              </div>
-            )}
-          </div>
+            );
+          })()}
         </div>
       )}
     </div>

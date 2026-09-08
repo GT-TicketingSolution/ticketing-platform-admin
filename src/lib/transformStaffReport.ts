@@ -25,16 +25,24 @@ function transformTransaction(
   index: number
 ): Transaction {
   const baseId = txn.invoice_id || "txn";
+  const dateStr = txn.date ? txn.date.trim() : "";
+  const timeStr = txn.time ? txn.time.trim() : "";
+  const dateTimeStr =
+    dateStr && timeStr ? `${dateStr} ${timeStr}` : dateStr || timeStr || "-";
+
   return {
-    id: `${baseId}-${txn.payment_mode}-${index}`,
-    transactionId: `${baseId}-${txn.payment_mode}-${index}`,
-    invoiceId: txn.invoice_id || "",
-    customerName: txn.customer_name || "Walk-in",
-    transactionDate: `${txn.date} ${txn.time}`,
-    dateTime: `${txn.date} ${txn.time}`,
+    id: `${baseId}-${txn.payment_mode || "pm"}-${index}`,
+    transactionId: `${baseId}-${txn.payment_mode || "pm"}-${index}`,
+    invoiceId: txn.invoice_id || "-",
+    customerName:
+      txn.customer_name && txn.customer_name.trim() !== ""
+        ? txn.customer_name
+        : "-",
+    transactionDate: dateTimeStr,
+    dateTime: dateTimeStr,
     amount: parseFloat(txn.amount) || 0,
-    paymentMode: txn.payment_mode || "UNKNOWN",
-    status: txn.status || "UNKNOWN",
+    paymentMode: txn.payment_mode || "-",
+    status: txn.status || "-",
     bookingId: "",
     attraction: attractionName,
   };
@@ -50,7 +58,7 @@ function transformAttractionReport(
 ): AttractionReportData {
   const attractionObj: Attraction = {
     id: attraction.id,
-    attractionId: attraction.attraction_management_id,
+    attractionId: attraction.attraction_management_id || "",
     name: attraction.name,
     category: attraction.type,
     status: "Active",
@@ -116,7 +124,9 @@ export function transformStaffReportResponse(
   // Build a map of attraction_management_id → attraction data
   const attractionMap = new Map<string, StaffReportAttraction>();
   for (const a of attractions) {
-    attractionMap.set(a.attraction_management_id, a);
+    if (a.attraction_management_id) {
+      attractionMap.set(a.attraction_management_id, a);
+    }
   }
 
   // Build a map of attraction_management_id → booking data
@@ -133,8 +143,9 @@ export function transformStaffReportResponse(
 
   // Build attraction reports for ALL attractions (not just those with bookings)
   const attractionReports: AttractionReportData[] = attractions.map((attraction) => {
-    const booking = bookingMap.get(attraction.attraction_management_id);
-    const txns = transactionMap.get(attraction.attraction_management_id) || [];
+    const mgmtId = attraction.attraction_management_id || "";
+    const booking = mgmtId ? bookingMap.get(mgmtId) : undefined;
+    const txns = mgmtId ? (transactionMap.get(mgmtId) || []) : [];
     return transformAttractionReport(attraction, booking, txns);
   });
 
@@ -156,13 +167,15 @@ export function transformStaffReportResponse(
   const totalTicketsSold = filteredReports.reduce((sum, r) => sum + r.totalTicketsSold, 0);
   const avgOrderValue = totalBookings > 0 ? Math.round(totalRevenue / totalBookings) : 0;
 
-  // Top attraction by revenue
-  let topAttractionName = "None";
+  // Top attraction by revenue — only show if there is actual revenue
+  let topAttractionName = "";
   let topAttractionRevenue = 0;
   if (filteredReports.length > 0) {
     const sorted = [...filteredReports].sort((a, b) => b.totalRevenue - a.totalRevenue);
-    topAttractionName = sorted[0].attraction.name;
-    topAttractionRevenue = sorted[0].totalRevenue;
+    if (sorted[0].totalRevenue > 0) {
+      topAttractionName = sorted[0].attraction.name;
+      topAttractionRevenue = sorted[0].totalRevenue;
+    }
   }
 
   return {
@@ -184,7 +197,7 @@ export function getEmptyOverallSummary(): OverallReportSummary {
     totalRevenue: 0,
     totalTicketsSold: 0,
     totalBookings: 0,
-    topAttractionName: "None",
+    topAttractionName: "",
     topAttractionRevenue: 0,
     avgOrderValue: 0,
     attractionReports: [],

@@ -6,6 +6,12 @@ import { showSuccessNotify } from "@/lib/notify";
 import { showErrorOnce } from "@/lib/api/axiosConfig";
 import { LoginRequestBody, LoginResponseData } from "@/app/(auth)/login/types";
 
+export interface UserRenewalData {
+  next_renewal_date?: string | Date | null;
+  days_left_for_renewal?: number | null;
+  message?: string | null;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -18,9 +24,13 @@ export interface UserProfile {
   cin?: string | null;
   profileLink?: string | null;
   invoiceNumberForUsersInitialPart?: string | null;
+  next_renewal_date?: string | null;
   lastLoginAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  reportAccessTiming?: number | null;
+  reportAccessUnit?: "HOURS" | "DAYS" | string | null;
+  user_renewal_data?: UserRenewalData | null;
 }
 
 export interface ProfileResponse {

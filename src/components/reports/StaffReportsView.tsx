@@ -49,6 +49,13 @@ const formatDateDisplay = (dateStr: string) => {
   return `${d} ${mName} ${y}`;
 };
 
+const formatDateSlash = (dateStr: string) => {
+  if (!dateStr) return "";
+  const [y, m, d] = dateStr.split("-");
+  if (!y || !m || !d) return dateStr;
+  return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
+};
+
 const parse24to12 = (time24: string) => {
   if (!time24) return { h12: 12, mm: "00", ampm: "AM" as const, hourStr: "12" };
   const [hStr, mStr] = time24.split(":");
@@ -94,9 +101,19 @@ export default function StaffReportsView() {
   // Filters State: Defaults to Today window (today -> today, 12:00 AM up to current time)
   const [fromDate, setFromDate] = useState<string>(todayStr);
   const [toDate, setToDate] = useState<string>(todayStr);
+  const [isCustomRange, setIsCustomRange] = useState(false);
   const [fromTime, setFromTime] = useState<string>("00:00");
   const [toTime, setToTime] = useState<string>(() => getCurrentTimeStr());
   const [selectedAttraction, setSelectedAttraction] = useState<string>("All Attractions");
+
+  // Authorized banner window info from Profile API response: does not change when date range is selected in the UI
+  const bannerTitle = staffReportAccess.accessLabel || "Past Reports Window";
+  const bannerFromDate = staffReportAccess.minDate || "earlier today";
+  const bannerToDate = "today";
+  const windowHours = staffReportAccess.durationHours || 0;
+  const windowDays = staffReportAccess.durationHours
+    ? Math.round((staffReportAccess.durationHours / 24) * 10) / 10
+    : 0;
 
   // Accordion State for "All Attractions" view (IDs of expanded cards)
   const [expandedAttractionIds, setExpandedAttractionIds] = useState<Set<string>>(
@@ -260,16 +277,22 @@ export default function StaffReportsView() {
 
   // Export Overall Excel Report
   const handleExportOverallReport = () => {
-    if (overallSummary.attractionReports.length === 0) return;
+    if (
+      overallSummary.totalRevenue === 0 &&
+      overallSummary.totalTicketsSold === 0 &&
+      overallSummary.totalBookings === 0
+    ) {
+      return;
+    }
 
     const sections: XLSSection[] = [
       {
         title: "1. SALES SUMMARY OVERVIEW (STAFF REPORT)",
         headers: ["Metric Label", "Value"],
         rows: [
-          ["Report Authorization Window", staffReportAccess.accessLabel],
-          ["Earliest Authorized Date", staffReportAccess.minDate || "N/A"],
-          ["Date Range From", fromDate || "Authorized Window Start"],
+          ["Report Authorization Window", bannerTitle],
+          ["Earliest Authorized Date", bannerFromDate ? formatDateSlash(bannerFromDate) : "N/A"],
+          ["Date Range From", fromDate ? formatDateSlash(fromDate) : "Authorized Window Start"],
           ["Date Range To", toDate || "Today"],
           ["Selected Attraction", selectedAttraction],
           [
@@ -290,7 +313,6 @@ export default function StaffReportsView() {
           "Total Revenue (₹)",
           "Tickets Sold",
           "Bookings Count",
-          "Avg Order Value (₹)",
           "Status",
         ],
         rows: overallSummary.attractionReports.map((r) => [
@@ -300,7 +322,6 @@ export default function StaffReportsView() {
           r.totalRevenue,
           r.totalTicketsSold,
           r.totalBookings,
-          r.avgOrderValue,
           r.attraction.status,
         ]),
       },
@@ -326,6 +347,18 @@ export default function StaffReportsView() {
       ) || null
     );
   }, [selectedAttraction, overallSummary]);
+
+  // Overall data availability flags
+  const hasOverallData =
+    overallSummary.totalRevenue > 0 ||
+    overallSummary.totalTicketsSold > 0 ||
+    overallSummary.totalBookings > 0;
+
+  const hasPrintData = singleAttractionReport
+    ? singleAttractionReport.totalRevenue > 0 ||
+    singleAttractionReport.totalTicketsSold > 0 ||
+    singleAttractionReport.totalBookings > 0
+    : hasOverallData;
 
   // Gated view: if staff member has no reports access granted
   if (!staffReportAccess.hasAccess && !staffReportAccess.isLoading) {
@@ -413,8 +446,8 @@ export default function StaffReportsView() {
     );
   }
 
-  // Loading state while the staff report API is being fetched
-  if (isLoading) {
+  // Loading state while the staff report API or permissions are being fetched
+  if (isLoading || staffReportAccess.isLoading) {
     return (
       <div
         style={{
@@ -561,6 +594,7 @@ export default function StaffReportsView() {
 
   return (
     <div
+      className="staff-reports-root"
       style={{
         padding: "24px",
         backgroundColor: colors.bg.page,
@@ -572,6 +606,7 @@ export default function StaffReportsView() {
     >
       {/* Top Header Card */}
       <div
+        className="staff-reports-header-card"
         style={{
           backgroundColor: colors.bg.card,
           borderRadius: "16px",
@@ -615,27 +650,26 @@ export default function StaffReportsView() {
 
           <button
             type="button"
+            className="staff-reports-export-btn"
             onClick={handleExportOverallReport}
-            disabled={overallSummary.attractionReports.length === 0}
+            disabled={!hasOverallData}
+            title={!hasOverallData ? "No sales data available to export" : undefined}
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
               padding: "10px 18px",
               borderRadius: "10px",
-              backgroundColor:
-                overallSummary.attractionReports.length === 0 ? "#94A3B8" : "#2372A5",
+              backgroundColor: !hasOverallData ? "#94A3B8" : "#2372A5",
               color: "#FFFFFF",
               border: "none",
               fontSize: "13px",
               fontWeight: 700,
-              cursor:
-                overallSummary.attractionReports.length === 0 ? "not-allowed" : "pointer",
-              opacity: overallSummary.attractionReports.length === 0 ? 0.7 : 1,
-              boxShadow:
-                overallSummary.attractionReports.length === 0
-                  ? "none"
-                  : "0 2px 8px rgba(35, 114, 165, 0.25)",
+              cursor: !hasOverallData ? "not-allowed" : "pointer",
+              opacity: !hasOverallData ? 0.6 : 1,
+              boxShadow: !hasOverallData
+                ? "none"
+                : "0 2px 8px rgba(35, 114, 165, 0.25)",
               transition: "all 0.2s",
             }}
           >
@@ -689,7 +723,7 @@ export default function StaffReportsView() {
                     gap: "8px",
                   }}
                 >
-                  <span>Staff Reports Window: {staffReportAccess.accessLabel}</span>
+                  <span>Staff Reports Window: {bannerTitle}</span>
                 </div>
                 <div
                   style={{
@@ -700,9 +734,13 @@ export default function StaffReportsView() {
                 >
                   Authorized to view analytics from{" "}
                   <strong style={{ color: "#0C2A42" }}>
-                    {staffReportAccess.minDate || "earlier today"}
+                    {formatDateSlash(bannerFromDate)}
                   </strong>{" "}
-                  up to today. Older historical records are restricted by management.
+                  up to{" "}
+                  <strong style={{ color: "#0C2A42" }}>
+                    {bannerToDate}
+                  </strong>
+                  . Older historical records are restricted by management.
                 </div>
               </div>
             </div>
@@ -711,10 +749,8 @@ export default function StaffReportsView() {
 
         {/* Filter Controls Row */}
         <div
+          className="staff-filter-grid"
           style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1.25fr 1.25fr",
-            gap: "16px",
             padding: "16px 20px",
             backgroundColor: "#F8FAFC",
             borderRadius: "12px",
@@ -722,8 +758,32 @@ export default function StaffReportsView() {
             alignItems: "flex-start",
           }}
         >
-          {/* Custom style for perfectly matching DateRangePicker trigger button */}
+          {/* Custom style for responsive filter grid and date range picker */}
           <style>{`
+            .staff-filter-grid {
+              display: grid;
+              grid-template-columns: 1fr 1.25fr;
+              gap: 16px;
+            }
+            @media (max-width: 768px) {
+              .staff-reports-root {
+                padding: 12px !important;
+                gap: 16px !important;
+              }
+              .staff-reports-header-card {
+                padding: 16px !important;
+                border-radius: 12px !important;
+              }
+              .staff-filter-grid {
+                grid-template-columns: 1fr !important;
+                gap: 14px !important;
+                padding: 14px 14px !important;
+              }
+              .staff-reports-export-btn {
+                width: 100% !important;
+                justify-content: center !important;
+              }
+            }
             .staff-date-picker-wrap > div {
               height: 42px !important;
               border-radius: 8px !important;
@@ -808,6 +868,7 @@ export default function StaffReportsView() {
                   const minAllowed = staffReportAccess.minDate;
                   const nextFrom = minAllowed && date < minAllowed ? minAllowed : date;
                   setFromDate(nextFrom);
+                  setIsCustomRange(true);
                   if (nextFrom === todayStr && fromTime > currentTimeStr) {
                     setFromTime(currentTimeStr);
                   }
@@ -818,6 +879,7 @@ export default function StaffReportsView() {
                 onToDateChange={(date) => {
                   const nextTo = date > todayStr ? todayStr : date;
                   setToDate(nextTo);
+                  setIsCustomRange(true);
                   if (nextTo === todayStr && toTime > currentTimeStr) {
                     setToTime(currentTimeStr);
                   }
@@ -828,6 +890,7 @@ export default function StaffReportsView() {
                 onClear={() => {
                   setFromDate(todayStr);
                   setToDate(todayStr);
+                  setIsCustomRange(false);
                   if (fromTime > currentTimeStr) {
                     setFromTime(currentTimeStr);
                   }
@@ -1435,50 +1498,42 @@ export default function StaffReportsView() {
                 i
               </span>
               <span>
-                Showing report for <strong>{formatDateDisplay(fromDate)} {formatTime12Display(fromTime)}</strong> to{" "}
-                <strong>{formatDateDisplay(toDate)} {formatTime12Display(toTime)}</strong>
-                <span
-                  style={{
-                    marginLeft: "8px",
-                    padding: "2px 8px",
-                    borderRadius: "100px",
-                    backgroundColor: "#FEF3C7",
-                    color: "#92400E",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    border: "1px solid #FDE68A",
-                  }}
-                >
-                  {fromDate !== todayStr ? "Past 24 Hours Window" : "Today's Report"}
-                </span>
+                Showing report for <strong>{formatDateDisplay(fromDate)}</strong> to{" "}
+                <strong>{formatDateDisplay(toDate)}</strong>
               </span>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedPrintReport(singleAttractionReport || null);
-                setIsPrintModalOpen(true);
-              }}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "9px 20px",
-                borderRadius: "8px",
-                backgroundColor: "#0C2A42",
-                color: "#F4BC43",
-                border: "none",
-                fontSize: "13px",
-                fontWeight: 700,
-                cursor: "pointer",
-                boxShadow: "0 2px 8px rgba(12, 42, 66, 0.25)",
-                transition: "all 0.15s ease",
-              }}
-            >
-              <Printer size={16} />
-              <span>Print Sales Report</span>
-            </button>
+            {!singleAttractionReport && (
+              <button
+                type="button"
+                disabled={!hasPrintData}
+                onClick={() => {
+                  if (!hasPrintData) return;
+                  setSelectedPrintReport(null);
+                  setIsPrintModalOpen(true);
+                }}
+                title={!hasPrintData ? "No sales data available for the selected period" : undefined}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "9px 20px",
+                  borderRadius: "8px",
+                  backgroundColor: !hasPrintData ? "#94A3B8" : "#0C2A42",
+                  color: !hasPrintData ? "#E2E8F0" : "#F4BC43",
+                  border: "none",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: !hasPrintData ? "not-allowed" : "pointer",
+                  boxShadow: !hasPrintData ? "none" : "0 2px 8px rgba(12, 42, 66, 0.25)",
+                  opacity: !hasPrintData ? 0.6 : 1,
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <Printer size={16} />
+                <span>Print Sales Report</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1488,7 +1543,7 @@ export default function StaffReportsView() {
         {singleAttractionReport ? (
           <SingleAttractionReportView
             reportData={singleAttractionReport}
-            onBackToAll={() => setSelectedAttraction("All")}
+            onBackToAll={() => setSelectedAttraction("All Attractions")}
             fromDate={fromDate}
             toDate={toDate}
             onPrint={() => {
@@ -1606,13 +1661,15 @@ export default function StaffReportsView() {
                     <IndianRupee size={18} />
                   </div>
                 </div>
-                <div style={{ fontSize: "20px", fontWeight: 800, color: colors.text.primary, marginTop: "10px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {overallSummary.topAttractionName || "None"}
+                <div style={{ fontSize: "20px", fontWeight: 800, color: overallSummary.topAttractionName ? colors.text.primary : "#CBD5E1", marginTop: "10px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {overallSummary.topAttractionName || "—"}
                 </div>
                 <div style={{ fontSize: "12px", color: colors.text.muted, marginTop: "4px" }}>
                   {overallSummary.topAttractionRevenue > 0
                     ? `₹${overallSummary.topAttractionRevenue.toLocaleString("en-IN")} revenue`
-                    : "No revenue recorded"}
+                    : overallSummary.topAttractionName
+                      ? "No revenue recorded"
+                      : "No data for selected period"}
                 </div>
               </div>
             </div>

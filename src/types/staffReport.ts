@@ -5,7 +5,7 @@
 
 export interface StaffReportAttraction {
   id: string;
-  attraction_management_id: string;
+  attraction_management_id?: string; // absent in the "no bookings" API response
   name: string;
   type: string;
 }
