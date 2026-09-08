@@ -211,10 +211,10 @@ export async function getReportSummary(filter: ReportFilter) {
 
     topAttraction: topAttraction
       ? {
-        id: topAttraction.id,
-        name: topAttraction.name,
-        revenue: Number(topAttraction.revenue ?? 0),
-      }
+          id: topAttraction.id,
+          name: topAttraction.name,
+          revenue: Number(topAttraction.revenue ?? 0),
+        }
       : null,
 
     attractions: attractionReports,
@@ -992,7 +992,12 @@ export async function getReport({
     }
 
     // INFO: Keep this log for future debugging. It will help us understand if the report access validation is working correctly.
-    console.log("Logging this for future debugging:", { "now": now, "accessStart": accessStart, "startDateTime": startDateTime, "endDateTime": endDateTime });
+    console.log("Logging this for future debugging:", {
+      now: now,
+      accessStart: accessStart,
+      startDateTime: startDateTime,
+      endDateTime: endDateTime,
+    });
 
     const isValid = startDateTime >= accessStart && endDateTime <= now;
 
@@ -1153,36 +1158,36 @@ export async function getReport({
 
   const categoryBookingRows = attractionBookingIds.length
     ? await db
-      .select({
-        id: categoryOfAttractionAgainstBooking.id,
+        .select({
+          id: categoryOfAttractionAgainstBooking.id,
 
-        attractionAgainstBookingId:
-          categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+          attractionAgainstBookingId:
+            categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
 
-        bookingId: categoryOfAttractionAgainstBooking.bookingId,
+          bookingId: categoryOfAttractionAgainstBooking.bookingId,
 
-        categoryId: categoryOfAttractionAgainstBooking.categoryId,
+          categoryId: categoryOfAttractionAgainstBooking.categoryId,
 
-        noOfVisitors: categoryOfAttractionAgainstBooking.noOfVisitors,
+          noOfVisitors: categoryOfAttractionAgainstBooking.noOfVisitors,
 
-        categoryName: attractionCategory.name,
+          categoryName: attractionCategory.name,
 
-        basePrice: attractionCategory.basePrice,
-      })
-      .from(categoryOfAttractionAgainstBooking)
-      .innerJoin(
-        attractionCategory,
-        eq(
-          categoryOfAttractionAgainstBooking.categoryId,
-          attractionCategory.id,
-        ),
-      )
-      .where(
-        inArray(
-          categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
-          attractionBookingIds,
-        ),
-      )
+          basePrice: attractionCategory.basePrice,
+        })
+        .from(categoryOfAttractionAgainstBooking)
+        .innerJoin(
+          attractionCategory,
+          eq(
+            categoryOfAttractionAgainstBooking.categoryId,
+            attractionCategory.id,
+          ),
+        )
+        .where(
+          inArray(
+            categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+            attractionBookingIds,
+          ),
+        )
     : [];
 
   // =====================================================
@@ -1412,8 +1417,22 @@ export async function getReport({
   // TOP 6 TRANSACTIONS AGAINST EACH ATTRACTION
   // =====================================================
 
+  // Invoice range from ALL transactions
+  const invoiceRange = await db
+    .select({
+      from: sql<number>`MIN(${transactions.invoiceNumber})`,
+      to: sql<number>`MAX(${transactions.invoiceNumber})`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        gte(transactions.createdAt, startDateTime),
+        lte(transactions.createdAt, endDateTime),
+      ),
+    );
+
   const attractionTransactionsReport = attractionRows.map((attraction) => {
-    const latestTransactions = transactionRows
+    const attractionTransactions = transactionRows
       .filter(
         (transaction) =>
           transaction.attractionManagementId ===
@@ -1422,11 +1441,15 @@ export async function getReport({
       .sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      )
-      .slice(0, 6);
+      );
+
+    // Only return latest 6 transactions
+    const latestTransactions = attractionTransactions.slice(0, 6);
 
     return {
       attraction_management_id: attraction.attractionManagementId,
+
+      invoice_range: invoiceRange,
 
       transactions: latestTransactions.map((transaction) => ({
         invoice_id: transaction.invoiceId,
