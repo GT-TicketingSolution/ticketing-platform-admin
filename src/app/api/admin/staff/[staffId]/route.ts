@@ -609,9 +609,8 @@ const updateStaffSchema = z.object({
 
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
 
-  reportAccessTiming: z.number().int().positive().optional(),
-
-  reportAccessUnit: z.enum(["HOURS", "DAYS"]).optional(),
+  canViewReports: z.boolean().optional(),
+  reportViewDurationHours: z.number().int().positive().nullable().optional(),
 });
 
 export async function PATCH(
@@ -699,8 +698,8 @@ export async function PATCH(
       roles,
       attractionIds,
       status,
-      reportAccessTiming,
-      reportAccessUnit,
+      canViewReports,
+      reportViewDurationHours,
     } = parsed.data;
 
     // -----------------------------------------------------
@@ -832,10 +831,6 @@ export async function PATCH(
     if (roles !== undefined) {
       const normalizedRoles = [...new Set(roles.map((role) => role.trim()))];
 
-      // -----------------------------------------------
-      // Resolve modules from the new roles
-      // -----------------------------------------------
-
       const moduleKeys = [
         ...new Set(
           normalizedRoles.flatMap((role) => STAFF_ROLE_MODULES[role] ?? []),
@@ -870,10 +865,6 @@ export async function PATCH(
         }
       }
 
-      // -----------------------------------------------
-      // Update roles
-      // -----------------------------------------------
-
       await db.delete(staffRoles).where(eq(staffRoles.staffId, staffId));
 
       if (normalizedRoles.length > 0) {
@@ -884,10 +875,6 @@ export async function PATCH(
           })),
         );
       }
-
-      // -----------------------------------------------
-      // Synchronize module permissions
-      // -----------------------------------------------
 
       await db
         .delete(staffSystemModulePermissions)
@@ -900,12 +887,103 @@ export async function PATCH(
             roleModules.map((module) => ({
               staffId,
               moduleId: module.id,
-
-              reportAccessTiming: reportAccessTiming ?? null,
-              reportAccessUnit: reportAccessUnit ?? null,
+              reportAccessTiming: null,
+              reportAccessUnit: null,
             })),
           )
           .onConflictDoNothing();
+      }
+    }
+
+    if (canViewReports !== undefined || reportViewDurationHours !== undefined) {
+      const [reportsModule] = await db
+        .select({
+          id: systemModules.id,
+        })
+        .from(systemModules)
+        .where(
+          and(
+            eq(systemModules.key, "REPORTS"),
+            eq(systemModules.isActive, "ACTIVE"),
+          ),
+        )
+        .limit(1);
+
+      if (!reportsModule) {
+        return failure(
+          "Reports module is not configured.",
+          400,
+          "REPORTS_MODULE_NOT_CONFIGURED",
+        );
+      }
+
+      // -----------------------------------------------------
+      // Explicitly disabling Reports
+      // -----------------------------------------------------
+
+      if (canViewReports === false) {
+        await db
+          .delete(staffSystemModulePermissions)
+          .where(
+            and(
+              eq(staffSystemModulePermissions.staffId, staffId),
+              eq(staffSystemModulePermissions.moduleId, reportsModule.id),
+            ),
+          );
+      }
+
+      // -----------------------------------------------------
+      // Explicitly enabling Reports
+      // -----------------------------------------------------
+
+      if (canViewReports === true) {
+        await db
+          .insert(staffSystemModulePermissions)
+          .values({
+            staffId,
+            moduleId: reportsModule.id,
+            reportAccessTiming: reportViewDurationHours ?? null,
+            reportAccessUnit: "HOURS",
+          })
+          .onConflictDoNothing();
+
+        // If duration was supplied, update it
+        if (reportViewDurationHours !== undefined) {
+          await db
+            .update(staffSystemModulePermissions)
+            .set({
+              reportAccessTiming: reportViewDurationHours,
+              reportAccessUnit: "HOURS",
+            })
+            .where(
+              and(
+                eq(staffSystemModulePermissions.staffId, staffId),
+                eq(staffSystemModulePermissions.moduleId, reportsModule.id),
+              ),
+            );
+        }
+      }
+
+      // -----------------------------------------------------
+      // Only duration changed
+      // -----------------------------------------------------
+
+      if (
+        canViewReports === undefined &&
+        reportViewDurationHours !== undefined
+      ) {
+        await db
+          .update(staffSystemModulePermissions)
+          .set({
+            reportAccessTiming: reportViewDurationHours,
+            reportAccessUnit: "HOURS",
+          })
+          .where(
+            and(
+              eq(staffSystemModulePermissions.staffId, staffId),
+              eq(staffSystemModulePermissions.moduleId, reportsModule.id),
+            ),
+          );
       }
     }
 

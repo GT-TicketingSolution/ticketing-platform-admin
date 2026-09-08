@@ -41,9 +41,9 @@ const createStaffSchema = z.object({
 
   status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
 
-  reportAccessTiming: z.number().int().positive().optional(),
+  canViewReports: z.boolean().default(false),
 
-  reportAccessUnit: z.enum(["HOURS", "DAYS"]).optional(),
+  reportViewDurationHours: z.number().int().positive().nullable().optional(),
 });
 
 /* =========================================================
@@ -79,8 +79,8 @@ function canCreateStaff(role: string) {
  */
 async function grantStaffDefaultModulePermissions(
   staffId: string,
-  reportAccessTiming?: number,
-  reportAccessUnit?: string,
+  canViewReports: boolean,
+  reportViewDurationHours?: number,
 ) {
   const STAFF_ALLOWED_MODULES = [
     "TICKET_BOOKING",
@@ -89,10 +89,15 @@ async function grantStaffDefaultModulePermissions(
     "SCANNER_USE",
   ];
 
+  if (canViewReports) {
+    STAFF_ALLOWED_MODULES.push("REPORTS");
+  }
+
   try {
     const staffModules = await db
       .select({
         id: systemModules.id,
+        key: systemModules.key,
       })
       .from(systemModules)
       .where(
@@ -113,8 +118,11 @@ async function grantStaffDefaultModulePermissions(
       staffModules.map((module) => ({
         staffId,
         moduleId: module.id,
-        reportAccessTiming: reportAccessTiming ?? null,
-        reportAccessUnit: reportAccessUnit ?? null,
+
+        reportAccessTiming:
+          module.key === "REPORTS" ? (reportViewDurationHours ?? null) : null,
+
+        reportAccessUnit: module.key === "REPORTS" ? "HOURS" : null,
       })),
     );
 
@@ -479,8 +487,8 @@ export async function POST(request: Request) {
       roles,
       attractionIds,
       status,
-      reportAccessTiming,
-      reportAccessUnit,
+      canViewReports,
+      reportViewDurationHours,
     } = parsed.data;
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -665,8 +673,8 @@ export async function POST(request: Request) {
 
     await grantStaffDefaultModulePermissions(
       staff.id,
-      reportAccessTiming,
-      reportAccessUnit,
+      canViewReports,
+      reportViewDurationHours ?? undefined,
     );
 
     // -----------------------------------------------------

@@ -1,7 +1,11 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 import { db } from "@/db";
-import { users, staffSystemModulePermissions } from "@/db/schema";
+import {
+  users,
+  staffSystemModulePermissions,
+  systemModules,
+} from "@/db/schema";
 
 /* =========================================================
 GET PROFILE
@@ -46,7 +50,16 @@ export async function getProfile(userId: string) {
         reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
       })
       .from(staffSystemModulePermissions)
-      .where(eq(staffSystemModulePermissions.staffId, userId))
+      .innerJoin(
+        systemModules,
+        eq(staffSystemModulePermissions.moduleId, systemModules.id),
+      )
+      .where(
+        and(
+          eq(staffSystemModulePermissions.staffId, userId),
+          eq(systemModules.key, "REPORTS"),
+        ),
+      )
       .limit(1);
 
     return {
