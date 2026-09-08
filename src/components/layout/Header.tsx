@@ -237,28 +237,31 @@ export default function Header({
   return (
     <>
       <title>{`${activeTitle} | Ticketing Solution`}</title>
-      <header
+      <div
         style={{
-          height: `${spacing.headerHeight}px`,
-          background: "#FFFFFF",
-          borderBottom: "1px solid #B3AFAF",
-          display: "flex",
-          alignItems: "center",
-          flexWrap: "nowrap",
-          overflow: "visible",
-          paddingLeft: isMobile ? "12px" : "32px",
-          paddingRight: isMobile ? "12px" : "24px",
-          position: "fixed",
+          position: "sticky",
           top: 0,
-          left: isMobile ? 0 : sidebarWidth,
-          right: 0,
           zIndex: 50,
-          boxShadow: colors.header.shadow,
-          boxSizing: "border-box",
-          gap: isMobile ? "8px" : "12px",
-          transition: "left 0.25s cubic-bezier(0.4,0,0.2,1)",
+          width: "100%",
         }}
       >
+        <header
+          style={{
+            height: `${spacing.headerHeight}px`,
+            background: "#FFFFFF",
+            borderBottom: "1px solid #B3AFAF",
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "nowrap",
+            overflow: "visible",
+            paddingLeft: isMobile ? "12px" : "32px",
+            paddingRight: isMobile ? "12px" : "24px",
+            boxShadow: colors.header.shadow,
+            boxSizing: "border-box",
+            gap: isMobile ? "8px" : "12px",
+            width: "100%",
+          }}
+        >
         {/* Mobile hamburger */}
         {isMobile && (
           <button
@@ -681,10 +684,9 @@ export default function Header({
         const isOrange = !isExpired && !isRed && daysLeft <= 15;
         // Yellow: 16+ days
 
-        // ─── Urgency colour palette (matches urgency level) ────
+        
         const palette = isExpired
           ? {
-              // ── Expired → SOLID DARK RED ────────────────────────
               bg: "linear-gradient(90deg, #B91C1C 0%, #DC2626 100%)",
               border: "#7F1D1D",
               text: "#FFFFFF",
@@ -696,10 +698,8 @@ export default function Header({
             }
           : isRed
             ? {
-                // ── 0–7 days left → RED (within one week) ───────────
-                bg:
-                  "linear-gradient(90deg, rgba(254, 226, 226, 0.95) 0%, rgba(254, 215, 170, 0.95) 100%)",
-                border: "rgba(220, 38, 38, 0.35)",
+                bg: "linear-gradient(90deg, #FEE2E2 0%, #FED7AA 100%)",
+                border: "#F87171",
                 text: "#7F1D1D",
                 chip: "#B91C1C",
                 chipText: "#FFFFFF",
@@ -709,10 +709,8 @@ export default function Header({
               }
             : isOrange
               ? {
-                  // ── 8–15 days left → ORANGE ───────────────────────
-                  bg:
-                    "linear-gradient(90deg, rgba(255, 237, 213, 0.95) 0%, rgba(254, 215, 170, 0.95) 100%)",
-                  border: "rgba(234, 88, 12, 0.35)",
+                  bg: "linear-gradient(90deg, #FFEDD5 0%, #FED7AA 100%)",
+                  border: "#FB923C",
                   text: "#7C2D12",
                   chip: "#EA580C",
                   chipText: "#FFFFFF",
@@ -721,10 +719,8 @@ export default function Header({
                   shadow: "0 2px 6px rgba(234, 88, 12, 0.12)",
                 }
               : {
-                  // ── 16–30 days left → YELLOW ──────────────────────
-                  bg:
-                    "linear-gradient(90deg, rgba(254, 249, 195, 0.95) 0%, rgba(253, 224, 71, 0.85) 100%)",
-                  border: "rgba(202, 138, 4, 0.4)",
+                  bg: "linear-gradient(90deg, #FEF9C3 0%, #FDE047 100%)",
+                  border: "#FACC15",
                   text: "#713F12",
                   chip: "#CA8A04",
                   chipText: "#FFFFFF",
@@ -750,21 +746,16 @@ export default function Header({
             role="alert"
             aria-live="polite"
             style={{
-              position: "fixed",
-              top: `${spacing.headerHeight}px`,
-              left: isMobile ? 0 : sidebarWidth,
-              right: 0,
-              zIndex: 49,
+              width: "100%",
               display: "flex",
               alignItems: "center",
               gap: isMobile ? "8px" : "12px",
-              padding: isMobile ? "8px 12px" : "10px 32px",
+              padding: isMobile ? "10px 14px" : "10px 32px",
               background: palette.bg,
               borderBottom: `1px solid ${palette.border}`,
               boxShadow: palette.shadow,
               boxSizing: "border-box",
               fontFamily: typography.fontFamily.sans,
-              transition: "left 0.25s cubic-bezier(0.4,0,0.2,1)",
             }}
           >
             <span
@@ -793,16 +784,15 @@ export default function Header({
                 minWidth: 0,
                 fontWeight: 600,
                 fontSize: isMobile ? "12px" : "13px",
-                lineHeight: isMobile ? "16px" : "18px",
+                lineHeight: isMobile ? "18px" : "20px",
                 color: palette.text,
-                whiteSpace: isMobile ? "normal" : "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
+                wordBreak: "break-word",
               }}
             >
               <span
                 style={{
-                  display: "inline-block",
+                  display: "inline-flex",
+                  alignItems: "center",
                   padding: "2px 8px",
                   marginRight: isMobile ? "6px" : "8px",
                   background: palette.chip,
@@ -813,16 +803,18 @@ export default function Header({
                   letterSpacing: "0.04em",
                   textTransform: "uppercase",
                   verticalAlign: "middle",
+                  whiteSpace: "nowrap",
                 }}
               >
                 Important
               </span>
               <span
                 style={{
-                  display: "inline-block",
+                  display: "inline-flex",
+                  alignItems: "center",
                   padding: "2px 8px",
                   marginRight: isMobile ? "6px" : "10px",
-                  background: "rgba(255, 255, 255, 0.7)",
+                  background: "rgba(255, 255, 255, 0.8)",
                   color: palette.chip,
                   border: `1px solid ${palette.chip}`,
                   borderRadius: "4px",
@@ -830,6 +822,7 @@ export default function Header({
                   fontWeight: 700,
                   letterSpacing: "0.02em",
                   verticalAlign: "middle",
+                  whiteSpace: "nowrap",
                 }}
               >
                 {daysLabel}
@@ -839,6 +832,7 @@ export default function Header({
           </div>
         );
       })()}
+      </div>
 
       {/* ── Modals ── */}
       <ChangePasswordModal

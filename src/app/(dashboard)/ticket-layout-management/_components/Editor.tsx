@@ -12,7 +12,8 @@
  *   - wiring the primary / secondary action buttons to navigation
  */
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
+import Link from "next/link";
 import {
   GripVertical,
   Upload,
@@ -22,9 +23,10 @@ import {
   Printer,
   Trash2,
   ArrowLeft,
+  X,
 } from "lucide-react";
 import { typography } from "@/lib/theme";
-import { showSuccessNotify } from "@/lib/notify";
+import { showSuccessNotify, showErrorNotify } from "@/lib/notify";
 import {
   BuiltInSectionKey,
   CustomSection,
@@ -194,6 +196,7 @@ export function ReceiptPreview({ layout }: { layout: TicketLayout }) {
         fontSize: "11px",
         lineHeight: 1.4,
         boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+        border: "1px solid #E2E8F0",
       }}
     >
       {layout.sectionOrder.map((key) => {
@@ -305,11 +308,25 @@ function PreviewHeader({ layout }: { layout: TicketLayout }) {
       }}
     >
       {layout.logoUrl ? (
-        <img
-          src={layout.logoUrl}
-          alt="logo"
-          style={{ height: "26px", marginBottom: "4px" }}
-        />
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            marginBottom: "6px",
+          }}
+        >
+          <img
+            src={layout.logoUrl}
+            alt="logo"
+            style={{
+              maxHeight: "36px",
+              maxWidth: "140px",
+              objectFit: "contain",
+              display: "block",
+            }}
+          />
+        </div>
       ) : null}
       <div
         style={{
@@ -557,36 +574,259 @@ export type LayoutEditorBodyProps = {
   initialDraft: TicketLayout;
   errors?: Partial<Record<"name" | "preset", string>>;
   actions: EditorAction;
+  isCreate?: boolean;
+  backHref?: string;
+  title?: string;
+  subtitle?: string;
 };
 
 export function LayoutEditorBody({
   initialDraft,
   errors = {},
   actions,
+  isCreate = false,
+  backHref = "/ticket-layout-management",
+  title,
+  subtitle,
 }: LayoutEditorBodyProps) {
   const [draft, setDraft] = useState<TicketLayout>(initialDraft);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 
+  const displayTitle =
+    draft.name.trim() || title || (isCreate ? "Create Ticket Layout" : "Edit Ticket Layout");
+  const displaySubtitle =
+    subtitle || (draft.preset ? `${draft.preset} Preset · ${draft.isDraft ? "Draft" : "Published"}` : undefined);
+
   return (
-    <div
-      style={{
-        background: "#FFFFFF",
-        border: "1px solid #E2E8F0",
-        borderRadius: "12px",
-        boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
-        overflow: "hidden",
-      }}
-    >
+    <div style={{ width: "100%" }}>
+      <style>{`
+        @media (max-width: 900px) {
+          .ticket-editor-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .ticket-editor-col {
+            border-right: none !important;
+            border-bottom: 1px solid #E2E8F0 !important;
+          }
+        }
+        @media (max-width: 640px) {
+          .ticket-top-header-card {
+            flex-direction: column !important;
+            align-items: stretch !important;
+          }
+          .ticket-header-top-actions {
+            flex-direction: column-reverse !important;
+            width: 100% !important;
+          }
+          .ticket-header-top-actions button {
+            width: 100% !important;
+            justify-content: center !important;
+          }
+          .ticket-editor-col, .ticket-preview-col {
+            padding: 16px !important;
+          }
+          .ticket-footer-actions {
+            flex-direction: column-reverse !important;
+            width: 100% !important;
+          }
+          .ticket-footer-actions button {
+            width: 100% !important;
+            justify-content: center !important;
+          }
+          .ticket-form-fields-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .ticket-sections-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .ticket-logo-grid-item {
+            grid-column: span 1 !important;
+          }
+        }
+      `}</style>
+
+      {/* ── Top Header Card (matching requested design) ── */}
       <div
+        className="ticket-top-header-card"
         style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-          gap: 0,
-          alignItems: "stretch",
+          background: "#FFFFFF",
+          border: "1px solid #E2E8F0",
+          borderRadius: "12px",
+          padding: "16px 20px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "14px",
+          marginBottom: "20px",
+          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
         }}
       >
+        {/* Left: Back button + Title & Badge + Subtitle */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "14px",
+            flexWrap: "wrap",
+            minWidth: 0,
+          }}
+        >
+          {backHref && (
+            <Link
+              href={backHref}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "8px 14px",
+                background: "#F8FAFC",
+                border: "1px solid #E2E8F0",
+                borderRadius: "8px",
+                color: "#011B2F",
+                fontSize: "13px",
+                fontWeight: 600,
+                textDecoration: "none",
+                cursor: "pointer",
+                transition: "all 0.15s",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <ArrowLeft size={15} />
+              <span>Back to Layouts</span>
+            </Link>
+          )}
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                flexWrap: "wrap",
+              }}
+            >
+              <h1
+                style={{
+                  margin: 0,
+                  fontSize: "18px",
+                  fontWeight: 800,
+                  color: "#011B2F",
+                  letterSpacing: "-0.2px",
+                }}
+              >
+                {displayTitle}
+              </h1>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: "999px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  background: draft.isActive
+                    ? "rgba(34, 197, 94, 0.14)"
+                    : "rgba(148, 163, 184, 0.22)",
+                  color: draft.isActive ? "#15803D" : "#475569",
+                  letterSpacing: "0.2px",
+                }}
+              >
+                {draft.isActive ? "Active" : "Inactive"}
+              </span>
+            </div>
+            {displaySubtitle && (
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "#64748B",
+                  marginTop: "2px",
+                }}
+              >
+                {displaySubtitle}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Top right action buttons */}
+        <div
+          className="ticket-header-top-actions"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            flexWrap: "wrap",
+          }}
+        >
+          {actions.secondaryLabel && actions.onSecondary && (
+            <button
+              type="button"
+              onClick={() => actions.onSecondary?.(draft)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "9px 18px",
+                background: "#FFFFFF",
+                border: "1.5px solid #CBD5E1",
+                borderRadius: "8px",
+                color: "#011B2F",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "all 0.15s",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+              }}
+            >
+              <FileText size={14} color="#64748B" />
+              {actions.secondaryLabel}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => actions.onPrimary(draft)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "9px 20px",
+              background: "#F4BC43",
+              border: "none",
+              borderRadius: "8px",
+              color: "#011B2F",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: "pointer",
+              boxShadow: "0 2px 6px rgba(244, 188, 67, 0.3)",
+              transition: "all 0.15s",
+            }}
+          >
+            <Save size={14} />
+            {actions.primaryLabel}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Main Editor Box ── */}
+      <div
+        style={{
+          background: "#FFFFFF",
+          border: "1px solid #E2E8F0",
+          borderRadius: "12px",
+          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          className="ticket-editor-grid"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1.15fr) minmax(0, 0.85fr)",
+            gap: 0,
+            alignItems: "stretch",
+          }}
+        >
         {/* ── Editor column ── */}
         <div
+          className="ticket-editor-col"
           style={{
             padding: "24px",
             display: "flex",
@@ -602,11 +842,13 @@ export function LayoutEditorBody({
             errors={errors}
             draggingIndex={draggingIndex}
             setDraggingIndex={setDraggingIndex}
+            isCreate={isCreate}
           />
         </div>
 
         {/* ── Live preview column ── */}
         <div
+          className="ticket-preview-col"
           style={{
             background: "#F8FAFC",
             padding: "24px",
@@ -614,13 +856,7 @@ export function LayoutEditorBody({
             flexDirection: "column",
             alignItems: "stretch",
             minWidth: 0,
-            // Cap to the available viewport so the page never has to scroll
-            // past the receipt itself; the receipt scrolls inside this
-            // column if it's ever very long.
-            maxHeight: "calc(100vh - 260px)",
-            overflow: "hidden",
-            position: "sticky",
-            top: 0,
+            height: "100%",
           }}
         >
           <div
@@ -644,12 +880,10 @@ export function LayoutEditorBody({
           <div
             style={{
               flex: 1,
-              minHeight: 0,
               width: "100%",
               display: "flex",
               alignItems: "flex-start",
               justifyContent: "center",
-              overflow: "auto",
               padding: "4px 6px 8px 6px",
             }}
           >
@@ -657,62 +891,6 @@ export function LayoutEditorBody({
           </div>
         </div>
       </div>
-
-      {/* ── Action footer — always visible, never pushed off-screen ── */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          alignItems: "center",
-          gap: "10px",
-          padding: "16px 24px",
-          borderTop: "1px solid #E2E8F0",
-          background: "#FAFBFC",
-        }}
-      >
-        {actions.secondaryLabel && actions.onSecondary && (
-          <button
-            type="button"
-            onClick={() => actions.onSecondary?.(draft)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "10px 20px",
-              background: "rgba(244, 188, 67, 0.15)",
-              border: "1.5px solid #F4BC43",
-              borderRadius: "8px",
-              color: "#92400E",
-              fontSize: "13px",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            <FileText size={14} />
-            {actions.secondaryLabel}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => actions.onPrimary(draft)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            padding: "10px 20px",
-            background: "#F4BC43",
-            border: "none",
-            borderRadius: "8px",
-            color: "#011B2F",
-            fontSize: "13px",
-            fontWeight: 700,
-            cursor: "pointer",
-            boxShadow: "0 2px 6px rgba(244, 188, 67, 0.3)",
-          }}
-        >
-          <Save size={14} />
-          {actions.primaryLabel}
-        </button>
       </div>
     </div>
   );
@@ -724,6 +902,7 @@ type EditorFieldsProps = {
   errors?: Partial<Record<"name" | "preset", string>>;
   draggingIndex: number | null;
   setDraggingIndex: (n: number | null) => void;
+  isCreate?: boolean;
 };
 
 function EditorFields({
@@ -732,7 +911,27 @@ function EditorFields({
   errors = {},
   draggingIndex,
   setDraggingIndex,
+  isCreate = false,
 }: EditorFieldsProps) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showErrorNotify("Please select an image file", "Invalid file");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      setDraft((prev) => ({ ...prev, logoUrl: result }));
+      showSuccessNotify("Logo uploaded and updated in preview", "Uploaded");
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
   const applyPreset = (preset: TicketLayoutPreset) => {
     const p = PRESET_PRESETS[preset];
     setDraft((prev) => ({
@@ -810,167 +1009,227 @@ function EditorFields({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <Field label="Layout Name" required error={errors.name}>
-        <input
-          type="text"
-          value={draft.name}
-          onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-          placeholder="e.g. Summer Promo, Diwali Special"
-          style={fieldInputStyle}
-        />
-      </Field>
-
-      <Field label="Preset" required error={errors.preset}>
-        <div style={{ display: "flex", gap: "8px" }}>
-          {(["Classic", "Modern", "Minimal"] as TicketLayoutPreset[]).map(
-            (preset) => {
-              const isActive = draft.preset === preset;
-              return (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => applyPreset(preset)}
-                  style={{
-                    flex: 1,
-                    padding: "8px 12px",
-                    background: isActive ? "#011B2F" : "#FFFFFF",
-                    color: isActive ? "#FFFFFF" : "#011B2F",
-                    border: `1.5px solid ${isActive ? "#011B2F" : "#E2E8F0"}`,
-                    borderRadius: "8px",
-                    fontFamily: typography.fontFamily.sans,
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                  }}
-                >
-                  {preset}
-                </button>
-              );
-            },
-          )}
-        </div>
-      </Field>
-
-      <Field label="Business Name (shown under the attraction)">
-        <input
-          type="text"
-          value={draft.businessName}
-          onChange={(e) =>
-            setDraft({ ...draft, businessName: e.target.value })
-          }
-          style={fieldInputStyle}
-        />
-      </Field>
-
-      <Field label="Business Logo (paste a hosted image URL)">
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+      {/* ── 2-column top configuration fields ── */}
+      <div
+        className="ticket-form-fields-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          gap: "14px 16px",
+        }}
+      >
+        {/* Layout Name */}
+        <Field label="Layout Name" required error={errors.name}>
           <input
             type="text"
-            value={draft.logoUrl ?? ""}
-            placeholder="https://example.com/logo.png"
-            onChange={(e) =>
-              setDraft({ ...draft, logoUrl: e.target.value || null })
-            }
-            style={{ ...fieldInputStyle, flex: 1 }}
+            value={draft.name}
+            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            placeholder="e.g. Summer Promo, Diwali Special"
+            style={fieldInputStyle}
           />
-          <button
-            type="button"
-            onClick={() => {
-              showSuccessNotify(
-                "Logo upload will be enabled with the backend",
-                "Coming soon",
-              );
-            }}
+        </Field>
+
+        {/* Preset */}
+        <Field label="Preset" error={errors.preset}>
+          <div style={{ display: "flex", gap: "6px" }}>
+            {(["Classic", "Modern", "Minimal"] as TicketLayoutPreset[]).map(
+              (preset) => {
+                const isActive = draft.preset === preset;
+                return (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => applyPreset(preset)}
+                    style={{
+                      flex: 1,
+                      padding: "8px 4px",
+                      background: isActive ? "#011B2F" : "#FFFFFF",
+                      color: isActive ? "#FFFFFF" : "#011B2F",
+                      border: `1.5px solid ${isActive ? "#011B2F" : "#E2E8F0"}`,
+                      borderRadius: "8px",
+                      fontFamily: typography.fontFamily.sans,
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {preset}
+                  </button>
+                );
+              },
+            )}
+          </div>
+        </Field>
+
+        {/* Font Family */}
+        <Field label="Font Family">
+          <select
+            value={draft.fontFamily}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                fontFamily: e.target.value as TicketLayout["fontFamily"],
+              })
+            }
+            style={fieldInputStyle}
+          >
+            <option value="sans">Sans-serif (clean & modern)</option>
+            <option value="serif">Serif (classic & formal)</option>
+            <option value="mono">Monospace (POS / receipt)</option>
+          </select>
+        </Field>
+
+        {/* Status */}
+        <Field label="Status">
+          <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "6px",
-              padding: "0 14px",
+              gap: "10px",
               height: "38px",
-              background: "#F1F5F9",
-              color: "#011B2F",
-              border: "1px solid #E2E8F0",
-              borderRadius: "8px",
-              fontSize: "12px",
-              fontWeight: 600,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
             }}
           >
-            <Upload size={13} />
-            Upload
-          </button>
-        </div>
-      </Field>
-
-      <Field label="Status">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            padding: "8px 12px",
-            border: "1.5px solid #E2E8F0",
-            borderRadius: "8px",
-            background: "#FFFFFF",
-            height: "38px",
-            boxSizing: "border-box",
-          }}
-        >
-          <ToggleSwitch
-            checked={draft.isActive}
-            onChange={(v) => setDraft({ ...draft, isActive: v })}
-            titleOn="Deactivate layout"
-            titleOff="Activate layout"
-          />
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              fontSize: "13px",
-              fontWeight: 700,
-              color: draft.isActive ? "#15803D" : "#475569",
-              letterSpacing: "0.2px",
-            }}
-          >
+            <ToggleSwitch
+              checked={draft.isActive}
+              onChange={(v) => setDraft({ ...draft, isActive: v })}
+              titleOn="Deactivate layout"
+              titleOff="Activate layout"
+            />
             <span
               style={{
-                width: "8px",
-                height: "8px",
-                borderRadius: "50%",
-                background: draft.isActive ? "#22C55E" : "#94A3B8",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: draft.isActive ? "#15803D" : "#64748B",
+              }}
+            >
+              <span
+                style={{
+                  width: "8px",
+                  height: "8px",
+                  borderRadius: "50%",
+                  background: draft.isActive ? "#22C55E" : "#94A3B8",
+                }}
+              />
+              {draft.isActive ? "Active" : "Inactive"}
+            </span>
+          </div>
+        </Field>
+
+        {/* Business Name (shown only when editing) */}
+        {!isCreate && (
+          <Field label="Business Name (shown under attraction)">
+            <input
+              type="text"
+              value={draft.businessName}
+              readOnly
+              disabled
+              style={{
+                ...fieldInputStyle,
+                background: "#F8FAFC",
+                color: "#64748B",
+                cursor: "not-allowed",
+                borderColor: "#E2E8F0",
               }}
             />
-            {draft.isActive ? "Active" : "Inactive"}
-          </span>
-        </div>
-      </Field>
+          </Field>
+        )}
 
-      <Field label="Font Family">
-        <select
-          value={draft.fontFamily}
-          onChange={(e) =>
-            setDraft({
-              ...draft,
-              fontFamily: e.target.value as TicketLayout["fontFamily"],
-            })
-          }
-          style={fieldInputStyle}
+        {/* Business Logo */}
+        <div
+          className="ticket-logo-grid-item"
+          style={{ gridColumn: isCreate ? "span 2" : "span 1" }}
         >
-          <option value="sans">Sans-serif (clean & modern)</option>
-          <option value="serif">Serif (classic & formal)</option>
-          <option value="mono">Monospace (POS / receipt)</option>
-        </select>
-      </Field>
+          <Field label="Business Logo (paste a hosted image URL)">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileUpload}
+              style={{ display: "none" }}
+            />
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                alignItems: "center",
+              }}
+            >
+              <input
+                type="text"
+                value={draft.logoUrl ?? ""}
+                placeholder="https://example.com/logo.png"
+                onChange={(e) =>
+                  setDraft({ ...draft, logoUrl: e.target.value || null })
+                }
+                style={{ ...fieldInputStyle, flex: 1, minWidth: 0 }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "0 14px",
+                  height: "38px",
+                  background: "#F1F5F9",
+                  color: "#011B2F",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: "8px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                <Upload size={13} />
+                Upload
+              </button>
+              {draft.logoUrl && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft({ ...draft, logoUrl: null });
+                    showSuccessNotify("Logo removed", "Removed");
+                  }}
+                  title="Remove logo"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "0 10px",
+                    height: "38px",
+                    background: "rgba(220, 38, 38, 0.08)",
+                    color: "#DC2626",
+                    border: "1px solid rgba(220, 38, 38, 0.2)",
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </Field>
+        </div>
+      </div>
 
       <Field label="Sections (drag to reorder)">
         <div
+          className="ticket-sections-grid"
           style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "6px",
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: "8px",
           }}
         >
           {draggableKeys.map((key) => {
@@ -979,7 +1238,7 @@ function EditorFields({
             const isDragging = draggingIndex === i;
 
             // Custom section rows render a slightly different card with
-            // inline title + body fields.
+            // inline title + body fields, spanning 2 columns.
             if (
               typeof key === "string" &&
               key.startsWith("custom:")
@@ -1020,6 +1279,7 @@ function EditorFields({
                   }}
                   onDragEnd={() => setDraggingIndex(null)}
                   style={{
+                    gridColumn: "span 2",
                     padding: "10px",
                     background: isDragging
                       ? "#EFF6FF"
@@ -1123,7 +1383,7 @@ function EditorFields({
               );
             }
 
-            // Built-in section row
+            // Built-in section row (1 of 2 columns)
             return (
               <div
                 key={key}
@@ -1173,6 +1433,7 @@ function EditorFields({
                   cursor: "grab",
                   opacity: isDragging ? 0.5 : 1,
                   transition: "border-color 0.15s, background 0.15s",
+                  minWidth: 0,
                 }}
               >
                 <GripVertical
@@ -1187,7 +1448,11 @@ function EditorFields({
                     fontWeight: 600,
                     color: isOn ? "#011B2F" : "#94A3B8",
                     textDecoration: isOn ? "none" : "line-through",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
                   }}
+                  title={SECTION_LABELS[key as BuiltInSectionKey] ?? key}
                 >
                   {SECTION_LABELS[key as BuiltInSectionKey] ?? key}
                 </span>
@@ -1218,6 +1483,7 @@ function EditorFields({
                   borderRadius: "8px",
                   cursor: "not-allowed",
                   opacity: 0.92,
+                  minWidth: 0,
                 }}
               >
                 <span
@@ -1240,7 +1506,11 @@ function EditorFields({
                     fontWeight: 600,
                     color: isOn ? "#011B2F" : "#94A3B8",
                     textDecoration: isOn ? "none" : "line-through",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
                   }}
+                  title={SECTION_LABELS.footer}
                 >
                   {SECTION_LABELS.footer}
                 </span>
@@ -1254,10 +1524,12 @@ function EditorFields({
             );
           })()}
 
+          {/* Add Custom Section button */}
           <button
             type="button"
             onClick={addCustomSection}
             style={{
+              gridColumn: "span 2",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
+import React from "react";
 import {
   Ticket,
   Plus,
@@ -11,18 +12,21 @@ import {
   Search,
   RotateCcw,
   FileText,
+  Filter,
 } from "lucide-react";
-import { typography } from "@/lib/theme";
+import { colors, typography } from "@/lib/theme";
 import { confirmDelete, showSuccessNotify } from "@/lib/notify";
 import { TicketLayout } from "./data";
 import { layoutsStore } from "./_store";
 import { ReceiptPreview } from "./_components/Editor";
+import StatusFilterSelect from "@/components/ui/StatusFilterSelect";
 
 const LIST_PATH = "/ticket-layout-management";
 
+type TypeFilter = "All" | "Draft" | "Published";
+type StatusFilter = "All" | "Active" | "Inactive";
+
 export default function TicketLayoutManagementPage() {
-  // Subscribe to the in-memory store. useSyncExternalStore gives us
-  // tear-free reads of the published + draft arrays.
   const layouts = useSyncExternalStore(
     layoutsStore.subscribe,
     layoutsStore.getLayouts,
@@ -34,56 +38,59 @@ export default function TicketLayoutManagementPage() {
     layoutsStore.getDrafts,
   );
 
-  // Filters
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"All" | "Active" | "Inactive">(
-    "All",
-  );
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("All");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
 
-  // Page title
   useEffect(() => {
     if (typeof document !== "undefined") {
       document.title = "Ticket Layout Management | Ticketing Solution";
     }
   }, []);
 
-  // Debounce search
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
   }, [search]);
 
-  const filteredLayouts = useMemo(() => {
+  // Combine all items into one unified list
+  const allItems = useMemo<TicketLayout[]>(() => {
     const term = debouncedSearch.trim().toLowerCase();
-    return layouts.filter((l) => {
-      if (statusFilter === "Active" && !l.isActive) return false;
-      if (statusFilter === "Inactive" && l.isActive) return false;
-      if (term && !l.name.toLowerCase().includes(term)) return false;
-      return true;
-    });
-  }, [layouts, debouncedSearch, statusFilter]);
 
-  const filteredDrafts = useMemo(() => {
-    const term = debouncedSearch.trim().toLowerCase();
-    if (!term) return drafts;
-    return drafts.filter((d) => d.name.toLowerCase().includes(term));
-  }, [drafts, debouncedSearch]);
+    let combined: TicketLayout[] = [];
 
-  const isFiltering = Boolean(search.trim() || statusFilter !== "All");
+    if (typeFilter === "All" || typeFilter === "Published") {
+      let pub = layouts;
+      if (statusFilter === "Active") pub = pub.filter((l) => l.isActive);
+      if (statusFilter === "Inactive") pub = pub.filter((l) => !l.isActive);
+      if (term) pub = pub.filter((l) => l.name.toLowerCase().includes(term));
+      combined = [...combined, ...pub];
+    }
+
+    if (typeFilter === "All" || typeFilter === "Draft") {
+      let dft = drafts;
+      // status filter doesn't apply to drafts (they have no active/inactive concept)
+      if (term) dft = dft.filter((d) => d.name.toLowerCase().includes(term));
+      combined = [...combined, ...dft];
+    }
+
+    return combined;
+  }, [layouts, drafts, debouncedSearch, typeFilter, statusFilter]);
 
   const handleResetFilters = () => {
     setSearch("");
+    setTypeFilter("All");
     setStatusFilter("All");
   };
+
+  const isFiltering = Boolean(
+    search.trim() || typeFilter !== "All" || statusFilter !== "All",
+  );
 
   const handleSetDefault = (id: string) => {
     layoutsStore.setDefault(id);
     showSuccessNotify("Default template updated", "Saved");
-  };
-
-  const handleToggleActive = (id: string) => {
-    layoutsStore.toggleActive(id);
   };
 
   const handleDelete = async (layout: TicketLayout) => {
@@ -98,6 +105,9 @@ export default function TicketLayoutManagementPage() {
     layoutsStore.removeDraft(draft.id);
   };
 
+  const totalPublished = layouts.length;
+  const totalDrafts = drafts.length;
+
   return (
     <div style={{ width: "100%" }}>
       {/* ── Page header ── */}
@@ -111,100 +121,31 @@ export default function TicketLayoutManagementPage() {
           gap: "12px",
         }}
       >
-         <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "12px",
-          marginBottom: "18px",
-          flexWrap: "wrap",
-        }}
-      >
-        <div
-          style={{
-            position: "relative",
-            flex: "1 1 280px",
-            minWidth: "220px",
-            maxWidth: "380px",
-          }}
-        >
-          <Search
-            size={16}
-            color="#94A3B8"
+        <div>
+          <h1
             style={{
-              position: "absolute",
-              left: "12px",
-              top: "50%",
-              transform: "translateY(-50%)",
-            }}
-          />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search layouts..."
-            style={{
-              width: "100%",
-              height: "40px",
-              padding: "0 12px 0 38px",
-              border: "1px solid #E2E8F0",
-              borderRadius: "8px",
-              background: "#FFFFFF",
               fontFamily: typography.fontFamily.sans,
-              fontSize: "13px",
-              outline: "none",
-              boxSizing: "border-box",
-            }}
-          />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) =>
-            setStatusFilter(e.target.value as "All" | "Active" | "Inactive")
-          }
-          style={{
-            height: "40px",
-            padding: "0 12px",
-            border: "1px solid #E2E8F0",
-            borderRadius: "8px",
-            background: "#FFFFFF",
-            fontFamily: typography.fontFamily.sans,
-            fontSize: "13px",
-            color: "#011B2F",
-            cursor: "pointer",
-            minWidth: "130px",
-          }}
-        >
-          <option value="All">All Status</option>
-          <option value="Active">Active</option>
-          <option value="Inactive">Inactive</option>
-        </select>
-        {isFiltering && (
-          <button
-            type="button"
-            onClick={handleResetFilters}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              background: "transparent",
-              border: "1px solid #E2E8F0",
-              borderRadius: "8px",
-              padding: "0 14px",
-              height: "40px",
-              fontSize: "13px",
-              color: "#6B7280",
-              cursor: "pointer",
+              fontSize: "20px",
+              fontWeight: 800,
+              color: "#011B2F",
+              margin: "0 0 2px 0",
+              letterSpacing: "-0.2px",
             }}
           >
-            <RotateCcw size={14} />
-            Reset
-          </button>
-        )}
-        <div style={{ marginLeft: "auto", fontSize: "12px", color: "#6B7280" }}>
-          {filteredLayouts.length} layout{filteredLayouts.length === 1 ? "" : "s"}
+            Ticket Layouts
+          </h1>
+          <p
+            style={{
+              fontFamily: typography.fontFamily.sans,
+              fontSize: "13px",
+              color: "#6B7280",
+              margin: 0,
+            }}
+          >
+            {totalPublished} published · {totalDrafts} draft
+            {totalDrafts !== 1 ? "s" : ""}
+          </p>
         </div>
-      </div>
         <Link
           href={`${LIST_PATH}/new`}
           style={{
@@ -229,229 +170,148 @@ export default function TicketLayoutManagementPage() {
         </Link>
       </div>
 
-      {/* ── Filter row ── */}
-      {/* <div
+      {/* ── Filter & Search Bar */}
+      <div
         style={{
+          background: "#FFFFFF",
+          borderRadius: "12px",
+          padding: "14px 20px",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+          border: `1px solid ${colors.header.border}`,
           display: "flex",
-          alignItems: "center",
-          gap: "12px",
-          marginBottom: "18px",
           flexWrap: "wrap",
+          alignItems: "center",
+          gap: "16px",
+          marginBottom: "20px",
         }}
       >
-        <div
-          style={{
-            position: "relative",
-            flex: "1 1 280px",
-            minWidth: "220px",
-            maxWidth: "380px",
-          }}
-        >
-          <Search
-            size={16}
-            color="#94A3B8"
+        {/* Filter Dropdowns */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+          <Filter size={16} color={colors.brand.accent} />
+          <span
             style={{
-              position: "absolute",
-              left: "12px",
-              top: "50%",
-              transform: "translateY(-50%)",
+              fontSize: "13px",
+              fontWeight: 600,
+              color: colors.text.muted,
+              fontFamily: typography.fontFamily.sans,
             }}
-          />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search layouts..."
+          >
+            Filter:
+          </span>
+
+          {/* Type Dropdown */}
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
             style={{
-              width: "100%",
-              height: "40px",
-              padding: "0 12px 0 38px",
-              border: "1px solid #E2E8F0",
+              height: "38px",
               borderRadius: "8px",
-              background: "#FFFFFF",
+              border: `1px solid ${colors.header.border}`,
+              padding: "0 12px",
               fontFamily: typography.fontFamily.sans,
               fontSize: "13px",
+              fontWeight: 600,
+              color: colors.brand.accent,
               outline: "none",
-              boxSizing: "border-box",
+              cursor: "pointer",
+              background: "#FFFFFF",
+              minWidth: "140px",
+            }}
+          >
+            <option value="All">All Layouts</option>
+            <option value="Published">Published</option>
+            <option value="Draft">Draft</option>
+          </select>
+
+          {/* Status Filter Dropdown */}
+          <StatusFilterSelect
+            value={statusFilter}
+            onChange={(val) => setStatusFilter(val as StatusFilter)}
+          />
+        </div>
+
+        {/* Search input */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            background: colors.bg.page,
+            padding: "8px 14px",
+            borderRadius: "8px",
+            border: `1px solid ${colors.header.border}`,
+            flex: 1,
+            minWidth: "240px",
+          }}
+        >
+          <Search size={18} color={colors.text.muted} />
+          <input
+            type="text"
+            placeholder="Search layouts by name..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              width: "100%",
+              border: "none",
+              outline: "none",
+              fontFamily: typography.fontFamily.sans,
+              fontSize: "14px",
+              background: "transparent",
+              color: colors.text.primary,
             }}
           />
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) =>
-            setStatusFilter(e.target.value as "All" | "Active" | "Inactive")
-          }
-          style={{
-            height: "40px",
-            padding: "0 12px",
-            border: "1px solid #E2E8F0",
-            borderRadius: "8px",
-            background: "#FFFFFF",
-            fontFamily: typography.fontFamily.sans,
-            fontSize: "13px",
-            color: "#011B2F",
-            cursor: "pointer",
-            minWidth: "130px",
-          }}
-        >
-          <option value="All">All Status</option>
-          <option value="Active">Active</option>
-          <option value="Inactive">Inactive</option>
-        </select>
+
+        {/* Reset button */}
         {isFiltering && (
           <button
             type="button"
             onClick={handleResetFilters}
             style={{
-              display: "flex",
+              display: "inline-flex",
               alignItems: "center",
               gap: "6px",
               background: "transparent",
-              border: "1px solid #E2E8F0",
+              border: `1px solid ${colors.header.border}`,
               borderRadius: "8px",
-              padding: "0 14px",
-              height: "40px",
+              padding: "8px 14px",
               fontSize: "13px",
-              color: "#6B7280",
+              fontWeight: 600,
+              color: colors.text.muted,
               cursor: "pointer",
+              fontFamily: typography.fontFamily.sans,
+              whiteSpace: "nowrap",
             }}
           >
             <RotateCcw size={14} />
-            Reset
+            <span>Reset</span>
           </button>
         )}
-        <div style={{ marginLeft: "auto", fontSize: "12px", color: "#6B7280" }}>
-          {filteredLayouts.length} layout{filteredLayouts.length === 1 ? "" : "s"}
-        </div>
-      </div> */}
+      </div>
 
-      {/* ── Drafts section ── */}
-      {drafts.length > 0 && (
-        <section style={{ marginBottom: "28px" }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              marginBottom: "12px",
-            }}
-          >
-            <FileText size={16} color="#F4BC43" />
-            <h2
-              style={{
-                margin: 0,
-                fontSize: "14px",
-                fontWeight: 700,
-                color: "#011B2F",
-                textTransform: "uppercase",
-                letterSpacing: "0.4px",
-              }}
-            >
-              Saved Drafts
-            </h2>
-            <span
-              style={{
-                fontSize: "11px",
-                fontWeight: 700,
-                background: "rgba(244, 188, 67, 0.18)",
-                color: "#92400E",
-                padding: "2px 8px",
-                borderRadius: "10px",
-              }}
-            >
-              {filteredDrafts.length}
-            </span>
-          </div>
-          {filteredDrafts.length === 0 ? (
-            <p
-              style={{
-                fontSize: "12px",
-                color: "#6B7280",
-                margin: 0,
-                fontStyle: "italic",
-              }}
-            >
-              No drafts match your search.
-            </p>
-          ) : (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-                gap: "16px",
-              }}
-            >
-              {filteredDrafts.map((draft) => (
-                <DraftCard
-                  key={draft.id}
-                  draft={draft}
-                  onDelete={() => handleDeleteDraft(draft)}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* ── Cards grid ── */}
-      <section>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            marginBottom: "12px",
-          }}
-        >
-          <Ticket size={16} color="#011B2F" />
-          <h2
-            style={{
-              margin: 0,
-              fontSize: "14px",
-              fontWeight: 700,
-              color: "#011B2F",
-              textTransform: "uppercase",
-              letterSpacing: "0.4px",
-            }}
-          >
-            Published Layouts
-          </h2>
-          <span
-            style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              background: "#F1F5F9",
-              color: "#475569",
-              padding: "2px 8px",
-              borderRadius: "10px",
-            }}
-          >
-            {filteredLayouts.length}
-          </span>
-        </div>
-
-        {filteredLayouts.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-              gap: "16px",
-            }}
-          >
-            {filteredLayouts.map((layout) => (
-              <LayoutCard
-                key={layout.id}
-                layout={layout}
-                onDelete={() => handleDelete(layout)}
-                onSetDefault={() => handleSetDefault(layout.id)}
-                onToggleActive={() => handleToggleActive(layout.id)}
+      {/* ── Unified cards grid ── */}
+      {allItems.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <div className="ticket-cards-grid">
+          {allItems.map((item) =>
+            item.isDraft ? (
+              <DraftCard
+                key={item.id}
+                draft={item}
+                onDelete={() => handleDeleteDraft(item)}
               />
-            ))}
-          </div>
-        )}
-      </section>
+            ) : (
+              <LayoutCard
+                key={item.id}
+                layout={item}
+                onDelete={() => handleDelete(item)}
+                onSetDefault={() => handleSetDefault(item.id)}
+              />
+            ),
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -494,7 +354,7 @@ function EmptyState() {
           margin: "0 0 6px 0",
         }}
       >
-        No ticket layouts yet
+        No layouts found
       </h3>
       <p
         style={{
@@ -553,25 +413,40 @@ function DraftCard({
         boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
       }}
     >
+      {/* Preview thumbnail */}
       <div
+        className="receipt-card-preview"
         style={{
-          height: "300px",
-          background: "#F1F5F9",
-          padding: "12px",
+          height: "280px",
+          background: "#F8FAFC",
+          padding: "12px 10px 10px",
           boxSizing: "border-box",
           position: "relative",
-          overflow: "hidden",
+          overflowY: "auto",
+          overflowX: "hidden",
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "center",
+          scrollbarWidth: "thin",
+          scrollbarColor: "#CBD5E1 transparent",
         }}
       >
-        <ReceiptPreview layout={draft} />
+        <div
+          style={{
+            transform: "scale(0.58)",
+            transformOrigin: "top center",
+            width: "280px",
+            flexShrink: 0,
+            marginBottom: "-190px",
+          }}
+        >
+          <ReceiptPreview layout={draft} />
+        </div>
         <span
           style={{
             position: "absolute",
-            top: "10px",
-            right: "10px",
+            top: "8px",
+            right: "8px",
             background: "#F4BC43",
             color: "#011B2F",
             fontSize: "10px",
@@ -583,77 +458,57 @@ function DraftCard({
             gap: "3px",
             letterSpacing: "0.4px",
             textTransform: "uppercase",
+            zIndex: 2,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
           }}
         >
-          <FileText size={10} fill="#011B2F" /> Draft
+          <FileText size={9} fill="#011B2F" /> Draft
         </span>
       </div>
 
-      <div style={{ padding: "14px 16px", flex: 1 }}>
-        <div
+      {/* Card body */}
+      <div style={{ padding: "12px 14px 14px", flex: 1, display: "flex", flexDirection: "column" }}>
+        <h3
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: "4px",
+            fontFamily: typography.fontFamily.sans,
+            fontSize: "14px",
+            fontWeight: typography.fontWeight.bold,
+            color: "#011B2F",
+            margin: "0 0 2px 0",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
           }}
         >
-          <h3
-            style={{
-              fontFamily: typography.fontFamily.sans,
-              fontSize: "15px",
-              fontWeight: typography.fontWeight.bold,
-              color: "#011B2F",
-              margin: 0,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              maxWidth: "180px",
-            }}
-          >
-            {draft.name || "Untitled Draft"}
-          </h3>
-        </div>
+          {draft.name || "Untitled Draft"}
+        </h3>
         <p
           style={{
-            fontSize: "12px",
+            fontSize: "11px",
             color: "#6B7280",
-            margin: "0 0 12px 0",
+            margin: "0 0 10px 0",
             fontFamily: typography.fontFamily.sans,
           }}
         >
           {draft.preset} preset · stored locally
         </p>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            borderTop: "1px solid #F1F5F9",
-            paddingTop: "10px",
-            flexWrap: "wrap",
-          }}
-        >
+        <div className="ticket-card-actions">
           <Link
             href={`${LIST_PATH}/draft/${draft.id}/edit`}
             style={iconLinkStyle("#173F63", "rgba(23, 63, 99, 0.08)")}
             title="Continue editing"
           >
-            <Pencil size={13} />
-            <span style={{ marginLeft: "4px", fontSize: "12px" }}>Continue</span>
+            <Pencil size={12} />
+            <span style={{ marginLeft: "4px", fontSize: "11px" }}>Continue</span>
           </Link>
           <button
             type="button"
             onClick={onDelete}
-            style={iconButtonStyle(
-              "#DC2626",
-              "rgba(220, 38, 38, 0.08)",
-              true,
-            )}
+            style={iconButtonStyle("#DC2626", "rgba(220, 38, 38, 0.08)", true)}
             title="Discard draft"
           >
-            <Trash2 size={13} />
+            <Trash2 size={12} />
           </button>
         </div>
       </div>
@@ -669,12 +524,10 @@ function LayoutCard({
   layout,
   onDelete,
   onSetDefault,
-  onToggleActive,
 }: {
   layout: TicketLayout;
   onDelete: () => void;
   onSetDefault: () => void;
-  onToggleActive: () => void;
 }) {
   return (
     <div
@@ -697,26 +550,41 @@ function LayoutCard({
         e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.04)";
       }}
     >
+      {/* Preview thumbnail */}
       <div
+        className="receipt-card-preview"
         style={{
-          height: "300px",
-          background: "#F1F5F9",
-          padding: "12px",
+          height: "280px",
+          background: "#F8FAFC",
+          padding: "12px 10px 10px",
           boxSizing: "border-box",
           position: "relative",
-          overflow: "hidden",
+          overflowY: "auto",
+          overflowX: "hidden",
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "center",
+          scrollbarWidth: "thin",
+          scrollbarColor: "#CBD5E1 transparent",
         }}
       >
-        <ReceiptPreview layout={layout} />
+        <div
+          style={{
+            transform: "scale(0.58)",
+            transformOrigin: "top center",
+            width: "280px",
+            flexShrink: 0,
+            marginBottom: "-190px",
+          }}
+        >
+          <ReceiptPreview layout={layout} />
+        </div>
         {layout.isDefault && (
           <span
             style={{
               position: "absolute",
-              top: "10px",
-              right: "10px",
+              top: "8px",
+              right: "8px",
               background: "#F4BC43",
               color: "#011B2F",
               fontSize: "10px",
@@ -728,29 +596,37 @@ function LayoutCard({
               gap: "3px",
               letterSpacing: "0.4px",
               textTransform: "uppercase",
+              zIndex: 2,
+              boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
             }}
           >
-            <Star size={10} fill="#011B2F" /> Default
+            <Star size={9} fill="#011B2F" /> Default
           </span>
         )}
       </div>
 
-      <div style={{ padding: "14px 16px", flex: 1 }}>
+      {/* Card body */}
+      <div style={{ padding: "12px 14px 14px", flex: 1, display: "flex", flexDirection: "column" }}>
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            marginBottom: "4px",
+            marginBottom: "2px",
+            gap: "6px",
           }}
         >
           <h3
             style={{
               fontFamily: typography.fontFamily.sans,
-              fontSize: "15px",
+              fontSize: "14px",
               fontWeight: typography.fontWeight.bold,
               color: "#011B2F",
               margin: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              minWidth: 0,
             }}
           >
             {layout.name}
@@ -759,24 +635,24 @@ function LayoutCard({
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: "5px",
-              fontSize: "11px",
+              gap: "4px",
+              fontSize: "10px",
               fontWeight: 700,
-              padding: "4px 10px",
+              padding: "3px 8px",
               borderRadius: "999px",
               background: layout.isActive
                 ? "rgba(34, 197, 94, 0.14)"
                 : "rgba(148, 163, 184, 0.22)",
               color: layout.isActive ? "#15803D" : "#475569",
               textTransform: "uppercase",
-              letterSpacing: "0.4px",
+              letterSpacing: "0.3px",
               flexShrink: 0,
             }}
           >
             <span
               style={{
-                width: "6px",
-                height: "6px",
+                width: "5px",
+                height: "5px",
                 borderRadius: "50%",
                 background: layout.isActive ? "#22C55E" : "#94A3B8",
               }}
@@ -786,9 +662,9 @@ function LayoutCard({
         </div>
         <p
           style={{
-            fontSize: "12px",
+            fontSize: "11px",
             color: "#6B7280",
-            margin: "0 0 12px 0",
+            margin: "0 0 10px 0",
             fontFamily: typography.fontFamily.sans,
           }}
         >
@@ -798,71 +674,35 @@ function LayoutCard({
           sections
         </p>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            borderTop: "1px solid #F1F5F9",
-            paddingTop: "10px",
-            flexWrap: "wrap",
-          }}
-        >
+        <div className="ticket-card-actions">
           <Link
             href={`${LIST_PATH}/${layout.id}/edit`}
             style={iconLinkStyle("#173F63", "rgba(23, 63, 99, 0.08)")}
             title="Edit"
           >
-            <Pencil size={13} />
-            <span style={{ marginLeft: "4px", fontSize: "12px" }}>Edit</span>
+            <Pencil size={12} />
+            <span style={{ marginLeft: "4px", fontSize: "11px" }}>Edit</span>
           </Link>
           {!layout.isDefault && (
             <button
               type="button"
               onClick={onSetDefault}
-              style={iconButtonStyle("#F4BC43", "rgba(244, 188, 67, 0.18)")}
+              style={iconButtonStyle("#B45309", "rgba(244, 188, 67, 0.15)")}
               title="Set as default"
             >
-              <Star size={13} />
-              <span style={{ marginLeft: "4px", fontSize: "12px" }}>
+              <Star size={12} />
+              <span style={{ marginLeft: "4px", fontSize: "11px" }}>
                 Set Default
               </span>
             </button>
           )}
           <button
             type="button"
-            onClick={onToggleActive}
-            style={iconButtonStyle(
-              layout.isActive ? "#15803D" : "#475569",
-              layout.isActive
-                ? "rgba(34, 197, 94, 0.18)"
-                : "rgba(148, 163, 184, 0.22)",
-            )}
-            title={layout.isActive ? "Deactivate" : "Activate"}
-          >
-            <span
-              style={{
-                width: "8px",
-                height: "8px",
-                borderRadius: "50%",
-                background: layout.isActive ? "#22C55E" : "#94A3B8",
-                marginRight: "4px",
-                flexShrink: 0,
-              }}
-            />
-            {layout.isActive ? "Active" : "Inactive"}
-          </button>
-          <button
-            type="button"
             onClick={onDelete}
-            style={iconButtonStyle(
-              "#DC2626",
-              "rgba(220, 38, 38, 0.08)",
-              true,
-            )}
+            style={iconButtonStyle("#DC2626", "rgba(220, 38, 38, 0.08)", true)}
             title="Delete"
           >
-            <Trash2 size={13} />
+            <Trash2 size={12} />
           </button>
         </div>
       </div>
@@ -884,17 +724,14 @@ function iconButtonStyle(
     borderRadius: "6px",
     padding: "5px 10px",
     fontFamily: typography.fontFamily.sans,
-    fontSize: "12px",
+    fontSize: "11px",
     fontWeight: 600,
     cursor: "pointer",
     marginLeft: flexEnd ? "auto" : undefined,
   };
 }
 
-function iconLinkStyle(
-  color: string,
-  bg: string,
-): React.CSSProperties {
+function iconLinkStyle(color: string, bg: string): React.CSSProperties {
   return {
     display: "inline-flex",
     alignItems: "center",
@@ -903,7 +740,7 @@ function iconLinkStyle(
     borderRadius: "6px",
     padding: "5px 10px",
     fontFamily: typography.fontFamily.sans,
-    fontSize: "12px",
+    fontSize: "11px",
     fontWeight: 600,
     textDecoration: "none",
   };

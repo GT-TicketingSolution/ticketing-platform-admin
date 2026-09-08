@@ -5,15 +5,14 @@ import { useRouter } from "next/navigation";
 import { PRESET_PRESETS, TicketLayout } from "../data";
 import { layoutsStore } from "../_store";
 import { showSuccessNotify } from "@/lib/notify";
-import {
-  EditorPageHeader,
-  LayoutEditorBody,
-} from "../_components/Editor";
+import { useProfileQuery } from "@/hooks/useAuthQueries";
+import { LayoutEditorBody } from "../_components/Editor";
 
 const BACK_HREF = "/ticket-layout-management";
 
 export default function NewTicketLayoutPage() {
   const router = useRouter();
+  const { data } = useProfileQuery();
   const [errors, setErrors] = useState<{ name?: string; preset?: string }>({});
 
   const initialDraft = useMemo<TicketLayout>(() => {
@@ -25,7 +24,7 @@ export default function NewTicketLayoutPage() {
       isActive: true,
       isDefault: false,
       isDraft: true,
-      businessName: "Your Business Name",
+      businessName: data?.profile?.businessName || "",
       logoUrl: null,
       fontFamily: seed.fontFamily,
       sections: { ...seed.sections },
@@ -34,12 +33,11 @@ export default function NewTicketLayoutPage() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-  }, []);
+  }, [data?.profile?.businessName]);
 
   const handleCreate = (next: TicketLayout) => {
-    const nextErrors: { name?: string; preset?: string } = {};
+    const nextErrors: { name?: string } = {};
     if (!next.name.trim()) nextErrors.name = "Name is required";
-    if (!next.preset) nextErrors.preset = "Preset is required";
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
       return;
@@ -56,7 +54,6 @@ export default function NewTicketLayoutPage() {
   };
 
   const handleSaveDraft = (next: TicketLayout) => {
-    // Save Draft: NO validation. Persist whatever the user has typed.
     layoutsStore.upsertDraft({
       ...next,
       isDraft: true,
@@ -68,15 +65,14 @@ export default function NewTicketLayoutPage() {
 
   return (
     <div style={{ width: "100%" }}>
-      <EditorPageHeader
-        title="Create New Ticket Layout"
-        subtitle="Fill in the required fields. Use Save Draft to keep working later without publishing."
-        backHref={BACK_HREF}
-      />
       <div style={{ maxWidth: "1200px" }}>
         <LayoutEditorBody
           initialDraft={initialDraft}
           errors={errors}
+          isCreate={true}
+          backHref={BACK_HREF}
+          title="Create New Layout"
+          subtitle="Fill in the layout name to get started"
           actions={{
             primaryLabel: "Create Layout",
             secondaryLabel: "Save Draft",

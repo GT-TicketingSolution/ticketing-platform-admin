@@ -5,10 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { TicketLayout } from "../../../data";
 import { layoutsStore } from "../../../_store";
 import { showSuccessNotify } from "@/lib/notify";
-import {
-  EditorPageHeader,
-  LayoutEditorBody,
-} from "../../../_components/Editor";
+import { LayoutEditorBody } from "../../../_components/Editor";
 
 const BACK_HREF = "/ticket-layout-management";
 
@@ -34,17 +31,15 @@ export default function ContinueDraftPage() {
   }
 
   const handlePublish = (next: TicketLayout) => {
-    // Publish requires name + preset (same as Create).
-    const nextErrors: { name?: string; preset?: string } = {};
+    const nextErrors: { name?: string } = {};
     if (!next.name.trim()) nextErrors.name = "Name is required";
-    if (!next.preset) nextErrors.preset = "Preset is required";
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
       return;
     }
     const newLayout: TicketLayout = {
       ...next,
-      id: draft.id, // preserve id so any references stay stable
+      id: draft.id,
       isDraft: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -55,7 +50,6 @@ export default function ContinueDraftPage() {
   };
 
   const handleSaveDraft = (next: TicketLayout) => {
-    // Save Draft: NO validation. Update the existing draft in place.
     layoutsStore.upsertDraft({
       ...next,
       id: draft.id,
@@ -68,15 +62,14 @@ export default function ContinueDraftPage() {
 
   return (
     <div style={{ width: "100%" }}>
-      <EditorPageHeader
-        title="Continue Draft"
-        subtitle={draft.name ? `"${draft.name}" — stored locally` : "Stored locally"}
-        backHref={BACK_HREF}
-      />
       <div style={{ maxWidth: "1200px" }}>
         <LayoutEditorBody
           initialDraft={draft}
           errors={errors}
+          isCreate={false}
+          backHref={BACK_HREF}
+          title={draft.name ? `"${draft.name}"` : "Continue Draft"}
+          subtitle={draft.name ? "Stored locally · Draft" : "Stored locally"}
           actions={{
             primaryLabel: "Publish Layout",
             secondaryLabel: "Save Draft",
