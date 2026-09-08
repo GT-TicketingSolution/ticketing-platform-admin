@@ -406,9 +406,20 @@ export default function AttractionManagementPage() {
         : [];
 
       if (viewMode === "edit" && attractionToEdit) {
+        const resolvedStatus: "ACTIVE" | "INACTIVE" = data.status
+          ? String(data.status).toUpperCase() === "INACTIVE"
+            ? "INACTIVE"
+            : "ACTIVE"
+          : attractionToEdit.status
+            ? String(attractionToEdit.status).toUpperCase() === "INACTIVE"
+              ? "INACTIVE"
+              : "ACTIVE"
+            : "ACTIVE";
+
         const payload: UpdateAttractionPayload = {
           name: data.name,
           category: data.category,
+          status: resolvedStatus,
           image: data.image ?? "",
           description: data.description ?? "",
           timing: data.timing ?? "",
@@ -431,9 +442,16 @@ export default function AttractionManagementPage() {
         console.log("UpdatePayload:", JSON.stringify(payload, null, 2));
         await updateMutation.mutateAsync({ id: attractionToEdit.id, data: payload });
       } else {
+        const createStatusVal: "ACTIVE" | "INACTIVE" = data.status
+          ? String(data.status).toUpperCase() === "INACTIVE"
+            ? "INACTIVE"
+            : "ACTIVE"
+          : "ACTIVE";
+
         const payload: CreateAttractionPayload = {
           name: data.name,
           category: data.category,
+          status: createStatusVal,
           image: data.image ?? "",
           description: data.description ?? "",
           timing: data.timing ?? "",
