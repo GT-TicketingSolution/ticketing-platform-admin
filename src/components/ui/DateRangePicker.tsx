@@ -62,14 +62,36 @@ export default function DateRangePicker({
     today.getDate()
   );
 
-  // Left calendar — independent state
-  const [leftYear, setLeftYear] = useState(today.getFullYear());
-  const [leftMonth, setLeftMonth] = useState(
-    today.getMonth() === 0 ? 0 : today.getMonth() - 1
-  );
-  // Right calendar — independent state (starts at current month)
-  const [rightYear, setRightYear] = useState(today.getFullYear());
-  const [rightMonth, setRightMonth] = useState(today.getMonth());
+  // Left calendar — independent state (defaults to current month or fromDate's month)
+  const [leftYear, setLeftYear] = useState(() => {
+    if (fromDate) {
+      const [y] = fromDate.split("-").map(Number);
+      if (!isNaN(y)) return y;
+    }
+    return today.getFullYear();
+  });
+  const [leftMonth, setLeftMonth] = useState(() => {
+    if (fromDate) {
+      const [, m] = fromDate.split("-").map(Number);
+      if (!isNaN(m)) return m - 1;
+    }
+    return today.getMonth();
+  });
+  // Right calendar — independent state (starts at current month or toDate's month)
+  const [rightYear, setRightYear] = useState(() => {
+    if (toDate) {
+      const [y] = toDate.split("-").map(Number);
+      if (!isNaN(y)) return y;
+    }
+    return today.getFullYear();
+  });
+  const [rightMonth, setRightMonth] = useState(() => {
+    if (toDate) {
+      const [, m] = toDate.split("-").map(Number);
+      if (!isNaN(m)) return m - 1;
+    }
+    return today.getMonth();
+  });
 
   useEffect(() => setMounted(true), []);
 
@@ -89,6 +111,37 @@ export default function DateRangePicker({
     setDraftTo(toDate);
     setSelecting("from");
     setHoverDate("");
+
+    // Sync left calendar with fromDate (or current month)
+    if (fromDate) {
+      const [y, m] = fromDate.split("-").map(Number);
+      if (!isNaN(y) && !isNaN(m)) {
+        setLeftYear(y);
+        setLeftMonth(m - 1);
+      }
+    } else {
+      setLeftYear(today.getFullYear());
+      setLeftMonth(today.getMonth());
+    }
+
+    // Sync right calendar with toDate (or fromDate or current month)
+    if (toDate) {
+      const [y, m] = toDate.split("-").map(Number);
+      if (!isNaN(y) && !isNaN(m)) {
+        setRightYear(y);
+        setRightMonth(m - 1);
+      }
+    } else if (fromDate) {
+      const [y, m] = fromDate.split("-").map(Number);
+      if (!isNaN(y) && !isNaN(m)) {
+        setRightYear(y);
+        setRightMonth(m - 1);
+      }
+    } else {
+      setRightYear(today.getFullYear());
+      setRightMonth(today.getMonth());
+    }
+
     setIsOpen(true);
   };
 
@@ -108,6 +161,10 @@ export default function DateRangePicker({
     setDraftTo("");
     setSelecting("from");
     setHoverDate("");
+    setLeftYear(today.getFullYear());
+    setLeftMonth(today.getMonth());
+    setRightYear(today.getFullYear());
+    setRightMonth(today.getMonth());
     onClear?.();
   };
 
@@ -226,6 +283,13 @@ export default function DateRangePicker({
           setDraftFrom(dateStr);
           if (draftTo && (dateStr > draftTo || draftTo > todayStr)) setDraftTo("");
           setSelecting("to");
+          const [y, m] = dateStr.split("-").map(Number);
+          if (!isNaN(y) && !isNaN(m)) {
+            if (rightYear < y || (rightYear === y && rightMonth < m - 1)) {
+              setRightYear(y);
+              setRightMonth(m - 1);
+            }
+          }
         } else {
           if (!draftFrom || dateStr < draftFrom || dateStr > todayStr) return;
           setDraftTo(dateStr);

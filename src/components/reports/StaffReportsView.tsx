@@ -22,7 +22,8 @@ import SingleAttractionReportView from "@/components/reports/SingleAttractionRep
 import DailySalesReportModal from "@/components/modals/DailySalesReportModal";
 import { exportMultiSectionXLS, XLSSection } from "@/lib/exportUtils";
 import { useStaffReportAccess } from "@/hooks/useStaffReportAccess";
-import { getMockStaffReports, MOCK_STAFF_ATTRACTIONS } from "@/lib/mockStaffReportsData";
+import { useStaffReportQuery } from "@/hooks/useStaffReportQuery";
+import { transformStaffReportResponse, getEmptyOverallSummary } from "@/lib/transformStaffReport";
 import { AttractionReportData } from "@/lib/reportsData";
 
 const getTodayStr = () => {
@@ -46,6 +47,13 @@ const formatDateDisplay = (dateStr: string) => {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const mName = months[parseInt(m) - 1] || m;
   return `${d} ${mName} ${y}`;
+};
+
+const formatDateSlash = (dateStr: string) => {
+  if (!dateStr) return "";
+  const [y, m, d] = dateStr.split("-");
+  if (!y || !m || !d) return dateStr;
+  return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
 };
 
 const parse24to12 = (time24: string) => {
@@ -75,6 +83,8 @@ const compose12to24 = (h12: number, mmStr: string, ampm: "AM" | "PM"): string =>
 };
 
 export default function StaffReportsView() {
+
+
   const staffReportAccess = useStaffReportAccess();
 
   const todayStr = useMemo(() => getTodayStr(), []);
@@ -91,9 +101,19 @@ export default function StaffReportsView() {
   // Filters State: Defaults to Today window (today -> today, 12:00 AM up to current time)
   const [fromDate, setFromDate] = useState<string>(todayStr);
   const [toDate, setToDate] = useState<string>(todayStr);
+  const [isCustomRange, setIsCustomRange] = useState(false);
   const [fromTime, setFromTime] = useState<string>("00:00");
   const [toTime, setToTime] = useState<string>(() => getCurrentTimeStr());
-  const [selectedAttraction, setSelectedAttraction] = useState<string>("All");
+  const [selectedAttraction, setSelectedAttraction] = useState<string>("All Attractions");
+
+  // Authorized banner window info from Profile API response: does not change when date range is selected in the UI
+  const bannerTitle = staffReportAccess.accessLabel || "Past Reports Window";
+  const bannerFromDate = staffReportAccess.minDate || "earlier today";
+  const bannerToDate = "today";
+  const windowHours = staffReportAccess.durationHours || 0;
+  const windowDays = staffReportAccess.durationHours
+    ? Math.round((staffReportAccess.durationHours / 24) * 10) / 10
+    : 0;
 
   // Accordion State for "All Attractions" view (IDs of expanded cards)
   const [expandedAttractionIds, setExpandedAttractionIds] = useState<Set<string>>(
@@ -205,22 +225,50 @@ export default function StaffReportsView() {
     document.title = META_CONSTANTS.reports.fullTitle;
   }, []);
 
-  // Staff mock summary constrained to authorized timing window and selected time range
-  const overallSummary = useMemo(() => {
-    return getMockStaffReports(
-      staffReportAccess.durationHours || 24,
-      fromDate || undefined,
-      toDate || undefined,
-      selectedAttraction,
-      fromTime,
-      toTime
-    );
-  }, [staffReportAccess.durationHours, fromDate, toDate, selectedAttraction, fromTime, toTime]);
+  // Staff summary constrained to authorized timing window and selected time range.
+  // Data is fetched from /api/admin/reports and transformed into OverallReportSummary.
+  const {
+    data: reportData,
+    isLoading,
+    isError,
+  } = useStaffReportQuery(
+    {
+      fromDate: fromDate || todayStr,
+      fromTime: fromTime || "00:00:00",
+      toDate: toDate || todayStr,
+      toTime: toTime || "23:59:59",
+    },
+    staffReportAccess.hasAccess
+  );
 
-  // Attraction options dropdown
+  const overallSummary = useMemo(() => {
+    if (!reportData) return getEmptyOverallSummary();
+    return transformStaffReportResponse(reportData, selectedAttraction);
+  }, [reportData, selectedAttraction]);
+
+  // Attraction options dropdown — built from API response (excluding INACTIVE attractions)
   const attractionDropdownOptions = useMemo(() => {
-    return ["All Attractions", ...MOCK_STAFF_ATTRACTIONS.map((a) => a.name)];
-  }, []);
+    if (!reportData?.attractions?.length) return ["All Attractions"];
+    const activeAttractions = reportData.attractions.filter(
+      (a) => !a.status || a.status.toUpperCase() !== "INACTIVE"
+    );
+    return ["All Attractions", ...activeAttractions.map((a) => a.name)];
+  }, [reportData]);
+
+  // If currently selected attraction is INACTIVE, reset to "All Attractions"
+  useEffect(() => {
+    if (
+      selectedAttraction !== "All Attractions" &&
+      reportData?.attractions?.length
+    ) {
+      const found = reportData.attractions.find(
+        (a) => a.name.toLowerCase() === selectedAttraction.toLowerCase()
+      );
+      if (found && found.status && found.status.toUpperCase() === "INACTIVE") {
+        setSelectedAttraction("All Attractions");
+      }
+    }
+  }, [reportData, selectedAttraction]);
 
   // Accordion Toggle Handlers
   const handleToggleCardExpand = (id: string) => {
@@ -247,16 +295,22 @@ export default function StaffReportsView() {
 
   // Export Overall Excel Report
   const handleExportOverallReport = () => {
-    if (overallSummary.attractionReports.length === 0) return;
+    if (
+      overallSummary.totalRevenue === 0 &&
+      overallSummary.totalTicketsSold === 0 &&
+      overallSummary.totalBookings === 0
+    ) {
+      return;
+    }
 
     const sections: XLSSection[] = [
       {
         title: "1. SALES SUMMARY OVERVIEW (STAFF REPORT)",
         headers: ["Metric Label", "Value"],
         rows: [
-          ["Report Authorization Window", staffReportAccess.accessLabel],
-          ["Earliest Authorized Date", staffReportAccess.minDate || "N/A"],
-          ["Date Range From", fromDate || "Authorized Window Start"],
+          ["Report Authorization Window", bannerTitle],
+          ["Earliest Authorized Date", bannerFromDate ? formatDateSlash(bannerFromDate) : "N/A"],
+          ["Date Range From", fromDate ? formatDateSlash(fromDate) : "Authorized Window Start"],
           ["Date Range To", toDate || "Today"],
           ["Selected Attraction", selectedAttraction],
           [
@@ -277,7 +331,6 @@ export default function StaffReportsView() {
           "Total Revenue (₹)",
           "Tickets Sold",
           "Bookings Count",
-          "Avg Order Value (₹)",
           "Status",
         ],
         rows: overallSummary.attractionReports.map((r) => [
@@ -287,7 +340,6 @@ export default function StaffReportsView() {
           r.totalRevenue,
           r.totalTicketsSold,
           r.totalBookings,
-          r.avgOrderValue,
           r.attraction.status,
         ]),
       },
@@ -313,6 +365,18 @@ export default function StaffReportsView() {
       ) || null
     );
   }, [selectedAttraction, overallSummary]);
+
+  // Overall data availability flags
+  const hasOverallData =
+    overallSummary.totalRevenue > 0 ||
+    overallSummary.totalTicketsSold > 0 ||
+    overallSummary.totalBookings > 0;
+
+  const hasPrintData = singleAttractionReport
+    ? singleAttractionReport.totalRevenue > 0 ||
+    singleAttractionReport.totalTicketsSold > 0 ||
+    singleAttractionReport.totalBookings > 0
+    : hasOverallData;
 
   // Gated view: if staff member has no reports access granted
   if (!staffReportAccess.hasAccess && !staffReportAccess.isLoading) {
@@ -400,8 +464,155 @@ export default function StaffReportsView() {
     );
   }
 
+  // Loading state while the staff report API or permissions are being fetched
+  if (isLoading || staffReportAccess.isLoading) {
+    return (
+      <div
+        style={{
+          padding: "48px 24px",
+          backgroundColor: colors.bg.page,
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <div
+          style={{
+            background: "#FFFFFF",
+            borderRadius: "16px",
+            padding: "48px 32px",
+            textAlign: "center",
+            boxShadow: "0 4px 24px rgba(0,0,0,0.06)",
+            border: "1px solid #E2E8F0",
+            maxWidth: "520px",
+            width: "100%",
+          }}
+        >
+          <div
+            style={{
+              width: "48px",
+              height: "48px",
+              border: "4px solid #E2E8F0",
+              borderTopColor: "#2372A5",
+              borderRadius: "50%",
+              animation: "spin 0.8s linear infinite",
+              margin: "0 auto 20px auto",
+            }}
+          />
+          <h2
+            style={{
+              fontSize: "18px",
+              fontWeight: 700,
+              color: colors.text.primary,
+              margin: 0,
+            }}
+          >
+            Loading Reports...
+          </h2>
+          <p
+            style={{
+              fontSize: "13px",
+              color: colors.text.muted,
+              margin: "8px 0 0 0",
+            }}
+          >
+            Fetching sales data for the selected date range.
+          </p>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state when the API fails
+  if (isError) {
+    return (
+      <div
+        style={{
+          padding: "48px 24px",
+          backgroundColor: colors.bg.page,
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <div
+          style={{
+            background: "#FFFFFF",
+            borderRadius: "16px",
+            padding: "48px 32px",
+            textAlign: "center",
+            boxShadow: "0 4px 24px rgba(0,0,0,0.06)",
+            border: "1px solid #E2E8F0",
+            maxWidth: "520px",
+            width: "100%",
+          }}
+        >
+          <div
+            style={{
+              width: "68px",
+              height: "68px",
+              borderRadius: "50%",
+              background: "#FEF2F2",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 20px auto",
+              border: "1px solid #FEE2E2",
+            }}
+          >
+            <ShieldAlert size={36} color="#DC2626" />
+          </div>
+          <h2
+            style={{
+              fontSize: "20px",
+              fontWeight: 800,
+              color: colors.text.primary,
+              margin: "0 0 10px 0",
+            }}
+          >
+            Failed to Load Reports
+          </h2>
+          <p
+            style={{
+              fontSize: "14px",
+              color: colors.text.muted,
+              lineHeight: 1.6,
+              margin: "0 0 24px 0",
+            }}
+          >
+            Something went wrong while fetching your report data. Please try refreshing the page.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              background: colors.brand.primary,
+              color: colors.sidebar.activeText,
+              fontWeight: 700,
+              fontSize: "14px",
+              padding: "12px 24px",
+              borderRadius: "8px",
+              border: "none",
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(244,188,67,0.3)",
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
+      className="staff-reports-root"
       style={{
         padding: "24px",
         backgroundColor: colors.bg.page,
@@ -413,6 +624,7 @@ export default function StaffReportsView() {
     >
       {/* Top Header Card */}
       <div
+        className="staff-reports-header-card"
         style={{
           backgroundColor: colors.bg.card,
           borderRadius: "16px",
@@ -456,27 +668,26 @@ export default function StaffReportsView() {
 
           <button
             type="button"
+            className="staff-reports-export-btn"
             onClick={handleExportOverallReport}
-            disabled={overallSummary.attractionReports.length === 0}
+            disabled={!hasOverallData}
+            title={!hasOverallData ? "No sales data available to export" : undefined}
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
               padding: "10px 18px",
               borderRadius: "10px",
-              backgroundColor:
-                overallSummary.attractionReports.length === 0 ? "#94A3B8" : "#2372A5",
+              backgroundColor: !hasOverallData ? "#94A3B8" : "#2372A5",
               color: "#FFFFFF",
               border: "none",
               fontSize: "13px",
               fontWeight: 700,
-              cursor:
-                overallSummary.attractionReports.length === 0 ? "not-allowed" : "pointer",
-              opacity: overallSummary.attractionReports.length === 0 ? 0.7 : 1,
-              boxShadow:
-                overallSummary.attractionReports.length === 0
-                  ? "none"
-                  : "0 2px 8px rgba(35, 114, 165, 0.25)",
+              cursor: !hasOverallData ? "not-allowed" : "pointer",
+              opacity: !hasOverallData ? 0.6 : 1,
+              boxShadow: !hasOverallData
+                ? "none"
+                : "0 2px 8px rgba(35, 114, 165, 0.25)",
               transition: "all 0.2s",
             }}
           >
@@ -530,7 +741,7 @@ export default function StaffReportsView() {
                     gap: "8px",
                   }}
                 >
-                  <span>Staff Reports Window: {staffReportAccess.accessLabel}</span>
+                  <span>Staff Reports Window: {bannerTitle}</span>
                 </div>
                 <div
                   style={{
@@ -541,9 +752,13 @@ export default function StaffReportsView() {
                 >
                   Authorized to view analytics from{" "}
                   <strong style={{ color: "#0C2A42" }}>
-                    {staffReportAccess.minDate || "earlier today"}
+                    {formatDateSlash(bannerFromDate)}
                   </strong>{" "}
-                  up to today. Older historical records are restricted by management.
+                  up to{" "}
+                  <strong style={{ color: "#0C2A42" }}>
+                    {bannerToDate}
+                  </strong>
+                  . Older historical records are restricted by management.
                 </div>
               </div>
             </div>
@@ -552,10 +767,8 @@ export default function StaffReportsView() {
 
         {/* Filter Controls Row */}
         <div
+          className="staff-filter-grid"
           style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1.25fr 1.25fr",
-            gap: "16px",
             padding: "16px 20px",
             backgroundColor: "#F8FAFC",
             borderRadius: "12px",
@@ -563,8 +776,32 @@ export default function StaffReportsView() {
             alignItems: "flex-start",
           }}
         >
-          {/* Custom style for perfectly matching DateRangePicker trigger button */}
+          {/* Custom style for responsive filter grid and date range picker */}
           <style>{`
+            .staff-filter-grid {
+              display: grid;
+              grid-template-columns: 1fr 1.25fr;
+              gap: 16px;
+            }
+            @media (max-width: 768px) {
+              .staff-reports-root {
+                padding: 12px !important;
+                gap: 16px !important;
+              }
+              .staff-reports-header-card {
+                padding: 16px !important;
+                border-radius: 12px !important;
+              }
+              .staff-filter-grid {
+                grid-template-columns: 1fr !important;
+                gap: 14px !important;
+                padding: 14px 14px !important;
+              }
+              .staff-reports-export-btn {
+                width: 100% !important;
+                justify-content: center !important;
+              }
+            }
             .staff-date-picker-wrap > div {
               height: 42px !important;
               border-radius: 8px !important;
@@ -649,6 +886,7 @@ export default function StaffReportsView() {
                   const minAllowed = staffReportAccess.minDate;
                   const nextFrom = minAllowed && date < minAllowed ? minAllowed : date;
                   setFromDate(nextFrom);
+                  setIsCustomRange(true);
                   if (nextFrom === todayStr && fromTime > currentTimeStr) {
                     setFromTime(currentTimeStr);
                   }
@@ -659,6 +897,7 @@ export default function StaffReportsView() {
                 onToDateChange={(date) => {
                   const nextTo = date > todayStr ? todayStr : date;
                   setToDate(nextTo);
+                  setIsCustomRange(true);
                   if (nextTo === todayStr && toTime > currentTimeStr) {
                     setToTime(currentTimeStr);
                   }
@@ -669,6 +908,7 @@ export default function StaffReportsView() {
                 onClear={() => {
                   setFromDate(todayStr);
                   setToDate(todayStr);
+                  setIsCustomRange(false);
                   if (fromTime > currentTimeStr) {
                     setFromTime(currentTimeStr);
                   }
@@ -698,7 +938,7 @@ export default function StaffReportsView() {
           </div>
 
           {/* Time Range Selector (Start – End Time) */}
-          <div style={{ display: "flex", flexDirection: "column" }}>
+          {/* <div style={{ display: "flex", flexDirection: "column" }}>
             <div
               style={{
                 display: "flex",
@@ -750,7 +990,6 @@ export default function StaffReportsView() {
                 boxSizing: "border-box",
               }}
             >
-              {/* Start Time Pill */}
               <div
                 onClick={() => setActiveTimePicker(activeTimePicker === "from" ? null : "from")}
                 style={{
@@ -818,8 +1057,6 @@ export default function StaffReportsView() {
               >
                 →
               </span>
-
-              {/* End Time Pill */}
               <div
                 onClick={() => setActiveTimePicker(activeTimePicker === "to" ? null : "to")}
                 style={{
@@ -875,8 +1112,6 @@ export default function StaffReportsView() {
                   {parse24to12(toTime).ampm}
                 </button>
               </div>
-
-              {/* Time Picker Dropdown (with interactive AM/PM and 12-Hour controls) */}
               {activeTimePicker && (() => {
                 const isFrom = activeTimePicker === "from";
                 const targetTimeStr = isFrom ? fromTime : toTime;
@@ -909,7 +1144,7 @@ export default function StaffReportsView() {
                     }}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {/* Header */}
+                  
                     <div
                       style={{
                         display: "flex",
@@ -946,7 +1181,7 @@ export default function StaffReportsView() {
                       </button>
                     </div>
 
-                    {/* Time Preview & AM/PM Switcher */}
+                 
                     <div
                       style={{
                         display: "flex",
@@ -975,8 +1210,6 @@ export default function StaffReportsView() {
                           {parsed.ampm}
                         </span>
                       </div>
-
-                      {/* AM / PM Segmented Buttons */}
                       <div
                         style={{
                           display: "flex",
@@ -1028,7 +1261,6 @@ export default function StaffReportsView() {
                       </div>
                     </div>
 
-                    {/* Notice for Future Time Disabling */}
                     {targetDate === todayStr && (
                       <div
                         style={{
@@ -1050,7 +1282,6 @@ export default function StaffReportsView() {
                       </div>
                     )}
 
-                    {/* Hours (1 to 12) */}
                     <div style={{ marginBottom: "12px" }}>
                       <span
                         style={{
@@ -1102,8 +1333,6 @@ export default function StaffReportsView() {
                         })}
                       </div>
                     </div>
-
-                    {/* Minutes */}
                     <div style={{ marginBottom: "14px" }}>
                       <div
                         style={{
@@ -1116,7 +1345,6 @@ export default function StaffReportsView() {
                         <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>
                           Minute (:00 – :55)
                         </span>
-                        {/* Exact minute input */}
                         <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                           <span style={{ fontSize: "10px", color: "#94A3B8" }}>Custom:</span>
                           <input
@@ -1183,7 +1411,6 @@ export default function StaffReportsView() {
                       </div>
                     </div>
 
-                    {/* Footer: Now shortcut + Done */}
                     <div style={{ display: "flex", gap: "8px", borderTop: "1px solid #F1F5F9", paddingTop: "12px" }}>
                       <button
                         type="button"
@@ -1234,7 +1461,6 @@ export default function StaffReportsView() {
               })()}
             </div>
 
-            {/* Selected time range helper */}
             <div
               style={{
                 marginTop: "6px",
@@ -1246,7 +1472,6 @@ export default function StaffReportsView() {
                 minHeight: "22px",
               }}
             >
-              {/* Left: clock + selected range */}
               <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                 <Clock size={12} color="#16A34A" />
                 <span>
@@ -1257,7 +1482,7 @@ export default function StaffReportsView() {
                 </span>
               </div>
             </div>
-          </div>
+          </div> */}
 
           {/* Action Row Below Filters: Notice & Print Daily Sales Report Button */}
           <div
@@ -1291,50 +1516,42 @@ export default function StaffReportsView() {
                 i
               </span>
               <span>
-                Showing report for <strong>{formatDateDisplay(fromDate)} {formatTime12Display(fromTime)}</strong> to{" "}
-                <strong>{formatDateDisplay(toDate)} {formatTime12Display(toTime)}</strong>
-                <span
-                  style={{
-                    marginLeft: "8px",
-                    padding: "2px 8px",
-                    borderRadius: "100px",
-                    backgroundColor: "#FEF3C7",
-                    color: "#92400E",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    border: "1px solid #FDE68A",
-                  }}
-                >
-                  {fromDate !== todayStr ? "Past 24 Hours Window" : "Today's Report"}
-                </span>
+                Showing report for <strong>{formatDateDisplay(fromDate)}</strong> to{" "}
+                <strong>{formatDateDisplay(toDate)}</strong>
               </span>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedPrintReport(singleAttractionReport || null);
-                setIsPrintModalOpen(true);
-              }}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "9px 20px",
-                borderRadius: "8px",
-                backgroundColor: "#0C2A42",
-                color: "#F4BC43",
-                border: "none",
-                fontSize: "13px",
-                fontWeight: 700,
-                cursor: "pointer",
-                boxShadow: "0 2px 8px rgba(12, 42, 66, 0.25)",
-                transition: "all 0.15s ease",
-              }}
-            >
-              <Printer size={16} />
-              <span>Print Sales Report</span>
-            </button>
+            {!singleAttractionReport && (
+              <button
+                type="button"
+                disabled={!hasPrintData}
+                onClick={() => {
+                  if (!hasPrintData) return;
+                  setSelectedPrintReport(null);
+                  setIsPrintModalOpen(true);
+                }}
+                title={!hasPrintData ? "No sales data available for the selected period" : undefined}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "9px 20px",
+                  borderRadius: "8px",
+                  backgroundColor: !hasPrintData ? "#94A3B8" : "#0C2A42",
+                  color: !hasPrintData ? "#E2E8F0" : "#F4BC43",
+                  border: "none",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: !hasPrintData ? "not-allowed" : "pointer",
+                  boxShadow: !hasPrintData ? "none" : "0 2px 8px rgba(12, 42, 66, 0.25)",
+                  opacity: !hasPrintData ? 0.6 : 1,
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <Printer size={16} />
+                <span>Print Sales Report</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1344,7 +1561,7 @@ export default function StaffReportsView() {
         {singleAttractionReport ? (
           <SingleAttractionReportView
             reportData={singleAttractionReport}
-            onBackToAll={() => setSelectedAttraction("All")}
+            onBackToAll={() => setSelectedAttraction("All Attractions")}
             fromDate={fromDate}
             toDate={toDate}
             onPrint={() => {
@@ -1354,11 +1571,11 @@ export default function StaffReportsView() {
           />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-            {/* Executive Aggregate Summary Cards (3 Cards for Staff - Top Attraction Removed) */}
+            {/* Executive Aggregate Summary Cards (4 Cards for Staff - includes Top Attraction) */}
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                 gap: "16px",
               }}
             >
@@ -1440,6 +1657,37 @@ export default function StaffReportsView() {
                 </div>
                 <div style={{ fontSize: "12px", color: colors.text.muted, marginTop: "4px" }}>
                   Processed transactions
+                </div>
+              </div>
+
+              {/* Top Attraction */}
+              <div
+                style={{
+                  backgroundColor: colors.bg.card,
+                  borderRadius: "14px",
+                  padding: "20px",
+                  border: "1px solid #E2E8F0",
+                  borderLeft: "4px solid #F4BC43",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: colors.text.muted, textTransform: "uppercase" }}>
+                    Top Attraction
+                  </span>
+                  <div style={{ padding: "8px", borderRadius: "8px", backgroundColor: "#FEF3C7", color: "#92400E" }}>
+                    <IndianRupee size={18} />
+                  </div>
+                </div>
+                <div style={{ fontSize: "20px", fontWeight: 800, color: overallSummary.topAttractionName ? colors.text.primary : "#CBD5E1", marginTop: "10px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {overallSummary.topAttractionName || "—"}
+                </div>
+                <div style={{ fontSize: "12px", color: colors.text.muted, marginTop: "4px" }}>
+                  {overallSummary.topAttractionRevenue > 0
+                    ? `₹${overallSummary.topAttractionRevenue.toLocaleString("en-IN")} revenue`
+                    : overallSummary.topAttractionName
+                      ? "No revenue recorded"
+                      : "No data for selected period"}
                 </div>
               </div>
             </div>

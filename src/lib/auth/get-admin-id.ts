@@ -14,6 +14,9 @@ export function getAdminId(auth: {
   if (auth.user.role === "MANAGER" && auth.user.adminId) {
     return auth.user.adminId;
   }
+  if (auth.user.role === "STAFF" && auth.user.adminId) {
+    return auth.user.adminId;
+  }
 
   throw new Error("FORBIDDEN");
 }

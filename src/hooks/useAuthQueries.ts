@@ -6,6 +6,12 @@ import { showSuccessNotify } from "@/lib/notify";
 import { showErrorOnce } from "@/lib/api/axiosConfig";
 import { LoginRequestBody, LoginResponseData } from "@/app/(auth)/login/types";
 
+export interface UserRenewalData {
+  next_renewal_date?: string | Date | null;
+  days_left_for_renewal?: number | null;
+  message?: string | null;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -18,9 +24,13 @@ export interface UserProfile {
   cin?: string | null;
   profileLink?: string | null;
   invoiceNumberForUsersInitialPart?: string | null;
+  next_renewal_date?: string | null;
   lastLoginAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  reportAccessTiming?: number | null;
+  reportAccessUnit?: "HOURS" | "DAYS" | string | null;
+  user_renewal_data?: UserRenewalData | null;
 }
 
 export interface ProfileResponse {
@@ -113,6 +123,11 @@ export function useLoginMutation() {
           rawRole === "STAFF" ? "Staff" : rawRole === "MANAGER" ? "Manager" : "Admin";
         if (typeof window !== "undefined") {
           sessionStorage.setItem("userRole", formattedRole);
+          // Persist the last successful role across logouts so the login
+          // page can pre-select the right tab on the next visit. Stored
+          // in localStorage so it survives both sessionStorage.clear() and
+          // a fresh tab open.
+          try { localStorage.setItem("lastRole", formattedRole); } catch { /* ignore */ }
           if ((data?.user as any)?.staffRoles) {
             sessionStorage.setItem("staffRoles", JSON.stringify((data.user as any).staffRoles));
           }
@@ -173,10 +188,20 @@ export function useLogoutMutation() {
       return postData(AppUrl.auth.logout);
     },
     onSuccess: () => {
-      // Wipe ALL browser storage
+      // Wipe ALL browser storage, but preserve `lastRole` so the login page
+      // can pre-select the correct tab on the next visit. Without this, a
+      // Manager or Staff who logs out would always land back on the Admin
+      // tab on /login.
+      let preservedLastRole: string | null = null;
       if (typeof window !== "undefined") {
+        try {
+          preservedLastRole = localStorage.getItem("lastRole");
+        } catch { /* ignore */ }
         try { localStorage.clear(); } catch { /* ignore */ }
         try { sessionStorage.clear(); } catch { /* ignore */ }
+        if (preservedLastRole) {
+          try { localStorage.setItem("lastRole", preservedLastRole); } catch { /* ignore */ }
+        }
       }
 
       // Hard redirect to /login — unmounts all dashboard components
