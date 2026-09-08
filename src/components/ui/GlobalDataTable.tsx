@@ -48,7 +48,13 @@ interface GlobalDataTableProps<T> {
   showSNo?: boolean;
   sNoHeader?: string;
   itemLabel?: string;
+  /** Callback fired when a row is clicked */
   onRowClick?: (item: T) => void;
+  /**
+   * Whether to display the pagination footer and slice data into pages.
+   * Defaults to true. When false, renders all items and hides the footer.
+   */
+  showPagination?: boolean;
   /**
    * Initial sort state. When provided AND the matching column has
    * `sortable: true`, the table starts sorted by this column.
@@ -77,6 +83,7 @@ export function GlobalDataTable<T>({
   sNoHeader = "S.No",
   itemLabel = "items",
   onRowClick,
+  showPagination = true,
   defaultSort,
 }: GlobalDataTableProps<T>) {
   const [internalCurrentPage, setInternalCurrentPage] = useState(1);
@@ -142,7 +149,11 @@ export function GlobalDataTable<T>({
     : Math.min(internalCurrentPage, totalPages);
 
   const startIndex = (activePage - 1) * pageSize;
-  const currentData = isServerPaged ? sortedData : sortedData.slice(startIndex, startIndex + pageSize);
+  const currentData = isServerPaged
+    ? sortedData
+    : showPagination
+      ? sortedData.slice(startIndex, startIndex + pageSize)
+      : sortedData;
 
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {
@@ -401,7 +412,7 @@ export function GlobalDataTable<T>({
               </tr>
             ) : (
               currentData.map((item, idx) => {
-                const sNo = startIndex + idx + 1;
+                const sNo = showPagination ? startIndex + idx + 1 : idx + 1;
                 const rawKey = keyExtractor ? keyExtractor(item, startIndex + idx) : undefined;
                 const safeKey =
                   rawKey !== undefined && rawKey !== null && String(rawKey).trim() !== ""
@@ -465,7 +476,7 @@ export function GlobalDataTable<T>({
       </div>
 
       {/* Pagination Footer */}
-      {!isLoading && totalItems > 0 && (
+      {showPagination && !isLoading && totalItems > 0 && (
         <div
           style={{
             padding: "16px 20px",
