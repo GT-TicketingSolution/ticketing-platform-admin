@@ -330,7 +330,7 @@ export async function PATCH(
       // UPDATE ATTRACTION
       // =====================================================
 
-      if (body.name !== undefined || body.category !== undefined) {
+      if (body.name !== undefined || body.category !== undefined || body.status !== undefined) {
         await tx
           .update(attractions)
           .set({
@@ -343,6 +343,12 @@ export async function PATCH(
             ...(body.category !== undefined
               ? {
                   type: body.category,
+                }
+              : {}),
+
+            ...(body.status !== undefined
+              ? {
+                  status: body.status,
                 }
               : {}),
 

@@ -309,14 +309,15 @@ export function buildOverallSummary(
       const transactions: any[] =
         item.recentTransactions && item.recentTransactions.length > 0
           ? item.recentTransactions.map((t: any) => ({
-            id: t.transactionId || t.id || "",
-            transactionId: t.transactionId || t.id || "",
-            customerName: t.customerName || "-",
+            id: t.invoiceNumber || t.transactionId || t.id || "",
+            invoiceId: t.invoiceNumber || "-",
+            transactionId: t.transactionId || "-",
+            customerName: t.customerName && String(t.customerName).trim() !== "" ? String(t.customerName).trim() : "-",
             dateTime: t.dateTime ? new Date(t.dateTime).toLocaleString("en-IN") : "-",
             transactionDate: t.dateTime ? new Date(t.dateTime).toISOString() : "",
-            paymentMode: t.paymentMode || "-",
+            paymentMode: t.paymentMode && String(t.paymentMode).trim() !== "" ? String(t.paymentMode).trim() : "-",
             amount: Number(t.amount ?? 0),
-            status: t.status || "SUCCESSFUL",
+            status: t.status && String(t.status).trim() !== "" ? String(t.status).trim() : "SUCCESSFUL",
             attraction: { name: item.attractionName || attrObj.name || "-" },
           }))
           : [];

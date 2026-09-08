@@ -264,14 +264,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
    * Derive the role from the authoritative profile API first.
    * If profile API has an error or role is missing, falls back to '-' (never defaults to Admin).
    */
+  const profile = profileData?.profile || (profileData as any)?.data?.profile;
+  const hasRenewalBanner = Boolean(
+    !isProfileError &&
+    profile?.user_renewal_data &&
+    profile.user_renewal_data.days_left_for_renewal != null &&
+    !isNaN(Number(profile.user_renewal_data.days_left_for_renewal))
+  );
+
   const userRole = useMemo(() => {
     if (isProfileError) return "-";
-    if (profileData?.profile?.role) {
-      return toDisplayRole(profileData.profile.role);
+    if (profile?.role) {
+      return toDisplayRole(profile.role);
     }
     if (mountedRole) return mountedRole;
     return "-";
-  }, [profileData?.profile?.role, mountedRole, isProfileError]);
+  }, [profile?.role, mountedRole, isProfileError]);
 
   /** Keep sessionStorage in sync so other hooks (useUserRole, etc.) stay consistent */
   useEffect(() => {
@@ -303,11 +311,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => window.removeEventListener("resize", checkBreakpoint);
   }, []);
 
-  /** Listen for TicketBookingView sidebar collapse requests */
+  /**
+   * Listen for TicketBookingView sidebar collapse/restore events.
+   * IMPORTANT: We only ever COLLAPSE from this event — never auto-expand.
+   * Expanding the sidebar is manual-only (toggle button). This ensures
+   * that switching modules never opens a collapsed sidebar automatically.
+   */
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ collapsed: boolean }>).detail;
-      if (!isMobile) setCollapsed(detail.collapsed);
+      if (isMobile) return;
+      // Only collapse — never auto-expand from module events
+      if (detail.collapsed) {
+        setCollapsed(true);
+      }
+      // detail.collapsed === false (unmount restore) is intentionally ignored
     };
     window.addEventListener(SIDEBAR_COLLAPSE_EVENT, handler);
     return () => window.removeEventListener(SIDEBAR_COLLAPSE_EVENT, handler);
@@ -369,13 +387,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           style={{
             flex: 1,
             padding: isMobile ? "16px" : "24px",
-            // Header height + renewal banner height (when present) + breathing room.
+            // Header height + renewal banner height (only when banner is active) + breathing room.
             // The renewal banner is fixed-positioned just below the header;
-            // the dashboard layout must reserve enough top padding so page
-            // content does not sit underneath it.
+            // the dashboard layout reserves top padding so page content does not sit underneath it.
             paddingTop: `${
               spacing.headerHeight +
-              (isMobile ? 56 : 48) +
+              (hasRenewalBanner ? (isMobile ? 56 : 48) : 0) +
               (isMobile ? 16 : 24)
             }px`,
             boxSizing: "border-box",

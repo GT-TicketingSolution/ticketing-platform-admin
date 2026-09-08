@@ -103,6 +103,7 @@ export interface AttractionSeatLayoutPayloadItem {
 export interface CreateAttractionPayload {
   name: string;
   category: string;
+  status?: "ACTIVE" | "INACTIVE";
   image?: string | null;
   description?: string | null;
   timing?: string | null;
@@ -129,6 +130,7 @@ export interface CreateAttractionPayload {
 export interface UpdateAttractionPayload {
   name?: string;
   category?: string;
+  status?: "ACTIVE" | "INACTIVE";
   image?: string | null;
   description?: string | null;
   timing?: string | null;

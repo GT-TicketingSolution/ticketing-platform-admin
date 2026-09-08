@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useProfileQuery } from "@/hooks/useAuthQueries";
 import { colors } from "@/lib/theme";
 import AdminReportsView from "@/components/reports/AdminReportsView";
 import StaffReportsView from "@/components/reports/StaffReportsView";
@@ -9,6 +10,8 @@ import StaffReportsView from "@/components/reports/StaffReportsView";
 export default function ReportsPage() {
   const [mounted, setMounted] = useState(false);
   const { role, isStaff } = useUserRole();
+  const { data: profileData } = useProfileQuery();
+  const isProfileStaff = profileData?.profile?.role?.toUpperCase() === "STAFF";
 
   useEffect(() => {
     setMounted(true);
@@ -57,8 +60,8 @@ export default function ReportsPage() {
     );
   }
 
-  // Staff role gets the dedicated StaffReportsView (past days mock, 0 backend API calls)
-  if (role === "Staff" || isStaff) {
+  // Staff role gets the dedicated StaffReportsView
+  if (role === "Staff" || isStaff || isProfileStaff) {
     return <StaffReportsView />;
   }
 
