@@ -286,6 +286,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (typeof window !== "undefined") {
       if (userRole && userRole !== "-") {
         sessionStorage.setItem("userRole", userRole);
+        try { localStorage.setItem("lastRole", userRole); } catch { /* ignore */ }
         window.dispatchEvent(new Event(USER_ROLE_EVENT));
       }
     }
@@ -346,6 +347,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const handleLogout = async () => {
     const confirmed = await confirmLogout();
     if (confirmed) {
+      if (userRole && userRole !== "-") {
+        try { localStorage.setItem("lastRole", userRole); } catch { /* ignore */ }
+      }
       if (userRole === "Manager") clearManagerSession();
       logoutMutation.mutate();
     }

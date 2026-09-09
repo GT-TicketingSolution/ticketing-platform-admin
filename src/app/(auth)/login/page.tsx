@@ -13,15 +13,38 @@ import { useLoginMutation } from "@/hooks/useAuthQueries";
 export default function LoginPage() {
   const router = useRouter();
   const [selectedRole, setSelectedRole] = useState<RoleType>("Admin");
+  const [isLoadingRole, setIsLoadingRole] = useState(true);
+
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedLang, setSelectedLang] = useState("English");
-  const [langDropdownOpen, setLangDropdownOpen] = useState(false);
+  // const [selectedLang, setSelectedLang] = useState("English");
+  // const [langDropdownOpen, setLangDropdownOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       document.title = "Login | Ticketing Solution";
+      try {
+        const savedRole = localStorage.getItem("lastRole");
+        if (savedRole) {
+          const upper = savedRole.toUpperCase();
+          if (upper === "MANAGER") setSelectedRole("Manager");
+          else if (upper === "STAFF") setSelectedRole("Staff");
+          else if (upper === "ADMIN") setSelectedRole("Admin");
+        }
+      } catch {
+        // ignore
+      }
+      setIsLoadingRole(false);
     }
   }, []);
+
+  const handleRoleSelect = (role: RoleType) => {
+    setSelectedRole(role);
+    try {
+      localStorage.setItem("lastRole", role);
+    } catch {
+      // ignore
+    }
+  };
 
   // TanStack Query Login Mutation
   const loginMutation = useLoginMutation();
@@ -41,6 +64,11 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginFormData) => {
     try {
+      try {
+        localStorage.setItem("lastRole", selectedRole);
+      } catch {
+        // ignore
+      }
       const result = await loginMutation.mutateAsync({
         email: data.email,
         password: data.password,
@@ -279,31 +307,31 @@ export default function LoginPage() {
             >
               {(["Admin", "Manager", "Staff"] as RoleType[]).map((role) => {
                 const isActive = selectedRole === role;
+                const pillWidth =
+                  role === "Admin" ? "48px" : role === "Manager" ? "62px" : "44px";
+
+                const tabClass = isLoadingRole
+                  ? "role-tab-btn role-tab-loading"
+                  : isActive
+                    ? "role-tab-btn role-tab-active"
+                    : "role-tab-btn role-tab-inactive";
+
                 return (
                   <button
                     key={role}
                     type="button"
-                    onClick={() => setSelectedRole(role)}
-                    style={{
-                      flex: 1,
-                      border: isActive ? `1px solid ${colors.login.roleBorder}` : "none",
-                      borderRadius: "6px",
-                      background: isActive ? colors.login.roleActiveBg : "transparent",
-                      color: isActive
-                        ? colors.login.roleActiveText
-                        : colors.login.roleInactiveText,
-                      fontFamily: typography.fontFamily.sans,
-                      fontWeight: typography.fontWeight.medium,
-                      fontSize: "14px",
-                      lineHeight: "18px",
-                      cursor: "pointer",
-                      transition: "all 0.2s ease",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
+                    onClick={() => handleRoleSelect(role)}
+                    disabled={isLoadingRole}
+                    className={tabClass}
                   >
-                    {role}
+                    {isLoadingRole ? (
+                      <span
+                        className="role-pill-skeleton"
+                        style={{ width: pillWidth }}
+                      />
+                    ) : (
+                      role
+                    )}
                   </button>
                 );
               })}
@@ -531,6 +559,75 @@ export default function LoginPage() {
         }
         .login-btn-disabled {
           pointer-events: none;
+        }
+        .role-tab-btn {
+          flex: 1;
+          position: relative;
+          overflow: hidden;
+          border-radius: 6px;
+          font-family: ${typography.fontFamily.sans};
+          font-weight: ${typography.fontWeight.medium};
+          font-size: 14px;
+          line-height: 18px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-sizing: border-box;
+        }
+        .role-tab-active {
+          border: 1px solid ${colors.login.roleBorder};
+          background-color: ${colors.login.roleActiveBg};
+          color: ${colors.login.roleActiveText};
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .role-tab-inactive {
+          border: none;
+          background-color: transparent;
+          color: ${colors.login.roleInactiveText};
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .role-tab-loading {
+          border: none;
+          background-color: transparent;
+          cursor: default;
+        }
+        .role-pill-skeleton {
+          display: inline-block;
+          height: 12px;
+          border-radius: 4px;
+          background-image: linear-gradient(90deg, #E2E8F0 0%, #CBD5E1 50%, #E2E8F0 100%);
+          background-size: 200% 100%;
+          animation: lightTabShimmer 1.2s infinite linear, skeletonPillPulse 1s infinite ease-in-out;
+        }
+        @keyframes lightTabShimmer {
+          0% {
+            background-position: 200% 0;
+          }
+          100% {
+            background-position: -200% 0;
+          }
+        }
+        @keyframes skeletonPillPulse {
+          0%, 100% {
+            opacity: 0.35;
+            transform: scale(0.96);
+          }
+          50% {
+            opacity: 0.85;
+            transform: scale(1.02);
+          }
+        }
+        @keyframes tabContentFadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(1px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
       `}</style>
       </div>

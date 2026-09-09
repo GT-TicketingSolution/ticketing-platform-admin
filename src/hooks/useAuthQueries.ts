@@ -195,12 +195,17 @@ export function useLogoutMutation() {
       let preservedLastRole: string | null = null;
       if (typeof window !== "undefined") {
         try {
-          preservedLastRole = localStorage.getItem("lastRole");
+          preservedLastRole =
+            localStorage.getItem("lastRole") ||
+            sessionStorage.getItem("userRole");
         } catch { /* ignore */ }
         try { localStorage.clear(); } catch { /* ignore */ }
         try { sessionStorage.clear(); } catch { /* ignore */ }
         if (preservedLastRole) {
-          try { localStorage.setItem("lastRole", preservedLastRole); } catch { /* ignore */ }
+          const upper = preservedLastRole.toUpperCase();
+          const normalized =
+            upper === "STAFF" ? "Staff" : upper === "MANAGER" ? "Manager" : "Admin";
+          try { localStorage.setItem("lastRole", normalized); } catch { /* ignore */ }
         }
       }
 
