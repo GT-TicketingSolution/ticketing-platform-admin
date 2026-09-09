@@ -2,7 +2,7 @@
 
 import React from "react";
 import { createPortal } from "react-dom";
-import { Printer, Receipt } from "lucide-react";
+import { Printer, Train } from "lucide-react";
 import { AttractionReportData, OverallReportSummary } from "@/lib/reportsData";
 import { useProfileQuery } from "@/hooks/useAuthQueries";
 
@@ -77,6 +77,10 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
         <style>
           @page { size: 80mm auto; margin: 0; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
+          html {
+            height: fit-content;
+            min-height: unset;
+          }
           body {
             font-family: 'Courier New', Courier, monospace;
             color: #000000;
@@ -91,6 +95,10 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
             font-weight: 600;
             font-size: 11.5px;
             line-height: 1.35;
+            height: fit-content;
+            min-height: unset;
+            display: block;
+            overflow: hidden;
           }
           table { width: 100%; border-collapse: collapse; table-layout: fixed; }
           img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
@@ -108,7 +116,10 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
     }
   };
 
+  let hasTriggered = false;
   const triggerPrint = () => {
+    if (hasTriggered) return;
+    hasTriggered = true;
     try {
       if (iframe.contentWindow) {
         iframe.contentWindow.onafterprint = () => finish();
@@ -291,21 +302,57 @@ export default function DailySalesReportModal({
   // Hide rows with no sales (qty 0 and amount 0) — they add noise to the thermal receipt
   items = items.filter((it) => it.qty > 0 || it.amount > 0);
 
-  // No fallback: only show real data from the API response.
-  // If items is empty it means no sales occurred during the selected date range.
+  // Helper to format adjustments with explicit +/- signs
+  const formatAdj = (val: number) => {
+    if (val >= 0) return `+₹${val.toFixed(2)}`;
+    return `-₹${Math.abs(val).toFixed(2)}`;
+  };
 
   // Calculations — only meaningful when there is actual revenue
-  const hasData = items.length > 0;
-  const calculatedItemsTotal = items.reduce((sum, it) => sum + it.amount, 0);
-  const netSales = totalRevenue > 0 ? totalRevenue : calculatedItemsTotal;
-  // Actual sub-total, GST, roundoff derived from real data only
-  const baseSubTotal = hasData ? Math.round((netSales / 1.18) * 100) / 100 : 0;
-  const roundOffSubTotalAdj = hasData ? Math.round(((netSales - baseSubTotal * 1.18)) * 100) / 100 : 0;
-  const adjustedSubTotal = Math.round((baseSubTotal + roundOffSubTotalAdj) * 100) / 100;
-  const totalGst = Math.round((baseSubTotal * 0.18) * 100) / 100;
-  const roundOffGstAdj = hasData ? Math.round((netSales - adjustedSubTotal - totalGst) * 100) / 100 : 0;
-  const effectiveGst = Math.round((totalGst + roundOffGstAdj) * 100) / 100;
-  const totalRoundoff = Math.round((roundOffSubTotalAdj + roundOffGstAdj) * 100) / 100;
+  const hasData = items.length > 0 || (attractionReport ? (attractionReport.grandTotal ?? attractionReport.totalRevenue ?? 0) > 0 : totalRevenue > 0);
+
+  let baseSubTotal = 0;
+  let roundOffSubTotalAdj = 0;
+  let adjustedSubTotal = 0;
+  let totalGst = 0;
+  let roundOffGstAdj = 0;
+  let effectiveGst = 0;
+  let totalRoundoff = 0;
+  let netSales = 0;
+
+  const hasBackendTaxData = overallSummary?.attractionReports?.some(
+    (ar) => ar.subTotal !== undefined && ar.subTotal > 0
+  );
+
+  if (attractionReport && attractionReport.subTotal !== undefined) {
+    // Specific attraction: Use backend tax and roundoff values directly
+    baseSubTotal = Math.round(Number(attractionReport.subTotal ?? 0) * 100) / 100;
+    roundOffSubTotalAdj = Math.round(Number(attractionReport.roundoffTotal ?? 0) * 100) / 100;
+    adjustedSubTotal = Math.round((baseSubTotal + roundOffSubTotalAdj) * 100) / 100;
+    totalGst = Math.round(Number(attractionReport.gstTotal ?? 0) * 100) / 100;
+    roundOffGstAdj = Math.round(Number(attractionReport.roundOffGstAdj ?? 0) * 100) / 100;
+    effectiveGst = Math.round((totalGst + roundOffGstAdj) * 100) / 100;
+    totalRoundoff = Math.round((roundOffSubTotalAdj + roundOffGstAdj) * 100) / 100;
+    netSales = Math.round(Number(attractionReport.grandTotal ?? attractionReport.totalRevenue ?? 0) * 100) / 100;
+  } else {
+    // All Attractions (overall report): Calculate strictly through the frontend from the items list.
+    // Do not use backend grand_total_amount or totalRevenue. Net sales is also computed on the frontend.
+    const calculatedItemsTotal = items.reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
+    if (calculatedItemsTotal > 0) {
+      baseSubTotal = parseFloat(calculatedItemsTotal.toFixed(2));
+      const roundedSubtotal = Math.round(baseSubTotal);
+      roundOffSubTotalAdj = parseFloat((roundedSubtotal - baseSubTotal).toFixed(2));
+      adjustedSubTotal = roundedSubtotal;
+
+      totalGst = parseFloat((baseSubTotal * 0.18).toFixed(2));
+      const roundedGst = Math.round(totalGst);
+      roundOffGstAdj = parseFloat((roundedGst - totalGst).toFixed(2));
+      effectiveGst = roundedGst;
+
+      totalRoundoff = parseFloat((roundOffSubTotalAdj + roundOffGstAdj).toFixed(2));
+      netSales = parseFloat((adjustedSubTotal + effectiveGst).toFixed(2));
+    }
+  }
 
   // Date range display string — always formatted as DD/MM/YYYY - DD/MM/YYYY (even if same date)
   const startFormatted = formatDateSlash(fromDate);
@@ -438,7 +485,7 @@ export default function DailySalesReportModal({
                 fontWeight: 700,
               }}
             >
-              {/* Receipt Header: Icon, Daily Sales Report, and Business Name */}
+              {/* Receipt Header: Train Icon, Daily Sales Report, and Business Name */}
               <div style={{ textAlign: "center", borderBottom: "1px dashed #000000", paddingBottom: "10px" }}>
                 <div
                   style={{
@@ -453,7 +500,7 @@ export default function DailySalesReportModal({
                     margin: "0 auto 6px auto",
                   }}
                 >
-                  <Receipt size={20} color="#002A45" strokeWidth={2.5} />
+                  <Train size={20} color="#002A45" strokeWidth={2.5} />
                 </div>
                 <h2
                   style={{
@@ -601,7 +648,7 @@ export default function DailySalesReportModal({
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
                     <span>Round-off Sub-Total Adj</span>
-                    <span>+₹{roundOffSubTotalAdj.toFixed(2)}</span>
+                    <span>{formatAdj(roundOffSubTotalAdj)}</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px", fontWeight: 700 }}>
                     <span>Adjusted Sub-Total</span>
@@ -613,7 +660,7 @@ export default function DailySalesReportModal({
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
                     <span>Round-off GST Adj</span>
-                    <span>+₹{roundOffGstAdj.toFixed(2)}</span>
+                    <span>{formatAdj(roundOffGstAdj)}</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px", fontWeight: 700 }}>
                     <span>Effective GST</span>
@@ -621,7 +668,7 @@ export default function DailySalesReportModal({
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
                     <span>Total Roundoff</span>
-                    <span>+₹{totalRoundoff.toFixed(2)}</span>
+                    <span>{formatAdj(totalRoundoff)}</span>
                   </div>
 
                   <div

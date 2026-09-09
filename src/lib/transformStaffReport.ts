@@ -100,6 +100,12 @@ function transformAttractionReport(
   );
   const avgOrderValue = totalBookings > 0 ? Math.round(totalRevenue / totalBookings) : 0;
 
+  const subTotal = booking?.attraction_sub_total !== undefined ? parseFloat(booking.attraction_sub_total) || 0 : undefined;
+  const gstTotal = booking?.attraction_gst_total !== undefined ? parseFloat(booking.attraction_gst_total) || 0 : undefined;
+  const roundoffTotal = booking?.attraction_roundoff_total !== undefined ? parseFloat(booking.attraction_roundoff_total) || 0 : undefined;
+  const roundOffGstAdj = booking?.attraction_round_off_gst_adj_total !== undefined ? parseFloat(booking.attraction_round_off_gst_adj_total) || 0 : undefined;
+  const grandTotal = booking?.attraction_grand_total !== undefined ? parseFloat(booking.attraction_grand_total) || 0 : undefined;
+
   return {
     attraction: attractionObj,
     totalRevenue,
@@ -111,6 +117,11 @@ function transformAttractionReport(
     transactions: transactionList,
     bookings: [],
     invoiceRange: invoiceRange || null,
+    subTotal,
+    gstTotal,
+    roundoffTotal,
+    roundOffGstAdj,
+    grandTotal,
   };
 }
 
