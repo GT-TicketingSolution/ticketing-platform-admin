@@ -441,24 +441,6 @@ export default function StaffReportsView() {
             To view sales, ticket, and attraction analytics, an Administrator or Manager must assign you the
             &quot;Reports Access&quot; role in Staff Management with a designated past report viewing window (e.g. 24 hours).
           </p>
-          <Link
-            href="/dashboard"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
-              background: colors.brand.primary,
-              color: colors.sidebar.activeText,
-              fontWeight: 700,
-              fontSize: "14px",
-              padding: "12px 24px",
-              borderRadius: "8px",
-              textDecoration: "none",
-              boxShadow: "0 2px 8px rgba(244,188,67,0.3)",
-            }}
-          >
-            Return to Dashboard
-          </Link>
         </div>
       </div>
     );
