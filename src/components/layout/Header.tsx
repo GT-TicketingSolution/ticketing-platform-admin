@@ -205,6 +205,9 @@ export default function Header({
     // Show confirmation — only proceed if user clicks "Yes, Logout"
     const confirmed = await confirmLogout();
     if (confirmed) {
+      if (userRole && userRole !== "-") {
+        try { localStorage.setItem("lastRole", userRole); } catch { /* ignore */ }
+      }
       logoutMutation.mutate();
     }
   };
