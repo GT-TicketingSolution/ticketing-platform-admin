@@ -557,9 +557,12 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
         <meta charset="utf-8" />
         <style>
           @page { size: 80mm auto; margin: 0; }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
+          html {
+            height: fit-content;
+            min-height: unset;
+          }
           body {
-            font-family: 'Courier New', Courier, monospace;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Nirmala UI', Arial, 'Courier New', Courier, monospace;
             color: #000000;
             background: #FFFFFF;
             width: 70mm;
@@ -572,6 +575,10 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
             font-weight: 600;
             font-size: 11.5px;
             line-height: 1.35;
+            height: fit-content;
+            min-height: unset;
+            display: block;
+            overflow: hidden;
           }
           table { width: 100%; border-collapse: collapse; table-layout: fixed; }
           img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
@@ -584,8 +591,14 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
   let hasDone = false;
   const finish = () => { if (!hasDone) { hasDone = true; onDone?.(); } };
 
+  let hasTriggered = false;
+  let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
   // Wait for images in the iframe to load, then print
   const triggerPrint = () => {
+    if (hasTriggered) return;
+    hasTriggered = true;
+    if (fallbackTimer) clearTimeout(fallbackTimer);
     try {
       if (iframe.contentWindow) {
         iframe.contentWindow.onafterprint = () => finish();
@@ -602,7 +615,7 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
   // Use onload on the iframe to ensure all content (including images) is rendered
   iframe.onload = () => triggerPrint();
   // Safety fallback in case onload doesn't fire
-  setTimeout(triggerPrint, 400);
+  fallbackTimer = setTimeout(triggerPrint, 400);
 }
 
 
@@ -801,9 +814,13 @@ function TicketGeneratedModal({
   const seatText = selectedSeats && selectedSeats.length > 0 ? selectedSeats.join(", ") : "-";
 
   const hasAutoPrintedRef = useRef(false);
+  const isPrintingRef = useRef(false);
 
   const handlePrint = () => {
+    if (isPrintingRef.current) return;
+    isPrintingRef.current = true;
     printReceiptViaIframe("printable-ticket-receipt", () => {
+      isPrintingRef.current = false;
       showToast("Ticket sent to printing machine", "success");
     });
   };
@@ -815,24 +832,33 @@ function TicketGeneratedModal({
     if (isOpen && typeof window !== "undefined" && !hasAutoPrintedRef.current) {
       hasAutoPrintedRef.current = true;
 
+      let hasFired = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let hardCapTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const doPrintOnce = () => {
+        if (hasFired) return;
+        hasFired = true;
+        if (timer) clearTimeout(timer);
+        if (hardCapTimer) clearTimeout(hardCapTimer);
+        handlePrint();
+      };
+
       const triggerWhenReady = () => {
         const printEl = document.getElementById("printable-ticket-receipt");
         if (!printEl) {
-          // Element not in DOM yet, retry after a short tick
-          setTimeout(triggerWhenReady, 50);
+          timer = setTimeout(triggerWhenReady, 50);
           return;
         }
         const imgs = Array.from(printEl.querySelectorAll<HTMLImageElement>("img"));
         if (imgs.length === 0 || imgs.every((img) => img.complete)) {
-          // No images or all already loaded — print right away
-          handlePrint();
+          doPrintOnce();
           return;
         }
-        // Wait for all images to load (or error) before printing
         let settled = 0;
         const check = () => {
           settled++;
-          if (settled >= imgs.length) handlePrint();
+          if (settled >= imgs.length) doPrintOnce();
         };
         imgs.forEach((img) => {
           if (img.complete) {
@@ -842,16 +868,18 @@ function TicketGeneratedModal({
             img.addEventListener("error", check, { once: true });
           }
         });
-        // Hard cap: print after 1.5 s regardless of image status
-        setTimeout(() => { if (!hasAutoPrintedRef.current || settled < imgs.length) handlePrint(); }, 1500);
+        hardCapTimer = setTimeout(doPrintOnce, 1500);
       };
 
-      // Give React one render tick to mount the printable element
-      const t = setTimeout(triggerWhenReady, 80);
-      return () => clearTimeout(t);
+      timer = setTimeout(triggerWhenReady, 80);
+      return () => {
+        if (timer) clearTimeout(timer);
+        if (hardCapTimer) clearTimeout(hardCapTimer);
+      };
     }
     if (!isOpen) {
       hasAutoPrintedRef.current = false;
+      isPrintingRef.current = false;
     }
   }, [isOpen]);
 
@@ -1169,90 +1197,191 @@ function TicketGeneratedModal({
               </div>
             </div>
 
-            {/* QR Codes Section */}
-            {qrCodes && qrCodes.length > 0 && (
-              <div style={{ padding: "12px 0 10px 0", borderBottom: "1px dashed #000000" }}>
-                {qrCodes.length > 1 && (
-                  <p style={{ margin: "0 0 8px 0", fontSize: "11px", fontWeight: 800, color: "#000000", textAlign: "center", textTransform: "uppercase" }}>
-                    ENTRY QR CODES ({qrCodes.length} ATTRACTIONS)
-                  </p>
-                )}
+            {/* Notes and QR Codes Section (Side-by-Side) */}
+            {qrCodes && qrCodes.length > 0 ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "stretch",
+                  justifyContent: "space-between",
+                  gap: "6px",
+                  padding: "10px 0 8px 0",
+                  borderBottom: "1px dashed #000000",
+                }}
+              >
+                {/* Left: Notes / Instructions (40% width) */}
                 <div
                   style={{
-                    display: "flex",
-                    flexDirection: qrCodes.length > 2 ? "column" : "row",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    gap: "12px",
-                    flexWrap: "wrap",
+                    width: "40%",
+                    flex: "0 0 40%",
+                    textAlign: "left",
+                    fontSize: "8px",
+                    lineHeight: "1.3",
+                    fontWeight: 600,
+                    color: "#000000",
+                    boxSizing: "border-box",
+                    wordBreak: "break-word",
                   }}
                 >
-                  {qrCodes.map((qrItem, idx) => {
-                    const matchedAttraction = bookingSummary.find((b) => b.attractionId === qrItem.attractionId);
-                    const attractionLabel = matchedAttraction?.attractionName || (qrCodes.length > 1 ? `Station ${idx + 1}` : "Scan for Entry");
+                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                    <div>1. कम से कम 50 सवारी होने पर ही ट्रेन रवाना होगी</div>
+                    <div>2. कृपया किसी भी स्थिति में ट्रेन से हाथ बाहर ना निकालें।</div>
+                    <div>3. यात्री अपने सामान की सुरक्षा स्वयं करें।</div>
+                    <div>4. टिकट लेने के पश्चात् कोई रिफंड नहीं किया जायेगा।</div>
+                    <div>5. नाव में खड़ा होना और पानी में हाथ डालना प्रतिबंधित है।</div>
+                    <div>6. पानी में कोई भी वस्तु फेंकना मना है।</div>
+                    <div>7. नाव को नुकसान होने पर यात्री से वसूली की जाएगी।</div>
+                    <div>8. नौकायन के दौरान लाइफ जैकेट पहन अनिवार्य है।</div>
+                    <div>9. नाव में खाना-पीना वर्जित है।</div>
+                    <div>10. सभी मामले केवल उदयपुर न्याय क्षेत्र में मान्य होंगे।</div>
+                    <div>11. प्रवेश का अधिकार प्रबंधन के पास सुरक्षित है (नगर निगम द्वारा स्वीकृत)</div>
+                  </div>
+                </div>
 
-                    return (
-                      <div
-                        key={idx}
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          padding: "8px 10px",
-                          background: "#FFFFFF",
-                          border: "1.5px solid #000000",
-                          borderRadius: "8px",
-                          minWidth: qrCodes.length > 1 ? "140px" : "160px",
-                          maxWidth: "190px",
-                          boxSizing: "border-box",
-                        }}
-                      >
+                {/* Right: QR Codes Column (60% width) */}
+                <div
+                  style={{
+                    width: "60%",
+                    flex: "0 0 60%",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  {/* QR codes container: 2-column grid starting from left for >= 3, or column stack for 1 or 2 */}
+                  <div
+                    style={
+                      qrCodes.length >= 3
+                        ? {
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: "4px",
+                            rowGap: "3px",
+                            width: "100%",
+                            justifyItems: "center",
+                            alignContent: "start",
+                            gridAutoRows: "max-content",
+                          }
+                        : {
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: "6px",
+                            width: "100%",
+                          }
+                    }
+                  >
+                    {qrCodes.map((qrItem, idx) => {
+                      const matchedAttraction = bookingSummary.find((b) => b.attractionId === qrItem.attractionId);
+                      const attractionLabel = matchedAttraction?.attractionName || (qrCodes.length > 1 ? `Station ${idx + 1}` : "Scan for Entry");
+                      const isGrid = qrCodes.length >= 3;
+                      const qrSize = qrCodes.length === 1 ? "75px" : qrCodes.length === 2 ? "70px" : "60px";
+
+                      return (
                         <div
+                          key={idx}
                           style={{
-                            fontSize: "11px",
-                            fontWeight: 900,
-                            color: "#000000",
-                            marginBottom: "5px",
-                            textAlign: "center",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.02em",
-                            lineHeight: 1.2,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            boxSizing: "border-box",
+                            width: "100%",
+                            border: "none",
+                            padding: "0",
+                            margin: "0",
                           }}
                         >
-                          {attractionLabel}
+                          <div
+                            style={{
+                              fontSize: isGrid ? "8.5px" : "10px",
+                              fontWeight: 400,
+                              color: "#000000",
+                              marginBottom: "1px",
+                              textAlign: "center",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.02em",
+                              lineHeight: 1.1,
+                              wordBreak: "break-word",
+                              minHeight: isGrid ? "19px" : undefined,
+                              display: "flex",
+                              alignItems: "flex-end",
+                              justifyContent: "center",
+                              width: "100%",
+                            }}
+                          >
+                            {attractionLabel}
+                          </div>
+                          <img
+                            src={qrItem.qrCode}
+                            alt={`${attractionLabel} QR Code`}
+                            style={{
+                              width: qrSize,
+                              height: qrSize,
+                              objectFit: "contain",
+                              background: "#FFFFFF",
+                              display: "block",
+                            }}
+                          />
                         </div>
-                        <img
-                          src={qrItem.qrCode}
-                          alt={`${attractionLabel} QR Code`}
-                          style={{
-                            width: "115px",
-                            height: "115px",
-                            objectFit: "contain",
-                            background: "#FFFFFF",
-                            display: "block",
-                          }}
-                        />
-                        <span
-                          style={{
-                            fontSize: "10px",
-                            fontWeight: 800,
-                            color: "#000000",
-                            marginTop: "5px",
-                            textAlign: "center",
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          Scan for Entry
-                        </span>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+
+                  {/* Single common Scan for Entry — always fixed at the bottom of the QR column */}
+                  <div
+                    style={{
+                      fontSize: "8.5px",
+                      fontWeight: 400,
+                      color: "#000000",
+                      marginTop: "auto",
+                      paddingTop: "6px",
+                      textAlign: "center",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.02em",
+                      lineHeight: 1.1,
+                      width: "100%",
+                    }}
+                  >
+                    Scan for Entry
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Fallback Notes if no QR codes */
+              <div
+                style={{
+                  marginTop: "6px",
+                  paddingTop: "2px",
+                  paddingBottom: "8px",
+                  borderBottom: "1px dashed #000000",
+                  textAlign: "left",
+                  fontSize: "9px",
+                  lineHeight: "1.4",
+                  fontWeight: 600,
+                  color: "#000000",
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                  <div>1. कम से कम 50 सवारी होने पर ही ट्रेन रवाना होगी</div>
+                  <div>2. कृपया किसी भी स्थिति में ट्रेन से हाथ बाहर ना निकालें।</div>
+                  <div>3. यात्री अपने सामान की सुरक्षा स्वयं करें।</div>
+                  <div>4. टिकट लेने के पश्चात् कोई रिफंड नहीं किया जायेगा।</div>
+                  <div>5. नाव में खड़ा होना और पानी में हाथ डालना प्रतिबंधित है।</div>
+                  <div>6. पानी में कोई भी वस्तु फेंकना मना है।</div>
+                  <div>7. नाव को नुकसान होने पर यात्री से वसूली की जाएगी।</div>
+                  <div>8. नौकायन के दौरान लाइफ जैकेट पहन अनिवार्य है।</div>
+                  <div>9. नाव में खाना-पीना वर्जित है।</div>
+                  <div>10. सभी मामले केवल उदयपुर न्याय क्षेत्र में मान्य होंगे।</div>
+                  <div>11. प्रवेश का अधिकार प्रबंधन के पास सुरक्षित है (नगर निगम द्वारा स्वीकृत)</div>
                 </div>
               </div>
             )}
 
             {/* Clean Terms / Notice */}
-            <div style={{ padding: "8px 0 2px 0", fontSize: "11px", color: "#000000", lineHeight: "1.4", textAlign: "center", fontWeight: 700 }}>
+            <div style={{ marginTop: "6px", paddingTop: "4px", fontSize: "11px", color: "#000000", lineHeight: "1.4", textAlign: "center", fontWeight: 700 }}>
               <div style={{ fontWeight: 900, marginBottom: "2px", letterSpacing: "0.04em" }}>THANKS FOR VISIT</div>
               <div style={{ fontSize: "10px", fontWeight: 600 }}>
                 Please present this QR code at the entrance gate. Keep this ticket safe.

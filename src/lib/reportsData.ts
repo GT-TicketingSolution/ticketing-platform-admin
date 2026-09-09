@@ -31,6 +31,11 @@ export interface AttractionReportData {
   transactions: Transaction[];
   bookings: Booking[];
   invoiceRange?: InvoiceRangeData | null;
+  subTotal?: number;
+  gstTotal?: number;
+  roundoffTotal?: number;
+  roundOffGstAdj?: number;
+  grandTotal?: number;
 }
 
 export interface OverallReportSummary {

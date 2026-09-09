@@ -561,7 +561,7 @@ export default function AddEditAttractionForm({
       // Use the instance's own assigned suffix, or fallback if multiple exist
       let suffix = item.suffix || "";
       if (!suffix && totalForThisLayout > 1) {
-        suffix = ` - ${String.fromCharCode(65 + (index % 26))}`;
+        suffix = ` - ${(index % 26) + 1}`;
       } else if (totalForThisLayout <= 1) {
         suffix = "";
       }
@@ -675,7 +675,7 @@ export default function AddEditAttractionForm({
               instanceId: a.instanceId || `seat_${idx}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
               layoutId: a.layoutId || a.id,
               isDisabled: !!a.isDisabled,
-              suffix: a.suffix || (existingAllocations.filter((x: any) => (x.layoutId || x.id) === (a.layoutId || a.id)).length > 1 ? ` - ${String.fromCharCode(65 + (idx % 26))}` : ""),
+              suffix: a.suffix || (existingAllocations.filter((x: any) => (x.layoutId || x.id) === (a.layoutId || a.id)).length > 1 ? ` - ${(idx % 26) + 1}` : ""),
             }))
           );
         } else {
@@ -689,7 +689,7 @@ export default function AddEditAttractionForm({
               if (counts[id] > 1) {
                 const occ = currentOccs[id] || 0;
                 currentOccs[id] = occ + 1;
-                suf = ` - ${String.fromCharCode(65 + (occ % 26))}`;
+                suf = ` - ${(occ % 26) + 1}`;
               }
               return {
                 instanceId: `seat_${idx}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -811,19 +811,18 @@ export default function AddEditAttractionForm({
 
   // Seat allocation actions
   const addSeatLayout = (layoutId: string) => {
-    // Find all existing items of this layoutId to find next available letter
+    // Find all existing items of this layoutId to find next available number
     const existingWithSameLayout = allocatedSeats.filter((s) => s.layoutId === layoutId);
-    const usedLetters = new Set(
+    const usedNumbers = new Set(
       existingWithSameLayout
-        .map((s) => s.suffix?.replace(/[^A-Z]/g, ""))
-        .filter(Boolean)
+        .map((s) => Number((s.suffix || "").replace(/[^0-9]/g, "")))
+        .filter((n) => Number.isFinite(n) && n > 0)
     );
 
-    let nextLetter = "A";
-    for (let i = 0; i < 26; i++) {
-      const char = String.fromCharCode(65 + i);
-      if (!usedLetters.has(char)) {
-        nextLetter = char;
+    let nextNumber = 1;
+    for (let i = 1; i <= 26; i++) {
+      if (!usedNumbers.has(i)) {
+        nextNumber = i;
         break;
       }
     }
@@ -832,14 +831,14 @@ export default function AddEditAttractionForm({
       instanceId: `seat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       layoutId,
       isDisabled: false,
-      suffix: ` - ${nextLetter}`,
+      suffix: ` - ${nextNumber}`,
     };
 
     setAllocatedSeats((prev) => {
-      // Ensure the first item also has "- A" if this is the 2nd item added
+      // Ensure the first item also has "- 1" if this is the 2nd item added
       return [...prev, newInstance].map((item) => {
         if (item.layoutId === layoutId && !item.suffix) {
-          return { ...item, suffix: " - A" };
+          return { ...item, suffix: " - 1" };
         }
         return item;
       });
