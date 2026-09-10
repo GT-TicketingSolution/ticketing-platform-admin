@@ -345,6 +345,19 @@ export function useAttractionTripNo(
   });
 }
 
+export function useAttractionTripNoMutation() {
+  return useMutation<AttractionTripNoResponseItem[], unknown, AttractionTripNoRequest>({
+    mutationFn: async (payload) => {
+      const res = await postData<any, AttractionTripNoRequest>(
+        AppUrl.ticketingBooking.getAttractionTripNo,
+        payload
+      );
+      const responsePayload = res?.data ?? res;
+      return Array.isArray(responsePayload) ? responsePayload : [];
+    },
+  });
+}
+
 // ── Attraction Seat Availability Types & Hook ────────────────────────────────
 
 export interface AttractionSeatAvailabilityItem {
@@ -408,6 +421,19 @@ export function useAttractionSeatAvailability(
     enabled: enabled && attractions.length > 0 && attractions.every((a) => !!a.attractionId),
     staleTime: 10 * 1000,
     refetchOnWindowFocus: true,
+  });
+}
+
+export function useAttractionSeatAvailabilityMutation() {
+  return useMutation<AttractionSeatAvailabilityData[], unknown, AttractionSeatAvailabilityRequest>({
+    mutationFn: async (payload) => {
+      const res = await postData<any, AttractionSeatAvailabilityRequest>(
+        AppUrl.ticketingBooking.attractionSeatAvailability,
+        payload
+      );
+      const responsePayload = res?.data ?? res;
+      return Array.isArray(responsePayload) ? responsePayload : [];
+    },
   });
 }
 

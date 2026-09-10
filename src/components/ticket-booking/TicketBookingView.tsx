@@ -13,10 +13,11 @@ import {
 } from "lucide-react";
 import {
   useTicketingAttractions,
-  useAttractionTripNo,
-  useAttractionSeatAvailability,
+  useAttractionTripNoMutation,
+  useAttractionSeatAvailabilityMutation,
   TicketingAttraction,
   AttractionCategoryItem,
+  AttractionSeatAvailabilityData,
 } from "@/hooks/useTicketingBookingQueries";
 import CustomerInfoView from "./CustomerInfoView";
 
@@ -747,6 +748,8 @@ function Stepper({
 export default function TicketBookingView() {
   // ── Real API: load attractions ────────────────────────────────────────────
   const { data: attractionsData, isLoading: attractionsLoading } = useTicketingAttractions();
+  const tripNoMutation = useAttractionTripNoMutation();
+  const seatAvailabilityMutation = useAttractionSeatAvailabilityMutation();
   const allAttractions = useMemo(
     () =>
       (attractionsData ?? [])
@@ -776,8 +779,10 @@ export default function TicketBookingView() {
   // Available trips counter per attraction (decrements on booking)
   const [availableTripsMap, setAvailableTripsMap] = useState<Record<string, number>>({});
 
-  // Selected seat layout per attraction: Map<attractionId, layoutId>
-  const [selectedLayoutMap, setSelectedLayoutMap] = useState<Map<string, string>>(new Map());
+  const [tripNoMap, setTripNoMap] = useState<Record<string, number>>({});
+  const [initialSeatAvailability, setInitialSeatAvailability] = useState<AttractionSeatAvailabilityData[]>([]);
+  const [refreshTripNumbersOnReturn, setRefreshTripNumbersOnReturn] = useState(false);
+  const tripNumbersLoadedRef = React.useRef(false);
 
   useEffect(() => {
     document.title = "Ticket Booking | Ticketing Solution";
@@ -822,57 +827,46 @@ export default function TicketBookingView() {
     [allAttractions, activeAttractionId, selectedAttractionIds]
   );
 
-  // Selected attractions that have seating
-  const selectedSeatingAttractions = useMemo(() => {
-    const idSet = new Set<string>(selectedAttractionIds);
-    if (activeAttractionId) idSet.add(activeAttractionId);
-    cart.forEach((c) => {
-      if (c.attraction?.id) idSet.add(c.attraction.id);
-    });
+  useEffect(() => {
+    if (allAttractions.length === 0) return;
+    if (tripNumbersLoadedRef.current && !refreshTripNumbersOnReturn) return;
 
-    return allAttractions.filter(
-      (a) => idSet.has(a.id) && a.hasSeating !== false && (a.hasSeating || !!a.seatLayoutId)
-    );
-  }, [selectedAttractionIds, activeAttractionId, cart, allAttractions]);
-
-  // Fetch real trip numbers for all selected seating attractions
-  const tripNoPayload = useMemo(
-    () =>
-      selectedSeatingAttractions.map((a) => ({
-        attractionId: a.id,
-        currentTripNo: 1,
+    setRefreshTripNumbersOnReturn(false);
+    tripNumbersLoadedRef.current = true;
+    tripNoMutation.mutateAsync({
+      attractions: allAttractions.map((attraction) => ({
+        attractionId: attraction.id,
+        currentTripNo: tripNoMap[attraction.id] ?? 1,
       })),
-    [selectedSeatingAttractions]
-  );
-  const { data: tripNoData } = useAttractionTripNo(
-    tripNoPayload,
-    mode === "booking" && selectedSeatingAttractions.length > 0
-  );
-
-  const tripNoMap = useMemo(() => {
-    const map: Record<string, number> = {};
-    tripNoData?.forEach((item) => {
-      if (item.attractionId) {
-        map[item.attractionId] = item.newTripNo ?? 1;
-      }
+    }).then((items) => {
+      setTripNoMap((previous) => ({
+        ...previous,
+        ...Object.fromEntries(items.map((item) => [item.attractionId, item.newTripNo ?? 1])),
+      }));
+    }).catch(() => {
+      tripNumbersLoadedRef.current = false;
     });
-    return map;
-  }, [tripNoData]);
+  }, [allAttractions, refreshTripNumbersOnReturn, tripNoMap, tripNoMutation]);
+
+  async function refreshTripNumbers(attractionIds: string[]) {
+    if (attractionIds.length === 0) return;
+
+    const items = await tripNoMutation.mutateAsync({
+      attractions: attractionIds.map((attractionId) => ({
+        attractionId,
+        currentTripNo: tripNoMap[attractionId] ?? 1,
+      })),
+    });
+    setTripNoMap((previous) => ({
+      ...previous,
+      ...Object.fromEntries(items.map((item) => [item.attractionId, item.newTripNo ?? 1])),
+    }));
+  }
 
   const activeTripNo = (activeAttractionId ? tripNoMap[activeAttractionId] : undefined) ?? 1;
-
-  // Fetch real seat availability for all selected seating attractions
-  const seatAvailPayload = useMemo(
-    () =>
-      selectedSeatingAttractions.map((a) => ({
-        attractionId: a.id,
-        currentTripNo: tripNoMap[a.id] ?? 1,
-      })),
-    [selectedSeatingAttractions, tripNoMap]
-  );
-  const { data: seatAvailData } = useAttractionSeatAvailability(
-    seatAvailPayload,
-    mode === "booking" && selectedSeatingAttractions.length > 0
+  const isActiveTripLoading = Boolean(
+    activeAttractionId &&
+    (tripNoMutation.isPending || tripNoMap[activeAttractionId] === undefined)
   );
 
   // Derive duration from attraction duration/durationUnit
@@ -883,36 +877,6 @@ export default function TicketBookingView() {
     }
     return null;
   }, [activeAttraction]);
-
-  // Derived seats from seat availability API for the active attraction
-  const derivedSeats = useMemo(() => {
-    if (!activeAttractionId) return null;
-
-    const dataItem =
-      seatAvailData?.find((d) => d.attractionId === activeAttractionId) ||
-      seatAvailData?.[0];
-
-    if (!dataItem) return null;
-
-    // Handle array of seat layouts (new format)
-    if (Array.isArray(dataItem.seatLayout) && dataItem.seatLayout.length > 0) {
-      // Get selected layout or use first one
-      const selectedLayoutId = selectedLayoutMap.get(activeAttractionId);
-      const selectedLayout = selectedLayoutId
-        ? dataItem.seatLayout.find((l) => l.seatLayoutId === selectedLayoutId)
-        : dataItem.seatLayout[0];
-
-      if (selectedLayout && selectedLayout.rows && selectedLayout.cols) {
-        return String(selectedLayout.rows * selectedLayout.cols);
-      }
-    }
-
-    // Fallback for old single layout format
-    if (dataItem?.seats && dataItem.seats.length > 0) return String(dataItem.seats.length);
-
-    return null;
-  }, [seatAvailData, activeAttractionId, selectedLayoutMap]);
-
 
   const selectedAttractionsList = useMemo(
     () => allAttractions.filter((a) => selectedAttractionIds.has(a.id)),
@@ -976,6 +940,7 @@ export default function TicketBookingView() {
   function handleSelectAttraction(id: string) {
     setSelectedAttractionIds((prev) => new Set([...prev, id]));
     setActiveAttractionId(id);
+    void refreshTripNumbers([id]);
   }
 
   // Set explicit quantity (typed in or from stepper buttons)
@@ -1062,14 +1027,41 @@ export default function TicketBookingView() {
     };
   });
 
+  async function handleProceedToCheckout() {
+    if (!hasCartItems || seatAvailabilityMutation.isPending) return;
+
+    const seatingAttractions = bookingSummary.filter(
+      (attraction) => attraction.attractionId && attraction.hasSeating !== false && (attraction.hasSeating || attraction.seatLayoutId)
+    );
+
+    if (seatingAttractions.length > 0) {
+      const seatAvailability = await seatAvailabilityMutation.mutateAsync({
+        attractions: seatingAttractions.map((attraction) => ({
+          attractionId: attraction.attractionId!,
+          currentTripNo: tripNoMap[attraction.attractionId!] ?? 1,
+        })),
+      });
+      setInitialSeatAvailability(seatAvailability);
+    } else {
+      setInitialSeatAvailability([]);
+    }
+
+    setMode("customer-info");
+  }
+
   // ── 3. FULL SEPARATE PAGE: CUSTOMER INFORMATION 
   if (mode === "customer-info") {
     return (
       <CustomerInfoView
         bookingSummary={bookingSummary}
         initialTripMap={tripNoMap}
+        initialSeatAvailability={initialSeatAvailability}
         onBack={() => setMode("booking")}
-        onContinue={(customer) => {
+        onContinue={(customer, tripRefreshRequired, updatedTripMap) => {
+          setRefreshTripNumbersOnReturn(true);
+          if (tripRefreshRequired && updatedTripMap) {
+            setTripNoMap((previous) => ({ ...previous, ...updatedTripMap }));
+          }
           // Decrement available trips for each attraction in cart
           setAvailableTripsMap((prev) => {
             const next = { ...prev };
@@ -1416,7 +1408,23 @@ export default function TicketBookingView() {
                         >
                           <div>
                             <span>Ongoing Trips: </span>
-                            <span style={{ color: "#0E4E7A", fontWeight: 700, whiteSpace: "nowrap" }}>{tripsToday}</span>
+                            {isActiveTripLoading ? (
+                              <span
+                                aria-label="Loading ongoing trips"
+                                style={{
+                                  display: "inline-block",
+                                  width: "18px",
+                                  height: "11px",
+                                  verticalAlign: "-1px",
+                                  borderRadius: "4px",
+                                  background: "linear-gradient(90deg, #E2E8F0 25%, #F8FAFC 50%, #E2E8F0 75%)",
+                                  backgroundSize: "200% 100%",
+                                  animation: "tbvTripSkeleton 1.2s ease-in-out infinite",
+                                }}
+                              />
+                            ) : (
+                              <span style={{ color: "#0E4E7A", fontWeight: 700, whiteSpace: "nowrap" }}>{tripsToday}</span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1984,22 +1992,20 @@ export default function TicketBookingView() {
                 )}
 
                 <button
-                  onClick={() => {
-                    if (hasCartItems) setMode("customer-info");
-                  }}
-                  disabled={!hasCartItems}
+                  onClick={handleProceedToCheckout}
+                  disabled={!hasCartItems || seatAvailabilityMutation.isPending}
                   className="tbv-checkout-btn"
                   style={{
                     width: "100%",
                     height: "40px",
-                    background: hasCartItems ? "#F4BC43" : "#E2E8F0",
+                    background: hasCartItems && !seatAvailabilityMutation.isPending ? "#F4BC43" : "#E2E8F0",
                     border: "none",
                     borderRadius: "7px",
                     fontFamily: "'Plus Jakarta Sans', sans-serif",
                     fontWeight: 800,
                     fontSize: "12px",
-                    color: hasCartItems ? "#002A45" : "#94A3B8",
-                    cursor: hasCartItems ? "pointer" : "not-allowed",
+                    color: hasCartItems && !seatAvailabilityMutation.isPending ? "#002A45" : "#94A3B8",
+                    cursor: hasCartItems && !seatAvailabilityMutation.isPending ? "pointer" : "not-allowed",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -2009,7 +2015,7 @@ export default function TicketBookingView() {
                   }}
                 >
                   <ShoppingCart size={14} strokeWidth={2.4} />
-                  Proceed To Checkout
+                  {seatAvailabilityMutation.isPending ? "Loading Seats..." : "Proceed To Checkout"}
                 </button>
               </div>
             </div>
@@ -2019,6 +2025,11 @@ export default function TicketBookingView() {
 
       {/* Responsive Layout Styles */}
       <style jsx global>{`
+        @keyframes tbvTripSkeleton {
+          0% { background-position: 100% 0; }
+          100% { background-position: -100% 0; }
+        }
+
         .tbv-layout-two-col {
           display: grid;
           grid-template-columns: minmax(240px, 1fr) minmax(0, 3fr);
