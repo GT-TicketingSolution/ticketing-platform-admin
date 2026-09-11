@@ -339,18 +339,25 @@ export default function DailySalesReportModal({
     // Do not use backend grand_total_amount or totalRevenue. Net sales is also computed on the frontend.
     const calculatedItemsTotal = items.reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
     if (calculatedItemsTotal > 0) {
+      const attractionRoundoffTotals = overallSummary?.attractionReports || [];
       baseSubTotal = parseFloat(calculatedItemsTotal.toFixed(2));
-      const roundedSubtotal = Math.round(baseSubTotal);
-      roundOffSubTotalAdj = parseFloat((roundedSubtotal - baseSubTotal).toFixed(2));
-      adjustedSubTotal = roundedSubtotal;
+      roundOffSubTotalAdj = parseFloat(
+        attractionRoundoffTotals
+          .reduce((sum, report) => sum + (Number(report.roundoffTotal) || 0), 0)
+          .toFixed(2)
+      );
+      adjustedSubTotal = parseFloat((baseSubTotal + roundOffSubTotalAdj).toFixed(2));
 
       totalGst = parseFloat((baseSubTotal * 0.18).toFixed(2));
-      const roundedGst = Math.round(totalGst);
-      roundOffGstAdj = parseFloat((roundedGst - totalGst).toFixed(2));
-      effectiveGst = roundedGst;
+      roundOffGstAdj = parseFloat(
+        attractionRoundoffTotals
+          .reduce((sum, report) => sum + (Number(report.roundOffGstAdj) || 0), 0)
+          .toFixed(2)
+      );
+      effectiveGst = parseFloat((totalGst + roundOffGstAdj).toFixed(2));
 
       totalRoundoff = parseFloat((roundOffSubTotalAdj + roundOffGstAdj).toFixed(2));
-      netSales = parseFloat((adjustedSubTotal + effectiveGst).toFixed(2));
+      netSales = parseFloat((overallSummary?.totalRevenue ?? 0).toFixed(2));
     }
   }
 
