@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and, isNotNull } from "drizzle-orm";
 
 import { db } from "@/db";
 import { users, staffSystemModulePermissions } from "@/db/schema";
@@ -39,31 +39,14 @@ export async function getProfile(userId: string) {
     throw new Error("ACCOUNT_NOT_ACTIVE");
   }
 
-  if (user.role === "STAFF") {
-    const [reportAccess] = await db
-      .select({
-        reportAccessTiming: staffSystemModulePermissions.reportAccessTiming,
-        reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
-      })
-      .from(staffSystemModulePermissions)
-      .where(eq(staffSystemModulePermissions.staffId, userId))
-      .limit(1);
-
-    return {
-      ...user,
-      reportAccessTiming: reportAccess?.reportAccessTiming ?? null,
-      reportAccessUnit: reportAccess?.reportAccessUnit ?? null,
-    };
-  }
-
   const today = new Date();
 
   let userRenewalData:
     | {
-        next_renewal_date: Date;
-        days_left_for_renewal: number;
-        message: string;
-      }
+      next_renewal_date: Date;
+      days_left_for_renewal: number;
+      message: string;
+    }
     | undefined;
 
   if (user.next_renewal_date) {
@@ -98,6 +81,31 @@ export async function getProfile(userId: string) {
               : `Your application renewal is due soon. Please pay the renewal amount to continue using the platform without interruption.`,
       };
     }
+  }
+
+  if (user.role === "STAFF") {
+    const [reportAccess] = await db
+      .select({
+        reportAccessTiming: staffSystemModulePermissions.reportAccessTiming,
+        reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
+      })
+      .from(staffSystemModulePermissions)
+      .where(
+        and(
+          eq(staffSystemModulePermissions.staffId, userId),
+          isNotNull(staffSystemModulePermissions.reportAccessTiming)
+        )
+      )
+      .limit(1);
+
+    return {
+      ...user,
+      reportAccessTiming: reportAccess?.reportAccessTiming ?? null,
+      reportAccessUnit: reportAccess?.reportAccessUnit ?? null,
+      ...(userRenewalData && {
+        user_renewal_data: userRenewalData,
+      }),
+    };
   }
 
   return {
@@ -200,7 +208,7 @@ export async function updateProfile(
 
     invoiceNumberForUsersInitialPart:
       data.invoiceNumberForUsersInitialPart &&
-      data.invoiceNumberForUsersInitialPart.trim().length > 0
+        data.invoiceNumberForUsersInitialPart.trim().length > 0
         ? data.invoiceNumberForUsersInitialPart.trim()
         : null,
   };
