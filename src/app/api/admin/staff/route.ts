@@ -39,6 +39,8 @@ const createStaffSchema = z.object({
 
   attractionIds: z.array(z.string().uuid()).optional().default([]),
 
+  staffSystemModuleAllowedIds: z.array(z.string().uuid()).optional().default([]).optional().default([]),
+
   status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
 
   reportAccessTiming: z.number().int().positive().optional(),
@@ -81,24 +83,26 @@ async function grantStaffDefaultModulePermissions(
   staffId: string,
   reportAccessTiming?: number,
   reportAccessUnit?: string,
+  staffSystemModuleAllowedIds?: string[],
 ) {
   const STAFF_ALLOWED_MODULES = [
     "TICKET_BOOKING",
-    "BOOKINGS_VIEW",
-    "CUSTOMER_VIEW",
-    "SCANNER_USE",
+    "SCANNER",
+    "REPORTS"
   ];
 
   try {
     const staffModules = await db
       .select({
         id: systemModules.id,
+        name: systemModules.key,
       })
       .from(systemModules)
       .where(
         and(
-          inArray(systemModules.key, STAFF_ALLOWED_MODULES),
+          inArray(systemModules.id, staffSystemModuleAllowedIds ?? []),
           eq(systemModules.isActive, "ACTIVE"),
+          inArray(systemModules.key, STAFF_ALLOWED_MODULES),
         ),
       );
 
@@ -481,6 +485,7 @@ export async function POST(request: Request) {
       status,
       reportAccessTiming,
       reportAccessUnit,
+      staffSystemModuleAllowedIds,
     } = parsed.data;
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -667,6 +672,7 @@ export async function POST(request: Request) {
       staff.id,
       reportAccessTiming,
       reportAccessUnit,
+      staffSystemModuleAllowedIds
     );
 
     // -----------------------------------------------------
