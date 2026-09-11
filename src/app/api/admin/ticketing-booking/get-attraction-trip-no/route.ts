@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { inArray, max } from "drizzle-orm";
+import { inArray, max, gte, lt, and } from "drizzle-orm";
 
 import { db } from "@/db";
 import { seatBookingHistory } from "@/db/schema";
@@ -64,6 +64,12 @@ export async function POST(request: NextRequest) {
       ...new Set(attractions.map((item) => item.attractionId)),
     ];
 
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const startOfTomorrow = new Date(startOfToday);
+    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+
     // Get maximum trip number for every requested attraction
     const maxTripNumbers = await db
       .select({
@@ -71,12 +77,20 @@ export async function POST(request: NextRequest) {
         maxTripNo: max(seatBookingHistory.tripNo),
       })
       .from(seatBookingHistory)
-      .where(inArray(seatBookingHistory.attractionId, attractionIds))
+      .where(
+        and(
+          inArray(seatBookingHistory.attractionId, attractionIds),
+          gte(seatBookingHistory.createdAt, startOfToday),
+          lt(seatBookingHistory.createdAt, startOfTomorrow),
+        )
+      )
       .groupBy(seatBookingHistory.attractionId);
 
     const maxTripNoMap = new Map(
       maxTripNumbers.map((item) => [item.attractionId, item.maxTripNo]),
     );
+
+    console.log("Max trip numbers:", maxTripNoMap);
 
     // Build response
     const data = attractions.map((item) => ({
@@ -84,6 +98,7 @@ export async function POST(request: NextRequest) {
       currentTripNo: item.currentTripNo,
       newTripNo: maxTripNoMap.get(item.attractionId) ?? 1,
     }));
+    console.log("Response data:", data);
 
     return success(data);
   } catch (error) {

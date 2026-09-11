@@ -24,15 +24,13 @@ import {
   Users,
 } from "lucide-react";
 import { showToast } from "@/components/ui/Toast";
-import { postData } from "@/lib/api/apiService";
-import AppUrl from "@/lib/api/endpoints";
 import AddNewCustomerModal, { NewCustomer } from "./AddNewCustomerModal";
 import {
   useTicketingCustomers,
   useCreateTicketingCustomer,
   useCreateTicketingBooking,
-  useAttractionTripNo,
-  useAttractionSeatAvailability,
+  useAttractionTripNoMutation,
+  useAttractionSeatAvailabilityMutation,
   useCreateAttractionSeatBooking,
   TicketingCustomer,
   AttractionSeatItem,
@@ -69,9 +67,14 @@ export function getAttractionRequiredSeats(att: { passengers: { qty: number; noO
 
 interface CustomerInfoViewProps {
   onBack: () => void;
-  onContinue: (customer: { name: string; mobile: string; gstn?: string }) => void;
+  onContinue: (
+    customer: { name: string; mobile: string; gstn?: string },
+    tripRefreshRequired?: boolean,
+    updatedTripMap?: Record<string, number>
+  ) => void;
   bookingSummary: BookingSummaryItem[];
   initialTripMap?: Record<string, number>;
+  initialSeatAvailability?: AttractionSeatAvailabilityData[];
 }
 
 export type CustomerRecord = TicketingCustomer;
@@ -1550,8 +1553,8 @@ interface SeatAllocationPanelProps {
   paxAssignment: Record<string, string>;
   seatAvailData: AttractionSeatAvailabilityData[];
   isLoadingSeats: boolean;
-  isFetchingSeats: boolean;
-  refetchSeats: () => void;
+  isRefreshingSeats: boolean;
+  onRefreshSeats: () => void;
   timeSlot: string;
   onTimeSlotChange: (slot: string) => void;
   slotDate: string;
@@ -1570,8 +1573,8 @@ function SeatAllocationPanel({
   paxAssignment,
   seatAvailData,
   isLoadingSeats,
-  isFetchingSeats,
-  refetchSeats,
+  isRefreshingSeats,
+  onRefreshSeats,
   slotDate,
 }: SeatAllocationPanelProps) {
   // Find currently active attraction
@@ -2431,22 +2434,22 @@ function SeatAllocationPanel({
 
               <button
                 type="button"
-                disabled={isFetchingSeats}
+                disabled={isRefreshingSeats}
                 onClick={(e) => {
                   e.stopPropagation();
-                  refetchSeats();
+                  onRefreshSeats();
                 }}
                 style={{
                   width: "158px",
                   height: "35px",
-                  background: isFetchingSeats ? "#F3F4F6" : "#FFFFFF",
+                  background: isRefreshingSeats ? "#F3F4F6" : "#FFFFFF",
                   border: "1.5px solid #2576AB",
                   borderRadius: "6px",
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
                   fontWeight: 600,
                   fontSize: "12px",
                   color: "#173F63",
-                  cursor: isFetchingSeats ? "not-allowed" : "pointer",
+                  cursor: isRefreshingSeats ? "not-allowed" : "pointer",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -2456,10 +2459,11 @@ function SeatAllocationPanel({
                 <RotateCcw
                   size={15}
                   strokeWidth={2}
-                  style={{ animation: isFetchingSeats ? "spin 1s linear infinite" : "none" }}
+                  style={{ animation: isRefreshingSeats ? "spin 1s linear infinite" : "none" }}
                 />{" "}
-                {isFetchingSeats ? "Refreshing..." : "Refresh Seats"}
+                {isRefreshingSeats ? "Refreshing..." : "Refresh Seats"}
               </button>
+
             </div>
           </div>
 
@@ -2865,6 +2869,7 @@ export default function CustomerInfoView({
   onContinue,
   bookingSummary,
   initialTripMap,
+  initialSeatAvailability = [],
 }: CustomerInfoViewProps) {
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -2891,6 +2896,8 @@ export default function CustomerInfoView({
   const createCustomerMutation = useCreateTicketingCustomer();
   const createBookingMutation = useCreateTicketingBooking();
   const createSeatBookingMutation = useCreateAttractionSeatBooking();
+  const tripNoMutation = useAttractionTripNoMutation();
+  const seatAvailabilityMutation = useAttractionSeatAvailabilityMutation();
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -2959,112 +2966,36 @@ export default function CustomerInfoView({
   // Track if user manually modified seats for an attraction
   const manuallyEditedAttractionsRef = useRef<Record<string, boolean>>({});
   const lastAllocatedTripRef = useRef<Record<string, number>>({});
+  const tripChangedDuringBookingRef = useRef(false);
 
   // Today's formatted date for the slot
   const slotDate = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const todayDateStr = useMemo(() => new Date().toISOString().split("T")[0], []);
 
-  // Fetch real trip numbers from API for all seating attractions
-  const tripNoQuery = useMemo(
-    () =>
-      seatingAttractions.map((a) => ({
-        attractionId: a.attractionId!,
-        currentTripNo: tripMap[a.attractionId!] || (initialTripMap && initialTripMap[a.attractionId!]) || 1,
-      })),
-    [seatingAttractions, tripMap, initialTripMap]
-  );
-  const { data: tripNoData } = useAttractionTripNo(tripNoQuery, seatingAttractions.length > 0 && !showPaymentModal && !showTicketModal);
+  const [seatAvailData, setSeatAvailData] = useState<AttractionSeatAvailabilityData[]>(initialSeatAvailability);
+  const isLoadingSeats = false;
 
-  useEffect(() => {
-    if (tripNoData && tripNoData.length > 0) {
-      setTripMap((prev) => {
-        let changed = false;
-        const next = { ...prev };
-        tripNoData.forEach((item) => {
-          if (item.attractionId) {
-            const newVal = item.newTripNo || 1;
-            if (next[item.attractionId] === undefined) {
-              next[item.attractionId] = newVal;
-              changed = true;
-            }
-          }
-        });
-        return changed ? next : prev;
-      });
-    }
-  }, [tripNoData]);
+  async function handleRefreshSeats() {
+    if (seatAvailabilityMutation.isPending || seatingAttractions.length === 0) return;
 
-  // Real API Call: Fetch seat availability and layout for ALL seating attractions
-  const seatAvailabilityPayload = useMemo(
-    () =>
-      seatingAttractions.map((att) => ({
+    const refreshedSeatAvailability = await seatAvailabilityMutation.mutateAsync({
+      attractions: seatingAttractions.map((att) => ({
         attractionId: att.attractionId!,
-        currentTripNo: tripMap[att.attractionId!] || (initialTripMap && initialTripMap[att.attractionId!]) || 1,
+        currentTripNo: tripMap[att.attractionId!] || 1,
       })),
-    [seatingAttractions, tripMap, initialTripMap]
-  );
-  const {
-    data: seatAvailData = [],
-    isLoading: isLoadingSeats,
-    isFetching: isFetchingSeats,
-    refetch: refetchSeatsQuery,
-  } = useAttractionSeatAvailability(seatAvailabilityPayload, seatingAttractions.length > 0 && !showPaymentModal && !showTicketModal);
+    });
+    setSeatAvailData(refreshedSeatAvailability);
 
-  const refetchSeats = () => {
     seatingAttractions.forEach((att) => {
       if (att.attractionId) {
         manuallyEditedAttractionsRef.current[att.attractionId] = false;
         delete lastAllocatedTripRef.current[att.attractionId];
       }
     });
-    refetchSeatsQuery();
-  };
-
-  // Ref to track attractions that already had auto-new-trip triggered so we don't loop
-  const autoNewTripDoneRef = useRef<Record<string, number>>({});
-
-  // ── Auto-make new trip when ALL seats in current trip are fully booked ──
-  useEffect(() => {
-    if (!seatAvailData || seatAvailData.length === 0) return;
-    if (seatingAttractions.length === 0) return;
-
-    seatingAttractions.forEach((att) => {
-      const attId = att.attractionId!;
-      const attData = seatAvailData.find((d) => d.attractionId === attId);
-      if (!attData) return;
-
-      const currentTripNo = attData.currentTripNo || tripMap[attId] || 1;
-      // Only trigger once per trip
-      if (autoNewTripDoneRef.current[attId] === currentTripNo) return;
-
-      let totalCapacity = 0;
-      let totalBooked = 0;
-      if (Array.isArray(attData.seatLayout) && attData.seatLayout.length > 0) {
-        attData.seatLayout.forEach((l) => {
-          const t = (l.rows > 0 && l.cols > 0) ? (l.rows * l.cols) : 4;
-          (l.seats || []).forEach((sec) => {
-            totalCapacity += t;
-            const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
-            totalBooked += booked.length;
-          });
-        });
-      } else {
-        const sections: AttractionSeatItem[] = (attData.seats || []).slice();
-        for (const sec of sections) {
-          totalCapacity += 4;
-          const booked = Array.isArray(sec.bookedSeats) ? sec.bookedSeats : [];
-          totalBooked += booked.length;
-        }
-      }
-
-      // All seats fully booked on this trip and trip has actual bookings
-      if (totalCapacity > 0 && totalBooked >= totalCapacity) {
-        autoNewTripDoneRef.current[attId] = currentTripNo;
-        handleTripChange(attId, currentTripNo);
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seatAvailData]);
+    setSelectedSeatObjs([]);
+    setPaxAssignment({});
+    setSeatValidationError(null);
+  }
 
 
   useEffect(() => {
@@ -3274,17 +3205,14 @@ export default function CustomerInfoView({
   }
 
   async function handleTripChange(attId: string, currentTripNo?: number) {
-    // Call get-attraction-trip-no API with currentTripNo + 1 to request the next trip
+    tripChangedDuringBookingRef.current = true;
     const ongoingTrip = currentTripNo ?? (tripMap[attId] ?? 1);
     const nextTripPayload = ongoingTrip + 1;
     let resolvedNextTrip = nextTripPayload;
     try {
-      const res = await postData<any, { attractions: { attractionId: string; currentTripNo: number }[] }>(
-        AppUrl.ticketingBooking.getAttractionTripNo,
-        { attractions: [{ attractionId: attId, currentTripNo: nextTripPayload }] }
-      );
-      const payload = res?.data ?? res;
-      const items = Array.isArray(payload) ? payload : [];
+      const items = await tripNoMutation.mutateAsync({
+        attractions: [{ attractionId: attId, currentTripNo: nextTripPayload }],
+      });
       const item = items.find((i: any) => i.attractionId === attId);
       if (item && item.newTripNo) {
         resolvedNextTrip = Math.max(nextTripPayload, item.newTripNo > ongoingTrip ? item.newTripNo + 1 : nextTripPayload);
@@ -3292,6 +3220,19 @@ export default function CustomerInfoView({
     } catch {
       // fallback to local increment
     }
+
+    try {
+      const refreshedSeatAvailability = await seatAvailabilityMutation.mutateAsync({
+        attractions: [{ attractionId: attId, currentTripNo: resolvedNextTrip }],
+      });
+      setSeatAvailData((previous) => [
+        ...previous.filter((item) => item.attractionId !== attId),
+        ...refreshedSeatAvailability,
+      ]);
+    } catch {
+      // Keep the selected trip even if the availability refresh fails.
+    }
+
     manuallyEditedAttractionsRef.current[attId] = false;
     delete lastAllocatedTripRef.current[attId];
     setTripMap((prev) => ({ ...prev, [attId]: resolvedNextTrip }));
@@ -3480,9 +3421,13 @@ export default function CustomerInfoView({
     setShowPaymentModal(true);
   }
 
-  async function handleConfirmPayment(payMethod: "CASH" | "UPI" | "CARD" | "ONLINE", amtRcv: number, amountReceived: number, returnAmount: number) {
+  async function handleConfirmPayment(
+    payMethod: "CASH" | "UPI" | "CARD" | "ONLINE",
+    amtRcv: number,
+    amountReceived: number,
+    returnAmount: number
+  ) {
     try {
-      // 1. Create Booking via POST /api/admin/ticketing-booking
       if (pendingBookingPayload) {
         const finalPayload: CreateTicketingBookingPayload = {
           customerName: pendingBookingPayload.customerName,
@@ -3499,7 +3444,7 @@ export default function CustomerInfoView({
         setConfirmedTicketData(data);
       }
 
-      // 2. If seating is required and seats were selected, call attraction-seat-booking API for all attractions
+      // Save selected seats only after the booking has been created.
       if (hasSeatingRequired && selectedSeatObjs.length > 0) {
         const bookings: { attractionId: string; tripNo: number; attractionSeatId: string; seatNo: number[] }[] = [];
 
@@ -4541,8 +4486,8 @@ export default function CustomerInfoView({
               paxAssignment={paxAssignment}
               seatAvailData={seatAvailData}
               isLoadingSeats={isLoadingSeats}
-              isFetchingSeats={isFetchingSeats}
-              refetchSeats={refetchSeats}
+              isRefreshingSeats={seatAvailabilityMutation.isPending}
+              onRefreshSeats={handleRefreshSeats}
               timeSlot={timeSlot}
               onTimeSlotChange={setTimeSlot}
               slotDate={slotDate}
@@ -4636,11 +4581,17 @@ export default function CustomerInfoView({
         isOpen={showTicketModal}
         onClose={() => {
           setShowTicketModal(false);
-          onContinue({
-            name: selectedCustomer?.name || searchQuery.trim() || guestDetails.guestName.trim() || "",
-            mobile: selectedCustomer?.mobile || guestDetails.mobile.trim() || "",
-            gstn: selectedCustomer?.gstn || "",
-          });
+          const tripRefreshRequired = tripChangedDuringBookingRef.current;
+          tripChangedDuringBookingRef.current = false;
+          onContinue(
+            {
+              name: selectedCustomer?.name || searchQuery.trim() || guestDetails.guestName.trim() || "",
+              mobile: selectedCustomer?.mobile || guestDetails.mobile.trim() || "",
+              gstn: selectedCustomer?.gstn || "",
+            },
+            tripRefreshRequired,
+            tripRefreshRequired ? tripMap : undefined
+          );
         }}
         attractionName={allAttractionsText}
         grandTotal={grandTotal}
