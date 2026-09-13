@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or, gte, lt } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
@@ -175,15 +175,46 @@ export async function POST(request: NextRequest) {
     // attractionSeatId comes from the database, NOT payload.
     // --------------------------------------------------
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    console.log("Attraction Seat Availability POST API", {
+      today,
+      tomorrow,
+    });
+
     const bookedSeatRows = await db
       .select({
         attractionId: seatBookingHistory.attractionId,
         tripNo: seatBookingHistory.tripNo,
         attractionSeatId: seatBookingHistory.attractionSeatId,
         seatNo: seatBookingHistory.seatNo,
+        createdAt: seatBookingHistory.createdAt,
       })
       .from(seatBookingHistory)
-      .where(inArray(seatBookingHistory.attractionId, attractionIds));
+      .where(
+        and(
+          gte(seatBookingHistory.createdAt, today),
+          lt(seatBookingHistory.createdAt, tomorrow),
+          or(
+            ...attractions.map((item) =>
+              and(
+                eq(
+                  seatBookingHistory.attractionId,
+                  item.attractionId,
+                ),
+                eq(
+                  seatBookingHistory.tripNo,
+                  item.currentTripNo,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
 
     // --------------------------------------------------
     // Group booked seat numbers by:
