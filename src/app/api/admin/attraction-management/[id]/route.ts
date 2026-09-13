@@ -16,13 +16,9 @@ import {
   getAccessibleAttractionIds,
 } from "@/lib/auth/authorization";
 import {
-  getLegacySeatLayoutId,
   listTimeSlotsByAttractionIds,
   parseTimeSlotsPayload,
-  replaceAttractionSeatLayouts,
-  resolveSeatLayoutIds,
   syncAttractionTimeSlots,
-  validateSeatLayoutsForAdmin,
 } from "@/services/attraction-management.service";
 
 export async function PATCH(
@@ -39,6 +35,7 @@ export async function PATCH(
     const { id } = await context.params;
 
     const body = await request.json();
+    console.log("PATCH body:", body);
 
     // =====================================================
     // CHECK OWNERSHIP / ACCESS
@@ -67,6 +64,8 @@ export async function PATCH(
         ),
       });
     }
+
+    console.log("existing:", existing);
 
     if (!existing) {
       return failure("Attraction not found or access denied", 403, "FORBIDDEN");
@@ -219,35 +218,25 @@ export async function PATCH(
     // ATTRACTION SEATS
     // =====================================================
     //
-    // body.seatLayoutIds[].id is treated as:
+    // Existing seat:
+    //   attractionSeatId is provided.
+    //   Find attraction_seats.id using that value.
+    //   Update only mutable fields.
     //
-    //     attraction_seats.id
+    // New seat:
+    //   attractionSeatId is NOT provided.
+    //   seatLayoutId is required.
+    //   Create a new attraction_seats row.
     //
-    // FIRST:
-    //     Check attraction_seats.id
-    //
-    // If found:
-    //     UPDATE existing row.
-    //
-    // If NOT found:
-    //     Check the SAME ID in seat_layouts.id.
-    //
-    // If seat_layouts.id exists:
-    //     INSERT attraction_seats with:
-    //
-    //     id            = incoming ID
-    //     seatLayoutId  = incoming ID
-    //
-    // Therefore the frontend does NOT need to send
-    // seatLayoutId for a new seat.
-    //
+    // Missing existing seats from the payload are NOT deleted.
     // =====================================================
 
     const shouldUpdateAttractionSeats = body.seatLayoutIds !== undefined;
 
     let seatUpdates:
       | {
-          id: string;
+          attractionSeatId?: string;
+          seatLayoutId?: string;
           name?: string;
           status?: string;
           position?: number;
@@ -266,9 +255,45 @@ export async function PATCH(
       seatUpdates = [];
 
       for (const seat of body.seatLayoutIds) {
-        if (!seat || typeof seat.id !== "string" || !seat.id.trim()) {
+        if (!seat) {
           return failure(
-            "Each seat must contain a valid attraction_seats.id.",
+            "Invalid seat data.",
+            400,
+            "VALIDATION_ERROR",
+          );
+        }
+
+        // -------------------------------------------------
+        // attractionSeatId is optional.
+        // If provided, it must be a valid non-empty string.
+        // -------------------------------------------------
+
+        if (
+          seat.attractionSeatId !== undefined &&
+          (typeof seat.attractionSeatId !== "string" ||
+            !seat.attractionSeatId.trim())
+        ) {
+          return failure(
+            "attractionSeatId must be a valid ID when provided.",
+            400,
+            "VALIDATION_ERROR",
+          );
+        }
+
+        // -------------------------------------------------
+        // New seat must have seatLayoutId.
+        // Existing seat does not need it because its
+        // seatLayoutId should not be changed.
+        // -------------------------------------------------
+
+        if (
+          seat.attractionSeatId === undefined &&
+          (seat.seatLayoutId === undefined ||
+            seat.seatLayoutId === null ||
+            !String(seat.seatLayoutId).trim())
+        ) {
+          return failure(
+            "seatLayoutId is required when creating a new attraction seat.",
             400,
             "VALIDATION_ERROR",
           );
@@ -280,7 +305,9 @@ export async function PATCH(
             Number(seat.position) < 1)
         ) {
           return failure(
-            `Invalid position for seat ${seat.id}.`,
+            `Invalid position for seat ${
+              seat.attractionSeatId ?? "new seat"
+            }.`,
             400,
             "VALIDATION_ERROR",
           );
@@ -292,24 +319,44 @@ export async function PATCH(
           seat.status !== "inactive"
         ) {
           return failure(
-            `Invalid status for seat ${seat.id}.`,
+            `Invalid status for seat ${
+              seat.attractionSeatId ?? "new seat"
+            }.`,
             400,
             "VALIDATION_ERROR",
           );
         }
 
         seatUpdates.push({
-          id: seat.id.trim(),
+          attractionSeatId:
+            seat.attractionSeatId !== undefined
+              ? seat.attractionSeatId.trim()
+              : undefined,
 
-          name: seat.name !== undefined ? String(seat.name) : undefined,
+          seatLayoutId:
+            seat.seatLayoutId !== undefined
+              ? String(seat.seatLayoutId).trim()
+              : undefined,
 
-          status: seat.status !== undefined ? String(seat.status) : undefined,
+          name:
+            seat.name !== undefined
+              ? String(seat.name)
+              : undefined,
+
+          status:
+            seat.status !== undefined
+              ? String(seat.status)
+              : undefined,
 
           position:
-            seat.position !== undefined ? Number(seat.position) : undefined,
+            seat.position !== undefined
+              ? Number(seat.position)
+              : undefined,
         });
       }
     }
+
+    console.log("seatUpdates:", seatUpdates);
 
     // =====================================================
     // TIME SLOTS
@@ -330,7 +377,11 @@ export async function PATCH(
       // UPDATE ATTRACTION
       // =====================================================
 
-      if (body.name !== undefined || body.category !== undefined || body.status !== undefined) {
+      if (
+        body.name !== undefined ||
+        body.category !== undefined ||
+        body.status !== undefined
+      ) {
         await tx
           .update(attractions)
           .set({
@@ -432,7 +483,10 @@ export async function PATCH(
               .where(
                 and(
                   eq(attractionCategory.id, category.id),
-                  eq(attractionCategory.attractionManagementId, id),
+                  eq(
+                    attractionCategory.attractionManagementId,
+                    id,
+                  ),
                 ),
               );
           } else {
@@ -461,12 +515,22 @@ export async function PATCH(
         updatedCategories = await tx
           .select()
           .from(attractionCategory)
-          .where(eq(attractionCategory.attractionManagementId, id));
+          .where(
+            eq(
+              attractionCategory.attractionManagementId,
+              id,
+            ),
+          );
       } else {
         updatedCategories = await tx
           .select()
           .from(attractionCategory)
-          .where(eq(attractionCategory.attractionManagementId, id));
+          .where(
+            eq(
+              attractionCategory.attractionManagementId,
+              id,
+            ),
+          );
       }
 
       // =====================================================
@@ -485,7 +549,12 @@ export async function PATCH(
         const existingSeats = await tx
           .select()
           .from(attractionSeats)
-          .where(eq(attractionSeats.attractionId, existing.attractionId));
+          .where(
+            eq(
+              attractionSeats.attractionId,
+              existing.attractionId,
+            ),
+          );
 
         // ---------------------------------------------------
         // MAP BY attraction_seats.id
@@ -496,19 +565,28 @@ export async function PATCH(
         );
 
         // ---------------------------------------------------
-        // PROCESS EACH SEAT
+        // PROCESS EACH INCOMING SEAT
         // ---------------------------------------------------
 
         for (const seat of seatUpdates) {
-          const existingSeat = existingSeatMap.get(seat.id);
-
           // =================================================
-          // CASE 1:
-          // attraction_seats.id EXISTS
+          // CASE 1: EXISTING ATTRACTION SEAT
           // =================================================
 
-          if (existingSeat) {
-            const updateData: Partial<typeof attractionSeats.$inferInsert> = {};
+          if (seat.attractionSeatId) {
+            const existingSeat = existingSeatMap.get(
+              seat.attractionSeatId,
+            );
+
+            if (!existingSeat) {
+              throw new Error(
+                `ATTRACTION_SEAT_NOT_FOUND:${seat.attractionSeatId}`,
+              );
+            }
+
+            const updateData: Partial<
+              typeof attractionSeats.$inferInsert
+            > = {};
 
             if (seat.name !== undefined) {
               updateData.name = seat.name;
@@ -522,16 +600,10 @@ export async function PATCH(
               updateData.isActive = seat.status === "active";
             }
 
-            // IMPORTANT:
-            //
-            // We DO NOT update:
-            //
+            // Do not update:
             // id
             // attractionId
             // seatLayoutId
-            //
-            // Therefore the existing IDs and
-            // relationships remain unchanged.
 
             if (Object.keys(updateData).length > 0) {
               await tx
@@ -539,8 +611,14 @@ export async function PATCH(
                 .set(updateData)
                 .where(
                   and(
-                    eq(attractionSeats.id, existingSeat.id),
-                    eq(attractionSeats.attractionId, existing.attractionId),
+                    eq(
+                      attractionSeats.id,
+                      existingSeat.id,
+                    ),
+                    eq(
+                      attractionSeats.attractionId,
+                      existing.attractionId,
+                    ),
                   ),
                 );
             }
@@ -549,49 +627,59 @@ export async function PATCH(
           }
 
           // =================================================
-          // CASE 2:
-          // attraction_seats.id DOES NOT EXIST
-          //
-          // Check the SAME ID in seat_layouts.id
+          // CASE 2: NEW ATTRACTION SEAT
           // =================================================
 
-          const seatLayout = await tx
+          if (!seat.seatLayoutId) {
+            throw new Error(
+              "SEAT_LAYOUT_ID_REQUIRED",
+            );
+          }
+
+          // -------------------------------------------------
+          // Verify seat layout exists and is active
+          // -------------------------------------------------
+
+          const [seatLayout] = await tx
             .select({
               id: seatLayouts.id,
             })
             .from(seatLayouts)
-            .where(eq(seatLayouts.id, seat.id))
+            .where(
+              and(
+                eq(
+                  seatLayouts.id,
+                  seat.seatLayoutId,
+                ),
+                eq(
+                  seatLayouts.status,
+                  "ACTIVE",
+                ),
+              ),
+            )
             .limit(1);
 
-          // =================================================
-          // seat_layouts.id ALSO DOES NOT EXIST
-          // =================================================
-
-          if (!seatLayout.length) {
-            throw new Error(`SEAT_LAYOUT_NOT_FOUND:${seat.id}`);
+          if (!seatLayout) {
+            throw new Error(
+              `SEAT_LAYOUT_NOT_FOUND:${seat.seatLayoutId}`,
+            );
           }
 
-          const newAttractionSeatId = crypto.randomUUID();
-          // =================================================
-          // seat_layouts.id EXISTS
-          //
-          // CREATE attraction_seats USING SAME ID
-          // =================================================
+          // -------------------------------------------------
+          // No ID is provided here.
+          // attractionSeats.id uses DB defaultRandom().
+          // -------------------------------------------------
 
           await tx.insert(attractionSeats).values({
-            // SAME ID AS INCOMING ID
-            id: newAttractionSeatId,
-
             attractionId: existing.attractionId,
 
-            // SAME ID AS seat_layouts.id
-            seatLayoutId: seat.id,
+            seatLayoutId: seat.seatLayoutId,
 
             name: seat.name ?? "",
 
             seatOrder: seat.position ?? 1,
 
-            isActive: seat.status === "active",
+            isActive: seat.status !== "inactive",
           });
         }
 
@@ -602,7 +690,12 @@ export async function PATCH(
         updatedAttractionSeats = await tx
           .select()
           .from(attractionSeats)
-          .where(eq(attractionSeats.attractionId, existing.attractionId));
+          .where(
+            eq(
+              attractionSeats.attractionId,
+              existing.attractionId,
+            ),
+          );
       }
 
       // =====================================================
@@ -675,30 +768,6 @@ export async function PATCH(
         : [],
 
       // ===================================================
-      // ATTRACTION SEAT IDS
-      // ===================================================
-      //
-      // IMPORTANT:
-      //
-      // This returns attraction_seats.id.
-      //
-      // NOT seat_layouts.id.
-      //
-      // ===================================================
-
-      // seatLayoutIds: Array.isArray(result.attractionSeats)
-      //   ? result.attractionSeats.map((seat) => ({
-      //       id: seat.id,
-
-      //       name: seat.name,
-
-      //       status: seat.isActive ? "active" : "inactive",
-
-      //       position: seat.seatOrder,
-      //     }))
-      //   : [],
-
-      // ===================================================
       // ATTRACTION SEATS
       // ===================================================
 
@@ -717,22 +786,6 @@ export async function PATCH(
             isActive: seat.isActive,
           }))
         : [],
-
-      // ===================================================
-      // TIME SLOTS
-      // ===================================================
-
-      // timeSlots: Array.isArray(result.timeSlots)
-      //   ? result.timeSlots.map((slot: any) => ({
-      //       id: slot.id,
-
-      //       attractionId: slot.attractionId,
-
-      //       // slotTime: slot.slotTime,
-
-      //       isActive: slot.isActive,
-      //     }))
-      //   : [],
     };
 
     return success(sanitizedResponse);
@@ -743,14 +796,57 @@ export async function PATCH(
       console.error("Error message:", error.message);
 
       // ===================================================
+      // ATTRACTION SEAT NOT FOUND
+      // ===================================================
+
+      if (
+        error.message.startsWith(
+          "ATTRACTION_SEAT_NOT_FOUND:",
+        )
+      ) {
+        const attractionSeatId = error.message.replace(
+          "ATTRACTION_SEAT_NOT_FOUND:",
+          "",
+        );
+
+        return failure(
+          `Attraction seat ${attractionSeatId} not found for this attraction.`,
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
+      // ===================================================
+      // SEAT LAYOUT ID REQUIRED
+      // ===================================================
+
+      if (
+        error.message ===
+        "SEAT_LAYOUT_ID_REQUIRED"
+      ) {
+        return failure(
+          "seatLayoutId is required when creating a new attraction seat.",
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
+      // ===================================================
       // SEAT LAYOUT NOT FOUND
       // ===================================================
 
-      if (error.message.startsWith("SEAT_LAYOUT_NOT_FOUND:")) {
-        const seatId = error.message.replace("SEAT_LAYOUT_NOT_FOUND:", "");
+      if (
+        error.message.startsWith(
+          "SEAT_LAYOUT_NOT_FOUND:",
+        )
+      ) {
+        const seatLayoutId = error.message.replace(
+          "SEAT_LAYOUT_NOT_FOUND:",
+          "",
+        );
 
         return failure(
-          `Seat layout ${seatId} not found. Cannot create attraction seat.`,
+          `Seat layout ${seatLayoutId} not found or inactive. Cannot create attraction seat.`,
           400,
           "VALIDATION_ERROR",
         );
@@ -762,7 +858,10 @@ export async function PATCH(
 
       const errorStr = error.message.toLowerCase();
 
-      if (errorStr.includes("foreign key") || errorStr.includes("23503")) {
+      if (
+        errorStr.includes("foreign key") ||
+        errorStr.includes("23503")
+      ) {
         return failure(
           "Invalid attraction seat reference.",
           400,
@@ -770,7 +869,10 @@ export async function PATCH(
         );
       }
 
-      if (errorStr.includes("unique") || errorStr.includes("23505")) {
+      if (
+        errorStr.includes("unique") ||
+        errorStr.includes("23505")
+      ) {
         return failure(
           "Duplicate attraction seat assignment detected.",
           400,
@@ -782,7 +884,11 @@ export async function PATCH(
       // TIME SLOT ERROR
       // ===================================================
 
-      if (error.message.startsWith("TIME_SLOT_NOT_FOUND:")) {
+      if (
+        error.message.startsWith(
+          "TIME_SLOT_NOT_FOUND:",
+        )
+      ) {
         return failure(
           `Unknown timeSlots.id: ${error.message.replace(
             "TIME_SLOT_NOT_FOUND:",
@@ -798,15 +904,26 @@ export async function PATCH(
       // ===================================================
 
       if (error.message === "UNAUTHORIZED") {
-        return failure("Authentication required.", 401, "UNAUTHORIZED");
+        return failure(
+          "Authentication required.",
+          401,
+          "UNAUTHORIZED",
+        );
       }
 
       // ===================================================
       // ACCOUNT STATUS
       // ===================================================
 
-      if (error.message === "ACCOUNT_NOT_ACTIVE") {
-        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+      if (
+        error.message ===
+        "ACCOUNT_NOT_ACTIVE"
+      ) {
+        return failure(
+          "Account is not active.",
+          403,
+          "ACCOUNT_NOT_ACTIVE",
+        );
       }
 
       // ===================================================
@@ -829,6 +946,7 @@ export async function PATCH(
     );
   }
 }
+
 // =====================================================
 // DELETE ATTRACTION
 // =====================================================
@@ -884,7 +1002,11 @@ export async function DELETE(
     }
 
     if (!existing) {
-      return failure("Attraction not found or access denied", 403, "FORBIDDEN");
+      return failure(
+        "Attraction not found or access denied",
+        403,
+        "FORBIDDEN",
+      );
     }
 
     // =====================================
@@ -892,13 +1014,19 @@ export async function DELETE(
     // =====================================
 
     await db.transaction(async (tx) => {
-      // Delete management details first
-      // (junction rows cascade via FK on attraction_management_id)
+      // Delete management details first.
+      // Related junction rows will cascade
+      // through attraction_management_id.
+
       await tx
         .delete(attractionManagement)
         .where(eq(attractionManagement.id, id));
 
-      // Delete main attraction
+      // Delete main attraction.
+      //
+      // No transaction/booking records are
+      // explicitly deleted here.
+
       await tx
         .delete(attractions)
         .where(eq(attractions.id, existing.attractionId));
@@ -910,16 +1038,27 @@ export async function DELETE(
   } catch (error) {
     if (error instanceof Error) {
       // Authentication
+
       if (error.message === "UNAUTHORIZED") {
-        return failure("Authentication required.", 401, "UNAUTHORIZED");
+        return failure(
+          "Authentication required.",
+          401,
+          "UNAUTHORIZED",
+        );
       }
 
       // Account inactive
+
       if (error.message === "ACCOUNT_NOT_ACTIVE") {
-        return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
+        return failure(
+          "Account is not active.",
+          403,
+          "ACCOUNT_NOT_ACTIVE",
+        );
       }
 
       // Module authorization
+
       if (error.message === "FORBIDDEN") {
         return failure(
           "You are not authorized to access attraction management.",
