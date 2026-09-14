@@ -12,6 +12,7 @@ import {
   attractions,
   staffSystemModulePermissions,
   systemModules,
+  bookings,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -292,6 +293,7 @@ export async function GET(request: NextRequest) {
         return success({
           items: [],
           staffSystemModules: [],
+          staffTotalBookings: [],
 
           pagination: {
             page,
@@ -361,7 +363,15 @@ export async function GET(request: NextRequest) {
             reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
           })
           .from(staffSystemModulePermissions)
-          .where(eq(staffSystemModulePermissions.staffId, member.id));
+          .where(eq(staffSystemModulePermissions.staffId, member.id)).limit(1);
+
+        const staffTotalBookings = await db
+          .select({
+            totalBookings: sql<number>`count(*)`,
+          })
+          .from(bookings)
+          .where(eq(bookings.createdBy, member.id))
+          .limit(1);
 
         // -----------------------------------------------
         // Staff attractions
@@ -390,6 +400,7 @@ export async function GET(request: NextRequest) {
           ...member,
           roles,
           reportPermissions,
+          staffTotalBookings,
           attractions: assignedAttractions,
         };
       }),
