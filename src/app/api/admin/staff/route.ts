@@ -291,6 +291,7 @@ export async function GET(request: NextRequest) {
       if (staffIds.length === 0) {
         return success({
           items: [],
+          staffSystemModules: [],
 
           pagination: {
             page,
@@ -385,12 +386,32 @@ export async function GET(request: NextRequest) {
       }),
     );
 
+    // Adding system module permissions to each staff member
+    const STAFF_ALLOWED_MODULES = [
+      "TICKET_BOOKING",
+      "SCANNER",
+      "REPORTS"
+    ];
+    const staffModules = await db
+      .select({
+        id: systemModules.id,
+        name: systemModules.key,
+      })
+      .from(systemModules)
+      .where(
+        and(
+          eq(systemModules.isActive, "ACTIVE"),
+          inArray(systemModules.key, STAFF_ALLOWED_MODULES),
+        ),
+      );
+
     // -----------------------------------------------------
     // Response
     // -----------------------------------------------------
 
     return success({
       items: staffWithDetails,
+      staffSystemModules: staffModules,
 
       pagination: {
         page,
