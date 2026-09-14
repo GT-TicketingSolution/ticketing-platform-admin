@@ -1,5 +1,3 @@
-// ─── Staff Entity matching API response 
-
 export type StaffStatus =
   | "ACTIVE"
   | "INACTIVE"
@@ -11,6 +9,15 @@ export interface StaffAttraction {
   name: string;
 }
 
+export interface StaffRoleItem {
+  id?: string;
+  role: string;
+}
+
+export interface StaffBookingCount {
+  totalBookings: string | number;
+}
+
 export interface StaffUser {
   id: string;
   name: string;
@@ -18,6 +25,7 @@ export interface StaffUser {
   phone: string | null;
   role: string | string[];
   roles?: string[];
+  roleDetails?: StaffRoleItem[];
   assignedAttraction?: string[];
   attractions?: StaffAttraction[];
   attractionIds?: string[];
@@ -25,10 +33,15 @@ export interface StaffUser {
   createdAt?: string;
   status: StaffStatus;
   ticketsIssued?: number;
+  staffTotalBookings?: StaffBookingCount[];
+  reportPermissions?: Array<{
+    reportAccessTiming?: number | null;
+    reportAccessUnit?: string | null;
+  }>;
   /** Whether this staff member is allowed to view reports */
   canViewReports?: boolean;
-  /** Number of hours the staff can access/view reports (only relevant when canViewReports is true) */
-  reportViewDurationHours?: number | null;
+  /** Number of hours the staff member can access/view reports (only relevant when canViewReports is true) */
+  reportAccessTiming?: number | null;
 }
 
 export interface StaffPagination {
@@ -38,8 +51,14 @@ export interface StaffPagination {
   totalPages: number;
 }
 
+export interface StaffSystemModule {
+  id: string;
+  name: string;
+}
+
 export interface StaffListResponse {
   items: StaffUser[];
+  staffSystemModules?: StaffSystemModule[];
   pagination: StaffPagination;
 }
 
@@ -51,18 +70,30 @@ export interface StaffQueryParams {
   attractionId?: string;
 }
 
+/**
+ * Role payload type used in create / update staff APIs.
+ */
+export type StaffRolePayload = {
+  id?: string;
+  role: string;
+};
+
 export interface CreateStaffPayload {
   name: string;
   email: string;
   phone: string;
   password?: string;
-  roles: string[];
+  /** Array of role names or role objects */
+  roles: string[] | StaffRolePayload[];
   attractionIds: string[];
+  staffSystemModuleAllowedIds?: string[];
   status: "ACTIVE" | "INACTIVE";
   /** Whether this staff member is allowed to view reports */
   canViewReports?: boolean;
   /** Number of hours the staff can access/view reports */
   reportViewDurationHours?: number | null;
+  reportAccessTiming?: number;
+  reportAccessUnit?: "HOURS";
 }
 
 export interface UpdateStaffPayload {
@@ -70,12 +101,15 @@ export interface UpdateStaffPayload {
   email?: string;
   phone?: string;
   password?: string;
-  roles?: string[];
+  /** Array of role objects (id optional for new roles) */
+  roles?: StaffRolePayload[];
   attractionIds?: string[];
+  staffSystemModuleAllowedIds?: string[];
   status?: "ACTIVE" | "INACTIVE";
   /** Whether this staff member is allowed to view reports */
   canViewReports?: boolean;
   /** Number of hours the staff can access/view reports */
   reportViewDurationHours?: number | null;
+  reportAccessTiming?: number;
+  reportAccessUnit?: "HOURS";
 }
-

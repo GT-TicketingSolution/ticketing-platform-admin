@@ -189,6 +189,26 @@ export function useDeleteAttraction() {
   });
 }
 
+// ── Delete attraction seat
+export function useDeleteAttractionSeat() {
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+
+  return useMutation({
+    mutationFn: (attractionSeatId: string) =>
+      deleteData(AppUrl.attractionSeats.delete(attractionSeatId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: attractionManagementKeys.lists() });
+      showToast("Seat allocation deleted successfully!", "success");
+    },
+    onError: (error: any) => {
+      const message =
+        error?.response?.data?.message || error?.message || "Failed to delete seat allocation.";
+      showToast(message, "error");
+    },
+  });
+}
+
 // ── Bulk upload ──────────────────────────────────────────────────────────────
 export function useBulkUploadAttractions() {
   const queryClient = useQueryClient();

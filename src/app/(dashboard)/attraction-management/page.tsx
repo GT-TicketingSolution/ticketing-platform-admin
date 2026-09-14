@@ -318,7 +318,7 @@ export default function AttractionManagementPage() {
   const handleSaveAttraction = async (data: any) => {
     try {
       const selectedSeats = data.seatLayoutIds ?? data.assignedSeatIds ?? [];  // Prioritize new format
-      const selectedSeatsIds = Array.isArray(selectedSeats) ? selectedSeats.map((s: any) => typeof s === "string" ? s : s.id).filter(Boolean) : [];
+      const selectedSeatsIds = Array.isArray(selectedSeats) ? selectedSeats.map((s: any) => typeof s === "string" ? s : (s.seatLayoutId || s.id || s.layoutId)).filter(Boolean) : [];
       const hasSeating = Boolean(data.hasSeating ?? (selectedSeatsIds.length > 0));
 
       const adultSeats = Number(data.seating?.adult ?? data.adultSeats ?? 0);
@@ -389,18 +389,26 @@ export default function AttractionManagementPage() {
           ? rawSeatLayouts.map((seat: any, idx: number) => {
             if (typeof seat === "string") {
               return {
-                id: seat,
+                seatLayoutId: seat,
                 name: `Seat Layout ${idx + 1}`,
                 status: "active",
                 position: idx + 1,
               };
             }
-            return {
-              id: seat.id || seat.layoutId,
+            const seatObj: {
+              attractionSeatId?: string;
+              seatLayoutId: string;
+              name: string;
+              status: string;
+              position: number;
+            } = {
+              ...(seat.attractionSeatId ? { attractionSeatId: seat.attractionSeatId } : {}),
+              seatLayoutId: seat.seatLayoutId || seat.layoutId || seat.id,
               name: seat.name || seat.displayName || `Seat ${idx + 1}`,
               status: seat.status || (seat.isDisabled ? "inactive" : "active"),
               position: Number(seat.position) || idx + 1,
             };
+            return seatObj;
           })
           : []
         : [];

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import  { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { BarChart2, Clock, X, Check } from "lucide-react";
 import { typography } from "@/lib/theme";
@@ -16,10 +16,10 @@ interface ReportTimingModalProps {
 const PRESET_OPTIONS = [
   { label: "24 Hours (1 Day)", hours: 24 },
   { label: "48 Hours (2 Days)", hours: 48 },
-  { label: "3 Days (72h)", hours: 72 },
-  { label: "7 Days (1 Week)", hours: 168 },
-  { label: "14 Days", hours: 336 },
-  { label: "30 Days (1 Month)", hours: 720 },
+  { label: "72 Hours (3 Days)", hours: 72 },
+  { label: "168 Hours (7 Days)", hours: 168 },
+  { label: "336 Hours (14 Days)", hours: 336 },
+  { label: "720 Hours (30 Days)", hours: 720 },
 ];
 
 export default function ReportTimingModal({
@@ -333,32 +333,6 @@ export default function ReportTimingModal({
                   }}
                 >
                   Hours
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (unit !== "days") {
-                      setUnit("days");
-                      if (numValue > 0) {
-                        const d = Math.max(1, Math.round(numValue / 24));
-                        setInputValue(String(d));
-                      }
-                    }
-                  }}
-                  style={{
-                    padding: "0 14px",
-                    borderRadius: "6px",
-                    border: "none",
-                    background: unit === "days" ? "#F4BC43" : "transparent",
-                    color: unit === "days" ? "#0C2A42" : "#64748B",
-                    fontWeight: unit === "days" ? 700 : 500,
-                    fontSize: "13px",
-                    cursor: "pointer",
-                    boxShadow: unit === "days" ? "0 1px 4px rgba(244,188,67,0.3)" : "none",
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  Days
                 </button>
               </div>
             </div>

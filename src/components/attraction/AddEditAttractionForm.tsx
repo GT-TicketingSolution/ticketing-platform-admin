@@ -7,6 +7,7 @@ import { confirmDelete } from "@/lib/notify";
 import { validateAttractionForm } from "@/app/(dashboard)/attraction-management/schema";
 import { SeatConfigData } from "@/app/(dashboard)/seat-management/types";
 import { useSeatLayouts } from "@/hooks/useSeatQueries";
+import { useDeleteAttractionSeat } from "@/hooks/useAttractionManagementQueries";
 
 // ── Shared required asterisk
 const Req = () => <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>;
@@ -482,6 +483,7 @@ export default function AddEditAttractionForm({
   // `attractionToEdit.seatLayouts` are still merged below in decoratedAllocatedSeats
   // so any layout referenced by this attraction but missing from the API stays visible.
   const { data: seatData, isLoading: isSeatsLoading } = useSeatLayouts();
+  const deleteAttractionSeatMutation = useDeleteAttractionSeat();
   const availableSeats: SeatConfigData[] = useMemo(() => {
     if (!seatData?.items || !Array.isArray(seatData.items)) return [];
     return seatData.items
@@ -511,15 +513,15 @@ export default function AddEditAttractionForm({
       (attractionToEdit as any)?.seatLayouts
     )
       ? (attractionToEdit as any).seatLayouts.map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          rows: s.rows ?? 0,
-          cols: s.cols ?? 0,
-          hasAisle: !!s.hasAisle,
-          aisleAfterCol: s.aisleAfterCol ?? null,
-          status: s.status ?? "ACTIVE",
-          totalSeats: (s.rows ?? 0) * (s.cols ?? 0),
-        }))
+        id: s.id,
+        name: s.name,
+        rows: s.rows ?? 0,
+        cols: s.cols ?? 0,
+        hasAisle: !!s.hasAisle,
+        aisleAfterCol: s.aisleAfterCol ?? null,
+        status: s.status ?? "ACTIVE",
+        totalSeats: (s.rows ?? 0) * (s.cols ?? 0),
+      }))
       : [];
 
     // Combined source: prefer already-fetched seats, append any embedded ones not yet present
@@ -535,35 +537,47 @@ export default function AddEditAttractionForm({
       totalCounts[item.layoutId] = (totalCounts[item.layoutId] || 0) + 1;
     });
 
+    // Per-layout running counter for assigning sequential fallback suffixes
+    const occurrenceCounters: Record<string, number> = {};
+
     return allocatedSeats.map((item, index) => {
       const seat = combinedSeats.find((s) => s.id === item.layoutId);
-      const baseName = seat ? seat.name : "Seat Layout";
       const totalForThisLayout = totalCounts[item.layoutId] || 0;
 
-      // If the server already gave us a name (e.g. "2S - A") use it
-      // directly — this guarantees the chip label matches the
-      // `attraction_seats.name` row we are tracking by attractionSeatId.
-      if (item.serverName) {
-        return {
-          ...item,
-          index,
-          seat,
-          baseName,
-          suffix: "",
-          displayName: item.serverName,
-          capacity: seat ? seat.rows * seat.cols : 0,
-          rows: seat?.rows ?? 0,
-          cols: seat?.cols ?? 0,
-          hasAisle: !!seat?.hasAisle,
-        };
-      }
+      // Base layout template name 
+      const baseName = seat
+        ? seat.name
+        : item.serverName
+          ? item.serverName.replace(/\s*-\s*\d+$/, "").trim()
+          : "Seat Layout";
 
-      // Use the instance's own assigned suffix, or fallback if multiple exist
       let suffix = item.suffix || "";
-      if (!suffix && totalForThisLayout > 1) {
-        suffix = ` - ${(index % 26) + 1}`;
-      } else if (totalForThisLayout <= 1) {
+      let displayName = "";
+
+      if (totalForThisLayout <= 1) {
+        // Solitary layout: keep serverName if present (e.g. "50 seat"), or baseName
+        displayName = item.serverName || baseName;
         suffix = "";
+      } else {
+        // Multiple instances of this layout template:
+        // If serverName ALREADY ends with " - <number>" (like "2S - 1", "2S - 2"),
+        // use that serverName directly to prevent duplicate suffixes like "2S - 1 - 1".
+        const serverHasNumber = item.serverName && /\s*-\s*\d+$/.test(item.serverName);
+
+        if (serverHasNumber) {
+          displayName = item.serverName!;
+          const match = item.serverName!.match(/\s*-\s*(\d+)$/);
+          suffix = match ? ` - ${match[1]}` : "";
+        } else {
+          // If no number in serverName (e.g. "50 seat" or a newly added seat),
+          // format with baseName + suffix (e.g. "50 seat - 1", "50 seat - 2")
+          if (!suffix) {
+            const occ = (occurrenceCounters[item.layoutId] || 0) + 1;
+            occurrenceCounters[item.layoutId] = occ;
+            suffix = ` - ${occ}`;
+          }
+          displayName = `${baseName}${suffix}`;
+        }
       }
 
       return {
@@ -572,7 +586,7 @@ export default function AddEditAttractionForm({
         seat,
         baseName,
         suffix,
-        displayName: `${baseName}${suffix}`,
+        displayName,
         capacity: seat ? seat.rows * seat.cols : 0,
         rows: seat?.rows ?? 0,
         cols: seat?.cols ?? 0,
@@ -647,25 +661,22 @@ export default function AddEditAttractionForm({
           (a, b) => Number(a.seatOrder ?? 0) - Number(b.seatOrder ?? 0)
         );
         setAllocatedSeats(
-          sorted.map((row, idx) => ({
-            instanceId:
-              row.id
-                ? `seat_${row.id}`
-                : `seat_${idx}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-            // The seat-layout TEMPLATE id (FK) — used for dropdown lookups
-            // and as the payload id when no attraction_seats row exists yet.
-            layoutId: row.seatLayoutId,
-            // The per-coach attraction_seats row id — what we send back
-            // in the PATCH payload's seatLayoutIds[*].id.
-            attractionSeatId: row.id,
-            // Server-provided display name e.g. "2S - A" — used directly
-            // as the chip's display name so it matches what the server stores.
-            serverName: row.name || undefined,
-            isDisabled: !row.isActive,
-            // Suffix is recovered from the server name when present, so
-            // re-orders don't lose the "- A"/"- B" labelling.
-            suffix: row.name ? "" : "",
-          }))
+          sorted.map((row, idx) => {
+            const rawName = row.name || "";
+            const numMatch = rawName.match(/\s*-\s*(\d+)$/);
+            const initialSuffix = numMatch ? ` - ${numMatch[1]}` : "";
+            return {
+              instanceId:
+                row.id
+                  ? `seat_${row.id}`
+                  : `seat_${idx}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              layoutId: row.seatLayoutId,
+              attractionSeatId: row.id,
+              serverName: rawName || undefined,
+              isDisabled: !row.isActive,
+              suffix: initialSuffix,
+            };
+          })
         );
       } else {
         const existingAllocations: any[] = (attractionToEdit as any).seatAllocations;
@@ -811,16 +822,31 @@ export default function AddEditAttractionForm({
 
   // Seat allocation actions
   const addSeatLayout = (layoutId: string) => {
-    // Find all existing items of this layoutId to find next available number
+    // Find all existing items of this layoutId
     const existingWithSameLayout = allocatedSeats.filter((s) => s.layoutId === layoutId);
+
+    // Compute which numeric suffixes are already in use
     const usedNumbers = new Set(
       existingWithSameLayout
-        .map((s) => Number((s.suffix || "").replace(/[^0-9]/g, "")))
+        .map((s) => {
+          const str = s.suffix || "";
+          const match = str.match(/-\s*(\d+)$/);
+          if (match) return Number(match[1]);
+
+          if (s.serverName) {
+            const serverMatch = s.serverName.match(/\s*-\s*(\d+)$/);
+            if (serverMatch) return Number(serverMatch[1]);
+          }
+
+          // If it was a solitary layout with no number (e.g. "50 seat"), it will be assigned 1
+          return 1;
+        })
         .filter((n) => Number.isFinite(n) && n > 0)
     );
 
+    // Find the first unused number for the new item
     let nextNumber = 1;
-    for (let i = 1; i <= 26; i++) {
+    for (let i = 1; i <= 50; i++) {
       if (!usedNumbers.has(i)) {
         nextNumber = i;
         break;
@@ -835,13 +861,21 @@ export default function AddEditAttractionForm({
     };
 
     setAllocatedSeats((prev) => {
-      // Ensure the first item also has "- 1" if this is the 2nd item added
-      return [...prev, newInstance].map((item) => {
-        if (item.layoutId === layoutId && !item.suffix) {
+      const updated = [...prev, newInstance].map((item) => {
+        if (item.layoutId !== layoutId) return item;
+        // If an existing item with the same layoutId has no numeric suffix
+        // (for example, a previously solitary layout like "50 seat"),
+        // give it "- 1" now that a sibling is added.
+        const hasExistingNumber =
+          (item.suffix && /-\s*\d+$/.test(item.suffix)) ||
+          (item.serverName && /\s*-\s*\d+$/.test(item.serverName));
+
+        if (!hasExistingNumber && item.instanceId !== newInstance.instanceId) {
           return { ...item, suffix: " - 1" };
         }
         return item;
       });
+      return updated;
     });
 
     setFormErrors((prev) => {
@@ -874,6 +908,18 @@ export default function AddEditAttractionForm({
     const label = displayName || item?.displayName || "this seat layout";
     const confirmed = await confirmDelete(`seat allocation "${label}"`);
     if (!confirmed) return;
+
+    // If the seat already exists on the server (attractionSeatId is present),
+    // call DELETE /api/admin/attraction-seats/:attractionSeatId
+    if (item?.attractionSeatId) {
+      try {
+        await deleteAttractionSeatMutation.mutateAsync(item.attractionSeatId);
+      } catch {
+        // Error toast is handled by the mutation's onError — don't remove from local state
+        return;
+      }
+    }
+
     setAllocatedSeats((prev) => prev.filter((s) => s.instanceId !== instanceId));
   };
 
@@ -1014,18 +1060,25 @@ export default function AddEditAttractionForm({
     const activeLayoutIds = activeAllocated.map((s) => s.layoutId);
     const assignedSeatNames = activeAllocated.map((s) => s.displayName);
 
-    // Build seatLayoutIds as array of objects with id, name, status, and position
-    // Include ALL allocated seats (both enabled and disabled) so backend can handle enable/disable.
-    // For each row, prefer the per-coach `attraction_seats.id` (attractionSeatId)
-    // when present — that's the row the server already created. For new
-    // allocations added in this session we still send the seat-layout TEMPLATE
-    // id (layoutId) as a fallback.
-    const seatLayoutIdsAsObjects = decoratedAllocatedSeats.map((seat, index) => ({
-      id: seat.attractionSeatId || seat.layoutId,
-      name: seat.displayName,
-      status: seat.isDisabled ? "inactive" : "active",
-      position: index + 1,
-    }));
+    // Build seatLayoutIds as array of objects:
+    // - Existing seats (loaded from attractionSeats) include attractionSeatId AND seatLayoutId.
+    // - Newly added seats (added in this session without attractionSeatId) include seatLayoutId without attractionSeatId.
+    const seatLayoutIdsAsObjects = decoratedAllocatedSeats.map((seat, index) => {
+      const item: {
+        attractionSeatId?: string;
+        seatLayoutId: string;
+        name: string;
+        status: string;
+        position: number;
+      } = {
+        ...(seat.attractionSeatId ? { attractionSeatId: seat.attractionSeatId } : {}),
+        seatLayoutId: seat.layoutId,
+        name: seat.displayName,
+        status: seat.isDisabled ? "inactive" : "active",
+        position: index + 1,
+      };
+      return item;
+    });
 
     // Build display-only timing string from the two time inputs
     const to12 = (t: string) => {
@@ -1083,6 +1136,7 @@ export default function AddEditAttractionForm({
         seatAllocations: decoratedAllocatedSeats.map((s) => ({
           instanceId: s.instanceId,
           layoutId: s.layoutId,
+          attractionSeatId: s.attractionSeatId,
           displayName: s.displayName,
           baseName: s.baseName,
           suffix: s.suffix,
