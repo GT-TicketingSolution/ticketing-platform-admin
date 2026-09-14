@@ -361,7 +361,7 @@ export async function GET(request: NextRequest) {
             reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
           })
           .from(staffSystemModulePermissions)
-          .where(eq(staffSystemModulePermissions.staffId, member.id)).limit(1);
+          .where(eq(staffSystemModulePermissions.staffId, member.id));
 
         // -----------------------------------------------
         // Staff attractions
