@@ -355,6 +355,14 @@ export async function GET(request: NextRequest) {
           .from(staffRoles)
           .where(eq(staffRoles.staffId, member.id));
 
+        const reportPermissions = await db
+          .select({
+            reportAccessTiming: staffSystemModulePermissions.reportAccessTiming,
+            reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
+          })
+          .from(staffSystemModulePermissions)
+          .where(eq(staffSystemModulePermissions.staffId, member.id)).limit(1);
+
         // -----------------------------------------------
         // Staff attractions
         // -----------------------------------------------
@@ -381,6 +389,7 @@ export async function GET(request: NextRequest) {
         return {
           ...member,
           roles,
+          reportPermissions,
           attractions: assignedAttractions,
         };
       }),
