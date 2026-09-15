@@ -12,6 +12,7 @@ import {
   attractions,
   staffSystemModulePermissions,
   systemModules,
+  bookings,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -38,6 +39,8 @@ const createStaffSchema = z.object({
   roles: z.array(z.string().min(1)).optional().default([]),
 
   attractionIds: z.array(z.string().uuid()).optional().default([]),
+
+  staffSystemModuleAllowedIds: z.array(z.string().uuid()).optional().default([]).optional().default([]),
 
   status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
 
@@ -81,24 +84,26 @@ async function grantStaffDefaultModulePermissions(
   staffId: string,
   reportAccessTiming?: number,
   reportAccessUnit?: string,
+  staffSystemModuleAllowedIds?: string[],
 ) {
   const STAFF_ALLOWED_MODULES = [
     "TICKET_BOOKING",
-    "BOOKINGS_VIEW",
-    "CUSTOMER_VIEW",
-    "SCANNER_USE",
+    "SCANNER",
+    "REPORTS"
   ];
 
   try {
     const staffModules = await db
       .select({
         id: systemModules.id,
+        name: systemModules.key,
       })
       .from(systemModules)
       .where(
         and(
-          inArray(systemModules.key, STAFF_ALLOWED_MODULES),
+          inArray(systemModules.id, staffSystemModuleAllowedIds ?? []),
           eq(systemModules.isActive, "ACTIVE"),
+          inArray(systemModules.key, STAFF_ALLOWED_MODULES),
         ),
       );
 
@@ -287,6 +292,8 @@ export async function GET(request: NextRequest) {
       if (staffIds.length === 0) {
         return success({
           items: [],
+          staffSystemModules: [],
+          staffTotalBookings: [],
 
           pagination: {
             page,
@@ -350,6 +357,22 @@ export async function GET(request: NextRequest) {
           .from(staffRoles)
           .where(eq(staffRoles.staffId, member.id));
 
+        const reportPermissions = await db
+          .select({
+            reportAccessTiming: staffSystemModulePermissions.reportAccessTiming,
+            reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
+          })
+          .from(staffSystemModulePermissions)
+          .where(eq(staffSystemModulePermissions.staffId, member.id)).limit(1);
+
+        const staffTotalBookings = await db
+          .select({
+            totalBookings: sql<number>`count(*)`,
+          })
+          .from(bookings)
+          .where(eq(bookings.createdBy, member.id))
+          .limit(1);
+
         // -----------------------------------------------
         // Staff attractions
         // -----------------------------------------------
@@ -376,10 +399,31 @@ export async function GET(request: NextRequest) {
         return {
           ...member,
           roles,
+          reportPermissions,
+          staffTotalBookings,
           attractions: assignedAttractions,
         };
       }),
     );
+
+    // Adding system module permissions to each staff member
+    const STAFF_ALLOWED_MODULES = [
+      "TICKET_BOOKING",
+      "SCANNER",
+      "REPORTS"
+    ];
+    const staffModules = await db
+      .select({
+        id: systemModules.id,
+        name: systemModules.key,
+      })
+      .from(systemModules)
+      .where(
+        and(
+          eq(systemModules.isActive, "ACTIVE"),
+          inArray(systemModules.key, STAFF_ALLOWED_MODULES),
+        ),
+      );
 
     // -----------------------------------------------------
     // Response
@@ -387,6 +431,7 @@ export async function GET(request: NextRequest) {
 
     return success({
       items: staffWithDetails,
+      staffSystemModules: staffModules,
 
       pagination: {
         page,
@@ -481,6 +526,7 @@ export async function POST(request: Request) {
       status,
       reportAccessTiming,
       reportAccessUnit,
+      staffSystemModuleAllowedIds,
     } = parsed.data;
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -667,6 +713,7 @@ export async function POST(request: Request) {
       staff.id,
       reportAccessTiming,
       reportAccessUnit,
+      staffSystemModuleAllowedIds
     );
 
     // -----------------------------------------------------
