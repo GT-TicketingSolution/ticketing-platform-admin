@@ -52,6 +52,7 @@ export async function fetchStaffList(params?: StaffQueryParams): Promise<StaffLi
     const total = payload.pagination?.total ?? payload.items.length;
     return {
       items: payload.items,
+      staffSystemModules: Array.isArray(payload.staffSystemModules) ? payload.staffSystemModules : [],
       pagination: payload.pagination || {
         page,
         limit,
@@ -63,6 +64,7 @@ export async function fetchStaffList(params?: StaffQueryParams): Promise<StaffLi
   if (Array.isArray(payload)) {
     return {
       items: payload,
+      staffSystemModules: [],
       pagination: {
         page,
         limit,
@@ -73,6 +75,7 @@ export async function fetchStaffList(params?: StaffQueryParams): Promise<StaffLi
   }
   return {
     items: [],
+    staffSystemModules: [],
     pagination: { page: 1, limit, total: 0, totalPages: 0 },
   };
 }
@@ -102,19 +105,6 @@ export function useStaffList(params?: StaffQueryParams) {
     placeholderData: keepPreviousData,
     staleTime: 0,
     refetchOnWindowFocus: true,
-  });
-}
-
-/**
- * Fetch a single staff member by ID (GET /api/admin/staff/:staffId)
- */
-export function useStaffMember(staffId: string, enabled = true) {
-  return useQuery<{ staff: StaffUser }>({
-    queryKey: staffKeys.detail(staffId),
-    queryFn: async () => {
-      return getData<{ staff: StaffUser }>(AppUrl.staff.get(staffId));
-    },
-    enabled: Boolean(staffId) && enabled,
   });
 }
 
