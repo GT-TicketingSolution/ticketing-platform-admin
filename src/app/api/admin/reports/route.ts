@@ -52,74 +52,82 @@ export async function GET(req: Request) {
     const toDate = params.get("toDate")?.trim();
 
     // =====================================================
-    // REQUIRED PARAMETERS
+    // OPTIONAL DATE RANGE
     // =====================================================
 
-    if (!fromDate || !toDate) {
+    // The range is optional, but must be complete when used:
+    // either both dates or neither. Without a range the report
+    // covers every record the caller can access.
+
+    if (Boolean(fromDate) !== Boolean(toDate)) {
       return failure(
-        "fromDate and toDate are required.",
+        "fromDate and toDate must be provided together.",
         400,
         "REPORT_DATE_TIME_REQUIRED",
       );
     }
 
-    // =====================================================
-    // DATE/TIME VALIDATION
-    // =====================================================
+    let startDateTime: Date | undefined;
+    let endDateTime: Date | undefined;
 
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (fromDate && toDate) {
+      // ===================================================
+      // DATE/TIME VALIDATION
+      // ===================================================
 
-    if (!dateRegex.test(fromDate)) {
-      return failure(
-        "Invalid fromDate. Expected format: YYYY-MM-DD.",
-        400,
-        "INVALID_FROM_DATE",
-      );
-    }
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
 
-    if (!dateRegex.test(toDate)) {
-      return failure(
-        "Invalid toDate. Expected format: YYYY-MM-DD.",
-        400,
-        "INVALID_TO_DATE",
-      );
-    }
+      if (!dateRegex.test(fromDate)) {
+        return failure(
+          "Invalid fromDate. Expected format: YYYY-MM-DD.",
+          400,
+          "INVALID_FROM_DATE",
+        );
+      }
 
-    const startDateTime = new Date(`${fromDate}T00:00:00.000+05:30`);
-    let endDateTime = new Date(`${toDate}T23:59:59.999+05:30`);
-    // const endDateTime = toDate;
+      if (!dateRegex.test(toDate)) {
+        return failure(
+          "Invalid toDate. Expected format: YYYY-MM-DD.",
+          400,
+          "INVALID_TO_DATE",
+        );
+      }
 
-    // if toDate is today, cap endDateTime at current time
-    if (toDate === new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })) {
-      endDateTime = new Date();
-    }
+      startDateTime = new Date(`${fromDate}T00:00:00.000+05:30`);
+      endDateTime = new Date(`${toDate}T23:59:59.999+05:30`);
 
-    if (Number.isNaN(startDateTime)) {
-      return failure(
-        "Invalid report start date/time.",
-        400,
-        "INVALID_REPORT_START_DATETIME",
-      );
-    }
+      // if toDate is today, cap endDateTime at current time
+      if (toDate === new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })) {
+        endDateTime = new Date();
+      }
 
-    if (Number.isNaN(endDateTime)) {
-      return failure(
-        "Invalid report end date/time.",
-        400,
-        "INVALID_REPORT_END_DATETIME",
-      );
-    }
+      if (Number.isNaN(startDateTime.getTime())) {
+        return failure(
+          "Invalid report start date/time.",
+          400,
+          "INVALID_REPORT_START_DATETIME",
+        );
+      }
 
-    // =====================================================
-    // DATE/TIME RANGE VALIDATION
-    // =====================================================
+      if (Number.isNaN(endDateTime.getTime())) {
+        return failure(
+          "Invalid report end date/time.",
+          400,
+          "INVALID_REPORT_END_DATETIME",
+        );
+      }
 
-    if (startDateTime > endDateTime) {
-      return failure(
-        "fromDate/fromTime cannot be later than toDate/toTime.",
-        400,
-        "INVALID_DATE_TIME_RANGE",
-      );
+      // ===================================================
+      // DATE/TIME RANGE VALIDATION
+      // ===================================================
+
+      if (startDateTime > endDateTime) {
+        return failure(
+          "fromDate/fromTime cannot be later than toDate/toTime.",
+          400,
+          "INVALID_DATE_TIME_RANGE",
+        );
+      }
     }
 
     // =====================================================
