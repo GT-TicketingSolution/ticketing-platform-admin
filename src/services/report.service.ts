@@ -1,13 +1,16 @@
 import {
   and,
+  desc,
   eq,
+  exists,
   gte,
-  inArray,
   lte,
   sql,
   isNotNull,
   type SQL,
 } from "drizzle-orm";
+
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 import { db } from "@/db";
 
@@ -926,9 +929,14 @@ export async function getTicketBreakdown(filter: ReportFilter) {
 type GetReportParams = {
   adminId: string;
   staffId?: string;
-  startDateTime: Date;
-  endDateTime: Date;
+
+  // Optional. When omitted, the report covers every record the caller can
+  // access (ADMIN/MANAGER: all time, STAFF: their full report access window).
+  startDateTime?: Date;
+  endDateTime?: Date;
 };
+
+const LATEST_TRANSACTIONS_PER_ATTRACTION = 6;
 
 export async function getReport({
   adminId,
@@ -991,6 +999,13 @@ export async function getReport({
       accessStart.setUTCDate(accessStart.getUTCDate() - reportAccessTiming);
     }
 
+    // No date range requested: staff can never see beyond their access
+    // window, so "everything accessible" means the whole window.
+    if (!startDateTime || !endDateTime) {
+      startDateTime = accessStart;
+      endDateTime = now;
+    }
+
     // INFO: Keep this log for future debugging. It will help us understand if the report access validation is working correctly.
     console.log("Logging this for future debugging:", {
       now: now,
@@ -1007,80 +1022,77 @@ export async function getReport({
   }
 
   // =====================================================
-  // FETCH ALL ATTRACTIONS
+  // REPORT SCOPE
   // =====================================================
 
-  const attractionRows = await db
-    .select({
-      id: attractions.id,
-      name: attractions.name,
-      type: attractions.type,
-      attractionManagementId: attractionManagement.id,
-    })
-    .from(attractions)
-    .innerJoin(
-      attractionManagement,
-      eq(attractionManagement.attractionId, attractions.id),
-    )
-    .where(eq(attractions.adminId, adminId));
+  // All filtering and aggregation happens in the database, so memory use
+  // stays flat no matter how many bookings fall inside the scope.
+  // Tenant scope: bookings -> attractionsAgainstBooking -> attractionManagement
+  // -> attractions.adminId (bookings has no adminId column).
+
+  const bookingFilters: SQL[] = [eq(bookings.isDeleted, false)];
+
+  if (startDateTime) bookingFilters.push(gte(bookings.createdAt, startDateTime));
+  if (endDateTime) bookingFilters.push(lte(bookings.createdAt, endDateTime));
+
+  // For queries that already join through to attractions.
+  const bookingScope: SQL[] = [
+    ...bookingFilters,
+    eq(attractions.adminId, adminId),
+  ];
+
+  const transactionScope: SQL[] = [
+    ...bookingScope,
+    eq(transactions.isDeleted, false),
+  ];
+
+  if (startDateTime) {
+    transactionScope.push(gte(transactions.createdAt, startDateTime));
+  }
+  if (endDateTime) {
+    transactionScope.push(lte(transactions.createdAt, endDateTime));
+  }
 
   // =====================================================
-  // FETCH BOOKINGS IN DATE/TIME RANGE
-  // AND SCOPE THEM TO CURRENT ADMIN
+  // FETCH ALL ATTRACTIONS + GRAND TOTALS
   // =====================================================
 
-  const bookingRows = await db
-    .selectDistinct({
-      id: bookings.id,
-      totalAmount: bookings.totalAmount,
-    })
-    .from(bookings)
-    .innerJoin(
-      attractionsAgainstBooking,
-      eq(attractionsAgainstBooking.bookingId, bookings.id),
-    )
-    .innerJoin(
-      attractionManagement,
-      eq(
-        attractionsAgainstBooking.attractionManagementId,
-        attractionManagement.id,
+  // Grand totals use EXISTS so a booking spanning several attractions is
+  // counted once without a DISTINCT over the joined rows.
+  const [attractionRows, [totals]] = await Promise.all([
+    db
+      .select({
+        id: attractions.id,
+        name: attractions.name,
+        type: attractions.type,
+        attractionManagementId: attractionManagement.id,
+      })
+      .from(attractions)
+      .innerJoin(
+        attractionManagement,
+        eq(attractionManagement.attractionId, attractions.id),
+      )
+      .where(eq(attractions.adminId, adminId)),
+
+    db
+      .select({
+        grandTotalBooking: sql<number>`count(*)::int`,
+        grandTotalAmount: sql<string>`coalesce(sum(${bookings.totalAmount}), 0)`,
+      })
+      .from(bookings)
+      .where(
+        and(...bookingFilters, tenantBookingExists(adminId, bookings.id)),
       ),
-    )
-    .innerJoin(
-      attractions,
-      eq(attractionManagement.attractionId, attractions.id),
-    )
-    .where(
-      and(
-        gte(bookings.createdAt, startDateTime),
-        lte(bookings.createdAt, endDateTime),
-        eq(bookings.isDeleted, false),
-        eq(attractions.adminId, adminId),
-      ),
-    );
+  ]);
 
-  const bookingIds = bookingRows.map((booking) => booking.id);
-
-  // =====================================================
-  // GRAND TOTAL AMOUNT
-  // =====================================================
-
-  const grandTotalAmount = bookingRows.reduce(
-    (sum, booking) => sum + Number(booking.totalAmount ?? 0),
-    0,
-  );
-
-  // =====================================================
-  // GRAND TOTAL BOOKINGS
-  // =====================================================
-
-  const grandTotalBooking = bookingRows.length;
+  const grandTotalBooking = Number(totals?.grandTotalBooking ?? 0);
+  const grandTotalAmount = Number(totals?.grandTotalAmount ?? 0);
 
   // =====================================================
   // NO BOOKINGS
   // =====================================================
 
-  if (!bookingIds.length) {
+  if (!grandTotalBooking) {
     return {
       attractions: attractionRows.map((attraction) => ({
         id: attraction.id,
@@ -1105,29 +1117,17 @@ export async function getReport({
   }
 
   // =====================================================
-  // ATTRACTIONS AGAINST BOOKINGS
+  // PER-ATTRACTION AMOUNTS
   // =====================================================
 
-  const attractionBookingRows = await db
+  const attractionTotalsQuery = db
     .select({
-      id: attractionsAgainstBooking.id,
-
-      bookingId: attractionsAgainstBooking.bookingId,
-
       attractionManagementId: attractionsAgainstBooking.attractionManagementId,
-
-      attractionSubtotal: attractionsAgainstBooking.attractionSubtotal,
-
-      attractionGst: attractionsAgainstBooking.attractionGst,
-
-      attractionRoundoff: attractionsAgainstBooking.attractionRoundoff,
-
-      attractionRoundOffGstAdj:
-        attractionsAgainstBooking.attractionRoundOffGstAdj,
-
-      attractionTotalAmount: attractionsAgainstBooking.attractionTotalAmount,
-
-      attractionName: attractions.name,
+      subtotal: sql<string>`coalesce(sum(${attractionsAgainstBooking.attractionSubtotal}), 0)`,
+      gst: sql<string>`coalesce(sum(${attractionsAgainstBooking.attractionGst}), 0)`,
+      roundoff: sql<string>`coalesce(sum(${attractionsAgainstBooking.attractionRoundoff}), 0)`,
+      roundOffGstAdj: sql<string>`coalesce(sum(${attractionsAgainstBooking.attractionRoundOffGstAdj}), 0)`,
+      totalAmount: sql<string>`coalesce(sum(${attractionsAgainstBooking.attractionTotalAmount}), 0)`,
     })
     .from(attractionsAgainstBooking)
     .innerJoin(bookings, eq(attractionsAgainstBooking.bookingId, bookings.id))
@@ -1138,80 +1138,63 @@ export async function getReport({
         attractionManagement.id,
       ),
     )
-    .innerJoin(
-      attractions,
-      eq(attractionManagement.attractionId, attractions.id),
-    )
-    .where(
-      and(
-        inArray(attractionsAgainstBooking.bookingId, bookingIds),
-        eq(bookings.isDeleted, false),
-        eq(attractions.adminId, adminId),
-      ),
-    );
-
-  const attractionBookingIds = attractionBookingRows.map((row) => row.id);
+    .innerJoin(attractions, eq(attractionManagement.attractionId, attractions.id))
+    .where(and(...bookingScope))
+    .groupBy(attractionsAgainstBooking.attractionManagementId);
 
   // =====================================================
-  // CATEGORY BOOKING DATA
+  // PER-ATTRACTION CATEGORY TICKETS
   // =====================================================
 
-  const categoryBookingRows = attractionBookingIds.length
-    ? await db
-        .select({
-          id: categoryOfAttractionAgainstBooking.id,
-
-          attractionAgainstBookingId:
-            categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
-
-          bookingId: categoryOfAttractionAgainstBooking.bookingId,
-
-          categoryId: categoryOfAttractionAgainstBooking.categoryId,
-
-          noOfVisitors: categoryOfAttractionAgainstBooking.noOfVisitors,
-
-          categoryName: attractionCategory.name,
-
-          basePrice: attractionCategory.basePrice,
-        })
-        .from(categoryOfAttractionAgainstBooking)
-        .innerJoin(
-          attractionCategory,
-          eq(
-            categoryOfAttractionAgainstBooking.categoryId,
-            attractionCategory.id,
-          ),
-        )
-        .where(
-          inArray(
-            categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
-            attractionBookingIds,
-          ),
-        )
-    : [];
-
-  // =====================================================
-  // TRANSACTIONS
-  // ONLY FOR THE BOOKINGS IN THIS REPORT
-  // =====================================================
-
-  const transactionRows = await db
+  const categoriesQuery = db
     .select({
-      invoiceId: transactions.invoiceNumber,
-
-      customerName: bookings.customerName,
-
-      amount: transactions.amount,
-
-      paymentMode: transactions.paymentMode,
-
-      status: transactions.status,
-
-      createdAt: transactions.createdAt,
-
-      bookingId: transactions.bookingId,
-
       attractionManagementId: attractionsAgainstBooking.attractionManagementId,
+      name: attractionCategory.name,
+      basePrice: attractionCategory.basePrice,
+      noOfTickets: sql<number>`coalesce(sum(${categoryOfAttractionAgainstBooking.noOfVisitors}), 0)::int`,
+    })
+    .from(categoryOfAttractionAgainstBooking)
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(
+        categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+        attractionsAgainstBooking.id,
+      ),
+    )
+    .innerJoin(
+      attractionCategory,
+      eq(categoryOfAttractionAgainstBooking.categoryId, attractionCategory.id),
+    )
+    .innerJoin(bookings, eq(attractionsAgainstBooking.bookingId, bookings.id))
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(attractions, eq(attractionManagement.attractionId, attractions.id))
+    .where(and(...bookingScope))
+    .groupBy(
+      attractionsAgainstBooking.attractionManagementId,
+      categoryOfAttractionAgainstBooking.categoryId,
+      attractionCategory.name,
+      attractionCategory.basePrice,
+    )
+    .orderBy(attractionCategory.name);
+
+  // =====================================================
+  // PER-ATTRACTION PAYMENT DISTRIBUTION
+  // =====================================================
+
+  // Grouped per attraction line, so each transaction counts once for every
+  // attraction its booking contains.
+  const paymentsQuery = db
+    .select({
+      attractionManagementId: attractionsAgainstBooking.attractionManagementId,
+      paymentMode: transactions.paymentMode,
+      count: sql<number>`count(*)::int`,
+      totalAmount: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
     })
     .from(transactions)
     .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
@@ -1226,25 +1209,115 @@ export async function getReport({
         attractionManagement.id,
       ),
     )
-    .innerJoin(
-      attractions,
-      eq(attractionManagement.attractionId, attractions.id),
+    .innerJoin(attractions, eq(attractionManagement.attractionId, attractions.id))
+    .where(and(...transactionScope))
+    .groupBy(
+      attractionsAgainstBooking.attractionManagementId,
+      transactions.paymentMode,
     )
-    .where(
-      and(
-        inArray(transactions.bookingId, bookingIds),
+    .orderBy(transactions.paymentMode);
 
-        gte(transactions.createdAt, startDateTime),
+  // =====================================================
+  // LATEST TRANSACTIONS PER ATTRACTION
+  // =====================================================
 
-        lte(transactions.createdAt, endDateTime),
-
-        eq(transactions.isDeleted, false),
-
-        eq(bookings.isDeleted, false),
-
-        eq(attractions.adminId, adminId),
+  // Ranked in SQL so only the top rows per attraction leave the database.
+  const rankedTransactions = db
+    .select({
+      attractionManagementId: attractionsAgainstBooking.attractionManagementId,
+      invoiceId: transactions.invoiceNumber,
+      customerName: bookings.customerName,
+      amount: transactions.amount,
+      paymentMode: transactions.paymentMode,
+      status: transactions.status,
+      createdAt: transactions.createdAt,
+      rowNumber: sql<number>`row_number() over (partition by ${attractionsAgainstBooking.attractionManagementId} order by ${transactions.createdAt} desc)`.as(
+        "row_number",
       ),
-    );
+    })
+    .from(transactions)
+    .innerJoin(bookings, eq(transactions.bookingId, bookings.id))
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(attractionsAgainstBooking.bookingId, bookings.id),
+    )
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(attractions, eq(attractionManagement.attractionId, attractions.id))
+    .where(and(...transactionScope))
+    .as("ranked_transactions");
+
+  const latestTransactionsQuery = db
+    .select({
+      attractionManagementId: rankedTransactions.attractionManagementId,
+      invoiceId: rankedTransactions.invoiceId,
+      customerName: rankedTransactions.customerName,
+      amount: rankedTransactions.amount,
+      paymentMode: rankedTransactions.paymentMode,
+      status: rankedTransactions.status,
+      createdAt: rankedTransactions.createdAt,
+    })
+    .from(rankedTransactions)
+    .where(
+      lte(rankedTransactions.rowNumber, LATEST_TRANSACTIONS_PER_ATTRACTION),
+    )
+    .orderBy(desc(rankedTransactions.createdAt));
+
+  // =====================================================
+  // INVOICE RANGE
+  // =====================================================
+
+  // Limited to transactions of this tenant's bookings.
+  const invoiceRangeConditions: SQL[] = [
+    tenantBookingExists(adminId, transactions.bookingId),
+  ];
+
+  if (startDateTime) {
+    invoiceRangeConditions.push(gte(transactions.createdAt, startDateTime));
+  }
+  if (endDateTime) {
+    invoiceRangeConditions.push(lte(transactions.createdAt, endDateTime));
+  }
+
+  const invoiceRangeQuery = db
+    .select({
+      from: sql<string | null>`MIN(${transactions.invoiceNumber})`,
+      to: sql<string | null>`MAX(${transactions.invoiceNumber})`,
+    })
+    .from(transactions)
+    .where(and(...invoiceRangeConditions));
+
+  // The queries above are independent; run them concurrently.
+  const [
+    attractionTotalRows,
+    categoryRows,
+    paymentRows,
+    latestTransactionRows,
+    invoiceRange,
+  ] = await Promise.all([
+    attractionTotalsQuery,
+    categoriesQuery,
+    paymentsQuery,
+    latestTransactionsQuery,
+    invoiceRangeQuery,
+  ]);
+
+  // =====================================================
+  // GROUP RESULTS BY ATTRACTION
+  // =====================================================
+
+  const totalsByAttraction = new Map(
+    attractionTotalRows.map((row) => [row.attractionManagementId, row]),
+  );
+
+  const categoriesByAttraction = groupByAttraction(categoryRows);
+  const paymentsByAttraction = groupByAttraction(paymentRows);
+  const transactionsByAttraction = groupByAttraction(latestTransactionRows);
 
   // =====================================================
   // BOOKINGS
@@ -1252,164 +1325,46 @@ export async function getReport({
   // =====================================================
 
   const attractionAgainstBookingReport = attractionRows.map((attraction) => {
-    const attractionBookings = attractionBookingRows.filter(
-      (row) => row.attractionManagementId === attraction.attractionManagementId,
+    const attractionTotals = totalsByAttraction.get(
+      attraction.attractionManagementId,
     );
-
-    // ===================================================
-    // CATEGORY DATA
-    // ===================================================
-
-    const attractionBookingIdSet = new Set(
-      attractionBookings.map((row) => row.id),
-    );
-
-    const categories = categoryBookingRows.filter((row) =>
-      attractionBookingIdSet.has(row.attractionAgainstBookingId),
-    );
-
-    const categoryMap = new Map<
-      string,
-      {
-        name: string;
-        noOfTickets: number;
-        basePrice: number;
-      }
-    >();
-
-    for (const category of categories) {
-      const existing = categoryMap.get(category.categoryId);
-
-      const noOfTickets = Number(category.noOfVisitors ?? 0);
-      const basePrice = Number(category.basePrice ?? 0);
-
-      if (existing) {
-        existing.noOfTickets += noOfTickets;
-      } else {
-        categoryMap.set(category.categoryId, {
-          name: category.categoryName,
-          noOfTickets,
-          basePrice,
-        });
-      }
-    }
-
-    // ===================================================
-    // ATTRACTION SUBTOTAL
-    // ===================================================
-
-    const attractionSubtotal = attractionBookings.reduce(
-      (sum, row) => sum + Number(row.attractionSubtotal ?? 0),
-      0,
-    );
-
-    // ===================================================
-    // ATTRACTION GST
-    // ===================================================
-
-    const attractionGst = attractionBookings.reduce(
-      (sum, row) => sum + Number(row.attractionGst ?? 0),
-      0,
-    );
-
-    // ===================================================
-    // ATTRACTION ROUNDOFF
-    // ===================================================
-
-    const attractionRoundoff = attractionBookings.reduce(
-      (sum, row) => sum + Number(row.attractionRoundoff ?? 0),
-      0,
-    );
-
-    // ===================================================
-    // ATTRACTION ROUND OFF GST ADJUSTMENT
-    // ===================================================
-
-    const attractionRoundOffGstAdj = attractionBookings.reduce(
-      (sum, row) => sum + Number(row.attractionRoundOffGstAdj ?? 0),
-      0,
-    );
-
-    // ===================================================
-    // ATTRACTION TOTAL AMOUNT
-    // ===================================================
-
-    const attractionTotalAmount = attractionBookings.reduce(
-      (sum, row) => sum + Number(row.attractionTotalAmount ?? 0),
-      0,
-    );
-
-    // ===================================================
-    // PAYMENT DISTRIBUTION
-    // ===================================================
-
-    const attractionBookingIdSetForPayment = new Set(
-      attractionBookings.map((row) => row.bookingId),
-    );
-
-    const attractionTransactions = transactionRows.filter((transaction) =>
-      attractionBookingIdSetForPayment.has(transaction.bookingId),
-    );
-
-    const paymentMap = new Map<
-      string,
-      {
-        count: number;
-        totalAmount: number;
-      }
-    >();
-
-    for (const transaction of attractionTransactions) {
-      const paymentMode = transaction.paymentMode;
-      const amount = Number(transaction.amount ?? 0);
-
-      const existing = paymentMap.get(paymentMode);
-
-      if (existing) {
-        existing.count += 1;
-        existing.totalAmount += amount;
-      } else {
-        paymentMap.set(paymentMode, {
-          count: 1,
-          totalAmount: amount,
-        });
-      }
-    }
-
-    // ===================================================
-    // ATTRACTION AGAINST BOOKING RESPONSE
-    // ===================================================
 
     return {
       attraction_management_id: attraction.attractionManagementId,
 
-      category_of_attraction_against_booking: Array.from(
-        categoryMap.values(),
+      category_of_attraction_against_booking: (
+        categoriesByAttraction.get(attraction.attractionManagementId) ?? []
       ).map((category) => ({
         name: category.name,
 
-        no_of_tickets: category.noOfTickets,
+        no_of_tickets: Number(category.noOfTickets ?? 0),
 
-        base_price: category.basePrice.toFixed(2),
+        base_price: Number(category.basePrice ?? 0).toFixed(2),
       })),
 
-      attraction_sub_total: attractionSubtotal.toFixed(2),
+      attraction_sub_total: Number(attractionTotals?.subtotal ?? 0).toFixed(2),
 
-      attraction_gst_total: attractionGst.toFixed(2),
+      attraction_gst_total: Number(attractionTotals?.gst ?? 0).toFixed(2),
 
-      attraction_roundoff_total: attractionRoundoff.toFixed(2),
-
-      attraction_round_off_gst_adj_total: attractionRoundOffGstAdj.toFixed(2),
-
-      attraction_grand_total: attractionTotalAmount.toFixed(2),
-
-      payment_distribution: Array.from(paymentMap.entries()).map(
-        ([paymentMode, data]) => ({
-          payment_mode: paymentMode,
-          count: data.count,
-          total_amount: data.totalAmount.toFixed(2),
-        }),
+      attraction_roundoff_total: Number(attractionTotals?.roundoff ?? 0).toFixed(
+        2,
       ),
+
+      attraction_round_off_gst_adj_total: Number(
+        attractionTotals?.roundOffGstAdj ?? 0,
+      ).toFixed(2),
+
+      attraction_grand_total: Number(attractionTotals?.totalAmount ?? 0).toFixed(
+        2,
+      ),
+
+      payment_distribution: (
+        paymentsByAttraction.get(attraction.attractionManagementId) ?? []
+      ).map((payment) => ({
+        payment_mode: payment.paymentMode,
+        count: Number(payment.count ?? 0),
+        total_amount: Number(payment.totalAmount ?? 0).toFixed(2),
+      })),
     };
   });
 
@@ -1417,57 +1372,33 @@ export async function getReport({
   // TOP 6 TRANSACTIONS AGAINST EACH ATTRACTION
   // =====================================================
 
-  // Invoice range from ALL transactions
-  const invoiceRange = await db
-    .select({
-      from: sql<number>`MIN(${transactions.invoiceNumber})`,
-      to: sql<number>`MAX(${transactions.invoiceNumber})`,
-    })
-    .from(transactions)
-    .where(
-      and(
-        gte(transactions.createdAt, startDateTime),
-        lte(transactions.createdAt, endDateTime),
-      ),
-    );
+  const attractionTransactionsReport = attractionRows.map((attraction) => ({
+    attraction_management_id: attraction.attractionManagementId,
 
-  const attractionTransactionsReport = attractionRows.map((attraction) => {
-    const attractionTransactions = transactionRows
-      .filter(
-        (transaction) =>
-          transaction.attractionManagementId ===
-          attraction.attractionManagementId,
-      )
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
+    invoice_range: invoiceRange,
 
-    // Only return latest 6 transactions
-    const latestTransactions = attractionTransactions.slice(0, 6);
+    transactions: (
+      transactionsByAttraction.get(attraction.attractionManagementId) ?? []
+    ).map((transaction) => {
+      const createdAt = new Date(transaction.createdAt);
 
-    return {
-      attraction_management_id: attraction.attractionManagementId,
-
-      invoice_range: invoiceRange,
-
-      transactions: latestTransactions.map((transaction) => ({
+      return {
         invoice_id: transaction.invoiceId,
 
         customer_name: transaction.customerName,
 
-        date: transaction.createdAt.toISOString().split("T")[0],
+        date: createdAt.toISOString().split("T")[0],
 
-        time: transaction.createdAt.toISOString().split("T")[1].substring(0, 8),
+        time: createdAt.toISOString().split("T")[1].substring(0, 8),
 
         payment_mode: transaction.paymentMode,
 
         amount: Number(transaction.amount ?? 0).toFixed(2),
 
         status: transaction.status,
-      })),
-    };
-  });
+      };
+    }),
+  }));
 
   // =====================================================
   // FINAL RESPONSE
@@ -1493,4 +1424,51 @@ export async function getReport({
 
     transactions: attractionTransactionsReport,
   };
+}
+
+/**
+ * EXISTS condition: the given booking has at least one attraction line
+ * belonging to this admin's attractions (bookings has no adminId column).
+ */
+function tenantBookingExists(adminId: string, bookingId: AnyPgColumn) {
+  return exists(
+    db
+      .select({ one: sql`1` })
+      .from(attractionsAgainstBooking)
+      .innerJoin(
+        attractionManagement,
+        eq(
+          attractionsAgainstBooking.attractionManagementId,
+          attractionManagement.id,
+        ),
+      )
+      .innerJoin(
+        attractions,
+        eq(attractionManagement.attractionId, attractions.id),
+      )
+      .where(
+        and(
+          eq(attractionsAgainstBooking.bookingId, bookingId),
+          eq(attractions.adminId, adminId),
+        ),
+      ),
+  );
+}
+
+function groupByAttraction<T extends { attractionManagementId: string }>(
+  rows: T[],
+) {
+  const grouped = new Map<string, T[]>();
+
+  for (const row of rows) {
+    const group = grouped.get(row.attractionManagementId);
+
+    if (group) {
+      group.push(row);
+    } else {
+      grouped.set(row.attractionManagementId, [row]);
+    }
+  }
+
+  return grouped;
 }

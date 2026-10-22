@@ -342,7 +342,7 @@ export function buildOverallSummary(
           hasSeating: attrObj.hasSeating || false,
           seatLayoutId: attrObj.seatLayoutId || null,
           seatLayouts: attrObj.seatLayouts || [],
-          seating: master.seating ?? { adult: 1, child: 1, student: 1, senior: 1, foreigner: 1 },
+          seating: attrObj.seating ?? { adult: 1, child: 1, student: 1, senior: 1, foreigner: 1 },
         },
         totalRevenue: item.totalRevenue,
         totalTicketsSold: item.totalTickets,
