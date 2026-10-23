@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Search,
   Plus,
@@ -18,6 +18,7 @@ import { confirmDelete } from "@/lib/notify";
 import ExportButtons from "@/components/ui/ExportButtons";
 import { GlobalDataTable, GlobalColumn } from "@/components/ui/GlobalDataTable";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import {
   useCustomerList,
   fetchCustomerList,
@@ -42,7 +43,7 @@ export default function CustomerManagementPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [pageSize, setPageSize] = useState(10);
 
   // Modals state
   const [isAddEditModalOpen, setIsAddEditModalOpen] = useState(false);
@@ -58,22 +59,36 @@ export default function CustomerManagementPage() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Reset to page 1 on search change
+  useInitFromUrl({
+    page: (v) => { const n = Number(v); if (n > 0) setCurrentPage(n); },
+    limit: (v) => { const n = Number(v); if (n > 0) setPageSize(n); },
+    search: (v) => { setSearchTerm(v); setDebouncedSearch(v); },
+  });
+
+  const isInitialFilterMount = useRef(true);
+  // Reset to page 1 on search change (skip initial mount)
   useEffect(() => {
+    if (isInitialFilterMount.current) {
+      isInitialFilterMount.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [debouncedSearch]);
 
-  // ── Queries & Mutations ───────────────────────────────────────────────────
+  const customerQueryParams = {
+    page: currentPage,
+    limit: pageSize,
+    search: debouncedSearch || undefined,
+  };
+
+  useSyncParamsToUrl(customerQueryParams);
+
   const {
     data: customerData,
     isLoading,
     isError,
   } = useCustomerList(
-    {
-      page: currentPage,
-      limit: itemsPerPage,
-      search: debouncedSearch || undefined,
-    },
+    customerQueryParams,
     !isStaff // Don't query if staff
   );
 
@@ -84,7 +99,7 @@ export default function CustomerManagementPage() {
   const customers: CustomerItem[] = customerData?.items ?? [];
   const pagination = customerData?.pagination ?? {
     page: 1,
-    limit: itemsPerPage,
+    limit: pageSize,
     total: 0,
     totalPages: 0,
   };
@@ -154,7 +169,7 @@ export default function CustomerManagementPage() {
     };
 
     if (scope === "current") {
-      const res = await fetchCustomerList({ ...base, page: currentPage, limit: itemsPerPage });
+      const res = await fetchCustomerList({ ...base, page: currentPage, limit: pageSize });
       return res.items;
     } else {
       return await fetchAllPages<CustomerItem>((page, limit) =>
@@ -181,7 +196,7 @@ export default function CustomerManagementPage() {
         filename: `Customers_${scopeLabel}_${dateKey}.pdf`,
         orientation: "portrait",
         columns: [
-          { header: "#", accessor: (_, i) => (scope === "all" ? i + 1 : (currentPage - 1) * itemsPerPage + i + 1), width: "40px" },
+          { header: "#", accessor: (_, i) => (scope === "all" ? i + 1 : (currentPage - 1) * pageSize + i + 1), width: "40px" },
           { header: "Customer Name", accessor: (c) => c.name || "-" },
           { header: "Mobile Number", accessor: (c) => c.mobile || "-" },
           { header: "GSTN", accessor: (c) => c.gstn || "-" },
@@ -212,7 +227,7 @@ export default function CustomerManagementPage() {
       const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
       const headers = ["#", "Customer Name", "Mobile Number", "GSTN"];
       const rows = items.map((c, i) => [
-        scope === "all" ? i + 1 : (currentPage - 1) * itemsPerPage + i + 1,
+        scope === "all" ? i + 1 : (currentPage - 1) * pageSize + i + 1,
         c.name || "-",
         c.mobile || "-",
         c.gstn || "-",
@@ -528,9 +543,10 @@ export default function CustomerManagementPage() {
         columns={columns}
         data={customers}
         keyExtractor={(item) => item.id}
-        pageSize={itemsPerPage}
+        pageSize={pageSize}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
+        onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1); }}
         totalItems={pagination.total}
         totalPages={pagination.totalPages}
         showSNo={true}

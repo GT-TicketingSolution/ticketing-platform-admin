@@ -20,6 +20,7 @@ import ExportButtons from "@/components/ui/ExportButtons";
 import { colors, typography } from "@/lib/theme";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import { useAttractions } from "@/hooks/useManagerQueries";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import {
   useComplimentaryPassList,
   fetchComplimentaryPassList,
@@ -103,7 +104,6 @@ function StatusBadge({ status }: { status?: string }) {
   );
 }
 
-const PAGE_SIZE = 10;
 
 export default function ComplimentaryPassesPage() {
   const { showToast } = useToast();
@@ -144,13 +144,45 @@ export default function ComplimentaryPassesPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [passPage, setPassPage] = useState(1);
+  const [passPageSize, setPassPageSize] = useState(10);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedPassSearch(passSearch), 400);
     return () => clearTimeout(timer);
   }, [passSearch]);
 
+  useInitFromUrl({
+    tab: (v) => { if (v === "passes" || v === "references") setActiveTab(v); },
+    page: (v) => {
+      const n = Number(v);
+      if (n > 0) {
+        if (activeTab === "references") setRefPage(n);
+        else setPassPage(n);
+      }
+    },
+    limit: (v) => {
+      const n = Number(v);
+      if (n > 0) {
+        if (activeTab === "references") setRefPageSize(n);
+        else setPassPageSize(n);
+      }
+    },
+    search: (v) => {
+      if (activeTab === "references") { setRefSearch(v); setDebouncedRefSearch(v); }
+      else { setPassSearch(v); setDebouncedPassSearch(v); }
+    },
+    attractionId: (v) => setSelectedAttraction(v),
+    status: (v) => setSelectedPassStatus(v),
+    fromDate: (v) => setFromDate(v),
+    toDate: (v) => setToDate(v),
+  });
+
+  const isInitialPassMount = useRef(true);
   useEffect(() => {
+    if (isInitialPassMount.current) {
+      isInitialPassMount.current = false;
+      return;
+    }
     setPassPage(1);
   }, [debouncedPassSearch, selectedAttraction, selectedPassStatus, fromDate, toDate]);
 
@@ -158,13 +190,19 @@ export default function ComplimentaryPassesPage() {
   const [refSearch, setRefSearch] = useState("");
   const [debouncedRefSearch, setDebouncedRefSearch] = useState("");
   const [refPage, setRefPage] = useState(1);
+  const [refPageSize, setRefPageSize] = useState(10);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedRefSearch(refSearch), 400);
     return () => clearTimeout(timer);
   }, [refSearch]);
 
+  const isInitialRefMount = useRef(true);
   useEffect(() => {
+    if (isInitialRefMount.current) {
+      isInitialRefMount.current = false;
+      return;
+    }
     setRefPage(1);
   }, [debouncedRefSearch]);
 
@@ -177,7 +215,7 @@ export default function ComplimentaryPassesPage() {
   // Passes query
   const passQueryParams = {
     page: passPage,
-    limit: PAGE_SIZE,
+    limit: passPageSize,
     search: debouncedPassSearch || undefined,
     attractionId: selectedAttraction !== "ALL" ? selectedAttraction : undefined,
     fromDate: fromDate || undefined,
@@ -190,12 +228,12 @@ export default function ComplimentaryPassesPage() {
   } = useComplimentaryPassList(passQueryParams);
 
   const passes = passesResponse?.items ?? [];
-  const passPagination = passesResponse?.pagination ?? { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 };
+  const passPagination = passesResponse?.pagination ?? { page: 1, limit: passPageSize, total: 0, totalPages: 0 };
 
   // References query
   const refQueryParams = {
     page: refPage,
-    limit: PAGE_SIZE,
+    limit: refPageSize,
     search: debouncedRefSearch || undefined,
   };
   const {
@@ -204,7 +242,9 @@ export default function ComplimentaryPassesPage() {
   } = useReferenceList(refQueryParams);
 
   const references = referencesResponse?.items ?? [];
-  const refPagination = referencesResponse?.pagination ?? { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 };
+  const refPagination = referencesResponse?.pagination ?? { page: 1, limit: refPageSize, total: 0, totalPages: 0 };
+
+  useSyncParamsToUrl(activeTab === "passes" ? passQueryParams : refQueryParams);
 
   // All references for dropdown selection in Complimentary Pass form
   const { data: allRefsResponse } = useReferenceList({ page: 1, limit: 100 });
@@ -306,7 +346,7 @@ export default function ComplimentaryPassesPage() {
     };
 
     if (scope === "current") {
-      const res = await fetchComplimentaryPassList({ ...base, page: passPage, limit: PAGE_SIZE });
+      const res = await fetchComplimentaryPassList({ ...base, page: passPage, limit: passPageSize });
       return res.items;
     } else {
       return await fetchAllPages<ComplimentaryPass>((page, limit) =>
@@ -333,7 +373,7 @@ export default function ComplimentaryPassesPage() {
         filename: `Complimentary_Passes_${scopeLabel}_${dateKey}.pdf`,
         orientation: "landscape",
         columns: [
-          { header: "#", accessor: (_, idx) => (scope === "all" ? idx + 1 : idx + 1 + (passPage - 1) * PAGE_SIZE), width: "35px" },
+          { header: "#", accessor: (_, idx) => (scope === "all" ? idx + 1 : idx + 1 + (passPage - 1) * passPageSize), width: "35px" },
           { header: "Pass ID", accessor: (p) => p.passId || p.id },
           { header: "Visitor Name", accessor: (p) => p.visitorName || "-" },
           { header: "Mobile", accessor: (p) => p.mobile || "-" },
@@ -370,7 +410,7 @@ export default function ComplimentaryPassesPage() {
       const scopeLabel = scope === "all" ? "All" : `Page_${passPage}`;
       const headers = ["S.No", "Pass ID", "Visitor Name", "Mobile", "Attraction", "Visitors", "Reference", "Visit Date", "Status"];
       const rows = items.map((p, idx) => [
-        scope === "all" ? idx + 1 : idx + 1 + (passPage - 1) * PAGE_SIZE,
+        scope === "all" ? idx + 1 : idx + 1 + (passPage - 1) * passPageSize,
         p.passId || p.id,
         p.visitorName || "-",
         p.mobile || "-",
@@ -401,7 +441,7 @@ export default function ComplimentaryPassesPage() {
     };
 
     if (scope === "current") {
-      const res = await fetchReferenceList({ ...base, page: refPage, limit: PAGE_SIZE });
+      const res = await fetchReferenceList({ ...base, page: refPage, limit: refPageSize });
       return res.items;
     } else {
       return await fetchAllPages<Reference>((page, limit) =>
@@ -428,7 +468,7 @@ export default function ComplimentaryPassesPage() {
         filename: `References_Master_${scopeLabel}_${dateKey}.pdf`,
         orientation: "landscape",
         columns: [
-          { header: "#", accessor: (_, idx) => (scope === "all" ? idx + 1 : idx + 1 + (refPage - 1) * PAGE_SIZE), width: "35px" },
+          { header: "#", accessor: (_, idx) => (scope === "all" ? idx + 1 : idx + 1 + (refPage - 1) * refPageSize), width: "35px" },
           { header: "Reference Name", accessor: (r) => r.referenceName || "-" },
           { header: "Department / Organization", accessor: (r) => r.department || "-" },
           { header: "Contact Person", accessor: (r) => r.contactPerson || "-" },
@@ -462,7 +502,7 @@ export default function ComplimentaryPassesPage() {
       const scopeLabel = scope === "all" ? "All" : `Page_${refPage}`;
       const headers = ["S.No", "Reference Name", "Department / Organization", "Contact Person", "Post / Designation", "Mobile", "Status"];
       const rows = items.map((r, idx) => [
-        scope === "all" ? idx + 1 : idx + 1 + (refPage - 1) * PAGE_SIZE,
+        scope === "all" ? idx + 1 : idx + 1 + (refPage - 1) * refPageSize,
         r.referenceName || "-",
         r.department || "-",
         r.contactPerson || "-",
@@ -1167,9 +1207,10 @@ export default function ComplimentaryPassesPage() {
           columns={passColumns}
           data={passes}
           keyExtractor={(item, index) => item.id || `pass-row-${index}`}
-          pageSize={PAGE_SIZE}
+          pageSize={passPageSize}
           currentPage={passPage}
           onPageChange={setPassPage}
+          onPageSizeChange={(size) => { setPassPageSize(size); setPassPage(1); }}
           totalItems={passPagination.total}
           totalPages={passPagination.totalPages}
           showSNo={true}
@@ -1243,9 +1284,10 @@ export default function ComplimentaryPassesPage() {
           columns={refColumns}
           data={references}
           keyExtractor={(item, index) => item.id || `ref-row-${index}`}
-          pageSize={PAGE_SIZE}
+          pageSize={refPageSize}
           currentPage={refPage}
           onPageChange={setRefPage}
+          onPageSizeChange={(size) => { setRefPageSize(size); setRefPage(1); }}
           totalItems={refPagination.total}
           totalPages={refPagination.totalPages}
           showSNo={true}

@@ -35,6 +35,7 @@ interface GlobalDataTableProps<T> {
   data: T[];
   keyExtractor: (item: T, index: number) => string | number;
   pageSize?: number;
+  onPageSizeChange?: (size: number) => void;
   currentPage?: number;
   onPageChange?: (page: number) => void;
   totalItems?: number;
@@ -64,11 +65,14 @@ interface GlobalDataTableProps<T> {
   defaultSort?: SortState;
 }
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+
 export function GlobalDataTable<T>({
   columns,
   data,
   keyExtractor,
   pageSize = 10,
+  onPageSizeChange,
   currentPage: propCurrentPage,
   onPageChange,
   totalItems: propTotalItems,
@@ -503,7 +507,54 @@ export function GlobalDataTable<T>({
           </span>
 
           {/* Page Controls */}
-          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            {/* Rows per page */}
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span
+                style={{
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 500,
+                  fontSize: "10px",
+                  color: "rgba(81, 82, 82, 0.69)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Rows per page:
+              </span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  const newSize = Number(e.target.value);
+                  if (onPageSizeChange) onPageSizeChange(newSize);
+                }}
+                style={{
+                  height: "30px",
+                  padding: "0 22px 0 8px",
+                  background: "#FFFFFF",
+                  border: "1px solid rgba(179, 175, 175, 0.75)",
+                  borderRadius: "4px",
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 500,
+                  fontSize: "10px",
+                  color: "#374151",
+                  cursor: "pointer",
+                  appearance: "none",
+                  WebkitAppearance: "none",
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23374151'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "right 6px center",
+                  minWidth: "58px",
+                }}
+              >
+                {PAGE_SIZE_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Separator */}
+            <div style={{ width: "1px", height: "18px", background: "rgba(179, 175, 175, 0.5)", margin: "0 4px" }} />
+
             {/* Previous */}
             <button
               type="button"

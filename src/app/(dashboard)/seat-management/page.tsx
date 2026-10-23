@@ -13,7 +13,9 @@ import {
   useCreateSeatLayout,
   useUpdateSeatLayout,
   useDeleteSeatLayout,
+  type SeatQueryParams,
 } from "@/hooks/useSeatQueries";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import { SeatConfigData } from "./types";
 
 export default function SeatManagementPage() {
@@ -21,6 +23,11 @@ export default function SeatManagementPage() {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
+
+  useInitFromUrl({
+    search: (v) => { setSearchTerm(v); setDebouncedSearch(v); },
+    status: (v) => setStatusFilter(v === "ACTIVE" ? "Active" : v === "INACTIVE" ? "Inactive" : v),
+  });
 
   // Modals State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
@@ -49,15 +56,19 @@ export default function SeatManagementPage() {
         ? "INACTIVE"
         : undefined;
 
+  const seatQueryParams: SeatQueryParams = {
+    search: debouncedSearch || undefined,
+    status: apiStatus,
+  };
+
+  useSyncParamsToUrl(seatQueryParams);
+
   // Queries
   const {
     data: seatData,
     isLoading,
     isFetching,
-  } = useSeatLayouts({
-    search: debouncedSearch || undefined,
-    status: apiStatus,
-  });
+  } = useSeatLayouts(seatQueryParams);
 
   // Mutations
   const createMutation = useCreateSeatLayout();
