@@ -20,6 +20,7 @@ import AttractionEmptyState from "@/components/attraction/AttractionEmptyState";
 import AddEditAttractionForm from "@/components/attraction/AddEditAttractionForm";
 import BulkUploadModal from "@/components/modals/BulkUploadModal";
 import { confirmDelete } from "@/lib/notify";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import {
   useAttractionManagementList,
   useCreateAttraction,
@@ -251,9 +252,12 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
 
 // ── Page ────────────────────────────────────────────────────────────────────
 export default function AttractionManagementPage() {
-  // ── Search state (debounced) ───────────────────
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useInitFromUrl({
+    search: (v) => { setSearchQuery(v); setDebouncedSearch(v); },
+  });
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -261,6 +265,8 @@ export default function AttractionManagementPage() {
     }, 350);
     return () => clearTimeout(handler);
   }, [searchQuery]);
+
+  useSyncParamsToUrl({ search: debouncedSearch || undefined });
 
   // ── Queries / Mutations ──────────────────────────────────────────
   const { data: attractions = [], isLoading, isError, isFetching } = useAttractionManagementList({ search: debouncedSearch || undefined });

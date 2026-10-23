@@ -18,6 +18,7 @@ import InvoiceDetailsModal from "@/components/modals/InvoiceDetailsModal";
 import { GlobalDataTable } from "@/components/ui/GlobalDataTable";
 import { useToast } from "@/components/ui/Toast";
 import { confirmDelete } from "@/lib/notify";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import {
   useInvoiceList,
   fetchInvoiceList,
@@ -33,7 +34,6 @@ import {
   fetchAllPages,
 } from "@/lib/exportUtils";
 
-const PAGE_SIZE = 10;
 
 // ── Date format helpers
 function formatDateVal(val?: string | null): string {
@@ -91,6 +91,7 @@ export default function InvoicesPage() {
   const [toDate, setToDate] = useState("");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
 
@@ -101,8 +102,22 @@ export default function InvoicesPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Reset pagination on filter changes
+  useInitFromUrl({
+    page: (v) => { const n = Number(v); if (n > 0) setCurrentPage(n); },
+    limit: (v) => { const n = Number(v); if (n > 0) setPageSize(n); },
+    search: (v) => { setSearchQuery(v); setDebouncedSearch(v); },
+    status: (v) => setSelectedStatusFilter(v),
+    dateFrom: (v) => setFromDate(v),
+    dateTo: (v) => setToDate(v),
+  });
+
+  const isInitialFilterMount = useRef(true);
+  // Reset pagination on filter changes (skip initial mount)
   useEffect(() => {
+    if (isInitialFilterMount.current) {
+      isInitialFilterMount.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [debouncedSearch, fromDate, toDate, selectedStatusFilter]);
 
@@ -131,18 +146,20 @@ export default function InvoicesPage() {
   // ── API Query ──────────────────────────────────────────────────────────────
   const queryParams: InvoiceListParams = {
     page: currentPage,
-    limit: PAGE_SIZE,
+    limit: pageSize,
     search: debouncedSearch || undefined,
     dateFrom: fromDate || undefined,
     dateTo: toDate || undefined,
     status: selectedStatusFilter !== "All" ? selectedStatusFilter : undefined,
   };
 
+  useSyncParamsToUrl(queryParams);
+
   const { data, isLoading, isError } = useInvoiceList(queryParams);
   const deleteInvoiceMutation = useDeleteInvoice();
 
   const invoices = data?.items ?? [];
-  const pagination = data?.pagination ?? { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 };
+  const pagination = data?.pagination ?? { page: 1, limit: pageSize, total: 0, totalPages: 0 };
 
   const isFiltered = !!debouncedSearch || !!fromDate || !!toDate || selectedStatusFilter !== "All";
 
@@ -194,7 +211,7 @@ export default function InvoicesPage() {
     };
 
     if (scope === "current") {
-      const res = await fetchInvoiceList({ ...base, page: currentPage, limit: PAGE_SIZE });
+      const res = await fetchInvoiceList({ ...base, page: currentPage, limit: pageSize });
       return res.items;
     } else {
       return await fetchAllPages<InvoiceListItem>((page, limit) =>
@@ -221,7 +238,7 @@ export default function InvoicesPage() {
         filename: `Invoices_${scopeLabel}_${dateKey}.pdf`,
         orientation: "landscape",
         columns: [
-          { header: "#", accessor: (_, i) => (scope === "all" ? i + 1 : (currentPage - 1) * PAGE_SIZE + i + 1), width: "30px" },
+          { header: "#", accessor: (_, i) => (scope === "all" ? i + 1 : (currentPage - 1) * pageSize + i + 1), width: "30px" },
           { header: "Invoice Number", accessor: (inv) => inv.invoiceNumber  || "-" },
           { header: "Customer", accessor: (inv) => inv.customer?.name || inv.customerName || "-" },
           { header: "Date", accessor: (inv) => formatDateOnly(inv.dateTime || inv.invoiceDate) },
@@ -257,7 +274,7 @@ export default function InvoicesPage() {
       const scopeLabel = scope === "all" ? "All" : `Page_${currentPage}`;
       const headers = ["#", "Invoice Number", "Customer", "Date", "Attraction", "Visitors", "Amount (₹)", "Scanner Status"];
       const rows = items.map((inv, i) => [
-        scope === "all" ? i + 1 : (currentPage - 1) * PAGE_SIZE + i + 1,
+        scope === "all" ? i + 1 : (currentPage - 1) * pageSize + i + 1,
         inv.invoiceNumber || inv.invoiceId || "-",
         inv.customer?.name || inv.customerName || "-",
         formatDateOnly(inv.dateTime || inv.invoiceDate),
@@ -670,9 +687,10 @@ export default function InvoicesPage() {
         ]}
         data={invoices}
         keyExtractor={(item, index) => item.id || item.invoiceId || item.invoiceNumber || `invoice-${index}`}
-        pageSize={PAGE_SIZE}
+        pageSize={pageSize}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
+        onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1); }}
         totalItems={pagination.total}
         totalPages={pagination.totalPages}
         showSNo={true}

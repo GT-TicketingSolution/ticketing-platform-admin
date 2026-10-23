@@ -26,13 +26,12 @@ import { colors } from "@/lib/theme";
 import AttractionReportCard from "@/components/reports/AttractionReportCard";
 import SingleAttractionReportView from "@/components/reports/SingleAttractionReportView";
 import { exportMultiSectionXLS, XLSSection } from "@/lib/exportUtils";
+import { useAdminReportQuery } from "@/hooks/useReportQueries";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import {
-  useReportSummary,
-  useReportAttraction,
-  useReportPayment,
-  useReportTickets,
-  buildOverallSummary,
-} from "@/hooks/useReportQueries";
+  transformStaffReportResponse,
+  getEmptyOverallSummary,
+} from "@/lib/transformStaffReport";
 
 export default function AdminReportsView() {
   const router = useRouter();
@@ -41,6 +40,12 @@ export default function AdminReportsView() {
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
   const [selectedAttraction, setSelectedAttraction] = useState<string>("All");
+
+  useInitFromUrl({
+    fromDate: (v) => setFromDate(v),
+    toDate: (v) => setToDate(v),
+    attractionId: (v) => setSelectedAttraction(v),
+  });
 
   // Accordion State for "All Attractions" view (IDs of expanded cards)
   const [expandedAttractionIds, setExpandedAttractionIds] = useState<Set<string>>(
@@ -51,42 +56,19 @@ export default function AdminReportsView() {
     document.title = META_CONSTANTS.reports.fullTitle;
   }, []);
 
-  // ── Real API Queries ────────────────────────────────────────────────────────
-  const attractionsData: any[] = [];  // Attractions API call removed
-  const isAttractionsLoading = false;  // No longer needed
+  // ── Admin Reports Query (GET /api/admin/reports) ───────────────────────────
+  const reportQueryParams = {
+    fromDate: fromDate || undefined,
+    toDate: toDate || undefined,
+    attractionId: selectedAttraction !== "All" ? selectedAttraction : undefined,
+  };
 
-  const selectedAttractionObj = useMemo(() => {
-    if (
-      !selectedAttraction ||
-      selectedAttraction === "All" ||
-      selectedAttraction === "All Attractions" ||
-      selectedAttraction === "No Attractions Available"
-    ) {
-      return null;
-    }
-    return attractionsData.find(
-      (a: any) => a.name?.toLowerCase() === selectedAttraction.toLowerCase()
-    );
-  }, [selectedAttraction, attractionsData]);
+  useSyncParamsToUrl(reportQueryParams);
 
-  const selectedAttractionId = selectedAttractionObj?.attractionId || selectedAttractionObj?.id;
-
-  // 1. GET /api/admin/reports/summary
-  const { data: summaryData, isLoading: isSummaryLoading } = useReportSummary(
-    fromDate || undefined,
-    toDate || undefined,
-    selectedAttractionId || undefined
-  );
-
-  // 2. GET /api/admin/reports/attraction
-  const { data: attractionReportsData = [], isLoading: isAttractionReportsLoading } =
-    useReportAttraction(fromDate || undefined, toDate || undefined);
-
-  // 3. GET /api/admin/reports/payment
-  const { data: paymentData = [], isLoading: isPaymentLoading } = useReportPayment();
-
-  // 4. GET /api/admin/reports/tickets
-  const { data: ticketData = [], isLoading: isTicketsLoading } = useReportTickets();
+  const { data: reportData, isLoading } = useAdminReportQuery({
+    fromDate: fromDate || undefined,
+    toDate: toDate || undefined,
+  });
 
   // Quick Date Preset Handler
   const handleDatePreset = (
@@ -141,24 +123,23 @@ export default function AdminReportsView() {
     }
   };
 
-  // Compose Overall Report Summary from live APIs
+  // Compose Overall Report Summary from live /admin/reports API
   const overallSummary = useMemo(() => {
-    return buildOverallSummary(
-      summaryData,
-      attractionReportsData,
-      ticketData,
-      paymentData,
-      attractionsData
-    );
-  }, [summaryData, attractionReportsData, ticketData, paymentData, attractionsData]);
+    if (!reportData) return getEmptyOverallSummary();
+    return transformStaffReportResponse(reportData, selectedAttraction);
+  }, [reportData, selectedAttraction]);
 
   // Attraction options dropdown
   const attractionDropdownOptions = useMemo(() => {
-    if (!attractionsData || attractionsData.length === 0) {
-      return ["No Attractions Available"];
+    if (!reportData?.attractions || reportData.attractions.length === 0) {
+      return ["All Attractions"];
     }
-    return ["All Attractions", ...attractionsData.map((a: any) => a.name)];
-  }, [attractionsData]);
+    const activeList = reportData.attractions.filter(
+      (a) => !a.status || a.status.toUpperCase() !== "INACTIVE"
+    );
+    if (activeList.length === 0) return ["All Attractions"];
+    return ["All Attractions", ...activeList.map((a) => a.name)];
+  }, [reportData]);
 
   // Accordion Toggle Handlers
   const handleToggleCardExpand = (id: string) => {
@@ -248,45 +229,11 @@ export default function AdminReportsView() {
     const found = overallSummary.attractionReports.find(
       (r) => r.attraction.name.toLowerCase() === selectedAttraction.toLowerCase()
     );
-    if (found) return found;
-    if (selectedAttractionObj) {
-      return {
-        attraction: {
-          id: selectedAttractionObj.attractionId || selectedAttractionObj.id || "",
-          attractionId: selectedAttractionObj.attractionId || selectedAttractionObj.id || "",
-          name: selectedAttractionObj.name || selectedAttraction,
-          category: (selectedAttractionObj.category || "RIDE") as any,
-          status: (selectedAttractionObj.status || "Active") as any,
-          pricing: selectedAttractionObj.pricing || { adult: 0, child: 0, student: 0, senior: 0, foreigner: 0 },
-          image: selectedAttractionObj.image || "",
-          timing: selectedAttractionObj.timing || "",
-          description: selectedAttractionObj.description || "",
-          hasSeating: selectedAttractionObj.hasSeating || false,
-          seatLayoutId: selectedAttractionObj.seatLayoutId || null,
-          seatLayouts: selectedAttractionObj.seatLayouts || [],
-          seating: selectedAttractionObj.seating ?? { adult: 1, child: 1, student: 1, senior: 1, foreigner: 1 },
-        },
-        totalRevenue: summaryData?.totalRevenue ?? 0,
-        totalTicketsSold: summaryData?.totalTickets ?? 0,
-        totalBookings: summaryData?.totalBookings ?? 0,
-        avgOrderValue:
-          (summaryData?.totalBookings ?? 0) > 0
-            ? Math.round(
-              (summaryData?.totalRevenue ?? 0) /
-              (summaryData?.totalBookings ?? 1)
-            )
-            : 0,
-        categoryBreakdown: [],
-        paymentBreakdown: [],
-        transactions: [],
-        bookings: [],
-      };
-    }
-    return null;
-  }, [selectedAttraction, overallSummary, selectedAttractionObj, summaryData]);
+    return found || null;
+  }, [selectedAttraction, overallSummary]);
 
   const hasNoAttractions =
-    !isAttractionsLoading && attractionsData.length === 0;
+    !isLoading && (!reportData?.attractions || reportData.attractions.length === 0);
 
   return (
     <div

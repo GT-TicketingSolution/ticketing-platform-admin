@@ -126,10 +126,7 @@ export const AppUrl = {
 
   // Reports
   reports: {
-    summary: "/admin/reports/summary",
-    attractions: "/admin/reports/attractions",
-    payment: "/admin/reports/payment",
-    tickets: "/admin/reports/tickets",
+    admin: "/admin/reports",
     staff: "/admin/reports",
   },
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, Suspense, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Search,
@@ -25,6 +25,7 @@ import { colors, typography } from "@/lib/theme";
 import { StaffUser } from "./types";
 import { DataTable, Column } from "@/components/ui/DataTable";
 import { useToast } from "@/components/ui/Toast";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import { confirmAdd, confirmDelete, confirmStatusChange } from "@/lib/notify";
 import { staffSchema } from "./schema";
 import { META_CONSTANTS } from "@/lib/metaConstant";
@@ -92,7 +93,7 @@ function StaffManagementInner() {
   const [selectedAttractionFilter, setSelectedAttractionFilter] = useState("All");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("All");
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     const statusFromUrl = searchParams.get("status");
@@ -111,8 +112,21 @@ function StaffManagementInner() {
     return () => clearTimeout(handler);
   }, [search]);
 
-  // Reset to page 1 on filter or search change
+  useInitFromUrl({
+    page: (v) => { const n = Number(v); if (n > 0) setCurrentPage(n); },
+    limit: (v) => { const n = Number(v); if (n > 0) setPageSize(n); },
+    search: (v) => { setSearch(v); setDebouncedSearch(v); },
+    attractionId: (v) => setSelectedAttractionFilter(v),
+    status: (v) => setSelectedStatusFilter(v),
+  });
+
+  const isInitialFilterMount = useRef(true);
+  // Reset to page 1 on filter or search change (skip initial mount)
   useEffect(() => {
+    if (isInitialFilterMount.current) {
+      isInitialFilterMount.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [debouncedSearch, selectedAttractionFilter, selectedStatusFilter]);
 
@@ -132,18 +146,22 @@ function StaffManagementInner() {
         ? "INACTIVE"
         : undefined;
 
-  // Staff Queries & Mutations
-  const {
-    data: staffData,
-    isLoading: isFetchingStaff,
-    isFetching,
-  } = useStaffList({
+  const staffQueryParams = {
     page: currentPage,
     limit: pageSize,
     search: debouncedSearch || undefined,
     status: apiStatus,
     attractionId: selectedAttractionFilter !== "All" ? selectedAttractionFilter : undefined,
-  });
+  };
+
+  useSyncParamsToUrl(staffQueryParams);
+
+  // Staff Queries & Mutations
+  const {
+    data: staffData,
+    isLoading: isFetchingStaff,
+    isFetching,
+  } = useStaffList(staffQueryParams);
 
   const pagination = staffData?.pagination ?? {
     page: currentPage,
@@ -1974,6 +1992,7 @@ function StaffManagementInner() {
         pageSize={pageSize}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
+        onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1); }}
         totalItems={pagination.total}
         totalPages={pagination.totalPages}
         isLoading={isFetchingStaff}
