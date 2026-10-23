@@ -407,7 +407,7 @@ export function resolveSeatLayoutIds(input: {
     ? ((seatLayoutIds as unknown[] | undefined) ?? [])
     : [];
 
-  const cleaned = rawIds
+  const parsed = rawIds
     .map((item) => {
       if (typeof item === "string") {
         return {
@@ -417,19 +417,26 @@ export function resolveSeatLayoutIds(input: {
         };
       }
 
-      if (item && typeof item === "object" && "id" in item) {
+      if (item && typeof item === "object") {
         const obj = item as {
+          seatLayoutId?: unknown;
           id?: unknown;
+          layoutId?: unknown;
           name?: unknown;
           status?: string;
           position?: number;
         };
 
+        // The UI sends `seatLayoutId` (same contract as PATCH);
+        // `id` / `layoutId` are kept for older payloads.
+        const layoutId = obj.seatLayoutId ?? obj.id ?? obj.layoutId;
+
         return {
-          id: String(obj.id || "").trim(),
+          id: typeof layoutId === "string" ? layoutId.trim() : "",
           name: obj.name,
           status: obj.status || "active",
           position: obj.position,
+          missingId: typeof layoutId !== "string" || !layoutId.trim(),
         };
       }
 
@@ -438,8 +445,27 @@ export function resolveSeatLayoutIds(input: {
         name: undefined,
         status: "active",
       };
-    })
-    .filter((item) => item.id.length > 0);
+    });
+
+  if (parsed.some((item) => "missingId" in item && item.missingId)) {
+    return {
+      ok: false,
+      message: "Each seat layout must include a seatLayoutId",
+    };
+  }
+
+  const invalidId = parsed.find(
+    (item) => item.id.length > 0 && !UUID_RE.test(item.id),
+  );
+
+  if (invalidId) {
+    return {
+      ok: false,
+      message: `Invalid seatLayoutId: ${invalidId.id}`,
+    };
+  }
+
+  const cleaned = parsed.filter((item) => item.id.length > 0);
 
   // Separate enabled and disabled
   const enabledItems = cleaned.filter((item) => item.status === "active");
