@@ -13,6 +13,8 @@ import {
   UpdateSeatPayload,
 } from "@/app/(dashboard)/seat-management/types";
 
+export type { SeatQueryParams };
+
 // ============================================================================
 // Query Keys
 // ============================================================================

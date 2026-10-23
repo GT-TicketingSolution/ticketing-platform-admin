@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusToggle from "@/components/ui/StatusToggle";
@@ -31,6 +31,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import {
   ManagerUser,
   AttractionPermission,
@@ -724,7 +725,7 @@ function ManagerManagementInner() {
   const [isEditing, setIsEditing] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
 
   // Debounce search input for API
   useEffect(() => {
@@ -735,8 +736,21 @@ function ManagerManagementInner() {
     return () => clearTimeout(handler);
   }, [searchQuery]);
 
-  // Reset to page 1 on filter or search change
+  useInitFromUrl({
+    page: (v) => { const n = Number(v); if (n > 0) setCurrentPage(n); },
+    limit: (v) => { const n = Number(v); if (n > 0) setPageSize(n); },
+    search: (v) => { setSearchQuery(v); setDebouncedSearch(v); },
+    attractionId: (v) => setSelectedAttractionFilter(v),
+    status: (v) => setSelectedStatusFilter(v),
+  });
+
+  const isInitialFilterMount = useRef(true);
+  // Reset to page 1 on filter or search change (skip initial mount)
   useEffect(() => {
+    if (isInitialFilterMount.current) {
+      isInitialFilterMount.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [debouncedSearch, selectedAttractionFilter, selectedStatusFilter]);
 
@@ -748,14 +762,18 @@ function ManagerManagementInner() {
         ? ("INACTIVE" as const)
         : undefined;
 
-  // TanStack Query Hooks — directly driven by API
-  const { data: apiManagerData, isLoading: isFetchingManagers } = useManagers({
+  const managerQueryParams = {
+    page: currentPage,
+    limit: pageSize,
     search: debouncedSearch.trim() || undefined,
     status: apiStatus,
     attractionId: selectedAttractionFilter !== "All" ? selectedAttractionFilter : undefined,
-    page: currentPage,
-    limit: pageSize,
-  });
+  };
+
+  useSyncParamsToUrl(managerQueryParams);
+
+  // TanStack Query Hooks — directly driven by API
+  const { data: apiManagerData, isLoading: isFetchingManagers } = useManagers(managerQueryParams);
 
   const pagination = apiManagerData?.pagination ?? {
     page: currentPage,
@@ -1685,6 +1703,7 @@ function ManagerManagementInner() {
         pageSize={pageSize}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
+        onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1); }}
         totalItems={pagination.total}
         totalPages={pagination.totalPages}
         isLoading={isFetchingManagers}

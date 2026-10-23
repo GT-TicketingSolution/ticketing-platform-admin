@@ -20,6 +20,7 @@ import { colors, typography } from "@/lib/theme";
 import { exportMultiSectionXLS, XLSSection } from "@/lib/exportUtils";
 import DashboardCharts from "@/components/dashboard/DashboardCharts";
 import { useDashboard } from "@/hooks/useDashboard";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import { DashboardPeriod } from "./types";
 
 export default function AdminDashboardView() {
@@ -30,6 +31,12 @@ export default function AdminDashboardView() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
 
+  useInitFromUrl({
+    period: (v) => setSelectedDateRange(v as DashboardPeriod),
+    attractionId: (v) => setSelectedAttraction(v),
+    search: (v) => { setSearchQuery(v); setDebouncedSearch(v); },
+  });
+
   // Debounce search query
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -37,6 +44,14 @@ export default function AdminDashboardView() {
     }, 350);
     return () => clearTimeout(handler);
   }, [searchQuery]);
+
+  const dashboardQueryParams = {
+    period: selectedDateRange !== "all" ? selectedDateRange : undefined,
+    attractionId: selectedAttraction === "All" ? undefined : selectedAttraction,
+    search: debouncedSearch || undefined,
+  };
+
+  useSyncParamsToUrl(dashboardQueryParams);
 
   // Fetch live dashboard data from API
   const { data, isLoading, isFetching, error } = useDashboard({
