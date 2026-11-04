@@ -18,6 +18,8 @@ import InvoiceDetailsModal from "@/components/modals/InvoiceDetailsModal";
 import { GlobalDataTable } from "@/components/ui/GlobalDataTable";
 import { useToast } from "@/components/ui/Toast";
 import { confirmDelete } from "@/lib/notify";
+import { canPerformRoleAction } from "@/lib/auth/role-actions";
+import { useProfileQuery } from "@/hooks/useAuthQueries";
 import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import {
   useInvoiceList,
@@ -157,6 +159,12 @@ export default function InvoicesPage() {
 
   const { data, isLoading, isError } = useInvoiceList(queryParams);
   const deleteInvoiceMutation = useDeleteInvoice();
+
+  const { data: profileData } = useProfileQuery();
+  const canDeleteInvoice = canPerformRoleAction(
+    (profileData?.profile || (profileData as any)?.data?.profile)?.role,
+    "INVOICE_DELETE",
+  );
 
   const invoices = data?.items ?? [];
   const pagination = data?.pagination ?? { page: 1, limit: pageSize, total: 0, totalPages: 0 };
@@ -657,27 +665,29 @@ export default function InvoicesPage() {
                         <span>View Details</span>
                       </button>
 
-                      <button
-                        onClick={() => handleDeleteInvoice(item)}
-                        className="dropdown-item"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          width: "100%",
-                          padding: "8px 14px",
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          fontSize: "13px",
-                          fontFamily: typography.fontFamily.sans,
-                          color: "#DC2626",
-                          textAlign: "left",
-                        }}
-                      >
-                        <Trash2 size={14} color="#DC2626" />
-                        <span>Delete</span>
-                      </button>
+                      {canDeleteInvoice && (
+                        <button
+                          onClick={() => handleDeleteInvoice(item)}
+                          className="dropdown-item"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            width: "100%",
+                            padding: "8px 14px",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            fontSize: "13px",
+                            fontFamily: typography.fontFamily.sans,
+                            color: "#DC2626",
+                            textAlign: "left",
+                          }}
+                        >
+                          <Trash2 size={14} color="#DC2626" />
+                          <span>Delete</span>
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

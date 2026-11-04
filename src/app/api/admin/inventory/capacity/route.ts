@@ -13,7 +13,10 @@ import {
 
 import { requireAuth } from "@/lib/auth/require-auth";
 import { success, failure } from "@/lib/api/response";
-import { requireModuleAccess } from "@/lib/auth/authorization";
+import {
+  requireModuleAccess,
+  hasAttractionAccess,
+} from "@/lib/auth/authorization";
 
 type AddCapacityBody = {
   attractionId: string;
@@ -92,6 +95,21 @@ export async function POST(request: NextRequest) {
         "Additional seats must be a positive integer.",
         400,
         "INVALID_SEAT_COUNT",
+      );
+    }
+
+    // =====================================================
+    // MANAGER: ASSIGNED ATTRACTIONS ONLY
+    // =====================================================
+
+    if (
+      auth.user.role === "MANAGER" &&
+      !(await hasAttractionAccess(auth, attractionId))
+    ) {
+      return failure(
+        "This attraction is not assigned to you.",
+        403,
+        "ATTRACTION_NOT_ASSIGNED",
       );
     }
 

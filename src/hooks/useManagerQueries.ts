@@ -300,6 +300,7 @@ export function useUpdateManagerPermissions() {
       );
     },
     onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: managerKeys.lists() });
       queryClient.invalidateQueries({ queryKey: managerKeys.permissions(variables.managerId) });
       showSuccessNotify("Manager permissions updated successfully.", "Permissions Updated");
     },

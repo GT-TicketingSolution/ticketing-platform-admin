@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
 
@@ -12,25 +12,22 @@ import {
   attractions,
   managerAttractionPermissions,
   systemModules,
+  sessions,
+  passwordResetTokens,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
-import { requireModuleAccess } from "@/lib/auth/authorization";
+import {
+  requireModuleAccess,
+  getManagerAttractionScope,
+  getGrantableStaffModules,
+} from "@/lib/auth/authorization";
+import { getStaffRoleModuleKeys } from "@/lib/auth/staff-role-modules";
 import { hashPassword } from "@/lib/auth/password";
 
 import { success, failure } from "@/lib/api/response";
 
 import { z } from "zod";
-
-/* =========================================================
-   STAFF ROLE → SYSTEM MODULE MAPPING
-========================================================= */
-
-const STAFF_ROLE_MODULES: Record<string, string[]> = {
-  "Counter Operator": ["TICKET_BOOKING"],
-  "Validator": ["SCANNER"],
-  "Reports Access": ["REPORTS"],
-};
 
 /* =========================================================
    VALIDATION
@@ -127,6 +124,7 @@ export async function PATCH(
         and(
           eq(users.id, staffId),
           eq(users.role, "STAFF"),
+          eq(users.isDeleted, false),
           eq(users.adminId, adminId),
         ),
       )
@@ -134,6 +132,34 @@ export async function PATCH(
 
     if (!existingStaff) {
       return failure("Staff member not found.", 404, "STAFF_NOT_FOUND");
+    }
+
+    // -----------------------------------------------------
+    // MANAGER: staff must work on an assigned attraction
+    // -----------------------------------------------------
+
+    const managerAttractionIds = await getManagerAttractionScope(auth);
+
+    if (managerAttractionIds) {
+      const [sharedAssignment] = await db
+        .select({
+          id: staffAttractionAssignments.id,
+        })
+        .from(staffAttractionAssignments)
+        .where(
+          and(
+            eq(staffAttractionAssignments.staffId, staffId),
+            inArray(
+              staffAttractionAssignments.attractionId,
+              managerAttractionIds,
+            ),
+          ),
+        )
+        .limit(1);
+
+      if (!sharedAssignment) {
+        return failure("Staff member not found.", 404, "STAFF_NOT_FOUND");
+      }
     }
 
     // -----------------------------------------------------
@@ -173,7 +199,7 @@ export async function PATCH(
           id: users.id,
         })
         .from(users)
-        .where(eq(users.email, normalizedEmail))
+        .where(and(eq(users.email, normalizedEmail), eq(users.isDeleted, false)))
         .limit(1);
 
       if (emailUser && emailUser.id !== staffId) {
@@ -184,6 +210,24 @@ export async function PATCH(
     // -----------------------------------------------------
     // Validate attractions
     // -----------------------------------------------------
+
+    if (managerAttractionIds && attractionIds !== undefined) {
+      if (attractionIds.length === 0) {
+        return failure(
+          "Please assign at least one attraction.",
+          400,
+          "ATTRACTION_REQUIRED",
+        );
+      }
+
+      if (attractionIds.some((id) => !managerAttractionIds.includes(id))) {
+        return failure(
+          "One or more attractions are not assigned to this manager.",
+          403,
+          "ATTRACTION_NOT_ASSIGNED",
+        );
+      }
+    }
 
     if (attractionIds !== undefined && attractionIds.length > 0) {
       const validAttractions = await db
@@ -207,6 +251,65 @@ export async function PATCH(
           "One or more attractions are invalid or do not belong to this admin.",
           400,
           "INVALID_ATTRACTION",
+        );
+      }
+    }
+
+    // -----------------------------------------------------
+    // MANAGER: can only give the modules they hold
+    //
+    // What the staff member already has from an admin stays
+    // as it is; the manager can neither add nor remove it.
+    // -----------------------------------------------------
+
+    const grantableModules =
+      auth.user.role === "MANAGER" ? await getGrantableStaffModules(auth) : null;
+
+    const grantableIds =
+      grantableModules && new Set(grantableModules.map((item) => item.id));
+
+    const grantableKeys =
+      grantableModules && new Set(grantableModules.map((item) => item.key));
+
+    const isGrantableRole = (role: string) =>
+      !grantableKeys ||
+      getStaffRoleModuleKeys(role).every((key) => grantableKeys.has(key));
+
+    if (grantableIds && roles !== undefined) {
+      const currentRoles = await db
+        .select({
+          role: staffRoles.role,
+        })
+        .from(staffRoles)
+        .where(eq(staffRoles.staffId, staffId));
+
+      const currentModules = await db
+        .select({
+          moduleId: staffSystemModulePermissions.moduleId,
+        })
+        .from(staffSystemModulePermissions)
+        .where(eq(staffSystemModulePermissions.staffId, staffId));
+
+      const currentRoleNames = new Set(currentRoles.map((item) => item.role));
+      const currentModuleIds = new Set(
+        currentModules.map((item) => item.moduleId),
+      );
+
+      const addsOtherModule =
+        roles.some(
+          (item) =>
+            !currentRoleNames.has(item.role.trim()) &&
+            !isGrantableRole(item.role),
+        ) ||
+        (staffSystemModuleAllowedIds ?? []).some(
+          (id) => !currentModuleIds.has(id) && !grantableIds.has(id),
+        );
+
+      if (addsOtherModule) {
+        return failure(
+          "You can only give staff the permissions you have.",
+          403,
+          "MODULE_NOT_GRANTABLE",
         );
       }
     }
@@ -261,6 +364,7 @@ export async function PATCH(
           and(
             eq(users.id, staffId),
             eq(users.role, "STAFF"),
+            eq(users.isDeleted, false),
             eq(users.adminId, adminId),
           ),
         )
@@ -298,7 +402,7 @@ export async function PATCH(
       const moduleKeys = [
         ...new Set(
           normalizedRoles.flatMap(
-            (item) => STAFF_ROLE_MODULES[item.role] ?? [],
+            (item) => getStaffRoleModuleKeys(item.role),
           ),
         ),
       ];
@@ -358,7 +462,10 @@ export async function PATCH(
       // -----------------------------------------------
 
       const rolesToDelete = existingRoles
-        .filter((item) => !incomingRoleIds.has(item.id))
+        .filter(
+          (item) =>
+            !incomingRoleIds.has(item.id) && isGrantableRole(item.role),
+        )
         .map((item) => item.id);
 
       if (rolesToDelete.length > 0) {
@@ -418,7 +525,9 @@ export async function PATCH(
 
       const permissionsToDelete = existingPermissions
         .filter(
-          (item) => !incomingPermissionModuleIds.has(item.moduleId),
+          (item) =>
+            !incomingPermissionModuleIds.has(item.moduleId) &&
+            (!grantableIds || grantableIds.has(item.moduleId)),
         )
         .map((item) => item.id);
 
@@ -507,11 +616,17 @@ export async function PATCH(
 
       // -----------------------------------------------
       // Delete only removed assignments
+      //
+      // A manager can only remove their own attractions;
+      // the staff member keeps every other assignment.
       // -----------------------------------------------
 
       const assignmentsToDelete = existingAssignments
         .filter(
-          (item) => !incomingAttractionIds.has(item.attractionId),
+          (item) =>
+            !incomingAttractionIds.has(item.attractionId) &&
+            (!managerAttractionIds ||
+              managerAttractionIds.includes(item.attractionId)),
         )
         .map((item) => item.id);
 
@@ -673,6 +788,7 @@ export async function DELETE(
         and(
           eq(users.id, staffId),
           eq(users.role, "STAFF"),
+          eq(users.isDeleted, false),
           eq(users.adminId, adminId),
         ),
       )
@@ -751,40 +867,48 @@ export async function DELETE(
     }
 
     // -----------------------------------------------------
-    // Delete attraction assignments
+    // Soft delete staff user
+    //
+    // The row stays so bookings keep their creator. Roles and
+    // assignments stay for history; deleted staff are hidden
+    // from every list. The email becomes free to reuse.
     // -----------------------------------------------------
 
-    await db
-      .delete(staffAttractionAssignments)
-      .where(eq(staffAttractionAssignments.staffId, staffId));
+    await db.transaction(async (tx) => {
+      const now = new Date();
 
-    // -----------------------------------------------------
-    // Delete staff module permissions
-    // -----------------------------------------------------
+      await tx
+        .update(users)
+        .set({
+          isDeleted: true,
+          deletedAt: now,
+          deletedBy: auth.user.id,
+          status: "INACTIVE",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(users.id, staffId),
+            eq(users.role, "STAFF"),
+            eq(users.adminId, adminId),
+          ),
+        );
 
-    await db
-      .delete(staffSystemModulePermissions)
-      .where(eq(staffSystemModulePermissions.staffId, staffId));
+      await tx
+        .update(sessions)
+        .set({ revokedAt: now })
+        .where(and(eq(sessions.userId, staffId), isNull(sessions.revokedAt)));
 
-    // -----------------------------------------------------
-    // Delete staff roles
-    // -----------------------------------------------------
-
-    await db.delete(staffRoles).where(eq(staffRoles.staffId, staffId));
-
-    // -----------------------------------------------------
-    // Delete staff user
-    // -----------------------------------------------------
-
-    await db
-      .delete(users)
-      .where(
-        and(
-          eq(users.id, staffId),
-          eq(users.role, "STAFF"),
-          eq(users.adminId, adminId),
-        ),
-      );
+      await tx
+        .update(passwordResetTokens)
+        .set({ usedAt: now })
+        .where(
+          and(
+            eq(passwordResetTokens.userId, staffId),
+            isNull(passwordResetTokens.usedAt),
+          ),
+        );
+    });
 
     // -----------------------------------------------------
     // Response

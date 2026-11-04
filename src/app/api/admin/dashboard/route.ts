@@ -411,6 +411,7 @@ export async function GET(request: Request) {
 
     const staffConditions = [
       eq(users.role, "STAFF"),
+      eq(users.isDeleted, false),
       eq(users.adminId, adminId),
     ];
 
@@ -490,6 +491,7 @@ export async function GET(request: Request) {
       .where(
         and(
           eq(users.role, "STAFF"),
+          eq(users.isDeleted, false),
           eq(users.status, "ACTIVE"),
           eq(users.adminId, adminId),
 

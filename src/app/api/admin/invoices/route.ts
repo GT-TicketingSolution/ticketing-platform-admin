@@ -165,6 +165,15 @@ export async function GET(request: NextRequest) {
       accessibleAttractionIds = staffAttractions.map((item) => item.id);
     }
 
+    // A manager cannot filter by an attraction that is not assigned to them.
+    if (
+      auth.user.role === "MANAGER" &&
+      attractionFilter &&
+      !accessibleAttractionIds.includes(attractionFilter)
+    ) {
+      accessibleAttractionIds = [];
+    }
+
     // =====================================================
     // NO ACCESS
     // =====================================================
@@ -587,6 +596,11 @@ export async function GET(request: NextRequest) {
         and(
           inArray(attractionsAgainstBooking.bookingId, bookingIds),
           eq(attractions.adminId, adminId),
+
+          // Managers only see the names of their assigned attractions.
+          ...(auth.user.role === "MANAGER"
+            ? [inArray(attractions.id, accessibleAttractionIds)]
+            : []),
         ),
       );
 

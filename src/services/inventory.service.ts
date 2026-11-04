@@ -37,6 +37,9 @@ export type InventoryFilters = {
 
   attractionId?: string;
 
+  // When set, results are limited to these attractions.
+  attractionIds?: string[];
+
   dateFrom?: string;
 
   dateTo?: string;
@@ -119,10 +122,16 @@ export async function getInventory(filters: InventoryFilters) {
      BASE CONDITIONS
   ======================================================= */
 
+  const attractionScope = filters.attractionIds
+    ? [inArray(attractions.id, filters.attractionIds)]
+    : [];
+
   const conditions = [
     eq(attractions.adminId, filters.adminId),
 
     eq(attractions.status, "ACTIVE"),
+
+    ...attractionScope,
   ];
 
   /* =======================================================
@@ -183,6 +192,7 @@ export async function getInventory(filters: InventoryFilters) {
       and(
         eq(attractions.adminId, filters.adminId),
         eq(attractions.status, "ACTIVE"),
+        ...attractionScope,
       ),
     )
     .orderBy(asc(attractions.name));

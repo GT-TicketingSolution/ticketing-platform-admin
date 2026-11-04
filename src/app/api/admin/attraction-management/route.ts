@@ -14,6 +14,7 @@ import {
 import { success, failure } from "@/lib/api/response";
 
 import { requireAuth } from "@/lib/auth/require-auth";
+import { canPerformRoleAction } from "@/lib/auth/role-actions";
 
 import {
   requireModuleAccess,
@@ -513,7 +514,7 @@ export async function POST(request: Request) {
     // ONLY ADMIN
     // =====================================================
 
-    if (auth.user.role !== "ADMIN") {
+    if (!canPerformRoleAction(auth.user.role, "ATTRACTION_CREATE")) {
       return failure("Only admin can create attraction", 403, "FORBIDDEN");
     }
 

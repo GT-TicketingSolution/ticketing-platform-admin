@@ -174,35 +174,6 @@ export function useUpdateStaff() {
 }
 
 /**
- * Disable staff member mutation (PATCH /api/admin/staff/:staffId/disable)
- */
-export function useDisableStaff() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (staffId: string) => {
-      return patchData<{ message: string; staff: StaffUser }>(
-        AppUrl.staff.disable(staffId),
-        {}
-      );
-    },
-    onSuccess: (_, staffId) => {
-      queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: staffKeys.detail(staffId) });
-      showSuccessNotify("Staff account has been disabled.", "Staff Disabled");
-    },
-    onError: (error: any) => {
-      const message =
-        error?.response?.data?.message ||
-        error?.error?.message ||
-        error?.message ||
-        "Failed to disable staff.";
-      showErrorOnce(message, "Action Failed");
-    },
-  });
-}
-
-/**
  * Delete a staff member (DELETE /api/admin/staff/:staffId)
  */
 export function useDeleteStaff() {

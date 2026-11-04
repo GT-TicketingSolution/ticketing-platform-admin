@@ -14,6 +14,7 @@ import {
 import { requireAuth } from "@/lib/auth/require-auth";
 
 import { requireModuleAccess, getAdminId } from "@/lib/auth/authorization";
+import { canPerformRoleAction } from "@/lib/auth/role-actions";
 
 import { success, failure } from "@/lib/api/response";
 
@@ -35,6 +36,10 @@ export async function DELETE(
     const auth = await requireAuth(request);
 
     await requireModuleAccess(auth, "SCANNER_INVOICES");
+
+    if (!canPerformRoleAction(auth.user.role, "INVOICE_DELETE")) {
+      return failure("Only admin can delete invoices.", 403, "FORBIDDEN");
+    }
 
     // =====================================================
     // ADMIN CONTEXT
@@ -72,9 +77,27 @@ export async function DELETE(
         bookings,
         eq(scannerInvoices.invoiceNumber, bookings.invoiceNumber),
       )
+      .innerJoin(
+        attractionsAgainstBooking,
+        eq(attractionsAgainstBooking.bookingId, bookings.id),
+      )
+      .innerJoin(
+        attractionManagement,
+        eq(
+          attractionsAgainstBooking.attractionManagementId,
+          attractionManagement.id,
+        ),
+      )
+      .innerJoin(
+        attractions,
+        eq(attractionManagement.attractionId, attractions.id),
+      )
       .where(
         and(
           eq(scannerInvoices.id, invoiceId),
+
+          // Invoice must belong to this admin's attractions
+          eq(attractions.adminId, adminId),
 
           // Booking must belong to active tenant data
           isNull(bookings.deletedAt),

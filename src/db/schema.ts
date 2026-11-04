@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { AnyPgColumn } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 /* =========================================================
    ENUMS
@@ -110,9 +111,7 @@ export const users = pgTable(
 
     email: varchar("email", {
       length: 255,
-    })
-      .notNull()
-      .unique(),
+    }).notNull(),
 
     passwordHash: varchar("password_hash", {
       length: 255,
@@ -151,6 +150,16 @@ export const users = pgTable(
       withTimezone: true,
     }),
 
+    deletedAt: timestamp("deleted_at", {
+      withTimezone: true,
+    }),
+
+    deletedBy: uuid("deleted_by").references((): AnyPgColumn => users.id, {
+      onDelete: "set null",
+    }),
+
+    isDeleted: boolean("is_deleted").notNull().default(false),
+
     createdAt: timestamp("created_at", {
       withTimezone: true,
     })
@@ -166,6 +175,11 @@ export const users = pgTable(
 
   (table) => ({
     emailIdx: index("users_email_idx").on(table.email),
+
+    // An email can be reused once its previous owner is soft deleted.
+    activeEmailUnique: uniqueIndex("users_active_email_unique")
+      .on(table.email)
+      .where(sql`${table.isDeleted} = false`),
 
     roleIdx: index("users_role_idx").on(table.role),
 
