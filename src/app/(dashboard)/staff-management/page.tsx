@@ -26,7 +26,7 @@ import { StaffUser } from "./types";
 import { DataTable, Column } from "@/components/ui/DataTable";
 import { useToast } from "@/components/ui/Toast";
 import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
-import { confirmAdd, confirmDelete, confirmStatusChange } from "@/lib/notify";
+import { confirmAdd, confirmDelete } from "@/lib/notify";
 import { staffSchema } from "./schema";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -41,7 +41,6 @@ import {
   fetchStaffList,
   useCreateStaff,
   useUpdateStaff,
-  useDisableStaff,
   useDeleteStaff,
   StaffQueryParams,
 } from "@/hooks/useStaffQueries";
@@ -54,6 +53,8 @@ import {
 } from "@/lib/exportUtils";
 import { useAttractions, AttractionItem } from "@/hooks/useManagerQueries";
 import { useSystemModules } from "@/hooks/useSystemModuleQueries";
+import { useProfileQuery } from "@/hooks/useAuthQueries";
+import { getStaffRoleModuleKeys } from "@/lib/auth/staff-role-modules";
 
 const MultiSelect = MultiSelectDropdown;
 
@@ -172,10 +173,21 @@ function StaffManagementInner() {
 
   const createStaffMutation = useCreateStaff();
   const updateStaffMutation = useUpdateStaff();
-  const disableStaffMutation = useDisableStaff();
   const deleteStaffMutation = useDeleteStaff();
 
   const { data: systemModulesList } = useSystemModules();
+
+  // Managers can only give the roles whose module they hold themselves.
+  const { data: profileData } = useProfileQuery();
+  const isManagerUser =
+    (profileData?.profile || (profileData as any)?.data?.profile)?.role === "MANAGER";
+  const availableStaffRoles = isManagerUser
+    ? STAFF_ROLES.filter((role) =>
+        getStaffRoleModuleKeys(role).every((key) =>
+          systemModulesList?.some((m) => m.key === key),
+        ),
+      )
+    : STAFF_ROLES;
 
   // Helper to map selected roles to staffSystemModuleAllowedIds
   // TICKET_BOOKING for Counter Operator
@@ -722,28 +734,6 @@ function StaffManagementInner() {
       await deleteStaffMutation.mutateAsync(id);
       setSelectedStaff(null);
       setIsEditing(false);
-    } catch {
-      // Handled by onError
-    }
-  };
-
-  const handleStatusToggle = async (staff: StaffUser, newStatus: StaffUser["status"]) => {
-    const confirmed = await confirmStatusChange(staff.name, newStatus);
-    if (!confirmed) return;
-
-    try {
-      if (newStatus === "Inactive" || newStatus === "INACTIVE") {
-        await disableStaffMutation.mutateAsync(staff.id);
-      } else {
-        await updateStaffMutation.mutateAsync({
-          staffId: staff.id,
-          data: { status: "ACTIVE" },
-        });
-      }
-
-      if (selectedStaff?.id === staff.id) {
-        setSelectedStaff({ ...selectedStaff, status: newStatus });
-      }
     } catch {
       // Handled by onError
     }
@@ -1399,7 +1389,7 @@ function StaffManagementInner() {
                 <MultiSelect
                   label="Staff Role"
                   required
-                  options={STAFF_ROLES}
+                  options={availableStaffRoles}
                   selected={formData.role}
                   onChange={(vals) => handleRoleChange(vals, "edit")}
                   closeOnSelectOption={(opt) => opt === "Reports Access"}
@@ -2283,7 +2273,7 @@ function StaffManagementInner() {
                   <MultiSelect
                     label="Staff Role"
                     required
-                    options={STAFF_ROLES}
+                    options={availableStaffRoles}
                     selected={formData.role}
                     onChange={(vals) => handleRoleChange(vals, "add")}
                     closeOnSelectOption={(opt) => opt === "Reports Access"}

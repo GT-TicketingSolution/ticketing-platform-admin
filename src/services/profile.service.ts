@@ -174,7 +174,7 @@ export async function updateProfile(
         id: users.id,
       })
       .from(users)
-      .where(eq(users.email, normalizedEmail))
+      .where(and(eq(users.email, normalizedEmail), eq(users.isDeleted, false)))
       .limit(1);
 
     if (emailOwner && emailOwner.id !== userId) {

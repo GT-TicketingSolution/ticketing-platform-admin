@@ -5,7 +5,10 @@ import { requireAuth } from "@/lib/auth/require-auth";
 import { getAdminId } from "@/lib/auth/get-admin-id";
 
 import { success, failure } from "@/lib/api/response";
-import { requireModuleAccess } from "@/lib/auth/authorization";
+import {
+  requireModuleAccess,
+  getManagerAttractionScope,
+} from "@/lib/auth/authorization";
 
 export async function GET(req: Request) {
   try {
@@ -16,6 +19,7 @@ export async function GET(req: Request) {
 
     const data = await getTicketBreakdown({
       adminId: getAdminId(auth),
+      attractionIds: await getManagerAttractionScope(auth),
 
       fromDate: params.get("fromDate") ?? undefined,
 

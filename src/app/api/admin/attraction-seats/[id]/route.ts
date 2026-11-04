@@ -5,7 +5,10 @@ import { attractionSeats } from "@/db/schema";
 
 import { success, failure } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
-import { requireModuleAccess } from "@/lib/auth/authorization";
+import {
+  requireModuleAccess,
+  hasAttractionAccess,
+} from "@/lib/auth/authorization";
 
 export async function DELETE(
   request: Request,
@@ -25,6 +28,30 @@ export async function DELETE(
         "Attraction seat ID is required.",
         400,
         "VALIDATION_ERROR",
+      );
+    }
+
+    const [seat] = await db
+      .select({
+        attractionId: attractionSeats.attractionId,
+      })
+      .from(attractionSeats)
+      .where(eq(attractionSeats.id, id))
+      .limit(1);
+
+    if (!seat) {
+      return failure(
+        "Attraction seat not found.",
+        404,
+        "NOT_FOUND",
+      );
+    }
+
+    if (!(await hasAttractionAccess(auth, seat.attractionId))) {
+      return failure(
+        "You cannot change seats of this attraction.",
+        403,
+        "FORBIDDEN",
       );
     }
 

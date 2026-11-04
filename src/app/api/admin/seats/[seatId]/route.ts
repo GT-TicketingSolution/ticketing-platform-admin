@@ -9,7 +9,8 @@ import {
 
 import { failure, success } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
-import { requireModuleAccess } from "@/lib/auth/authorization";
+import { requireModuleAccess, getAdminId } from "@/lib/auth/authorization";
+import { canPerformRoleAction } from "@/lib/auth/role-actions";
 
 const updateSeatSchema = z
   .object({
@@ -164,8 +165,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       seatId,
 
       // IMPORTANT:
-      // Only authenticated admin's layouts
-      auth.user.id,
+      // Only the tenant admin's layouts
+      getAdminId(auth),
     );
 
     if (!seat) {
@@ -204,6 +205,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const auth = await requireAuth(request);
 
     await requireModuleAccess(auth, "SEAT_MANAGEMENT");
+
+    if (!canPerformRoleAction(auth.user.role, "SEAT_LAYOUT_MANAGE")) {
+      return failure("Only admin can update seat layouts.", 403, "FORBIDDEN");
+    }
 
     // ---------------------------------------------
     // PARAMS
@@ -279,6 +284,10 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     const auth = await requireAuth(request);
 
     await requireModuleAccess(auth, "SEAT_MANAGEMENT");
+
+    if (!canPerformRoleAction(auth.user.role, "SEAT_LAYOUT_MANAGE")) {
+      return failure("Only admin can delete seat layouts.", 403, "FORBIDDEN");
+    }
 
     // ---------------------------------------------
     // PARAMS

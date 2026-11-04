@@ -7,8 +7,8 @@ import { SeatConfigData } from "../modals/CreateSeatModal";
 interface SeatCardProps {
   seat: SeatConfigData;
   onView: (seat: SeatConfigData) => void;
-  onEdit: (seat: SeatConfigData) => void;
-  onDelete: (seat: SeatConfigData) => void;
+  onEdit?: (seat: SeatConfigData) => void;
+  onDelete?: (seat: SeatConfigData) => void;
 }
 
 export default function SeatCard({
@@ -413,75 +413,79 @@ export default function SeatCard({
             EDIT
         ====================================================== */}
 
-        <button
-          type="button"
-          onClick={() => onEdit(seat)}
-          style={{
-            boxSizing: "border-box",
-            flex: 1,
-            height: "30px",
-            background: "#FFFFFF",
-            border: "1px solid #2372A5",
-            borderRadius: "5px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "3px",
-            cursor: "pointer",
-            transition: "all 0.15s ease",
-          }}
-          className="btn-edit"
-          title="Edit Seat Layout"
-        >
-          <Pencil size={12} color="#2372A5" strokeWidth={2} />
-
-          <span
+        {onEdit && (
+          <button
+            type="button"
+            onClick={() => onEdit(seat)}
             style={{
-              fontWeight: 600,
-              fontSize: "11px",
-              color: "#2372A5",
+              boxSizing: "border-box",
+              flex: 1,
+              height: "30px",
+              background: "#FFFFFF",
+              border: "1px solid #2372A5",
+              borderRadius: "5px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "3px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
             }}
+            className="btn-edit"
+            title="Edit Seat Layout"
           >
-            Edit
-          </span>
-        </button>
+            <Pencil size={12} color="#2372A5" strokeWidth={2} />
+  
+            <span
+              style={{
+                fontWeight: 600,
+                fontSize: "11px",
+                color: "#2372A5",
+              }}
+            >
+              Edit
+            </span>
+          </button>
+        )}
 
         {/* ======================================================
             DELETE
         ====================================================== */}
 
-        <button
-          type="button"
-          onClick={() => onDelete(seat)}
-          style={{
-            boxSizing: "border-box",
-            flex: 1,
-            height: "30px",
-            background: "#FFFFFF",
-            border: "1px solid #DC2626",
-            borderRadius: "5px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "3px",
-            cursor: "pointer",
-            transition: "all 0.15s ease",
-          }}
-          className="btn-delete"
-          title="Delete Seat Layout"
-        >
-          <Trash2 size={12} color="#DC2626" strokeWidth={2} />
-
-          <span
+        {onDelete && (
+          <button
+            type="button"
+            onClick={() => onDelete(seat)}
             style={{
-              fontWeight: 600,
-              fontSize: "11px",
-              color: "#DC2626",
+              boxSizing: "border-box",
+              flex: 1,
+              height: "30px",
+              background: "#FFFFFF",
+              border: "1px solid #DC2626",
+              borderRadius: "5px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "3px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
             }}
+            className="btn-delete"
+            title="Delete Seat Layout"
           >
-            Delete
-          </span>
-        </button>
+            <Trash2 size={12} color="#DC2626" strokeWidth={2} />
+  
+            <span
+              style={{
+                fontWeight: 600,
+                fontSize: "11px",
+                color: "#DC2626",
+              }}
+            >
+              Delete
+            </span>
+          </button>
+        )}
       </div>
 
       {/* ========================================================

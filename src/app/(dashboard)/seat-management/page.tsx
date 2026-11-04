@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import { Plus, Search, RotateCcw } from "lucide-react";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import { confirmDelete } from "@/lib/notify";
+import { canPerformRoleAction } from "@/lib/auth/role-actions";
+import { useProfileQuery } from "@/hooks/useAuthQueries";
 import SeatEmptyState from "@/components/seat/SeatEmptyState";
 import SeatCard from "@/components/seat/SeatCard";
 import CreateSeatModal from "@/components/modals/CreateSeatModal";
@@ -74,6 +76,12 @@ export default function SeatManagementPage() {
   const createMutation = useCreateSeatLayout();
   const updateMutation = useUpdateSeatLayout();
   const deleteMutation = useDeleteSeatLayout();
+
+  const { data: profileData } = useProfileQuery();
+  const canManageSeats = canPerformRoleAction(
+    (profileData?.profile || (profileData as any)?.data?.profile)?.role,
+    "SEAT_LAYOUT_MANAGE",
+  );
 
   const items = seatData?.items ?? [];
 
@@ -264,7 +272,7 @@ export default function SeatManagementPage() {
       ====================================================== */}
 
       {!isLoading && items.length === 0 && !isFiltering ? (
-        <SeatEmptyState onCreateSeat={handleOpenCreate} />
+        <SeatEmptyState onCreateSeat={canManageSeats ? handleOpenCreate : undefined} />
       ) : (
         <div
           style={{
@@ -325,39 +333,41 @@ export default function SeatManagementPage() {
                 gap: "10px",
               }}
             >
-              <button
-                type="button"
-                onClick={handleOpenCreate}
-                style={{
-                  height: "42px",
-                  padding: "0 22px",
-                  background: "#0C2A42",
-                  border: "none",
-                  borderRadius: "8px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 600,
-                  fontSize: "14px",
-                  color: "#FFFFFF",
-                  cursor: "pointer",
-                  boxShadow: "0 4px 14px rgba(12, 42, 66, 0.25)",
-                  transition: "all 0.18s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "#173F63";
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "#0C2A42";
-                  e.currentTarget.style.transform = "translateY(0)";
-                }}
-              >
-                <Plus size={18} color="#FFFFFF" strokeWidth={2.5} />
-
-                <span>Create Seat</span>
-              </button>
+              {canManageSeats && (
+                <button
+                  type="button"
+                  onClick={handleOpenCreate}
+                  style={{
+                    height: "42px",
+                    padding: "0 22px",
+                    background: "#0C2A42",
+                    border: "none",
+                    borderRadius: "8px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 600,
+                    fontSize: "14px",
+                    color: "#FFFFFF",
+                    cursor: "pointer",
+                    boxShadow: "0 4px 14px rgba(12, 42, 66, 0.25)",
+                    transition: "all 0.18s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "#173F63";
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "#0C2A42";
+                    e.currentTarget.style.transform = "translateY(0)";
+                  }}
+                >
+                  <Plus size={18} color="#FFFFFF" strokeWidth={2.5} />
+  
+                  <span>Create Seat</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -535,8 +545,8 @@ export default function SeatManagementPage() {
                   key={seat.id}
                   seat={seat}
                   onView={handleView}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
+                  onEdit={canManageSeats ? handleEdit : undefined}
+                  onDelete={canManageSeats ? handleDelete : undefined}
                 />
               ))}
             </div>
@@ -590,11 +600,15 @@ export default function SeatManagementPage() {
           setSelectedSeat(null);
         }}
         seat={selectedSeat}
-        onEdit={(seatToEdit) => {
-          setIsViewModalOpen(false);
-          setSelectedSeat(seatToEdit || selectedSeat);
-          setIsCreateModalOpen(true);
-        }}
+        onEdit={
+          canManageSeats
+            ? (seatToEdit) => {
+                setIsViewModalOpen(false);
+                setSelectedSeat(seatToEdit || selectedSeat);
+                setIsCreateModalOpen(true);
+              }
+            : undefined
+        }
       />
     </div>
   );

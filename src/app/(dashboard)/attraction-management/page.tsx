@@ -20,6 +20,8 @@ import AttractionEmptyState from "@/components/attraction/AttractionEmptyState";
 import AddEditAttractionForm from "@/components/attraction/AddEditAttractionForm";
 import BulkUploadModal from "@/components/modals/BulkUploadModal";
 import { confirmDelete } from "@/lib/notify";
+import { canPerformRoleAction } from "@/lib/auth/role-actions";
+import { useProfileQuery } from "@/hooks/useAuthQueries";
 import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import {
   useAttractionManagementList,
@@ -96,9 +98,10 @@ interface AttractionCardProps {
   attraction: AttractionManagement;
   onEdit: (a: AttractionManagement) => void;
   onDelete: (a: AttractionManagement) => void;
+  canDelete: boolean;
 }
 
-function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
+function AttractionCard({ attraction, onEdit, onDelete, canDelete }: AttractionCardProps) {
   const categoryColor = CATEGORY_COLOR[attraction.category] ?? "#F4BC43";
   const [imgError, setImgError] = useState(false);
 
@@ -237,14 +240,16 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
           <span style={{ fontWeight: 500, fontSize: "12px", color: "#2372A5" }}>Edit</span>
         </button>
 
-        <button
-          onClick={() => onDelete(attraction)}
-          style={{ boxSizing: "border-box", flex: 1, height: "34px", background: "#FFFFFF", border: "1px solid #DC2626", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", cursor: "pointer", transition: "all 0.18s ease" }}
-          className="btn-delete"
-        >
-          <Trash2 size={13} color="#DC2626" strokeWidth={2} />
-          <span style={{ fontWeight: 500, fontSize: "12px", color: "#DC2626" }}>Delete</span>
-        </button>
+        {canDelete && (
+          <button
+            onClick={() => onDelete(attraction)}
+            style={{ boxSizing: "border-box", flex: 1, height: "34px", background: "#FFFFFF", border: "1px solid #DC2626", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", cursor: "pointer", transition: "all 0.18s ease" }}
+            className="btn-delete"
+          >
+            <Trash2 size={13} color="#DC2626" strokeWidth={2} />
+            <span style={{ fontWeight: 500, fontSize: "12px", color: "#DC2626" }}>Delete</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -274,6 +279,12 @@ export default function AttractionManagementPage() {
   const updateMutation = useUpdateAttraction();
   const deleteMutation = useDeleteAttraction();
   const bulkMutation = useBulkUploadAttractions();
+
+  const { data: profileData } = useProfileQuery();
+  const profileRole = (profileData?.profile || (profileData as any)?.data?.profile)?.role;
+  const canCreate = canPerformRoleAction(profileRole, "ATTRACTION_CREATE");
+  const canBulkUpload = canPerformRoleAction(profileRole, "ATTRACTION_BULK_UPLOAD");
+  const canDelete = canPerformRoleAction(profileRole, "ATTRACTION_DELETE");
 
   // UI State 
   const [viewMode, setViewMode] = useState<"list" | "add" | "edit">("list");
@@ -684,56 +695,60 @@ export default function AttractionManagementPage() {
 
             {/* Action buttons */}
             <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-              <button
-                onClick={handleOpenAdd}
-                style={{
-                  boxSizing: "border-box",
-                  minWidth: "186px",
-                  height: "51px",
-                  background: "#0C2A42",
-                  borderRadius: "10px",
-                  border: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "10px",
-                  cursor: "pointer",
-                  padding: "0 18px",
-                  boxShadow: "0 4px 12px rgba(12, 42, 66, 0.2)",
-                  transition: "background 0.18s ease, transform 0.18s ease",
-                }}
-                className="btn-add-attraction"
-              >
-                <Plus size={24} color="#FFFFFF" strokeWidth={2.8} />
-                <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "16px", color: "#FFFFFF", whiteSpace: "nowrap" }}>
-                  Add Attraction
-                </span>
-              </button>
+              {canCreate && (
+                <button
+                  onClick={handleOpenAdd}
+                  style={{
+                    boxSizing: "border-box",
+                    minWidth: "186px",
+                    height: "51px",
+                    background: "#0C2A42",
+                    borderRadius: "10px",
+                    border: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "10px",
+                    cursor: "pointer",
+                    padding: "0 18px",
+                    boxShadow: "0 4px 12px rgba(12, 42, 66, 0.2)",
+                    transition: "background 0.18s ease, transform 0.18s ease",
+                  }}
+                  className="btn-add-attraction"
+                >
+                  <Plus size={24} color="#FFFFFF" strokeWidth={2.8} />
+                  <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "16px", color: "#FFFFFF", whiteSpace: "nowrap" }}>
+                    Add Attraction
+                  </span>
+                </button>
+              )}
 
-              <button
-                onClick={() => setIsBulkOpen(true)}
-                style={{
-                  boxSizing: "border-box",
-                  minWidth: "186px",
-                  height: "51px",
-                  background: "#FFFFFF",
-                  border: "2px solid #0C2A42",
-                  borderRadius: "10px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "10px",
-                  cursor: "pointer",
-                  padding: "0 18px",
-                  transition: "background 0.18s ease, transform 0.18s ease",
-                }}
-                className="btn-bulk-upload"
-              >
-                <Upload size={20} color="#011B2F" strokeWidth={2} />
-                <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "16px", color: "#011B2F", whiteSpace: "nowrap" }}>
-                  Bulk Upload
-                </span>
-              </button>
+              {canBulkUpload && (
+                <button
+                  onClick={() => setIsBulkOpen(true)}
+                  style={{
+                    boxSizing: "border-box",
+                    minWidth: "186px",
+                    height: "51px",
+                    background: "#FFFFFF",
+                    border: "2px solid #0C2A42",
+                    borderRadius: "10px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "10px",
+                    cursor: "pointer",
+                    padding: "0 18px",
+                    transition: "background 0.18s ease, transform 0.18s ease",
+                  }}
+                  className="btn-bulk-upload"
+                >
+                  <Upload size={20} color="#011B2F" strokeWidth={2} />
+                  <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "16px", color: "#011B2F", whiteSpace: "nowrap" }}>
+                    Bulk Upload
+                  </span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -755,6 +770,7 @@ export default function AttractionManagementPage() {
                   attraction={attraction}
                   onEdit={handleOpenEdit}
                   onDelete={handleOpenDelete}
+                  canDelete={canDelete}
                 />
               ))}
             </div>

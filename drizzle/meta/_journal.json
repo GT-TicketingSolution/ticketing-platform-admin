@@ -22,6 +22,20 @@
       "when": 1788780934953,
       "tag": "0002_spicy_wasp",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793624410468,
+      "tag": "0003_manager_attraction_modules",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793708445192,
+      "tag": "0004_staff_soft_delete",
+      "breakpoints": true
     }
   ]
 }

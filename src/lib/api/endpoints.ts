@@ -38,7 +38,6 @@ export const AppUrl = {
     list: "/admin/staff",
     create: "/admin/staff",
     update: (staffId: string) => `/admin/staff/${staffId}`,
-    disable: (staffId: string) => `/admin/staff/${staffId}/disable`,
     delete: (staffId: string) => `/admin/staff/${staffId}`,
   },
 

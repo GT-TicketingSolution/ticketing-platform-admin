@@ -11,6 +11,7 @@ import {
 
 import { success, failure } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
+import { canPerformRoleAction } from "@/lib/auth/role-actions";
 import {
   requireModuleAccess,
   getAccessibleAttractionIds,
@@ -961,6 +962,10 @@ export async function DELETE(
     const auth = await requireAuth(request);
 
     await requireModuleAccess(auth, "ATTRACTION_MANAGEMENT");
+
+    if (!canPerformRoleAction(auth.user.role, "ATTRACTION_DELETE")) {
+      return failure("Only admin can delete attraction", 403, "FORBIDDEN");
+    }
 
     const { id } = await context.params;
 

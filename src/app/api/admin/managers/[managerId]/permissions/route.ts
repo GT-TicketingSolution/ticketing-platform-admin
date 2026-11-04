@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 
@@ -16,18 +16,16 @@ import {
 import { success, failure } from "@/lib/api/response";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { requireModuleAccess } from "@/lib/auth/authorization";
+import { saveManagerPermissions } from "@/services/manager.service";
 
+// moduleIds are system module IDs, the same as manager creation.
 const permissionsSchema = z.object({
-  systemModuleIds: z.array(z.string().uuid()).default([]),
-
-  attractionPermissions: z
-    .array(
-      z.object({
-        attractionId: z.string().uuid(),
-        moduleIds: z.array(z.string().uuid()).default([]),
-      }),
-    )
-    .default([]),
+  attractionPermissions: z.array(
+    z.object({
+      attractionId: z.string().uuid(),
+      moduleIds: z.array(z.string().uuid()).default([]),
+    }),
+  ),
 });
 
 // ======================================================
@@ -230,25 +228,7 @@ export async function PUT(
       return failure("Invalid permission details.", 400, "VALIDATION_ERROR");
     }
 
-    const { systemModuleIds, attractionPermissions } = parsed.data;
-
-    // --------------------------------------------------
-    // Remove duplicate IDs
-    // --------------------------------------------------
-
-    const uniqueSystemModuleIds = [...new Set(systemModuleIds)];
-
-    const uniqueAttractionPermissions = [
-      ...new Map(
-        attractionPermissions.map((permission) => [
-          permission.attractionId,
-          {
-            attractionId: permission.attractionId,
-            moduleIds: [...new Set(permission.moduleIds)],
-          },
-        ]),
-      ).values(),
-    ];
+    const { attractionPermissions } = parsed.data;
 
     // --------------------------------------------------
     // Check manager belongs to current admin
@@ -273,180 +253,16 @@ export async function PUT(
     }
 
     // --------------------------------------------------
-    // Validate system modules
-    // --------------------------------------------------
-
-    if (uniqueSystemModuleIds.length > 0) {
-      const modules = await db
-        .select({
-          id: systemModules.id,
-        })
-        .from(systemModules)
-        .where(inArray(systemModules.id, uniqueSystemModuleIds));
-
-      if (modules.length !== uniqueSystemModuleIds.length) {
-        return failure(
-          "One or more system modules are invalid.",
-          400,
-          "INVALID_SYSTEM_MODULE",
-        );
-      }
-    }
-
-    // --------------------------------------------------
-    // Validate attractions belong to current admin
-    // --------------------------------------------------
-
-    const attractionIds = uniqueAttractionPermissions.map(
-      ({ attractionId }) => attractionId,
-    );
-
-    if (attractionIds.length > 0) {
-      const validAttractions = await db
-        .select({
-          id: attractions.id,
-        })
-        .from(attractions)
-        .where(
-          and(
-            inArray(attractions.id, attractionIds),
-            eq(attractions.adminId, auth.adminId),
-          ),
-        );
-
-      if (validAttractions.length !== attractionIds.length) {
-        return failure(
-          "One or more attractions are invalid.",
-          400,
-          "INVALID_ATTRACTION",
-        );
-      }
-    }
-
-    // --------------------------------------------------
-    // Validate attraction modules
-    // --------------------------------------------------
-
-    const requestedModules = uniqueAttractionPermissions.flatMap(
-      ({ attractionId, moduleIds }) =>
-        moduleIds.map((attractionModuleId) => ({
-          attractionId,
-          attractionModuleId,
-        })),
-    );
-
-    const attractionModuleIds = [
-      ...new Set(
-        requestedModules.map(({ attractionModuleId }) => attractionModuleId),
-      ),
-    ];
-
-    if (attractionModuleIds.length > 0) {
-      const validModules = await db
-        .select({
-          id: attractionModules.id,
-          attractionId: attractionModules.attractionId,
-        })
-        .from(attractionModules)
-        .innerJoin(
-          attractions,
-          eq(attractionModules.attractionId, attractions.id),
-        )
-        .where(
-          and(
-            inArray(attractionModules.id, attractionModuleIds),
-            eq(attractions.adminId, auth.adminId),
-            eq(attractionModules.isActive, "ACTIVE"),
-          ),
-        );
-
-      if (validModules.length !== attractionModuleIds.length) {
-        return failure(
-          "One or more attraction modules are invalid.",
-          400,
-          "INVALID_ATTRACTION_MODULE",
-        );
-      }
-
-      const validModuleMap = new Map(
-        validModules.map((module) => [module.id, module.attractionId]),
-      );
-
-      for (const requested of requestedModules) {
-        const actualAttractionId = validModuleMap.get(
-          requested.attractionModuleId,
-        );
-
-        if (!actualAttractionId) {
-          return failure(
-            "One or more attraction modules are invalid.",
-            400,
-            "INVALID_ATTRACTION_MODULE",
-          );
-        }
-
-        if (actualAttractionId !== requested.attractionId) {
-          return failure(
-            "Attraction module does not belong to the selected attraction.",
-            400,
-            "INVALID_ATTRACTION_MODULE_MAPPING",
-          );
-        }
-      }
-    }
-
-    // --------------------------------------------------
     // Replace permissions atomically
     // --------------------------------------------------
 
-    await db.transaction(async (tx) => {
-      // Remove existing permissions
-
-      await tx
-        .delete(managerSystemModulePermissions)
-        .where(eq(managerSystemModulePermissions.managerId, managerId));
-
-      await tx
-        .delete(managerAttractionModulePermissions)
-        .where(eq(managerAttractionModulePermissions.managerId, managerId));
-
-      await tx
-        .delete(managerAttractionPermissions)
-        .where(eq(managerAttractionPermissions.managerId, managerId));
-
-      // Insert system module permissions
-
-      if (uniqueSystemModuleIds.length > 0) {
-        await tx.insert(managerSystemModulePermissions).values(
-          uniqueSystemModuleIds.map((moduleId) => ({
-            managerId,
-            moduleId,
-          })),
-        );
-      }
-
-      // Insert attraction permissions
-
-      if (uniqueAttractionPermissions.length > 0) {
-        await tx.insert(managerAttractionPermissions).values(
-          uniqueAttractionPermissions.map(({ attractionId }) => ({
-            managerId,
-            attractionId,
-          })),
-        );
-      }
-
-      // Insert attraction module permissions
-
-      if (requestedModules.length > 0) {
-        await tx.insert(managerAttractionModulePermissions).values(
-          requestedModules.map(({ attractionModuleId }) => ({
-            managerId,
-            attractionModuleId,
-          })),
-        );
-      }
-    });
+    await db.transaction((tx) =>
+      saveManagerPermissions(tx, {
+        adminId: auth.adminId,
+        managerId,
+        attractionPermissions,
+      }),
+    );
 
     return success({
       message: "Manager permissions updated successfully.",
@@ -496,24 +312,6 @@ export async function PUT(
           "One or more selected attractions are invalid.",
           400,
           "INVALID_ATTRACTION",
-        );
-      }
-
-      // Attraction module
-      if (error.message === "INVALID_ATTRACTION_MODULE") {
-        return failure(
-          "One or more selected attraction modules are invalid or inactive.",
-          400,
-          "INVALID_ATTRACTION_MODULE",
-        );
-      }
-
-      // Attraction/module mapping
-      if (error.message === "INVALID_ATTRACTION_MODULE_MAPPING") {
-        return failure(
-          "One or more attraction modules do not belong to their selected attraction.",
-          400,
-          "INVALID_ATTRACTION_MODULE_MAPPING",
         );
       }
     }

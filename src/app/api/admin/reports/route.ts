@@ -4,7 +4,10 @@ import { getAdminId } from "@/lib/auth/get-admin-id";
 import { getReport } from "@/services/report.service";
 
 import { success, failure } from "@/lib/api/response";
-import { requireModuleAccess } from "@/lib/auth/authorization";
+import {
+  requireModuleAccess,
+  getManagerAttractionScope,
+} from "@/lib/auth/authorization";
 
 export async function GET(req: Request) {
   try {
@@ -135,6 +138,7 @@ export async function GET(req: Request) {
     // =====================================================
     const data = await getReport({
       adminId,
+      attractionIds: await getManagerAttractionScope(auth),
       staffId: auth.user.role === "STAFF" ? auth.user.id : undefined,
       startDateTime,
       endDateTime,

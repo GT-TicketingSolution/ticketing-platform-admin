@@ -1,46 +1,143 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { users, bookings } from "@/db/schema";
+import {
+  users,
+  bookings,
+  staffRoles,
+  staffAttractionAssignments,
+  managerAttractionPermissions,
+  attractionManagement,
+  attractionsAgainstBooking,
+  categoryOfAttractionAgainstBooking,
+} from "@/db/schema";
 
 export async function getManagerDashboardRepository(managerId: string) {
   // =====================================================
-  // 1. Get staff belonging to this manager
+  // 1. Attractions assigned to this manager
+  // =====================================================
+
+  const assignedAttractions = await db
+    .select({
+      attractionId: managerAttractionPermissions.attractionId,
+    })
+    .from(managerAttractionPermissions)
+    .where(eq(managerAttractionPermissions.managerId, managerId));
+
+  const attractionIds = assignedAttractions.map((item) => item.attractionId);
+
+  // Totals depend on the attraction only, so past numbers stay the same when
+  // staff are moved, removed or deleted.
+  const bookingScope = and(
+    inArray(attractionManagement.attractionId, attractionIds),
+    eq(bookings.isDeleted, false),
+    eq(bookings.status, "CONFIRMED"),
+  );
+
+  // =====================================================
+  // 2. Staff working on those attractions
   // =====================================================
 
   const staffData = await db
-    .select({
+    .selectDistinct({
       id: users.id,
       name: users.name,
       status: users.status,
     })
     .from(users)
-    .where(and(eq(users.managerId, managerId), eq(users.role, "STAFF")));
+    .innerJoin(
+      staffAttractionAssignments,
+      eq(staffAttractionAssignments.staffId, users.id),
+    )
+    .where(
+      and(
+        eq(users.role, "STAFF"),
+        eq(users.isDeleted, false),
+        inArray(staffAttractionAssignments.attractionId, attractionIds),
+      ),
+    )
+    .orderBy(users.name);
+
+  const roleRows = await db
+    .select({
+      staffId: staffRoles.staffId,
+      role: staffRoles.role,
+    })
+    .from(staffRoles)
+    .where(
+      inArray(
+        staffRoles.staffId,
+        staffData.map((item) => item.id),
+      ),
+    );
+
+  const roleMap = new Map<string, Set<string>>();
+
+  for (const { staffId, role } of roleRows) {
+    // Older rows store the timing in the name, e.g. "Reports Access (24h)".
+    const name = role.replace(/\s*\(\d+\s*h\)$/i, "");
+
+    roleMap.set(staffId, (roleMap.get(staffId) ?? new Set()).add(name));
+  }
 
   // =====================================================
-  // 2. Get ticket count for those staff members
+  // 3. Tickets on those attractions, per booking creator
   // =====================================================
 
-  const staffTickets = await db
+  const ticketRows = await db
     .select({
       staffId: bookings.createdBy,
-      tickets: count(bookings.id),
+      tickets: sql<number>`coalesce(sum(${categoryOfAttractionAgainstBooking.noOfVisitors}), 0)::int`,
     })
-    .from(bookings)
-    .innerJoin(users, eq(bookings.createdBy, users.id))
-    .where(and(eq(users.managerId, managerId), eq(users.role, "STAFF")))
+    .from(categoryOfAttractionAgainstBooking)
+    .innerJoin(
+      attractionsAgainstBooking,
+      eq(
+        categoryOfAttractionAgainstBooking.attractionAgainstBookingId,
+        attractionsAgainstBooking.id,
+      ),
+    )
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(bookings, eq(attractionsAgainstBooking.bookingId, bookings.id))
+    .where(bookingScope)
     .groupBy(bookings.createdBy);
 
-  // =====================================================
-  // 3. Create lookup map
-  // =====================================================
-
   const ticketMap = new Map(
-    staffTickets.map((item) => [item.staffId, Number(item.tickets ?? 0)]),
+    ticketRows.map((item) => [item.staffId, Number(item.tickets ?? 0)]),
+  );
+
+  const totalTicketsProcessed = ticketRows.reduce(
+    (total, item) => total + Number(item.tickets ?? 0),
+    0,
   );
 
   // =====================================================
-  // 4. Build dashboard staff data
+  // 4. Revenue on those attractions
+  // =====================================================
+
+  const [revenue] = await db
+    .select({
+      amount: sql<string>`coalesce(sum(${attractionsAgainstBooking.attractionTotalAmount}), 0)`,
+    })
+    .from(attractionsAgainstBooking)
+    .innerJoin(
+      attractionManagement,
+      eq(
+        attractionsAgainstBooking.attractionManagementId,
+        attractionManagement.id,
+      ),
+    )
+    .innerJoin(bookings, eq(attractionsAgainstBooking.bookingId, bookings.id))
+    .where(bookingScope);
+
+  // =====================================================
+  // 5. Build dashboard staff data
   // =====================================================
 
   const staff = staffData.map((item) => ({
@@ -48,7 +145,7 @@ export async function getManagerDashboardRepository(managerId: string) {
 
     name: item.name,
 
-    role: ["STAFF"],
+    role: [...(roleMap.get(item.id) ?? ["STAFF"])],
 
     ticketsIssued: ticketMap.get(item.id) ?? 0,
 
@@ -56,33 +153,18 @@ export async function getManagerDashboardRepository(managerId: string) {
   }));
 
   // =====================================================
-  // 5. Dashboard statistics
-  // =====================================================
-
-  const totalStaff = staff.length;
-
-  const activeStaff = staff.filter((item) => item.status === "Active").length;
-
-  const totalTicketsProcessed = staff.reduce(
-    (total, item) => total + item.ticketsIssued,
-    0,
-  );
-
-  const estimatedRevenue = totalTicketsProcessed * 250;
-
-  // =====================================================
   // 6. Return dashboard data
   // =====================================================
 
   return {
-    totalStaff,
+    totalStaff: staff.length,
 
-    activeStaff,
+    activeStaff: staff.filter((item) => item.status === "Active").length,
 
     totalTicketsProcessed,
 
-    estimatedRevenue,
+    estimatedRevenue: Number(revenue?.amount ?? 0),
 
-    staff: staff.slice(0, 5),
+    staff,
   };
 }

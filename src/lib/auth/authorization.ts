@@ -267,7 +267,7 @@
 //     throw new Error("FORBIDDEN");
 //   }
 // }
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/db";
 
@@ -278,6 +278,7 @@ import {
   staffSystemModulePermissions,
   staffAttractionAssignments,
 } from "@/db/schema";
+import { STAFF_ALLOWED_MODULES } from "@/lib/auth/staff-role-modules";
 
 type AuthUser = {
   id: string;
@@ -603,6 +604,56 @@ export async function hasAttractionAccess(
   }
 
   return false;
+}
+
+/**
+ * Attraction limit for screens and APIs a manager shares with the admin.
+ *
+ * MANAGER: the assigned attraction IDs.
+ * ADMIN / STAFF: undefined, no limit is added by this helper.
+ */
+export async function getManagerAttractionScope(
+  auth: AuthContext,
+): Promise<string[] | undefined> {
+  return auth.user.role === "MANAGER"
+    ? getAccessibleAttractionIds(auth)
+    : undefined;
+}
+
+/**
+ * Modules this user can give to staff.
+ *
+ * ADMIN: every staff module.
+ * MANAGER: only the staff modules the manager holds.
+ */
+export async function getGrantableStaffModules(auth: AuthContext) {
+  const staffModules = await db
+    .select({
+      id: systemModules.id,
+      key: systemModules.key,
+    })
+    .from(systemModules)
+    .where(
+      and(
+        eq(systemModules.isActive, "ACTIVE"),
+        inArray(systemModules.key, STAFF_ALLOWED_MODULES),
+      ),
+    );
+
+  if (auth.user.role !== "MANAGER") {
+    return staffModules;
+  }
+
+  const managerModules = await db
+    .select({
+      moduleId: managerSystemModulePermissions.moduleId,
+    })
+    .from(managerSystemModulePermissions)
+    .where(eq(managerSystemModulePermissions.managerId, auth.user.id));
+
+  const managerModuleIds = new Set(managerModules.map((item) => item.moduleId));
+
+  return staffModules.filter((item) => managerModuleIds.has(item.id));
 }
 
 /* =========================================================

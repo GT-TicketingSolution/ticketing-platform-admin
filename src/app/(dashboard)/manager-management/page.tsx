@@ -1013,7 +1013,12 @@ function ManagerManagementInner() {
       return;
     }
     const computedAttraction = getAttractionFromPermissions(selectedManager.attractionPermissions || [], attractionsList);
-    const updated = { ...selectedManager, attraction: computedAttraction };
+    const assignedIds = new Set(selectedManager.attractionPermissions.map((p) => p.attractionId));
+    const updated = {
+      ...selectedManager,
+      attraction: computedAttraction,
+      attractions: attractionsList.filter((a) => assignedIds.has(a.id)),
+    };
 
     try {
       await updateManagerMutation.mutateAsync({

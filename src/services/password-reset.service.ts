@@ -23,7 +23,7 @@ export async function requestPasswordReset(email: string) {
       status: users.status,
     })
     .from(users)
-    .where(eq(users.email, normalizedEmail))
+    .where(and(eq(users.email, normalizedEmail), eq(users.isDeleted, false)))
     .limit(1);
 
   /*

@@ -6,29 +6,6 @@ import { success, failure } from "@/lib/api/response";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { requireModuleAccess } from "@/lib/auth/authorization";
 
-// const createManagerSchema = z.object({
-//   name: z.string().min(2).max(150),
-
-//   email: z.string().email(),
-
-//   phone: z.string().max(20).optional(),
-
-//   password: z.string().min(8),
-
-//   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
-
-//   systemModuleIds: z.array(z.string()).default([]),
-
-//   attractionPermissions: z
-//     .array(
-//       z.object({
-//         attractionId: z.string(),
-//         moduleIds: z.array(z.string()).default([]),
-//       }),
-//     )
-//     .default([]),
-// });
-
 const createManagerSchema = z.object({
   name: z.string().min(2).max(150),
   email: z.string().email(),
@@ -176,6 +153,20 @@ export async function POST(request: Request) {
             "One or more selected attractions were not found.",
             404,
             "ATTRACTION_NOT_FOUND",
+          );
+
+        case "INVALID_ATTRACTION":
+          return failure(
+            "One or more selected attractions are invalid.",
+            400,
+            "INVALID_ATTRACTION",
+          );
+
+        case "INVALID_SYSTEM_MODULE":
+          return failure(
+            "One or more selected system modules are invalid.",
+            400,
+            "INVALID_SYSTEM_MODULE",
           );
 
         case "MODULE_NOT_FOUND":

@@ -4,6 +4,7 @@ import {
   eq,
   exists,
   gte,
+  inArray,
   lte,
   sql,
   isNotNull,
@@ -31,6 +32,9 @@ export interface ReportFilter {
   fromDate?: string;
   toDate?: string;
   attractionId?: string;
+
+  // When set, the report is limited to these attractions.
+  attractionIds?: string[];
 }
 
 /* =========================================================
@@ -77,14 +81,22 @@ function getBookingConditions(filter: ReportFilter): SQL[] {
    TENANT / ATTRACTION CONDITION
 ========================================================= */
 
-function getAttractionConditions(filter: ReportFilter): SQL[] {
-  const conditions: SQL[] = [eq(attractions.adminId, filter.adminId)];
+function getAttractionFilter(filter: ReportFilter): SQL[] {
+  const conditions: SQL[] = [];
 
   if (filter.attractionId) {
     conditions.push(eq(attractions.id, filter.attractionId));
   }
 
+  if (filter.attractionIds) {
+    conditions.push(inArray(attractions.id, filter.attractionIds));
+  }
+
   return conditions;
+}
+
+function getAttractionConditions(filter: ReportFilter): SQL[] {
+  return [eq(attractions.adminId, filter.adminId), ...getAttractionFilter(filter)];
 }
 
 /* =========================================================
@@ -139,9 +151,7 @@ export async function getReportSummary(filter: ReportFilter) {
       and(
         ...bookingConditions,
         eq(attractionManagement.adminId, filter.adminId),
-        ...(filter.attractionId
-          ? [eq(attractions.id, filter.attractionId)]
-          : []),
+        ...getAttractionFilter(filter),
       ),
     );
 
@@ -187,9 +197,7 @@ export async function getReportSummary(filter: ReportFilter) {
       and(
         ...bookingConditions,
         eq(attractionManagement.adminId, filter.adminId),
-        ...(filter.attractionId
-          ? [eq(attractions.id, filter.attractionId)]
-          : []),
+        ...getAttractionFilter(filter),
       ),
     );
 
@@ -205,8 +213,14 @@ export async function getReportSummary(filter: ReportFilter) {
 
   const attractionReports = await getAttractionReports(filter);
 
+  // A limited summary counts only the amounts of the allowed attractions,
+  // not the full payment of a booking that also has other attractions.
+  const limitedRevenue = filter.attractionIds
+    ? attractionReports.reduce((sum, report) => sum + report.revenue, 0)
+    : undefined;
+
   return {
-    totalRevenue: Number(bookingSummary[0]?.revenue ?? 0),
+    totalRevenue: limitedRevenue ?? Number(bookingSummary[0]?.revenue ?? 0),
 
     totalBookings: Number(bookingSummary[0]?.bookings ?? 0),
 
@@ -266,9 +280,7 @@ async function getTopAttraction(filter: ReportFilter) {
       and(
         ...bookingConditions,
         eq(attractions.adminId, filter.adminId),
-        ...(filter.attractionId
-          ? [eq(attractions.id, filter.attractionId)]
-          : []),
+        ...getAttractionFilter(filter),
       ),
     )
     .groupBy(attractions.id, attractions.name)
@@ -380,9 +392,7 @@ export async function getAttractionReports(filter: ReportFilter) {
       and(
         ...bookingConditions,
         eq(attractions.adminId, filter.adminId),
-        ...(filter.attractionId
-          ? [eq(attractions.id, filter.attractionId)]
-          : []),
+        ...getAttractionFilter(filter),
       ),
     )
     .groupBy(attractions.id);
@@ -431,9 +441,7 @@ export async function getAttractionReports(filter: ReportFilter) {
       and(
         ...bookingConditions,
         eq(attractions.adminId, filter.adminId),
-        ...(filter.attractionId
-          ? [eq(attractions.id, filter.attractionId)]
-          : []),
+        ...getAttractionFilter(filter),
       ),
     )
     .groupBy(attractions.id);
@@ -488,9 +496,7 @@ export async function getAttractionReports(filter: ReportFilter) {
       and(
         ...bookingConditions,
         eq(attractions.adminId, filter.adminId),
-        ...(filter.attractionId
-          ? [eq(attractions.id, filter.attractionId)]
-          : []),
+        ...getAttractionFilter(filter),
       ),
     )
     .groupBy(attractions.id, attractionCategory.id, attractionCategory.name);
@@ -547,9 +553,7 @@ export async function getAttractionReports(filter: ReportFilter) {
       and(
         ...paymentConditions,
         eq(attractions.adminId, filter.adminId),
-        ...(filter.attractionId
-          ? [eq(attractions.id, filter.attractionId)]
-          : []),
+        ...getAttractionFilter(filter),
       ),
     )
     .groupBy(attractions.id, transactions.paymentMode);
@@ -603,9 +607,7 @@ export async function getAttractionReports(filter: ReportFilter) {
       and(
         ...transactionConditions,
         eq(attractions.adminId, filter.adminId),
-        ...(filter.attractionId
-          ? [eq(attractions.id, filter.attractionId)]
-          : []),
+        ...getAttractionFilter(filter),
       ),
     )
     .orderBy(sql`${bookings.createdAt} DESC`);
@@ -839,9 +841,7 @@ export async function getPaymentDistribution(filter: ReportFilter) {
 
         eq(attractionManagement.adminId, filter.adminId),
 
-        ...(filter.attractionId
-          ? [eq(attractions.id, filter.attractionId)]
-          : []),
+        ...getAttractionFilter(filter),
       ),
     )
     .groupBy(transactions.paymentMode);
@@ -908,9 +908,7 @@ export async function getTicketBreakdown(filter: ReportFilter) {
 
         eq(attractionManagement.adminId, filter.adminId),
 
-        ...(filter.attractionId
-          ? [eq(attractions.id, filter.attractionId)]
-          : []),
+        ...getAttractionFilter(filter),
       ),
     )
     .groupBy(attractionCategory.id, attractionCategory.name);
@@ -930,6 +928,9 @@ type GetReportParams = {
   adminId: string;
   staffId?: string;
 
+  // When set, the report is limited to these attractions.
+  attractionIds?: string[];
+
   // Optional. When omitted, the report covers every record the caller can
   // access (ADMIN/MANAGER: all time, STAFF: their full report access window).
   startDateTime?: Date;
@@ -941,6 +942,7 @@ const LATEST_TRANSACTIONS_PER_ATTRACTION = 6;
 export async function getReport({
   adminId,
   staffId,
+  attractionIds,
   startDateTime,
   endDateTime,
 }: GetReportParams) {
@@ -1036,9 +1038,14 @@ export async function getReport({
   if (endDateTime) bookingFilters.push(lte(bookings.createdAt, endDateTime));
 
   // For queries that already join through to attractions.
+  const attractionFilter = attractionIds
+    ? [inArray(attractions.id, attractionIds)]
+    : [];
+
   const bookingScope: SQL[] = [
     ...bookingFilters,
     eq(attractions.adminId, adminId),
+    ...attractionFilter,
   ];
 
   const transactionScope: SQL[] = [
@@ -1072,17 +1079,41 @@ export async function getReport({
         attractionManagement,
         eq(attractionManagement.attractionId, attractions.id),
       )
-      .where(eq(attractions.adminId, adminId)),
+      .where(and(eq(attractions.adminId, adminId), ...attractionFilter)),
 
-    db
-      .select({
-        grandTotalBooking: sql<number>`count(*)::int`,
-        grandTotalAmount: sql<string>`coalesce(sum(${bookings.totalAmount}), 0)`,
-      })
-      .from(bookings)
-      .where(
-        and(...bookingFilters, tenantBookingExists(adminId, bookings.id)),
-      ),
+    attractionIds
+      ? // Limited report: count only the amounts of the allowed attractions.
+        db
+          .select({
+            grandTotalBooking: sql<number>`count(distinct ${bookings.id})::int`,
+            grandTotalAmount: sql<string>`coalesce(sum(${attractionsAgainstBooking.attractionTotalAmount}), 0)`,
+          })
+          .from(attractionsAgainstBooking)
+          .innerJoin(
+            bookings,
+            eq(attractionsAgainstBooking.bookingId, bookings.id),
+          )
+          .innerJoin(
+            attractionManagement,
+            eq(
+              attractionsAgainstBooking.attractionManagementId,
+              attractionManagement.id,
+            ),
+          )
+          .innerJoin(
+            attractions,
+            eq(attractionManagement.attractionId, attractions.id),
+          )
+          .where(and(...bookingScope))
+      : db
+          .select({
+            grandTotalBooking: sql<number>`count(*)::int`,
+            grandTotalAmount: sql<string>`coalesce(sum(${bookings.totalAmount}), 0)`,
+          })
+          .from(bookings)
+          .where(
+            and(...bookingFilters, tenantBookingExists(adminId, bookings.id)),
+          ),
   ]);
 
   const grandTotalBooking = Number(totals?.grandTotalBooking ?? 0);
@@ -1274,7 +1305,7 @@ export async function getReport({
 
   // Limited to transactions of this tenant's bookings.
   const invoiceRangeConditions: SQL[] = [
-    tenantBookingExists(adminId, transactions.bookingId),
+    tenantBookingExists(adminId, transactions.bookingId, attractionIds),
   ];
 
   if (startDateTime) {
@@ -1429,8 +1460,13 @@ export async function getReport({
 /**
  * EXISTS condition: the given booking has at least one attraction line
  * belonging to this admin's attractions (bookings has no adminId column).
+ * attractionIds narrows that to specific attractions.
  */
-function tenantBookingExists(adminId: string, bookingId: AnyPgColumn) {
+function tenantBookingExists(
+  adminId: string,
+  bookingId: AnyPgColumn,
+  attractionIds?: string[],
+) {
   return exists(
     db
       .select({ one: sql`1` })
@@ -1450,6 +1486,7 @@ function tenantBookingExists(adminId: string, bookingId: AnyPgColumn) {
         and(
           eq(attractionsAgainstBooking.bookingId, bookingId),
           eq(attractions.adminId, adminId),
+          ...(attractionIds ? [inArray(attractions.id, attractionIds)] : []),
         ),
       ),
   );
