@@ -11,6 +11,7 @@ export async function getProfile(userId: string) {
   const [user] = await db
     .select({
       id: users.id,
+      adminId: users.adminId,
       name: users.name,
       email: users.email,
       role: users.role,
@@ -37,6 +38,25 @@ export async function getProfile(userId: string) {
 
   if (user.status !== "ACTIVE") {
     throw new Error("ACCOUNT_NOT_ACTIVE");
+  }
+
+  const { adminId, ...userProfile } = user;
+
+  // Inherit business GST and CIN from the parent ADMIN for STAFF/MANAGER accounts
+  if ((user.role === "STAFF" || user.role === "MANAGER") && adminId) {
+    const [admin] = await db
+      .select({
+        gst: users.gst,
+        cin: users.cin,
+      })
+      .from(users)
+      .where(eq(users.id, adminId))
+      .limit(1);
+
+    if (admin) {
+      userProfile.gst = admin.gst ?? userProfile.gst;
+      userProfile.cin = admin.cin ?? userProfile.cin;
+    }
   }
 
   const today = new Date();
@@ -99,7 +119,7 @@ export async function getProfile(userId: string) {
       .limit(1);
 
     return {
-      ...user,
+      ...userProfile,
       reportAccessTiming: reportAccess?.reportAccessTiming ?? null,
       reportAccessUnit: reportAccess?.reportAccessUnit ?? null,
       ...(userRenewalData && {
@@ -109,7 +129,7 @@ export async function getProfile(userId: string) {
   }
 
   return {
-    ...user,
+    ...userProfile,
     ...(userRenewalData && {
       user_renewal_data: userRenewalData,
     }),
