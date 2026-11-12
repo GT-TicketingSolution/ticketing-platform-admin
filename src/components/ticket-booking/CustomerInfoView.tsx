@@ -643,6 +643,7 @@ function TicketGeneratedModal({
   gst = "",
   timeSlot = "",
   seatDetails = [],
+  tripMap = {},
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -691,8 +692,10 @@ function TicketGeneratedModal({
   seatDetails?: {
     attractionId: string;
     attractionName: string;
+    tripNo?: number;
     sections: { name: string; seats: number[] }[];
   }[];
+  tripMap?: Record<string, number>;
 }) {
   useModalBodyLock(isOpen);
   const booking =
@@ -1057,21 +1060,52 @@ function TicketGeneratedModal({
                   >
                     SEAT ALLOCATION
                   </div>
+
+                  {/* Current Trip - only shown at top when single attraction */}
+                  {seatDetails.length === 1 && (
+                    <div
+                      style={{
+                        fontWeight: 800,
+                        fontSize: "10.5px",
+                        textAlign: "center",
+                        marginBottom: "6px",
+                        letterSpacing: "0.01em",
+                      }}
+                    >
+                      Round No.(राउंड नं.) : {
+                        seatDetails[0]?.tripNo || (tripMap && tripMap[seatDetails[0]?.attractionId]) || 1
+                      }
+                    </div>
+                  )}
+
                   {seatDetails.map((att, i) => (
-                    <div key={att.attractionId} style={{ marginBottom: i < seatDetails.length - 1 ? "6px" : 0 }}>
+                    <div key={att.attractionId} style={{ marginTop: i > 0 ? "8px" : "2px", marginBottom: i < seatDetails.length - 1 ? "4px" : 0 }}>
                       {seatDetails.length > 1 && (
-                        <div
-                          style={{
-                            fontWeight: 900,
-                            fontSize: "10.5px",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.03em",
-                            marginBottom: "3px",
-                            textDecoration: "underline",
-                          }}
-                        >
-                          {att.attractionName}
-                        </div>
+                        <>
+                          <div
+                            style={{
+                              fontWeight: 900,
+                              fontSize: "10.5px",
+                              textAlign: "center",
+                              letterSpacing: "0.01em",
+                              marginBottom: "3px",
+                              textDecoration: "underline",
+                            }}
+                          >
+                             Round No.(राउंड नं.) : {att.tripNo || (tripMap && tripMap[att.attractionId]) || 1}
+                          </div>
+                          <div
+                            style={{
+                              fontWeight: 900,
+                              fontSize: "10.5px",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.03em",
+                              marginBottom: "3px",
+                            }}
+                          >
+                            {att.attractionName}
+                          </div>
+                        </>
                       )}
                       {att.sections.map((sec) => (
                         <div
@@ -1090,6 +1124,23 @@ function TicketGeneratedModal({
                       ))}
                     </div>
                   ))}
+
+                  {/* Station Route Info - Rendered once at the bottom of all attractions */}
+                  <div
+                    style={{
+                      marginTop: "6px",
+                      paddingTop: "5px",
+                      borderTop: "1px dashed #000000",
+                      fontSize: "10.5px",
+                      lineHeight: "1.4",
+                      fontWeight: 700,
+                      color: "#000000",
+                      textAlign: "center"
+                    }}
+                  >
+                    <div>स्टेशन: 1 समोर बाग से कमल तलाई तक विरम</div>
+                    <div>स्टेशन: 2 कमल तलाई से समोर बाग तक</div>
+                  </div>
                 </div>
               )}
             </div>
@@ -1122,7 +1173,7 @@ function TicketGeneratedModal({
                 <thead>
                   <tr style={{ borderBottom: "1.5px solid #000000", textAlign: "left", fontWeight: 400 }}>
                     <th style={{ paddingBottom: "4px", width: "12%", fontWeight: 400 }}>S.No.</th>
-                    <th style={{ paddingBottom: "4px", width: "50%", fontWeight: 400 }}>Category / Item</th>
+                    <th style={{ paddingBottom: "4px", width: "50%", fontWeight: 400 }}>Items/SAC</th>
                     <th style={{ paddingBottom: "4px", width: "15%", textAlign: "center", fontWeight: 400 }}>Qty</th>
                     <th style={{ paddingBottom: "4px", width: "23%", textAlign: "right", fontWeight: 400 }}>Amount</th>
                   </tr>
@@ -1132,7 +1183,12 @@ function TicketGeneratedModal({
                     itemsList.map((item, idx) => (
                       <tr key={idx} style={{ fontWeight: 400 }}>
                         <td style={{ paddingTop: "5px", verticalAlign: "top" }}>{item.sNo}</td>
-                        <td style={{ paddingTop: "5px" }}>{item.name}</td>
+                        <td style={{ paddingTop: "5px", verticalAlign: "top" }}>
+                          <div>{item.name}</div>
+                          <div style={{ fontSize: "10px", color: "#000000", fontWeight: 400, marginTop: "1px" }}>
+                            SAC: 996411
+                          </div>
+                        </td>
                         <td style={{ paddingTop: "5px", textAlign: "center", verticalAlign: "top" }}>{item.qty}</td>
                         <td style={{ paddingTop: "5px", textAlign: "right", verticalAlign: "top" }}>
                           ₹{item.amount.toFixed(2)}
@@ -1141,10 +1197,15 @@ function TicketGeneratedModal({
                     ))
                   ) : (
                     <tr style={{ fontWeight: 400 }}>
-                      <td style={{ paddingTop: "5px" }}>1</td>
-                      <td style={{ paddingTop: "5px" }}>{attractionName || "-"}</td>
-                      <td style={{ paddingTop: "5px", textAlign: "center" }}>{totalPax || 1}</td>
-                      <td style={{ paddingTop: "5px", textAlign: "right" }}>₹{calculatedSubtotal.toFixed(2)}</td>
+                      <td style={{ paddingTop: "5px", verticalAlign: "top" }}>1</td>
+                      <td style={{ paddingTop: "5px", verticalAlign: "top" }}>
+                        <div>{attractionName || "-"}</div>
+                        <div style={{ fontSize: "10px", color: "#000000", fontWeight: 400, marginTop: "1px" }}>
+                          SAC: 996411
+                        </div>
+                      </td>
+                      <td style={{ paddingTop: "5px", textAlign: "center", verticalAlign: "top" }}>{totalPax || 1}</td>
+                      <td style={{ paddingTop: "5px", textAlign: "right", verticalAlign: "top" }}>₹{calculatedSubtotal.toFixed(2)}</td>
                     </tr>
                   )}
                 </tbody>
@@ -1201,185 +1262,121 @@ function TicketGeneratedModal({
               </div>
             </div>
 
-            {/* Notes and QR Codes Section (Side-by-Side) */}
-            {qrCodes && qrCodes.length > 0 ? (
+            {/* Notes / Instructions Section (Full Width Above Scanners) */}
+            <div
+              style={{
+                width: "100%",
+                textAlign: "left",
+                fontSize: "11px",
+                lineHeight: "1.5",
+                fontWeight: 700,
+                color: "#000000",
+                padding: "8px 0",
+                borderBottom: "1px dashed #000000",
+                boxSizing: "border-box",
+                wordBreak: "break-word",
+              }}
+            >
+              <div>NOTE:</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "3px", width: "100%" }}>
+                <div style={{ width: "100%" }}>1. कम से कम 50 सवारी होने पर ही ट्रेन रवाना होगी</div>
+                <div style={{ width: "100%" }}>2. कृपया किसी भी स्थिति में ट्रेन से हाथ बाहर ना निकालें।</div>
+                <div style={{ width: "100%" }}>3. यात्री अपने सामान की सुरक्षा स्वयं करें।</div>
+                <div style={{ width: "100%" }}>4. टिकट लेने के पश्चात् कोई रिफंड नहीं किया जायेगा।</div>
+                <div style={{ width: "100%" }}>5. नाव में खड़ा होना और पानी में हाथ डालना प्रतिबंधित है।</div>
+                <div style={{ width: "100%" }}>6. पानी में कोई भी वस्तु फेंकना मना है।</div>
+                <div style={{ width: "100%" }}>7. नाव को नुकसान होने पर यात्री से वसूली की जाएगी।</div>
+                <div style={{ width: "100%" }}>8. नौकायन के दौरान लाइफ जैकेट पहन अनिवार्य है।</div>
+                <div style={{ width: "100%" }}>9. नाव में खाना-पीना वर्जित है।</div>
+                <div style={{ width: "100%" }}>10. सभी मामले केवल उदयपुर न्याय क्षेत्र में मान्य होंगे।</div>
+                <div style={{ width: "100%" }}>11. प्रवेश का अधिकार प्रबंधन के पास सुरक्षित है (नगर निगम द्वारा स्वीकृत)</div>
+              </div>
+            </div>
+
+            {/* QR Codes / Scanners Section (Centered Below Notes) */}
+            {qrCodes && qrCodes.length > 0 && (
               <div
                 style={{
+                  width: "100%",
                   display: "flex",
-                  flexDirection: "row",
-                  alignItems: "stretch",
-                  justifyContent: "space-between",
-                  gap: "6px",
+                  flexDirection: "column",
+                  alignItems: "center",
                   padding: "10px 0 8px 0",
                   borderBottom: "1px dashed #000000",
+                  boxSizing: "border-box",
                 }}
               >
-                {/* Left: Notes / Instructions (40% width) */}
                 <div
                   style={{
-                    width: "40%",
-                    flex: "0 0 40%",
-                    textAlign: "left",
-                    fontSize: "8px",
-                    lineHeight: "1.3",
-                    fontWeight: 600,
-                    color: "#000000",
-                    boxSizing: "border-box",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                    <div>1. कम से कम 50 सवारी होने पर ही ट्रेन रवाना होगी</div>
-                    <div>2. कृपया किसी भी स्थिति में ट्रेन से हाथ बाहर ना निकालें।</div>
-                    <div>3. यात्री अपने सामान की सुरक्षा स्वयं करें।</div>
-                    <div>4. टिकट लेने के पश्चात् कोई रिफंड नहीं किया जायेगा।</div>
-                    <div>5. नाव में खड़ा होना और पानी में हाथ डालना प्रतिबंधित है।</div>
-                    <div>6. पानी में कोई भी वस्तु फेंकना मना है।</div>
-                    <div>7. नाव को नुकसान होने पर यात्री से वसूली की जाएगी।</div>
-                    <div>8. नौकायन के दौरान लाइफ जैकेट पहन अनिवार्य है।</div>
-                    <div>9. नाव में खाना-पीना वर्जित है।</div>
-                    <div>10. सभी मामले केवल उदयपुर न्याय क्षेत्र में मान्य होंगे।</div>
-                    <div>11. प्रवेश का अधिकार प्रबंधन के पास सुरक्षित है (नगर निगम द्वारा स्वीकृत)</div>
-                  </div>
-                </div>
-
-                {/* Right: QR Codes Column (60% width) */}
-                <div
-                  style={{
-                    width: "60%",
-                    flex: "0 0 60%",
                     display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    boxSizing: "border-box",
+                    flexWrap: "wrap",
+                    justifyContent: "center",
+                    alignItems: "flex-start",
+                    gap: "12px",
+                    width: "100%",
                   }}
                 >
-                  {/* QR codes container: 2-column grid starting from left for >= 3, or column stack for 1 or 2 */}
-                  <div
-                    style={
-                      qrCodes.length >= 3
-                        ? {
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: "4px",
-                          rowGap: "3px",
-                          width: "100%",
-                          justifyItems: "center",
-                          alignContent: "start",
-                          gridAutoRows: "max-content",
-                        }
-                        : {
+                  {qrCodes.map((qrItem, idx) => {
+                    const matchedAttraction = bookingSummary.find((b) => b.attractionId === qrItem.attractionId);
+                    const attractionLabel = matchedAttraction?.attractionName || (qrCodes.length > 1 ? `Station ${idx + 1}` : (attractionName || "Entry"));
+                    const qrSize = qrCodes.length === 1 ? "85px" : "75px";
+
+                    return (
+                      <div
+                        key={idx}
+                        style={{
                           display: "flex",
                           flexDirection: "column",
                           alignItems: "center",
-                          gap: "6px",
-                          width: "100%",
-                        }
-                    }
-                  >
-                    {qrCodes.map((qrItem, idx) => {
-                      const matchedAttraction = bookingSummary.find((b) => b.attractionId === qrItem.attractionId);
-                      const attractionLabel = matchedAttraction?.attractionName || (qrCodes.length > 1 ? `Station ${idx + 1}` : "Scan for Entry");
-                      const isGrid = qrCodes.length >= 3;
-                      const qrSize = qrCodes.length === 1 ? "75px" : qrCodes.length === 2 ? "70px" : "60px";
-
-                      return (
+                          width: qrCodes.length === 1 ? "100%" : "calc(50% - 8px)",
+                          maxWidth: qrCodes.length === 1 ? "140px" : "130px",
+                          boxSizing: "border-box",
+                        }}
+                      >
                         <div
-                          key={idx}
                           style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            boxSizing: "border-box",
-                            width: "100%",
-                            border: "none",
-                            padding: "0",
-                            margin: "0",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            color: "#000000",
+                            marginBottom: "2px",
+                            textAlign: "center",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.02em",
+                            lineHeight: 1.2,
+                            wordBreak: "break-word",
                           }}
                         >
-                          <div
-                            style={{
-                              fontSize: isGrid ? "8.5px" : "10px",
-                              fontWeight: 400,
-                              color: "#000000",
-                              marginBottom: "1px",
-                              textAlign: "center",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.02em",
-                              lineHeight: 1.1,
-                              wordBreak: "break-word",
-                              minHeight: isGrid ? "19px" : undefined,
-                              display: "flex",
-                              alignItems: "flex-end",
-                              justifyContent: "center",
-                              width: "100%",
-                            }}
-                          >
-                            {attractionLabel}
-                          </div>
-                          <img
-                            src={qrItem.qrCode}
-                            alt={`${attractionLabel} QR Code`}
-                            style={{
-                              width: qrSize,
-                              height: qrSize,
-                              objectFit: "contain",
-                              background: "#FFFFFF",
-                              display: "block",
-                            }}
-                          />
+                          {attractionLabel}
                         </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Single common Scan for Entry — always fixed at the bottom of the QR column */}
-                  <div
-                    style={{
-                      fontSize: "8.5px",
-                      fontWeight: 400,
-                      color: "#000000",
-                      marginTop: "auto",
-                      paddingTop: "6px",
-                      textAlign: "center",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.02em",
-                      lineHeight: 1.1,
-                      width: "100%",
-                    }}
-                  >
-                    Scan for Entry
-                  </div>
+                        <img
+                          src={qrItem.qrCode}
+                          alt={`${attractionLabel} QR Code`}
+                          style={{
+                            width: qrSize,
+                            height: qrSize,
+                            objectFit: "contain",
+                            background: "#FFFFFF",
+                            display: "block",
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
-            ) : (
-              /* Fallback Notes if no QR codes */
-              <div
-                style={{
-                  marginTop: "6px",
-                  paddingTop: "2px",
-                  paddingBottom: "8px",
-                  borderBottom: "1px dashed #000000",
-                  textAlign: "left",
-                  fontSize: "9px",
-                  lineHeight: "1.4",
-                  fontWeight: 600,
-                  color: "#000000",
-                }}
-              >
-                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                  <div>1. कम से कम 50 सवारी होने पर ही ट्रेन रवाना होगी</div>
-                  <div>2. कृपया किसी भी स्थिति में ट्रेन से हाथ बाहर ना निकालें।</div>
-                  <div>3. यात्री अपने सामान की सुरक्षा स्वयं करें।</div>
-                  <div>4. टिकट लेने के पश्चात् कोई रिफंड नहीं किया जायेगा।</div>
-                  <div>5. नाव में खड़ा होना और पानी में हाथ डालना प्रतिबंधित है।</div>
-                  <div>6. पानी में कोई भी वस्तु फेंकना मना है।</div>
-                  <div>7. नाव को नुकसान होने पर यात्री से वसूली की जाएगी।</div>
-                  <div>8. नौकायन के दौरान लाइफ जैकेट पहन अनिवार्य है।</div>
-                  <div>9. नाव में खाना-पीना वर्जित है।</div>
-                  <div>10. सभी मामले केवल उदयपुर न्याय क्षेत्र में मान्य होंगे।</div>
-                  <div>11. प्रवेश का अधिकार प्रबंधन के पास सुरक्षित है (नगर निगम द्वारा स्वीकृत)</div>
+
+                <div
+                  style={{
+                    fontSize: "9px",
+                    fontWeight: 700,
+                    color: "#000000",
+                    marginTop: "6px",
+                    textAlign: "center",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    width: "100%",
+                  }}
+                >
+                  SCAN FOR ENTRY
                 </div>
               </div>
             )}
@@ -1387,6 +1384,9 @@ function TicketGeneratedModal({
             {/* Clean Terms / Notice */}
             <div style={{ marginTop: "6px", paddingTop: "4px", fontSize: "11px", color: "#000000", lineHeight: "1.4", textAlign: "center", fontWeight: 700 }}>
               <div style={{ fontWeight: 900, marginBottom: "2px", letterSpacing: "0.04em" }}>THANKS FOR VISIT</div>
+              <div style={{ fontSize: "10px", fontWeight: 600 }}>
+                Instagram: @toy_train_udaipur
+              </div>
               <div style={{ fontSize: "10px", fontWeight: 600 }}>
                 Please present this QR code at the entrance gate. Keep this ticket safe.
               </div>
@@ -2322,10 +2322,10 @@ function SeatAllocationPanel({
                           fontWeight: 600,
                           color: "#64748B",
                           textTransform: "uppercase",
-                          letterSpacing: "0.4px",
+                          letterSpacing: "0.1px",
                         }}
                       >
-                        Current Trip
+                        Round No.(राउंड नं.)
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
                         <span style={{ fontSize: "12px", fontWeight: 700, color: "#011B2F" }}>
@@ -4621,6 +4621,7 @@ export default function CustomerInfoView({
               return {
                 attractionId: b.attractionId!,
                 attractionName: b.attractionName,
+                tripNo: tripMap[b.attractionId!] || 1,
                 sections: Array.from(sectionMap.entries()).map(
                   ([name, seats]) => ({
                     name,
@@ -4631,6 +4632,7 @@ export default function CustomerInfoView({
             })
             .filter((d) => d.sections.length > 0)
         }
+        tripMap={tripMap}
         subtotal={subtotal}
         gstAmount={gstAmount}
         roundOff={roundOff}
