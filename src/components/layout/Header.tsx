@@ -381,14 +381,14 @@ export default function Header({
           }}
         >
           {/* ── Notification Bell ── */}
-          <div style={{ position: "relative", display: "inline-block" }}>
+          {/* <div style={{ position: "relative", display: "inline-block" }}>
             <button
               aria-label="Notifications"
               onMouseEnter={() => setBellHovered(true)}
               onMouseLeave={() => setBellHovered(false)}
               style={{
                 background: "transparent",
-                // border: `1.5px solid ${colors.header.iconColor}`,
+                border: `1.5px solid ${colors.header.iconColor}`,
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
@@ -403,7 +403,7 @@ export default function Header({
               }}
               className="header-bell-btn"
             >
-              <Bell size={22} color={colors.header.iconColor} strokeWidth={1.8} />
+              <Bell size={22} color={colors.header.iconColor} strokeWidth={1.8} /> */}
 
               {/* Red notification badge counter matching screenshot */}
               {/* <span
@@ -430,10 +430,10 @@ export default function Header({
               >
                 6+
               </span> */}
-            </button>
+            {/* </button> */}
 
             {/* Bell tooltip */}
-            {bellHovered && (
+            {/* {bellHovered && (
               <div
                 style={{
                   position: "absolute",
@@ -466,18 +466,18 @@ export default function Header({
                 />
                 Notifications
               </div>
-            )}
-          </div>
+            )} */}
+          {/* </div> */}
 
           {/* Vertical divider */}
-          <div
+          {/* <div
             style={{
               width: "2px",
               height: "36px",
               background: colors.header.border,
               flexShrink: 0,
             }}
-          />
+          /> */}
 
           {/* ── Profile Dropdown Trigger ── */}
           <div style={{ position: "relative" }} ref={dropdownRef}>
