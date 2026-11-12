@@ -15,6 +15,7 @@ import { AttractionReportData } from "@/lib/reportsData";
 import { colors } from "@/lib/theme";
 import { exportToCSV } from "@/lib/exportUtils";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { REPORT_LATEST_TRANSACTIONS_LIMIT } from "@/lib/constants/report";
 
 interface AttractionReportCardProps {
   report: AttractionReportData;
@@ -432,9 +433,9 @@ export default function AttractionReportCard({
             </div>
           </div>
 
-          {/* Transactions Log for this Attraction (recent 6 only) */}
+          {/* Transactions Log for this Attraction (recent items up to limit) */}
           {(() => {
-            const recentTransactions = transactions.slice(0, 6);
+            const recentTransactions = transactions.slice(0, REPORT_LATEST_TRANSACTIONS_LIMIT);
             return (
               <div>
                 <h4 style={{ margin: "0 0 12px 0", fontSize: "14px", fontWeight: 700, color: colors.text.primary }}>

@@ -26,6 +26,7 @@ import {
   staffSystemModulePermissions,
   systemModules,
 } from "@/db/schema";
+import { REPORT_LATEST_TRANSACTIONS_LIMIT } from "@/lib/constants/report";
 
 export interface ReportFilter {
   adminId: string;
@@ -937,7 +938,7 @@ type GetReportParams = {
   endDateTime?: Date;
 };
 
-const LATEST_TRANSACTIONS_PER_ATTRACTION = 6;
+const LATEST_TRANSACTIONS_PER_ATTRACTION = REPORT_LATEST_TRANSACTIONS_LIMIT;
 
 export async function getReport({
   adminId,
