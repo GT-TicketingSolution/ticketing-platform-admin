@@ -20,6 +20,7 @@ import {
   useProfileQuery,
   useUpdateProfileMutation,
 } from "@/hooks/useAuthQueries";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -274,6 +275,7 @@ export const formatPhoneNumber = (val?: string | null): string => {
 };
 
 export default function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
+  useModalBodyLock(isOpen);
   // Profile is already pre-fetched by DashboardLayout on login.
   // We always read from the React Query cache here — no extra network request.
   const { data: profileData, isLoading, isError, refetch } = useProfileQuery();
@@ -476,7 +478,6 @@ export default function EditProfileModal({ isOpen, onClose }: EditProfileModalPr
         backdropFilter: "blur(4px)",
         animation: "epFadeIn 0.2s ease-out",
       }}
-      onClick={handleClose}
     >
       <div
         style={{

@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { X } from "lucide-react";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 export interface NewCustomer {
   name: string;
@@ -36,6 +37,7 @@ export default function AddNewCustomerModal({
   onSave,
   isSaving = false,
 }: AddNewCustomerModalProps) {
+  useModalBodyLock(isOpen);
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState("");
   const [address, setAddress] = useState("");
@@ -112,7 +114,6 @@ export default function AddNewCustomerModal({
     <>
       {/* Backdrop */}
       <div
-        onClick={handleClose}
         style={{
           position: "fixed",
           inset: 0,

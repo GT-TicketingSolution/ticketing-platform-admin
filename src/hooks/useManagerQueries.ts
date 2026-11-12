@@ -327,9 +327,13 @@ export function useDisableManager() {
         AppUrl.manager.disable(managerId)
       );
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: managerKeys.lists() });
-      showSuccessNotify("Manager account has been disabled.", "Manager Disabled");
+      const message =
+        data?.message ||
+        data?.data?.message ||
+        "Manager account has been disabled.";
+      showSuccessNotify(message, "Manager Deleted");
     },
     onError: (error: any) => {
       const message =

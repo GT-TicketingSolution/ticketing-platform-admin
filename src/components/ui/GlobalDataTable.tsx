@@ -563,21 +563,21 @@ export function GlobalDataTable<T>({
               style={{
                 height: "30px",
                 padding: "0 10px",
-                background: "#FFFFFF",
-                border: "1px solid rgba(179, 175, 175, 0.75)",
+                background: activePage <= 1 ? "#F3F4F6" : "#FFFFFF",
+                border: activePage <= 1 ? "1px solid #D1D5DB" : "1px solid rgba(179, 175, 175, 0.75)",
                 borderRadius: "4px",
                 fontFamily: "'Inter', sans-serif",
-                fontWeight: 500,
-                fontSize: "10px",
-                color: activePage <= 1 ? "#A0A0A0" : "#374151",
+                fontWeight: 600,
+                fontSize: "11px",
+                color: activePage <= 1 ? "#6B7280" : "#374151",
                 cursor: activePage <= 1 ? "not-allowed" : "pointer",
-                opacity: activePage <= 1 ? 0.5 : 1,
                 display: "flex",
                 alignItems: "center",
                 gap: "4px",
+                transition: "all 0.15s ease",
               }}
             >
-              <ChevronLeft size={12} />
+              <ChevronLeft size={13} color={activePage <= 1 ? "#6B7280" : "#374151"} />
               <span>Previous</span>
             </button>
 
@@ -629,22 +629,22 @@ export function GlobalDataTable<T>({
               style={{
                 height: "30px",
                 padding: "0 10px",
-                background: "#FFFFFF",
-                border: "1px solid rgba(179, 175, 175, 0.75)",
+                background: activePage >= totalPages ? "#F3F4F6" : "#FFFFFF",
+                border: activePage >= totalPages ? "1px solid #D1D5DB" : "1px solid rgba(179, 175, 175, 0.75)",
                 borderRadius: "4px",
                 fontFamily: "'Inter', sans-serif",
-                fontWeight: 500,
-                fontSize: "10px",
-                color: activePage >= totalPages ? "#A0A0A0" : "#374151",
+                fontWeight: 600,
+                fontSize: "11px",
+                color: activePage >= totalPages ? "#6B7280" : "#374151",
                 cursor: activePage >= totalPages ? "not-allowed" : "pointer",
-                opacity: activePage >= totalPages ? 0.5 : 1,
                 display: "flex",
                 alignItems: "center",
                 gap: "4px",
+                transition: "all 0.15s ease",
               }}
             >
               <span>Next</span>
-              <ChevronRight size={12} />
+              <ChevronRight size={13} color={activePage >= totalPages ? "#6B7280" : "#374151"} />
             </button>
           </div>
         </div>

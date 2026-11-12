@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useProfileQuery } from "@/hooks/useAuthQueries";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 import {
   AlertCircle,
   ArrowLeft,
@@ -66,6 +67,7 @@ function ProcessPaymentModal({
   grandTotal: number;
   attractionName: string;
 }) {
+  useModalBodyLock(isOpen);
   const [payMethod, setPayMethod] = useState<"cash" | "card" | "upi">("cash");
   const [amtRcv, setAmtRcv] = useState("");
   const [selectedNotes, setSelectedNotes] = useState<number[]>([]);
@@ -153,7 +155,6 @@ function ProcessPaymentModal({
         padding: "16px",
         backdropFilter: "blur(3px)",
       }}
-      onClick={onClose}
     >
       <div
         style={{
@@ -596,6 +597,7 @@ function TicketGeneratedModal({
   gstAmount?: number;
   roundOff?: number;
 }) {
+  useModalBodyLock(isOpen);
   const booking = confirmedData?.booking || (confirmedData as any)?.data || (confirmedData as any);
   const qrCodes: Array<{ attractionId?: string; qrCode: string;[key: string]: unknown }> =
     confirmedData?.qrCodes || (confirmedData as any)?.data?.qrCodes || [];
@@ -751,7 +753,6 @@ function TicketGeneratedModal({
         backdropFilter: "blur(4px)",
         overflowY: "auto",
       }}
-      onClick={onClose}
     >
       <div
         className="ticket-modal-content"
@@ -1449,6 +1450,7 @@ export default function CustomerInfoModal({
   onContinue,
   bookingSummary,
 }: CustomerInfoModalProps) {
+  useModalBodyLock(isOpen);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -1558,7 +1560,6 @@ export default function CustomerInfoModal({
           padding: "16px",
           backdropFilter: "blur(3px)",
         }}
-        onClick={onBack}
       >
         {/* Modal Dialog Container - Frame 24 / Rectangle 170 */}
         <div

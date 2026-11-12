@@ -25,6 +25,7 @@ export interface AttractionManagement {
   hasSeating: boolean;
   description: string | null;
   status: string;
+  categories?: any[];
   seatLayoutId?: string | null;
   seatLayouts?: Array<{
     id: string;

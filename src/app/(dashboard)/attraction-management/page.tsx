@@ -109,7 +109,27 @@ function AttractionCard({ attraction, onEdit, onDelete, canDelete }: AttractionC
     setImgError(false);
   }, [attraction.image]);
 
-  const p = attraction.pricing ?? { adult: 0, child: 0, student: 0, senior: 0, foreigner: 0 };
+  const categoriesList: Array<{ name: string; price: number }> = Array.isArray((attraction as any).categories)
+    ? (attraction as any).categories
+        .filter((c: any) => c && typeof c.name === "string" && c.name.trim() !== "")
+        .map((c: any) => {
+          const priceVal = Number(c.basePrice ?? c.price);
+          return {
+            name: c.name.trim(),
+            price: !isNaN(priceVal) ? priceVal : 0,
+          };
+        })
+    : [];
+
+  if (!Array.isArray((attraction as any).categories) && attraction.pricing) {
+    const pr = attraction.pricing;
+    if (pr.adult) categoriesList.push({ name: "Adult", price: pr.adult });
+    if (pr.child) categoriesList.push({ name: "Child", price: pr.child });
+    if (pr.student) categoriesList.push({ name: "Student", price: pr.student });
+    if (pr.senior) categoriesList.push({ name: "Senior", price: pr.senior });
+    if (pr.foreigner) categoriesList.push({ name: "Foreigner", price: pr.foreigner });
+  }
+
   const hasValidImage = Boolean(attraction.image && attraction.image.trim() !== "" && !imgError);
 
   return (
@@ -219,11 +239,17 @@ function AttractionCard({ attraction, onEdit, onDelete, canDelete }: AttractionC
           </div>
 
           <div style={{ display: "flex", alignItems: "flex-start", gap: "4px", marginTop: "10px" }}>
-            <span style={{ fontWeight: 600, fontSize: "9px", color: "#515252", marginTop: "1px" }}>₹</span>
+            <span style={{ fontWeight: 600, fontSize: "9px", color: "#515252", marginTop: "1px", flexShrink: 0 }}>₹</span>
             <span style={{ fontWeight: 600, fontSize: "9px", lineHeight: "13px", color: "rgba(81,82,82,0.84)" }}>
-              Adult: ₹{p.adult ?? 0} Child: ₹{p.child ?? 0} Student: ₹{p.student ?? 0}
-              <br />
-              Senior: ₹{p.senior ?? 0} Foreigner: ₹{p.foreigner ?? 0}
+              {categoriesList.length > 0 ? (
+                categoriesList.map((cat, idx) => (
+                  <span key={idx} style={{ whiteSpace: "nowrap", marginRight: "6px", display: "inline-block" }}>
+                    {cat.name}: ₹{cat.price}
+                  </span>
+                ))
+              ) : (
+                "—"
+              )}
             </span>
           </div>
         </div>

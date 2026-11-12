@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Printer, Train } from "lucide-react";
 import { AttractionReportData, OverallReportSummary } from "@/lib/reportsData";
 import { useProfileQuery } from "@/hooks/useAuthQueries";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface DailySalesReportModalProps {
   isOpen: boolean;
@@ -170,6 +171,7 @@ export default function DailySalesReportModal({
   fromTime = "00:00",
   toTime = "23:59",
 }: DailySalesReportModalProps) {
+  useModalBodyLock(isOpen);
   const isMounted = React.useSyncExternalStore(
     emptySubscribe,
     () => true,
@@ -446,7 +448,6 @@ export default function DailySalesReportModal({
           backdropFilter: "blur(4px)",
           overflowY: "auto",
         }}
-        onClick={onClose}
       >
         {/* Modal Content Card */}
         <div

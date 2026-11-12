@@ -22,12 +22,16 @@ import DashboardCharts from "@/components/dashboard/DashboardCharts";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import { DashboardPeriod } from "./types";
+import DateRangePicker from "@/components/ui/DateRangePicker";
 
 export default function AdminDashboardView() {
   // Filters State
   const [selectedAttraction, setSelectedAttraction] = useState<string>("All");
   const [selectedDateRange, setSelectedDateRange] =
     useState<DashboardPeriod>("all");
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
+  const [autoOpenDatePicker, setAutoOpenDatePicker] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
 
@@ -35,6 +39,22 @@ export default function AdminDashboardView() {
     period: (v) => setSelectedDateRange(v as DashboardPeriod),
     attractionId: (v) => setSelectedAttraction(v),
     search: (v) => { setSearchQuery(v); setDebouncedSearch(v); },
+    fromDate: (v) => {
+      setFromDate(v);
+      setSelectedDateRange("custom");
+    },
+    toDate: (v) => {
+      setToDate(v);
+      setSelectedDateRange("custom");
+    },
+    dateFrom: (v) => {
+      setFromDate(v);
+      setSelectedDateRange("custom");
+    },
+    dateTo: (v) => {
+      setToDate(v);
+      setSelectedDateRange("custom");
+    },
   });
 
   // Debounce search query
@@ -49,6 +69,8 @@ export default function AdminDashboardView() {
     period: selectedDateRange !== "all" ? selectedDateRange : undefined,
     attractionId: selectedAttraction === "All" ? undefined : selectedAttraction,
     search: debouncedSearch || undefined,
+    dateFrom: selectedDateRange === "custom" && fromDate ? fromDate : undefined,
+    dateTo: selectedDateRange === "custom" && toDate ? toDate : undefined,
   };
 
   useSyncParamsToUrl(dashboardQueryParams);
@@ -58,6 +80,8 @@ export default function AdminDashboardView() {
     period: selectedDateRange,
     attractionId: selectedAttraction === "All" ? undefined : selectedAttraction,
     search: debouncedSearch || undefined,
+    dateFrom: selectedDateRange === "custom" && fromDate ? fromDate : undefined,
+    dateTo: selectedDateRange === "custom" && toDate ? toDate : undefined,
   });
 
   // Extract data with strict fallbacks
@@ -112,7 +136,12 @@ export default function AdminDashboardView() {
             "Total Revenue Earnings",
             `₹${summary.totalEarnings.toLocaleString("en-IN")}`,
           ],
-          ["Selected Period", selectedDateRange],
+          [
+            "Selected Period",
+            selectedDateRange === "custom" && fromDate && toDate
+              ? `${fromDate} to ${toDate}`
+              : selectedDateRange,
+          ],
           ["Selected Attraction", selectedAttractionLabel],
           ["Active Search Query", searchQuery || "None"],
           ["Export Generated At", new Date().toLocaleString()],
@@ -278,9 +307,17 @@ export default function AdminDashboardView() {
           <Calendar size={16} color={colors.text.muted} />
           <select
             value={selectedDateRange}
-            onChange={(e) =>
-              setSelectedDateRange(e.target.value as DashboardPeriod)
-            }
+            onChange={(e) => {
+              const val = e.target.value as DashboardPeriod;
+              setSelectedDateRange(val);
+              if (val === "custom") {
+                setAutoOpenDatePicker(true);
+              } else {
+                setAutoOpenDatePicker(false);
+                setFromDate("");
+                setToDate("");
+              }
+            }}
             style={{
               height: "38px",
               borderRadius: "8px",
@@ -302,6 +339,24 @@ export default function AdminDashboardView() {
             <option value="custom">Custom</option>
           </select>
         </div>
+
+        {/* Custom Date Range Picker */}
+        {selectedDateRange === "custom" && (
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <DateRangePicker
+              fromDate={fromDate}
+              toDate={toDate}
+              onFromDateChange={(date) => setFromDate(date)}
+              onToDateChange={(date) => setToDate(date)}
+              onClear={() => {
+                setFromDate("");
+                setToDate("");
+              }}
+              autoOpen={autoOpenDatePicker}
+              onClose={() => setAutoOpenDatePicker(false)}
+            />
+          </div>
+        )}
 
         {/* Attraction Filter (API Driven) */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>

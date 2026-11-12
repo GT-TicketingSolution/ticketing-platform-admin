@@ -54,7 +54,7 @@ function toDisplayRole(raw: string | undefined | null): string {
   return "-";
 }
 
-function resolveModuleTitle(pathname: string): string {
+function resolveModuleTitle(pathname: string, userRole?: string): string {
   const clean = (pathname || "").toLowerCase().replace(/\/$/, "");
 
   if (clean.includes("seat")) return "Seat Management";
@@ -62,7 +62,7 @@ function resolveModuleTitle(pathname: string): string {
   if (clean.includes("ticket") || clean.includes("booking-view")) return "Ticket Booking";
   if (clean.includes("booking")) return "Bookings";
   if (clean.includes("transaction")) return "Transactions";
-  if (clean.includes("invoice")) return "Invoices";
+  if (clean.includes("invoice")) return "Scanner Invoices";
   if (clean.includes("inventory")) return "Inventory & Capacity";
   if (clean.includes("customer")) return "Customer Management";
   if (clean.includes("complimentary") || clean.includes("pass")) return "Complimentary Passes";
@@ -71,7 +71,11 @@ function resolveModuleTitle(pathname: string): string {
   if (clean.includes("scanner") || clean.includes("scan")) return "Ticket Scanner";
   if (clean.includes("manager")) return "Manager Management";
   if (clean.includes("staff")) return "Staff Management";
-  if (clean.includes("dashboard")) return "Dashboard";
+  if (clean.includes("dashboard")) {
+    if (userRole === "Manager") return "Manager Dashboard";
+    if (userRole === "Staff") return "Staff Dashboard";
+    return "Admin Dashboard";
+  }
 
   const segment = clean.split("/").filter(Boolean)[0] || "";
   if (segment) {
@@ -80,7 +84,7 @@ function resolveModuleTitle(pathname: string): string {
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join(" ");
   }
-  return "Dashboard";
+  return userRole === "Manager" ? "Manager Dashboard" : "Admin Dashboard";
 }
 
 /** Route definitions: maps route path prefixes to their module label */
@@ -213,29 +217,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return !allowed;
   }, [pathname, isModulesSuccess, systemModules]);
 
-  /** Update browser title dynamically based on active sidebar module */
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const activeName = resolveModuleTitle(pathname);
-    const fullTitle = `${activeName} | Ticketing Solution`;
-    document.title = fullTitle;
 
-    const raf = requestAnimationFrame(() => {
-      document.title = fullTitle;
-    });
-    const t1 = setTimeout(() => {
-      document.title = fullTitle;
-    }, 60);
-    const t2 = setTimeout(() => {
-      document.title = fullTitle;
-    }, 200);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, [pathname]);
 
   /**
    * Eagerly prefetch the authenticated user's profile as soon as the
@@ -280,6 +262,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (mountedRole) return mountedRole;
     return "-";
   }, [profile?.role, mountedRole, isProfileError]);
+
+  /** Update browser title dynamically based on active sidebar module and role */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const activeName = resolveModuleTitle(pathname, userRole);
+    const fullTitle = `${activeName} | Ticketing Solution`;
+    document.title = fullTitle;
+
+    const interval = setInterval(() => {
+      if (document.title !== fullTitle) {
+        document.title = fullTitle;
+      }
+    }, 100);
+
+    const timeout = setTimeout(() => {
+      clearInterval(interval);
+    }, 2000);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [pathname, userRole]);
 
   /** Keep sessionStorage in sync so other hooks (useUserRole, etc.) stay consistent */
   useEffect(() => {

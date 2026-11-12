@@ -61,7 +61,11 @@ const ROUTE_HEADER_MAP: Record<string, { title: string; icon: React.ElementType 
   "/settings": { title: "Settings", icon: Settings },
 };
 
-function getRouteHeaderInfo(pathname: string, propTitle?: string): { title: string; icon: React.ElementType } {
+function getRouteHeaderInfo(
+  pathname: string,
+  propTitle?: string,
+  userRole?: string
+): { title: string; icon: React.ElementType } {
   if (propTitle && propTitle.trim()) {
     return { title: propTitle, icon: Landmark };
   }
@@ -81,7 +85,15 @@ function getRouteHeaderInfo(pathname: string, propTitle?: string): { title: stri
   if (clean.includes("scanner") || clean.includes("scan")) return { title: "Ticket Scanner", icon: ScanLine };
   if (clean.includes("manager")) return { title: "Manager Management", icon: UserCheck };
   if (clean.includes("staff")) return { title: "Staff Management", icon: UserCog };
-  if (clean.includes("dashboard")) return { title: "Dashboard", icon: LayoutDashboard };
+  if (clean.includes("dashboard")) {
+    const dashTitle =
+      userRole === "Manager"
+        ? "Manager Dashboard"
+        : userRole === "Staff"
+        ? "Staff Dashboard"
+        : "Admin Dashboard";
+    return { title: dashTitle, icon: LayoutDashboard };
+  }
   if (clean.includes("setting")) return { title: "Settings", icon: Settings };
 
   if (ROUTE_HEADER_MAP[clean]) {
@@ -100,7 +112,7 @@ function getRouteHeaderInfo(pathname: string, propTitle?: string): { title: stri
     };
   }
   return {
-    title: "Dashboard",
+    title: userRole === "Manager" ? "Manager Dashboard" : "Admin Dashboard",
     icon: LayoutDashboard,
   };
 }
@@ -160,8 +172,13 @@ export default function Header({
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Derive dynamic header info based on pathname and propTitle
-  const matchedRoute = useMemo(() => getRouteHeaderInfo(pathname, propTitle), [pathname, propTitle]);
+  const effectiveRole = userRole && userRole !== "-" ? userRole : displayRole;
+
+  // Derive dynamic header info based on pathname, propTitle, and userRole
+  const matchedRoute = useMemo(
+    () => getRouteHeaderInfo(pathname, propTitle, effectiveRole),
+    [pathname, propTitle, effectiveRole]
+  );
   const activeTitle = matchedRoute.title;
   const ActiveIcon = matchedRoute.icon;
 
@@ -171,20 +188,19 @@ export default function Header({
     const fullTitle = `${activeTitle} | Ticketing Solution`;
     document.title = fullTitle;
 
-    const raf = requestAnimationFrame(() => {
-      document.title = fullTitle;
-    });
-    const t1 = setTimeout(() => {
-      document.title = fullTitle;
-    }, 60);
-    const t2 = setTimeout(() => {
-      document.title = fullTitle;
-    }, 200);
+    const interval = setInterval(() => {
+      if (document.title !== fullTitle) {
+        document.title = fullTitle;
+      }
+    }, 100);
+
+    const timeout = setTimeout(() => {
+      clearInterval(interval);
+    }, 2000);
 
     return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(t1);
-      clearTimeout(t2);
+      clearInterval(interval);
+      clearTimeout(timeout);
     };
   }, [activeTitle, pathname]);
 
@@ -365,14 +381,14 @@ export default function Header({
           }}
         >
           {/* ── Notification Bell ── */}
-          <div style={{ position: "relative", display: "inline-block" }}>
+          {/* <div style={{ position: "relative", display: "inline-block" }}>
             <button
               aria-label="Notifications"
               onMouseEnter={() => setBellHovered(true)}
               onMouseLeave={() => setBellHovered(false)}
               style={{
                 background: "transparent",
-                // border: `1.5px solid ${colors.header.iconColor}`,
+                border: `1.5px solid ${colors.header.iconColor}`,
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
@@ -387,7 +403,7 @@ export default function Header({
               }}
               className="header-bell-btn"
             >
-              <Bell size={22} color={colors.header.iconColor} strokeWidth={1.8} />
+              <Bell size={22} color={colors.header.iconColor} strokeWidth={1.8} /> */}
 
               {/* Red notification badge counter matching screenshot */}
               {/* <span
@@ -414,10 +430,10 @@ export default function Header({
               >
                 6+
               </span> */}
-            </button>
+            {/* </button> */}
 
             {/* Bell tooltip */}
-            {bellHovered && (
+            {/* {bellHovered && (
               <div
                 style={{
                   position: "absolute",
@@ -450,18 +466,18 @@ export default function Header({
                 />
                 Notifications
               </div>
-            )}
-          </div>
+            )} */}
+          {/* </div> */}
 
           {/* Vertical divider */}
-          <div
+          {/* <div
             style={{
               width: "2px",
               height: "36px",
               background: colors.header.border,
               flexShrink: 0,
             }}
-          />
+          /> */}
 
           {/* ── Profile Dropdown Trigger ── */}
           <div style={{ position: "relative" }} ref={dropdownRef}>

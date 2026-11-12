@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useProfileQuery } from "@/hooks/useAuthQueries";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 import {
   AlertCircle,
   ArrowLeft,
@@ -106,6 +107,7 @@ function ProcessPaymentModal({
   attractionName: string;
   isSubmitting?: boolean;
 }) {
+  useModalBodyLock(isOpen);
   const [payMethod, setPayMethod] = useState<"cash" | "card" | "upi">("cash");
   const [amtRcv, setAmtRcv] = useState("");
   const [selectedNotes, setSelectedNotes] = useState<number[]>([]);
@@ -194,7 +196,6 @@ function ProcessPaymentModal({
         padding: "16px",
         backdropFilter: "blur(3px)",
       }}
-      onClick={onClose}
     >
       <div
         style={{
@@ -693,6 +694,7 @@ function TicketGeneratedModal({
     sections: { name: string; seats: number[] }[];
   }[];
 }) {
+  useModalBodyLock(isOpen);
   const booking =
     (confirmedData as any)?.data?.booking ||
     (confirmedData as any)?.booking ||
@@ -903,7 +905,6 @@ function TicketGeneratedModal({
         backdropFilter: "blur(4px)",
         overflowY: "auto",
       }}
-      onClick={onClose}
     >
       <div
         className="ticket-modal-content"
@@ -1259,22 +1260,22 @@ function TicketGeneratedModal({
                     style={
                       qrCodes.length >= 3
                         ? {
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
-                            gap: "4px",
-                            rowGap: "3px",
-                            width: "100%",
-                            justifyItems: "center",
-                            alignContent: "start",
-                            gridAutoRows: "max-content",
-                          }
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr",
+                          gap: "4px",
+                          rowGap: "3px",
+                          width: "100%",
+                          justifyItems: "center",
+                          alignContent: "start",
+                          gridAutoRows: "max-content",
+                        }
                         : {
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: "6px",
-                            width: "100%",
-                          }
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: "6px",
+                          width: "100%",
+                        }
                     }
                   >
                     {qrCodes.map((qrItem, idx) => {

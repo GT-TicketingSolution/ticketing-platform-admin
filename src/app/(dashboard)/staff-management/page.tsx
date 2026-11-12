@@ -36,6 +36,7 @@ import MultiSelectDropdown from "@/components/ui/MultiSelectDropdown";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import ExportButtons from "@/components/ui/ExportButtons";
 import ReportTimingModal from "@/components/modals/ReportTimingModal";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 import {
   useStaffList,
   fetchStaffList,
@@ -183,10 +184,10 @@ function StaffManagementInner() {
     (profileData?.profile || (profileData as any)?.data?.profile)?.role === "MANAGER";
   const availableStaffRoles = isManagerUser
     ? STAFF_ROLES.filter((role) =>
-        getStaffRoleModuleKeys(role).every((key) =>
-          systemModulesList?.some((m) => m.key === key),
-        ),
-      )
+      getStaffRoleModuleKeys(role).every((key) =>
+        systemModulesList?.some((m) => m.key === key),
+      ),
+    )
     : STAFF_ROLES;
 
   // Helper to map selected roles to staffSystemModuleAllowedIds
@@ -249,14 +250,14 @@ function StaffManagementInner() {
 
     const roleDetails: Array<{ id?: string; role: string }> = Array.isArray(s.roles)
       ? (s.roles as any[]).map((item) => ({
-          id: item?.id,
-          role: normalizeRole(item),
-        }))
+        id: item?.id,
+        role: normalizeRole(item),
+      }))
       : Array.isArray(s.role)
         ? (s.role as any[]).map((item) => ({
-            id: typeof item === "object" ? item?.id : undefined,
-            role: normalizeRole(item),
-          }))
+          id: typeof item === "object" ? item?.id : undefined,
+          role: normalizeRole(item),
+        }))
         : typeof s.role === "string" && s.role
           ? [{ role: s.role }]
           : s.role && typeof s.role === "object"
@@ -280,7 +281,7 @@ function StaffManagementInner() {
     let hasReportsAccess = s.canViewReports ?? false;
     let durationHours: number | null =
       reportPermission?.reportAccessTiming !== null &&
-      reportPermission?.reportAccessTiming !== undefined
+        reportPermission?.reportAccessTiming !== undefined
         ? Number(reportPermission.reportAccessTiming)
         : s.reportAccessTiming !== null && s.reportAccessTiming !== undefined
           ? Number(s.reportAccessTiming)
@@ -338,6 +339,7 @@ function StaffManagementInner() {
 
   // Modal & Selection States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  useModalBodyLock(isAddModalOpen);
   const [showAddPassword, setShowAddPassword] = useState(false);
   const [showEditPassword, setShowEditPassword] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
@@ -1088,34 +1090,7 @@ function StaffManagementInner() {
                 >
                   {selectedStaff.name}
                 </h1>
-                <span
-                  style={{
-                    background: isAct ? "#F0FDF4" : "#FEF2F2",
-                    color: isAct ? colors.status.success : colors.status.error,
-                    padding: "2px 10px",
-                    borderRadius: "12px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                  }}
-                >
-                  {isAct ? "Active" : "Inactive"}
-                </span>
               </div>
-              <p
-                style={{
-                  fontFamily: typography.fontFamily.sans,
-                  fontSize: "13px",
-                  color: colors.text.muted,
-                  margin: "2px 0 0",
-                }}
-              >
-                Assigned Attractions:{" "}
-                <strong>
-                  {selectedStaff.assignedAttraction && selectedStaff.assignedAttraction.length > 0
-                    ? selectedStaff.assignedAttraction.join(", ")
-                    : "None"}
-                </strong>
-              </p>
             </div>
           </div>
 
@@ -1584,7 +1559,7 @@ function StaffManagementInner() {
                               style={{
                                 background: "rgba(35,114,165,0.1)",
                                 color: colors.brand.accent,
-                                border:  "none",
+                                border: "none",
                                 padding: "3px 10px",
                                 borderRadius: "6px",
                                 fontSize: "12px",

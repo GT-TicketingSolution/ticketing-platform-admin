@@ -418,8 +418,16 @@ export default function DashboardCharts({
                       </span>
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <span style={{ fontWeight: 700, color: colors.text.primary }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", flexShrink: 0 }}>
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          color: colors.text.primary,
+                          width: "90px",
+                          textAlign: "left",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
                         {revenueStr}
                       </span>
                       <span
@@ -430,8 +438,10 @@ export default function DashboardCharts({
                           fontSize: "12px",
                           fontWeight: 600,
                           color: colors.text.muted,
-                          minWidth: "36px",
-                          textAlign: "right",
+                          minWidth: "48px",
+                          textAlign: "center",
+                          display: "inline-block",
+                          boxSizing: "border-box",
                         }}
                       >
                         {pct}%
