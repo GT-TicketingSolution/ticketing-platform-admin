@@ -87,6 +87,8 @@ export interface DashboardQueryParams {
   search?: string;
   dateFrom?: string;
   dateTo?: string;
+  fromDate?: string;
+  toDate?: string;
 }
 
 // ─── Manager Dashboard Response Types

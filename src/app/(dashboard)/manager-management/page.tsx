@@ -42,6 +42,7 @@ import { addManagerSchema, AddManagerFormData } from "./schema";
 import { DataTable, Column } from "@/components/ui/DataTable";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import ExportButtons from "@/components/ui/ExportButtons";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 import {
   useManagers,
   fetchManagers,
@@ -720,6 +721,7 @@ function ManagerManagementInner() {
   );
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  useModalBodyLock(isAddModalOpen);
   const [showAddPassword, setShowAddPassword] = useState(false);
   const [selectedManager, setSelectedManager] = useState<ManagerUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -1364,10 +1366,6 @@ function ManagerManagementInner() {
                 <h1 style={{ fontFamily: typography.fontFamily.sans, fontWeight: 700, fontSize: "20px", color: colors.text.primary, margin: 0 }}>
                   {selectedManager.name}
                 </h1>
-                <span style={{ background: "rgba(35,114,165,0.1)", color: colors.brand.accent, padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 700 }}>
-                  {selectedManager.role || "MANAGER"}
-                </span>
-                <StatusBadge status={selectedManager.status === "ACTIVE" || selectedManager.status === "Active" ? "Active" : "Inactive"} />
               </div>
             </div>
           </div>

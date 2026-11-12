@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, CreditCard, Save, Loader2 } from "lucide-react";
 import { Transaction, TransactionStatus } from "@/types/transaction";
 import { colors, typography } from "@/lib/theme";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface EditTransactionModalProps {
   transaction: Transaction | null;
@@ -20,6 +21,7 @@ export default function EditTransactionModal({
   onSave,
   isSaving = false,
 }: EditTransactionModalProps) {
+  useModalBodyLock(isOpen);
   const [formData, setFormData] = useState<Partial<Transaction>>({});
 
   useEffect(() => {
@@ -55,7 +57,6 @@ export default function EditTransactionModal({
         padding: "16px",
         overflowY: "auto",
       }}
-      onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}

@@ -37,8 +37,14 @@ export default function SeatCard({
       : (seat.aisleAfterCol ?? 0);
 
   // Mini preview calculation
-  const previewRows = Math.min(rows, 5);
-  const previewCols = Math.min(cols, 6);
+  const previewRows = Math.min(rows, 10);
+  const previewCols = Math.min(cols, 10);
+
+  const isLargeGrid = previewRows > 5 || previewCols > 6;
+  const seatWidth = isSingleSeat ? 32 : isLargeGrid ? Math.max(10, Math.floor(140 / previewCols)) : 18;
+  const seatHeight = isSingleSeat ? 24 : isLargeGrid ? Math.max(7, Math.floor(78 / previewRows)) : 14;
+  const colGap = isLargeGrid ? 2 : 3;
+  const rowGap = isLargeGrid ? 2 : 4;
 
   return (
     <div
@@ -87,7 +93,7 @@ export default function SeatCard({
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: "4px",
+              gap: `${rowGap}px`,
               margin: "auto",
             }}
           >
@@ -124,7 +130,7 @@ export default function SeatCard({
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: "3px",
+                      gap: `${colGap}px`,
                     }}
                   >
                     {/* ==================================================
@@ -137,7 +143,7 @@ export default function SeatCard({
                         <div
                           style={{
                             width: "4px",
-                            height: "14px",
+                            height: `${seatHeight}px`,
                             borderRight: "1px dashed rgba(255,255,255,0.6)",
                             margin: "0 2px",
                           }}
@@ -162,8 +168,8 @@ export default function SeatCard({
 
                           <div
                             style={{
-                              width: isSingleSeat ? "32px" : "18px",
-                              height: isSingleSeat ? "24px" : "14px",
+                              width: `${seatWidth}px`,
+                              height: `${seatHeight}px`,
                               background: "#F4BC43",
                               borderRadius: "2px",
                               display: "flex",
@@ -184,8 +190,8 @@ export default function SeatCard({
                           {isVerticalAisle && (
                             <div
                               style={{
-                                width: "6px",
-                                height: "14px",
+                                width: isLargeGrid ? "4px" : "6px",
+                                height: `${seatHeight}px`,
                                 borderRight: "1px dashed rgba(255,255,255,0.5)",
                                 margin: "0 2px",
                               }}

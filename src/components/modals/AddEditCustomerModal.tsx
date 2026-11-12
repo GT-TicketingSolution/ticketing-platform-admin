@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, AlertCircle, Loader2 } from "lucide-react";
 import { Customer } from "@/app/(dashboard)/customer-management/types";
 import { validateCustomer } from "@/app/(dashboard)/customer-management/schema";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface AddEditCustomerModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ export default function AddEditCustomerModal({
   onSave,
   isSaving = false,
 }: AddEditCustomerModalProps) {
+  useModalBodyLock(isOpen);
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState("");
   const [address, setAddress] = useState("");
@@ -84,7 +86,6 @@ export default function AddEditCustomerModal({
         padding: "16px",
         animation: "customerModalFadeIn 0.2s ease-out",
       }}
-      onClick={onClose}
     >
       <div
         style={{

@@ -45,32 +45,60 @@ export function useAttractionManagementList(
         : Array.isArray(res?.data)
           ? res.data
           : [];
-      const mapped = items.map((item: any) => ({
-        ...item,
-        pricing: {
-          adult: Number(item?.pricing?.adult ?? 0),
-          child: Number(item?.pricing?.child ?? 0),
-          student: Number(item?.pricing?.student ?? 0),
-          senior: Number(item?.pricing?.senior ?? 0),
-          foreigner: Number(item?.pricing?.foreigner ?? 0),
-        },
-        seating: {
-          adult: Number(item?.seating?.adult ?? item?.adultSeats ?? 0),
-          child: Number(item?.seating?.child ?? item?.childSeats ?? 0),
-          student: Number(item?.seating?.student ?? item?.studentSeats ?? 0),
-          senior: Number(item?.seating?.senior ?? item?.seniorSeats ?? 0),
-          foreigner: Number(item?.seating?.foreigner ?? item?.foreignerSeats ?? 0),
-        },
-        seatLayoutIds: Array.isArray(item?.seatLayoutIds)
-          ? item.seatLayoutIds
-          : Array.isArray(item?.seatLayouts)
-            ? item.seatLayouts.flatMap((l: any) => {
-              const qty = Math.max(1, Number(l?.quantity) || 1);
-              return Array.from({ length: qty }, () => l.id);
-            })
-            : [],
-        seatLayoutId: item.seatLayoutId ?? (item.seatLayouts?.[0]?.id ?? null),
-      })) as AttractionManagement[];
+      const mapped = items.map((item: any) => {
+        const catMap: Record<string, number> = {};
+        const seatMap: Record<string, number> = {};
+        if (Array.isArray(item?.categories)) {
+          for (const c of item.categories) {
+            const key = String(c?.name || "").toLowerCase().trim();
+            const priceVal = Number(c?.basePrice ?? c?.price);
+            const seatVal = Number(c?.noOfSeats ?? c?.seats);
+            if (!isNaN(priceVal)) {
+              if (key === "adult" || key === "adults") catMap["adult"] = priceVal;
+              else if (key === "child" || key === "children") catMap["child"] = priceVal;
+              else if (key === "student" || key === "students") catMap["student"] = priceVal;
+              else if (key === "senior" || key === "seniors" || key === "senior citizen" || key === "senior citizens") catMap["senior"] = priceVal;
+              else if (key === "foreigner" || key === "foreigners") catMap["foreigner"] = priceVal;
+              else catMap[key] = priceVal;
+            }
+            if (!isNaN(seatVal)) {
+              if (key === "adult" || key === "adults") seatMap["adult"] = seatVal;
+              else if (key === "child" || key === "children") seatMap["child"] = seatVal;
+              else if (key === "student" || key === "students") seatMap["student"] = seatVal;
+              else if (key === "senior" || key === "seniors" || key === "senior citizen" || key === "senior citizens") seatMap["senior"] = seatVal;
+              else if (key === "foreigner" || key === "foreigners") seatMap["foreigner"] = seatVal;
+              else seatMap[key] = seatVal;
+            }
+          }
+        }
+
+        return {
+          ...item,
+          pricing: {
+            adult: Number(item?.pricing?.adult || item?.adultPrice || catMap["adult"] || 0),
+            child: Number(item?.pricing?.child || item?.childPrice || catMap["child"] || 0),
+            student: Number(item?.pricing?.student || item?.studentPrice || catMap["student"] || 0),
+            senior: Number(item?.pricing?.senior || item?.seniorPrice || catMap["senior"] || 0),
+            foreigner: Number(item?.pricing?.foreigner || item?.foreignerPrice || catMap["foreigner"] || 0),
+          },
+          seating: {
+            adult: Number(item?.seating?.adult || item?.adultSeats || seatMap["adult"] || 0),
+            child: Number(item?.seating?.child || item?.childSeats || seatMap["child"] || 0),
+            student: Number(item?.seating?.student || item?.studentSeats || seatMap["student"] || 0),
+            senior: Number(item?.seating?.senior || item?.seniorSeats || seatMap["senior"] || 0),
+            foreigner: Number(item?.seating?.foreigner || item?.foreignerSeats || seatMap["foreigner"] || 0),
+          },
+          seatLayoutIds: Array.isArray(item?.seatLayoutIds)
+            ? item.seatLayoutIds
+            : Array.isArray(item?.seatLayouts)
+              ? item.seatLayouts.flatMap((l: any) => {
+                const qty = Math.max(1, Number(l?.quantity) || 1);
+                return Array.from({ length: qty }, () => l.id);
+              })
+              : [],
+          seatLayoutId: item.seatLayoutId ?? (item.seatLayouts?.[0]?.id ?? null),
+        };
+      }) as AttractionManagement[];
 
       return mapped.sort((a: any, b: any) => {
         const isAActive = String(a.status || "ACTIVE").toUpperCase() === "ACTIVE";

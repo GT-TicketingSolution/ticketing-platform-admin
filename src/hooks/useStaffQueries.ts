@@ -183,10 +183,14 @@ export function useDeleteStaff() {
     mutationFn: async (staffId: string) => {
       return deleteData<{ message: string; staff?: { id: string } }>(AppUrl.staff.delete(staffId));
     },
-    onSuccess: (_, staffId) => {
+    onSuccess: (data: any, staffId) => {
       queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
       queryClient.invalidateQueries({ queryKey: staffKeys.detail(staffId) });
-      showSuccessNotify("Staff member deleted successfully.", "Deleted");
+      const message =
+        data?.message ||
+        data?.data?.message ||
+        "Staff member deleted successfully.";
+      showSuccessNotify(message, "Deleted");
     },
     onError: (error: any) => {
       const message =

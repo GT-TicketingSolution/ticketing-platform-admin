@@ -4,6 +4,7 @@ import  { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { BarChart2, Clock, X, Check } from "lucide-react";
 import { typography } from "@/lib/theme";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface ReportTimingModalProps {
   isOpen: boolean;
@@ -29,6 +30,7 @@ export default function ReportTimingModal({
   currentHours,
   targetLabel,
 }: ReportTimingModalProps) {
+  useModalBodyLock(isOpen);
   const [mounted, setMounted] = useState(false);
   const [unit, setUnit] = useState<"hours" | "days">("hours");
   const [inputValue, setInputValue] = useState<string>("24");
@@ -96,7 +98,6 @@ export default function ReportTimingModal({
         background: "rgba(15, 23, 42, 0.65)",
         backdropFilter: "blur(4px)",
       }}
-      onClick={onClose}
     >
       <div
         style={{

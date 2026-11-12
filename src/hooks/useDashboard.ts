@@ -27,11 +27,13 @@ export function useDashboard(params?: DashboardQueryParams) {
       if (params?.search?.trim()) {
         searchParams.set("search", params.search.trim());
       }
-      if (params?.dateFrom) {
-        searchParams.set("dateFrom", params.dateFrom);
+      const from = params?.dateFrom || params?.fromDate;
+      if (from) {
+        searchParams.set("dateFrom", from);
       }
-      if (params?.dateTo) {
-        searchParams.set("dateTo", params.dateTo);
+      const to = params?.dateTo || params?.toDate;
+      if (to) {
+        searchParams.set("dateTo", to);
       }
 
       const queryString = searchParams.toString();

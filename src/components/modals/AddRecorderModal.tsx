@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { X, Check, Loader2 } from "lucide-react";
 import { typography } from "@/lib/theme";
 import { useToast } from "@/components/ui/Toast";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 export interface RecorderData {
   id: string;
@@ -31,6 +32,7 @@ export default function AddRecorderModal({
   initialData,
   isLoading = false,
 }: AddRecorderModalProps) {
+  useModalBodyLock(isOpen);
   const { showToast } = useToast();
   const [recorderName, setRecorderName] = useState("");
   const [location, setLocation] = useState("");
@@ -109,7 +111,6 @@ export default function AddRecorderModal({
         zIndex: 1000,
         padding: "16px",
       }}
-      onClick={onClose}
     >
       <div
         style={{

@@ -4,6 +4,7 @@ import React, { useEffect } from "react";
 import { X, FileText, Download, Printer, CheckCircle2, XCircle, Clock, Tag, User, QrCode } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import { InvoiceListItem } from "@/hooks/useInvoiceQueries";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface InvoiceDetailsModalProps {
   invoice: InvoiceListItem | null;
@@ -185,17 +186,7 @@ export default function InvoiceDetailsModal({
   isOpen = true,
   onClose,
 }: InvoiceDetailsModalProps) {
-  // Prevent body scroll while open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [isOpen]);
+  useModalBodyLock(isOpen);
 
   if (!isOpen || !invoice) return null;
 
@@ -232,7 +223,6 @@ export default function InvoiceDetailsModal({
         padding: "16px",
         overflowY: "auto",
       }}
-      onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}

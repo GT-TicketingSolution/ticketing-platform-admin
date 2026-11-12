@@ -4,6 +4,7 @@ import React from "react";
 import { X, Armchair, CheckCircle, XCircle } from "lucide-react";
 
 import { SeatConfigData } from "@/app/(dashboard)/seat-management/types";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface ViewSeatModalProps {
   isOpen: boolean;
@@ -18,6 +19,8 @@ export default function ViewSeatModal({
   seat,
   onEdit,
 }: ViewSeatModalProps) {
+  useModalBodyLock(isOpen);
+
   if (!isOpen || !seat) return null;
 
   const rows = Math.max(1, seat.rows || 1);
@@ -49,7 +52,6 @@ export default function ViewSeatModal({
         zIndex: 9000,
         padding: "16px",
       }}
-      onClick={onClose}
     >
       <div
         style={{

@@ -8,6 +8,7 @@ import { validateAttractionForm } from "@/app/(dashboard)/attraction-management/
 import { SeatConfigData } from "@/app/(dashboard)/seat-management/types";
 import { useSeatLayouts } from "@/hooks/useSeatQueries";
 import { useDeleteAttractionSeat } from "@/hooks/useAttractionManagementQueries";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 // ── Shared required asterisk
 const Req = () => <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>;
@@ -66,6 +67,7 @@ function AddVisitorCategoryModal({
   onAdd: (name: string, basePrice: string, image?: string, numberOfSeats?: string) => void;
   existingCategories?: string[];
 }) {
+  useModalBodyLock(isOpen);
   const [catName, setCatName] = useState("");
   const [basePrice, setBasePrice] = useState("");
   const [numberOfSeats, setNumberOfSeats] = useState("1");
@@ -139,7 +141,6 @@ function AddVisitorCategoryModal({
         display: "flex", alignItems: "center", justifyContent: "center",
         zIndex: 1100, padding: "16px",
       }}
-      onClick={onClose}
     >
       <div
         style={{
@@ -354,7 +355,7 @@ function VisitorCategoryAvatar({ src, name }: { src?: string; name: string }) {
 
 // ── Default categories using local /Assets/Visitors/ images 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
-  { id: "adult", name: "Adult", image: "/Assests/Visitors/Adult.jpg", basePrice: "100.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
+  { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", basePrice: "100.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
   { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", basePrice: "50.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
   { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", basePrice: "60.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
   { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.jpg", basePrice: "75.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
@@ -363,7 +364,7 @@ const DEFAULT_CATEGORIES: CategoryItem[] = [
 
 // ── Default image map per category name key ────────────────────────────────
 const DEFAULT_CATEGORY_IMAGES: Record<string, string> = {
-  adult: "/Assests/Visitors/Adult.jpg",
+  adult: "/Assets/Visitors/Adult.jpg",
   child: "/Assets/Visitors/Child.jpg",
   student: "/Assets/Visitors/Student.jpg",
   senior: "/Assets/Visitors/Senior.jpg",
@@ -374,19 +375,22 @@ const DEFAULT_CATEGORY_IMAGES: Record<string, string> = {
 function apiCategoriesToCategoryItems(apiCats: any[]): CategoryItem[] {
   if (!Array.isArray(apiCats) || apiCats.length === 0) return DEFAULT_CATEGORIES;
   return apiCats.map((c) => {
-    const key = (c.name || "").toLowerCase();
+    const key = (c.name || "").toLowerCase().trim();
     const defaultImg = DEFAULT_CATEGORY_IMAGES[key] || "";
-    const imageUrl =
+    const rawImage =
       c.imageLink && typeof c.imageLink === "string" && c.imageLink.trim()
         ? c.imageLink.trim()
-        : defaultImg;
+        : c.image && typeof c.image === "string" && c.image.trim()
+          ? c.image.trim()
+          : defaultImg;
+    const imageUrl = rawImage ? rawImage.replace(/\/Assests\//gi, "/Assets/") : defaultImg;
     return {
       id: c.id || key,
       name: c.name || "",
       image: imageUrl,
       imageLink:
         c.imageLink && typeof c.imageLink === "string" && c.imageLink.trim()
-          ? c.imageLink.trim()
+          ? c.imageLink.trim().replace(/\/Assests\//gi, "/Assets/")
           : null,
       basePrice:
         c.basePrice != null && !isNaN(Number(c.basePrice))
