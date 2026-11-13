@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, gte, lte } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -238,23 +238,10 @@ export async function GET(request: NextRequest) {
 
     // 7. Check for Seat Details (if seating attraction)
     const attractionIds = bookedAttractions.map((a) => a.attractionId);
-    const bookingDate = new Date(booking.createdAt);
-    const startOfBookingDay = new Date(
-      bookingDate.getFullYear(),
-      bookingDate.getMonth(),
-      bookingDate.getDate(),
-      0,
-      0,
-      0,
-    );
-    const endOfBookingDay = new Date(
-      bookingDate.getFullYear(),
-      bookingDate.getMonth(),
-      bookingDate.getDate(),
-      23,
-      59,
-      59,
-    );
+    // Seat bookings are created immediately following booking creation (within seconds)
+    const bookingTime = new Date(booking.createdAt).getTime();
+    const windowStart = new Date(bookingTime - 5000);
+    const windowEnd = new Date(bookingTime + 60000);
 
     const seatRows = await db
       .select({
@@ -262,6 +249,7 @@ export async function GET(request: NextRequest) {
         tripNo: seatBookingHistory.tripNo,
         seatNo: seatBookingHistory.seatNo,
         sectionName: attractionSeats.name,
+        createdAt: seatBookingHistory.createdAt,
       })
       .from(seatBookingHistory)
       .leftJoin(
@@ -271,15 +259,47 @@ export async function GET(request: NextRequest) {
       .where(
         and(
           inArray(seatBookingHistory.attractionId, attractionIds),
-          eq(seatBookingHistory.createdAt, booking.createdAt),
+          gte(seatBookingHistory.createdAt, windowStart),
+          lte(seatBookingHistory.createdAt, windowEnd),
         ),
       );
 
     const seatDetails = bookedAttractions
       .map((att) => {
-        const attSeats = seatRows.filter(
+        const attSummary = bookingSummary.find(
+          (b) => b.attractionId === att.attractionId,
+        );
+        const expectedPax =
+          attSummary?.passengers.reduce((sum, p) => sum + (p.qty || 0), 0) || 0;
+
+        const allCandidateSeats = seatRows.filter(
           (s) => s.attractionId === att.attractionId,
         );
+        if (allCandidateSeats.length === 0) return null;
+
+        // Group candidate seats by exact insert timestamp (all seats of one booking share the exact timestamp)
+        const batchMap = new Map<number, typeof allCandidateSeats>();
+        allCandidateSeats.forEach((s) => {
+          const time = new Date(s.createdAt).getTime();
+          if (!batchMap.has(time)) batchMap.set(time, []);
+          batchMap.get(time)!.push(s);
+        });
+
+        // Pick batch closest to booking creation, prioritizing matching expected passenger count
+        const batches = Array.from(batchMap.entries()).map(([time, seats]) => ({
+          time,
+          seats,
+          diff: Math.abs(time - bookingTime),
+          matchesPax: expectedPax > 0 && seats.length === expectedPax,
+        }));
+
+        batches.sort((a, b) => {
+          if (a.matchesPax && !b.matchesPax) return -1;
+          if (!a.matchesPax && b.matchesPax) return 1;
+          return a.diff - b.diff;
+        });
+
+        const attSeats = batches[0]?.seats || [];
         if (attSeats.length === 0) return null;
 
         const sectionMap = new Map<string, number[]>();
