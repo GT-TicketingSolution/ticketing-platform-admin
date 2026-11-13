@@ -8,10 +8,11 @@ import {
   users,
   staffRoles,
   staffAttractionAssignments,
-    attractions,
+  attractions,
   staffSystemModulePermissions,
   systemModules,
   bookings,
+  staffCrowdMode,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -50,6 +51,8 @@ const createStaffSchema = z.object({
   staffSystemModuleAllowedIds: z.array(z.string().uuid()).optional().default([]).optional().default([]),
 
   status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
+
+  isCrowdModeAllowed: z.boolean().optional().default(false),
 
   reportAccessTiming: z.number().int().positive().optional(),
 
@@ -425,11 +428,24 @@ export async function GET(request: NextRequest) {
             ),
           );
 
+        const [staffCrowdModeRecord] = await db
+          .select({
+            isAllowed: staffCrowdMode.isAllowed,
+            isEnabled: staffCrowdMode.isEnabled,
+          })
+          .from(staffCrowdMode)
+          .where(eq(staffCrowdMode.staffId, member.id))
+          .limit(1);
+
         return {
           ...member,
           roles,
           reportPermissions,
           staffTotalBookings,
+          crowdMode: {
+            isAllowed: staffCrowdModeRecord?.isAllowed ?? false,
+            isEnabled: staffCrowdModeRecord?.isEnabled ?? false,
+          },
           attractions: assignedAttractions,
         };
       }),
@@ -541,6 +557,7 @@ export async function POST(request: Request) {
       roles,
       attractionIds,
       status,
+      isCrowdModeAllowed,
       reportAccessTiming,
       reportAccessUnit,
       staffSystemModuleAllowedIds,
@@ -738,6 +755,16 @@ export async function POST(request: Request) {
       reportAccessUnit,
       staffSystemModuleAllowedIds
     );
+
+    // -----------------------------------------------------
+    // Create initial crowd mode record
+    // -----------------------------------------------------
+
+    await db.insert(staffCrowdMode).values({
+      staffId: staff.id,
+      isAllowed: isCrowdModeAllowed ?? false,
+      isEnabled: false,
+    });
 
     // -----------------------------------------------------
     // Response
