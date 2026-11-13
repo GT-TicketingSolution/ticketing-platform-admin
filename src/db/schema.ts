@@ -2090,3 +2090,46 @@ export const categoryOfAttractionAgainstBooking = pgTable(
     ).on(table.categoryId),
   }),
 );
+
+/* =========================================================
+   TICKET PRINT LOGS (Print & Reprint Tracking)
+========================================================= */
+
+export const ticketPrintLogs = pgTable(
+  "ticket_print_logs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, {
+        onDelete: "cascade",
+      }),
+
+    printedBy: uuid("printed_by")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+      }),
+
+    // Cumulative print count for this booking (1, 2, 3...)
+    printCount: integer("print_count").notNull(),
+
+    // INITIAL (first generation) or REPRINT
+    printType: varchar("print_type", { length: 20 })
+      .notNull()
+      .default("REPRINT"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    bookingIdx: index("ticket_print_logs_booking_idx").on(table.bookingId),
+    printedByIdx: index("ticket_print_logs_printed_by_idx").on(table.printedBy),
+    bookingCreatedIdx: index("ticket_print_logs_booking_created_idx").on(
+      table.bookingId,
+      table.createdAt,
+    ),
+  }),
+);
