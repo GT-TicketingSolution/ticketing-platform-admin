@@ -10,6 +10,7 @@ import {
   Download,
   Printer,
   ExternalLink,
+  Eye,
 } from "lucide-react";
 import { AttractionReportData } from "@/lib/reportsData";
 import { colors } from "@/lib/theme";
@@ -25,6 +26,7 @@ interface AttractionReportCardProps {
   fromDate?: string;
   toDate?: string;
   onPrint?: (report: AttractionReportData) => void;
+  onViewTicket?: (invoiceNumber: string, bookingId?: string) => void;
 }
 
 export default function AttractionReportCard({
@@ -35,6 +37,7 @@ export default function AttractionReportCard({
   fromDate,
   toDate,
   onPrint,
+  onViewTicket,
 }: AttractionReportCardProps) {
   const { attraction, totalRevenue, totalTicketsSold, totalBookings, categoryBreakdown, paymentBreakdown, transactions } = report;
   const hasData = totalRevenue > 0 || totalTicketsSold > 0 || totalBookings > 0;
@@ -453,6 +456,9 @@ export default function AttractionReportCard({
                           <th style={{ padding: "10px 14px", textAlign: "left" }}>Payment Mode</th>
                           <th style={{ padding: "10px 14px", textAlign: "right" }}>Amount</th>
                           <th style={{ padding: "10px 14px", textAlign: "center" }}>Status</th>
+                          {onViewTicket && (
+                            <th style={{ padding: "10px 14px", textAlign: "center" }}>Action</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
@@ -501,6 +507,36 @@ export default function AttractionReportCard({
                               <td style={{ padding: "10px 14px", textAlign: "center" }}>
                                 {hasStatus ? <StatusBadge status={String(rawStatus).trim()} /> : <span style={{ color: colors.text.muted }}>-</span>}
                               </td>
+                              {onViewTicket && (
+                                <td style={{ padding: "10px 14px", textAlign: "center" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => onViewTicket(invNumber !== "-" ? invNumber : (t.id || ""), t.id)}
+                                    disabled={invNumber === "-" && !t.id}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      gap: "5px",
+                                      padding: "5px 12px",
+                                      borderRadius: "6px",
+                                      backgroundColor: "#2372A5",
+                                      color: "#FFFFFF",
+                                      border: "none",
+                                      fontSize: "12px",
+                                      fontWeight: 600,
+                                      cursor: "pointer",
+                                      boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                                      transition: "background-color 0.15s ease",
+                                    }}
+                                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#1b5a84")}
+                                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#2372A5")}
+                                  >
+                                    <Eye size={13} />
+                                    <span>View</span>
+                                  </button>
+                                </td>
+                              )}
                             </tr>
                           );
                         })}

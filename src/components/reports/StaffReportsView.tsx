@@ -20,6 +20,9 @@ import { colors } from "@/lib/theme";
 import AttractionReportCard from "@/components/reports/AttractionReportCard";
 import SingleAttractionReportView from "@/components/reports/SingleAttractionReportView";
 import DailySalesReportModal from "@/components/modals/DailySalesReportModal";
+import StaffTicketModal, { StaffTicketData } from "@/components/modals/StaffTicketModal";
+import axiosInstance from "@/lib/api/axiosConfig";
+import { showNotify } from "notify-bolt";
 import { exportMultiSectionXLS, XLSSection } from "@/lib/exportUtils";
 import { useStaffReportAccess } from "@/hooks/useStaffReportAccess";
 import { useStaffReportQuery } from "@/hooks/useStaffReportQuery";
@@ -123,6 +126,65 @@ export default function StaffReportsView() {
   // Daily Sales Report Print Modal State
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [selectedPrintReport, setSelectedPrintReport] = useState<AttractionReportData | null>(null);
+
+  // Ticket Generated Modal State (for viewing and re-printing ticket receipts)
+  const [selectedTicketData, setSelectedTicketData] = useState<StaffTicketData | null>(null);
+  const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
+  const [isLoadingTicket, setIsLoadingTicket] = useState(false);
+
+  const handleViewTicket = async (invoiceNumber: string, bookingId?: string) => {
+    if ((!invoiceNumber || invoiceNumber === "-") && !bookingId) return;
+    setIsTicketModalOpen(true);
+    setIsLoadingTicket(true);
+    setSelectedTicketData(null);
+
+    try {
+      let data: StaffTicketData | null = null;
+      if (invoiceNumber && invoiceNumber !== "-") {
+        try {
+          const res = await axiosInstance.get(`/admin/ticketing-booking/print?invoiceNumber=${encodeURIComponent(invoiceNumber)}`);
+          data = res.data?.data || res.data;
+        } catch (invErr) {
+          if (bookingId && bookingId !== invoiceNumber) {
+            const res = await axiosInstance.get(`/admin/ticketing-booking/print?bookingId=${encodeURIComponent(bookingId)}`);
+            data = res.data?.data || res.data;
+          } else {
+            throw invErr;
+          }
+        }
+      } else if (bookingId) {
+        const res = await axiosInstance.get(`/admin/ticketing-booking/print?bookingId=${encodeURIComponent(bookingId)}`);
+        data = res.data?.data || res.data;
+      }
+
+      if (data && (data.booking || (data as any).success !== false)) {
+        setSelectedTicketData(data);
+      } else {
+        setIsTicketModalOpen(false);
+        showNotify({
+          title: "Error",
+          message: "Ticket details not found.",
+          variant: "classic",
+          status: "error",
+          size: "sm",
+          showCloseIcon: true,
+        });
+      }
+    } catch (err: any) {
+      console.error("Failed to fetch ticket for invoice:", invoiceNumber, err);
+      setIsTicketModalOpen(false);
+      showNotify({
+        title: "Error",
+        message: err?.response?.data?.error?.message || err?.message || "Failed to load ticket details",
+        variant: "classic",
+        status: "error",
+        size: "sm",
+        showCloseIcon: true,
+      });
+    } finally {
+      setIsLoadingTicket(false);
+    }
+  };
 
   // Safe time change handlers: guard against future time and range inversion
   const handleFromTimeChange = (newTime: string) => {
@@ -1546,6 +1608,7 @@ export default function StaffReportsView() {
             onBackToAll={() => setSelectedAttraction("All Attractions")}
             fromDate={fromDate}
             toDate={toDate}
+            onViewTicket={handleViewTicket}
             onPrint={() => {
               setSelectedPrintReport(singleAttractionReport);
               setIsPrintModalOpen(true);
@@ -1755,6 +1818,7 @@ export default function StaffReportsView() {
                   onSelectSingle={(attractionName) => setSelectedAttraction(attractionName)}
                   fromDate={fromDate}
                   toDate={toDate}
+                  onViewTicket={handleViewTicket}
                   onPrint={(rep) => {
                     setSelectedPrintReport(rep);
                     setIsPrintModalOpen(true);
@@ -1779,6 +1843,17 @@ export default function StaffReportsView() {
         toDate={toDate}
         fromTime={fromTime}
         toTime={toTime}
+      />
+
+      {/* Ticket View & Print Modal */}
+      <StaffTicketModal
+        isOpen={isTicketModalOpen}
+        onClose={() => {
+          setIsTicketModalOpen(false);
+          setSelectedTicketData(null);
+        }}
+        isLoading={isLoadingTicket}
+        ticketData={selectedTicketData}
       />
     </div>
   );
