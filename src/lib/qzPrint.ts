@@ -65,6 +65,25 @@ function buildReceiptHtml(innerHtml: string): string {
     }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+    .ticket-tax-meta, .ticket-tax-meta div, .ticket-tax-meta span { font-size: 8px !important; white-space: nowrap !important; letter-spacing: 0 !important; }
+    .ticket-phone-line { font-size: 7.5px !important; white-space: nowrap !important; letter-spacing: -0.01em !important; display: block !important; }
+    .print-seat-allocation, .print-seat-allocation div, .print-seat-allocation span { font-size: 9.5px !important; }
+    .print-station-route, .print-station-route div, .print-station-route span { font-size: 8.5px !important; line-height: 1.25 !important; }
+    .print-total-header { padding: 3px 0 !important; }
+    .print-total-header div:first-child { font-size: 14px !important; line-height: 1.1 !important; }
+    .print-total-header div:last-child { font-size: 7.5px !important; margin-top: 1px !important; }
+    .print-invoice-meta, .print-invoice-meta div, .print-invoice-meta span { font-size: 9.5px !important; }
+    .print-items-table, .print-items-table table, .print-items-table th, .print-items-table td, .print-items-table td div:first-child { font-size: 8.5px !important; }
+    .print-items-table th { padding-bottom: 2px !important; }
+    .print-items-table td { padding-top: 2px !important; padding-bottom: 1px !important; }
+    .print-items-table td div:last-child { font-size: 7.5px !important; margin-top: 0px !important; }
+    .print-tax-breakdown { font-size: 8.5px !important; padding: 4px 0 !important; }
+    .print-tax-breakdown div, .print-tax-breakdown span { font-size: 8.5px !important; margin-bottom: 1px !important; }
+    .print-tax-breakdown div:last-child, .print-tax-breakdown div:last-child span { font-size: 9.5px !important; padding-top: 3px !important; margin-top: 2px !important; }
+    .print-notes-section { font-size: 8.5px !important; padding: 4px 0 !important; }
+    .print-notes-section > div:first-child { font-size: 9px !important; margin-bottom: 2px !important; }
+    .print-notes-section > div:last-child { gap: 1.5px !important; }
+    .print-notes-section > div:last-child div { font-size: 8px !important; line-height: 1.25 !important; }
   </style>
 </head>
 <body>${innerHtml}</body>

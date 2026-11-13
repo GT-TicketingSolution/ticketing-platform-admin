@@ -586,6 +586,25 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
           }
           table { width: 100%; border-collapse: collapse; table-layout: fixed; }
           img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+          .ticket-tax-meta, .ticket-tax-meta div, .ticket-tax-meta span { font-size: 8px !important; white-space: nowrap !important; letter-spacing: 0 !important; }
+          .ticket-phone-line { font-size: 7.5px !important; white-space: nowrap !important; letter-spacing: -0.01em !important; display: block !important; }
+          .print-seat-allocation, .print-seat-allocation div, .print-seat-allocation span { font-size: 9.5px !important; }
+          .print-station-route, .print-station-route div, .print-station-route span { font-size: 8.5px !important; line-height: 1.25 !important; }
+          .print-total-header { padding: 3px 0 !important; }
+          .print-total-header div:first-child { font-size: 14px !important; line-height: 1.1 !important; }
+          .print-total-header div:last-child { font-size: 7.5px !important; margin-top: 1px !important; }
+          .print-invoice-meta, .print-invoice-meta div, .print-invoice-meta span { font-size: 9.5px !important; }
+          .print-items-table, .print-items-table table, .print-items-table th, .print-items-table td, .print-items-table td div:first-child { font-size: 8.5px !important; }
+          .print-items-table th { padding-bottom: 2px !important; }
+          .print-items-table td { padding-top: 2px !important; padding-bottom: 1px !important; }
+          .print-items-table td div:last-child { font-size: 7.5px !important; margin-top: 0px !important; }
+          .print-tax-breakdown { font-size: 8.5px !important; padding: 4px 0 !important; }
+          .print-tax-breakdown div, .print-tax-breakdown span { font-size: 8.5px !important; margin-bottom: 1px !important; }
+          .print-tax-breakdown div:last-child, .print-tax-breakdown div:last-child span { font-size: 9.5px !important; padding-top: 3px !important; margin-top: 2px !important; }
+          .print-notes-section { font-size: 8.5px !important; padding: 4px 0 !important; }
+          .print-notes-section > div:first-child { font-size: 9px !important; margin-bottom: 2px !important; }
+          .print-notes-section > div:last-child { gap: 1.5px !important; }
+          .print-notes-section > div:last-child div { font-size: 8px !important; line-height: 1.25 !important; }
         </style>
       </head>
       <body>${innerHtml}</body>
@@ -1018,6 +1037,7 @@ function TicketGeneratedModal({
               {/* CIN & GST info (from profile API response) */}
               {(displayCin || displayGst) && (
                 <div
+                  className="ticket-tax-meta"
                   style={{
                     margin: "3px 0 2px 0",
                     fontSize: "11.5px",
@@ -1030,13 +1050,19 @@ function TicketGeneratedModal({
                 >
                   {displayCin ? <div>CIN: {displayCin}</div> : null}
                   {displayGst ? <div>GST: {displayGst}</div> : null}
-                  Phone: 73000-95-806,73000-95-807,73000-95-808
+                  <div
+                    className="ticket-phone-line"
+                    style={{ whiteSpace: "nowrap" }}
+                  >
+                    Phone: 73000-95-806,73000-95-807,73000-95-808
+                  </div>
                 </div>
               )}
 
               {/* Seat Allocation Info – shown below GST number */}
               {seatDetails && seatDetails.length > 0 && (
                 <div
+                  className="print-seat-allocation"
                   style={{
                     marginTop: "8px",
                     paddingTop: "7px",
@@ -1124,6 +1150,7 @@ function TicketGeneratedModal({
 
                   {/* Station Route Info - Rendered once at the bottom of all attractions */}
                   <div
+                    className="print-station-route"
                     style={{
                       marginTop: "6px",
                       paddingTop: "5px",
@@ -1148,8 +1175,8 @@ function TicketGeneratedModal({
             </div>
 
             {/* Prominent Total Header */}
-            <div style={{ textAlign: "center", padding: "10px 0", borderBottom: "1px dashed #000000" }}>
-              <div style={{ fontSize: "24px", fontWeight: 500, color: "#000000", letterSpacing: "0.01em", lineHeight: "1.1" }}>
+            <div className="print-total-header" style={{ textAlign: "center", padding: "10px 0", borderBottom: "1px dashed #000000" }}>
+              <div style={{ fontSize: "24px", fontWeight: 700, color: "#000000", letterSpacing: "0.01em", lineHeight: "1.1" }}>
                 ₹{finalTotal.toFixed(2)}
               </div>
               <div style={{ fontSize: "11px", fontWeight: 500, color: "#000000", textTransform: "uppercase", marginTop: "2px" }}>
@@ -1158,7 +1185,7 @@ function TicketGeneratedModal({
             </div>
 
             {/* Invoice & Customer Meta */}
-            <div style={{ padding: "8px 0", borderBottom: "1px dashed #000000", fontSize: "11.5px", fontWeight: 400, color: "#000000" }}>
+            <div className="print-invoice-meta" style={{ padding: "8px 0", borderBottom: "1px dashed #000000", fontSize: "11.5px", fontWeight: 400, color: "#000000" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
                 <span><strong>Invoice:</strong> {ticketNo}</span>
                 <span><strong>Bill To:</strong> {custName}</span>
@@ -1170,7 +1197,7 @@ function TicketGeneratedModal({
             </div>
 
             {/* Items Table */}
-            <div style={{ padding: "8px 0", borderBottom: "1px dashed #000000" }}>
+            <div className="print-items-table" style={{ padding: "8px 0", borderBottom: "1px dashed #000000" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11.5px", color: "#000000" }}>
                 <thead>
                   <tr style={{ borderBottom: "1.5px solid #000000", textAlign: "left", fontWeight: 400 }}>
@@ -1215,7 +1242,7 @@ function TicketGeneratedModal({
             </div>
 
             {/* Tax and Adjustment Breakdown */}
-            <div style={{ padding: "8px 0", borderBottom: "1px dashed #000000", fontSize: "11.5px", fontWeight: 400, color: "#000000" }}>
+            <div className="print-tax-breakdown" style={{ padding: "8px 0", borderBottom: "1px dashed #000000", fontSize: "11.5px", fontWeight: 400, color: "#000000" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
                 <span>Sub-Total</span>
                 <span>₹{calculatedSubtotal.toFixed(2)}</span>
@@ -1266,6 +1293,7 @@ function TicketGeneratedModal({
 
             {/* Notes / Instructions Section (Full Width Above Scanners) */}
             <div
+              className="print-notes-section"
               style={{
                 width: "100%",
                 textAlign: "left",
