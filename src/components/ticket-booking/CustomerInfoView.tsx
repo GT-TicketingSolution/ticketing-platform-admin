@@ -572,7 +572,7 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
             width: 70mm;
             max-width: 70mm;
             margin: 0 auto;
-            padding: 3mm 4.5mm;
+            padding: 1.5mm 2.25mm;
             box-sizing: border-box;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -588,11 +588,8 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
           img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
           .ticket-tax-meta, .ticket-tax-meta div, .ticket-tax-meta span { font-size: 8px !important; white-space: nowrap !important; letter-spacing: 0 !important; }
           .ticket-phone-line { font-size: 7.5px !important; white-space: nowrap !important; letter-spacing: -0.01em !important; display: block !important; }
-          .print-seat-allocation, .print-seat-allocation div, .print-seat-allocation span { font-size: 9.5px !important; }
+          .print-seat-allocation, .print-seat-allocation div, .print-seat-allocation span { font-size: 8px !important; }
           .print-station-route, .print-station-route div, .print-station-route span { font-size: 8.5px !important; line-height: 1.25 !important; }
-          .print-total-header { padding: 3px 0 !important; }
-          .print-total-header div:first-child { font-size: 14px !important; line-height: 1.1 !important; }
-          .print-total-header div:last-child { font-size: 7.5px !important; margin-top: 1px !important; }
           .print-invoice-meta, .print-invoice-meta div, .print-invoice-meta span { font-size: 9.5px !important; }
           .print-items-table, .print-items-table table, .print-items-table th, .print-items-table td, .print-items-table td div:first-child { font-size: 8.5px !important; }
           .print-items-table th { padding-bottom: 2px !important; }
@@ -600,7 +597,7 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
           .print-items-table td div:last-child { font-size: 7.5px !important; margin-top: 0px !important; }
           .print-tax-breakdown { font-size: 8.5px !important; padding: 4px 0 !important; }
           .print-tax-breakdown div, .print-tax-breakdown span { font-size: 8.5px !important; margin-bottom: 1px !important; }
-          .print-tax-breakdown div:last-child, .print-tax-breakdown div:last-child span { font-size: 9.5px !important; padding-top: 3px !important; margin-top: 2px !important; }
+          .print-tax-breakdown div:last-child, .print-tax-breakdown div:last-child span { font-size: 9.5px !important; font-weight: 800 !important; padding-top: 3px !important; margin-top: 2px !important; }
           .print-notes-section { font-size: 8.5px !important; padding: 4px 0 !important; }
           .print-notes-section > div:first-child { font-size: 9px !important; margin-bottom: 2px !important; }
           .print-notes-section > div:last-child { gap: 1.5px !important; }
@@ -1001,7 +998,7 @@ function TicketGeneratedModal({
             }}
           >
             {/* Header: Attraction Name + Business Name + CIN & GST */}
-            <div style={{ textAlign: "center", borderBottom: "1px dashed #000000", paddingBottom: "10px" }}>
+            <div style={{ textAlign: "center", borderBottom: (!seatDetails || seatDetails.length === 0) ? "1px dashed #000000" : "none", paddingBottom: (!seatDetails || seatDetails.length === 0) ? "10px" : "4px" }}>
               <h3
                 style={{
                   margin: "0 0 2px 0",
@@ -1048,8 +1045,9 @@ function TicketGeneratedModal({
                     letterSpacing: "0.02em",
                   }}
                 >
-                  {displayCin ? <div>CIN: {displayCin}</div> : null}
-                  {displayGst ? <div>GST: {displayGst}</div> : null}
+                  <div>
+                    {[displayCin ? `CIN: ${displayCin}` : "", displayGst ? `GST: ${displayGst}` : ""].filter(Boolean).join(" , ")}
+                  </div>
                   <div
                     className="ticket-phone-line"
                     style={{ whiteSpace: "nowrap" }}
@@ -1074,79 +1072,70 @@ function TicketGeneratedModal({
                     fontFamily: "'Plus Jakarta Sans', Arial, sans-serif",
                   }}
                 >
-                  <div
-                    style={{
-                      fontWeight: 900,
-                      fontSize: "11px",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.04em",
-                      marginBottom: "4px",
-                      textAlign: "center",
-                    }}
-                  >
-                    SEAT ALLOCATION
-                  </div>
+                  {seatDetails.map((att, i) => {
+                    const roundNo = att.tripNo || (tripMap && tripMap[att.attractionId]) || 1;
+                    const attractionTitle = att.attractionName || attractionName || "";
+                    const firstSection = att.sections && att.sections.length > 0 ? att.sections[0] : null;
+                    const extraSections = att.sections && att.sections.length > 1 ? att.sections.slice(1) : [];
 
-                  {/* Current Trip - only shown at top when single attraction */}
-                  {seatDetails.length === 1 && (
-                    <div
-                      style={{
-                        fontWeight: 800,
-                        fontSize: "11px",
-                        textAlign: "center",
-                        marginBottom: "6px",
-                      }}
-                    >
-                      Round No.(राउंड नं.) : {
-                        seatDetails[0]?.tripNo || (tripMap && tripMap[seatDetails[0]?.attractionId]) || 1
-                      }
-                    </div>
-                  )}
-
-                  {seatDetails.map((att, i) => (
-                    <div key={att.attractionId} style={{ marginTop: i > 0 ? "8px" : "2px", marginBottom: i < seatDetails.length - 1 ? "4px" : 0 }}>
-                      {seatDetails.length > 1 && (
-                        <>
-                          <div
-                            style={{
-                              fontWeight: 800,
-                              fontSize: "11px",
-                              textAlign: "center",
-                              marginBottom: "3px",
-                            }}
-                          >
-                            Round No.(राउंड नं.)  :  {att.tripNo || (tripMap && tripMap[att.attractionId]) || 1}
-                          </div>
+                    return (
+                      <div key={att.attractionId} style={{ marginTop: i > 0 ? "6px" : "2px", marginBottom: i < seatDetails.length - 1 ? "4px" : 0 }}>
+                        {/* Line 1: Attraction Name on Left, First Section Name on Right */}
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                            marginBottom: "2px",
+                          }}
+                        >
                           <div
                             style={{
                               fontWeight: 800,
                               fontSize: "11px",
                               textTransform: "uppercase",
                               letterSpacing: "0.03em",
-                              marginBottom: "3px",
+                              textAlign: "left",
                             }}
                           >
-                            {att.attractionName}
+                            {attractionTitle}
                           </div>
-                        </>
-                      )}
-                      {att.sections.map((sec) => (
+                          {firstSection && (
+                            <div style={{ textAlign: "right", fontWeight: 800, fontSize: "11px" }}>
+                              {firstSection.name}:
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Line 2: Round No on Left, First Section Seats on Right (without 'Seat' text) */}
                         <div
-                          key={sec.name}
                           style={{
                             display: "flex",
                             justifyContent: "space-between",
+                            alignItems: "flex-start",
                             marginBottom: "2px",
                           }}
                         >
-                          <span style={{ fontWeight: 800 }}>{sec.name}:</span>
-                          <span style={{ fontWeight: 800 }}>
-                            Seat {sec.seats.join(", ")}
-                          </span>
+                          <div style={{ textAlign: "left", fontWeight: 800, fontSize: "11px", whiteSpace: "nowrap" }}>
+                            Round No.(राउंड नं.) : {roundNo}
+                          </div>
+                          {firstSection && (
+                            <div style={{ textAlign: "right", fontWeight: 800, fontSize: "11px" }}>
+                              {firstSection.seats.join(", ")}
+                            </div>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  ))}
+
+                        {/* Additional Sections (if any) */}
+                        {extraSections.map((sec) => (
+                          <div key={sec.name} style={{ textAlign: "right", marginBottom: "2px" }}>
+                            <div style={{ fontWeight: 800, fontSize: "11px" }}>{sec.name}:</div>
+                            <div style={{ fontWeight: 800, fontSize: "11px" }}>{sec.seats.join(", ")}</div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
 
                   {/* Station Route Info - Rendered once at the bottom of all attractions */}
                   <div
@@ -1154,7 +1143,9 @@ function TicketGeneratedModal({
                     style={{
                       marginTop: "6px",
                       paddingTop: "5px",
+                      paddingBottom: "5px",
                       borderTop: "1px dashed #000000",
+                      borderBottom: "1px dashed #000000",
                       fontSize: "11px",
                       lineHeight: "1.4",
                       fontWeight: 800,
@@ -1172,16 +1163,6 @@ function TicketGeneratedModal({
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* Prominent Total Header */}
-            <div className="print-total-header" style={{ textAlign: "center", padding: "10px 0", borderBottom: "1px dashed #000000" }}>
-              <div style={{ fontSize: "24px", fontWeight: 700, color: "#000000", letterSpacing: "0.01em", lineHeight: "1.1" }}>
-                ₹{finalTotal.toFixed(2)}
-              </div>
-              <div style={{ fontSize: "11px", fontWeight: 500, color: "#000000", textTransform: "uppercase", marginTop: "2px" }}>
-                Total Amount Paid
-              </div>
             </div>
 
             {/* Invoice & Customer Meta */}
@@ -1256,10 +1237,6 @@ function TicketGeneratedModal({
                 <span>₹{halfGst.toFixed(2)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
-                <span>Effective GST (18%)</span>
-                <span>₹{calculatedGst.toFixed(2)}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
                 <span>GST Round Off</span>
                 <span>
                   {calculatedattractionRoundOffGstAdj > 0
@@ -1280,14 +1257,14 @@ function TicketGeneratedModal({
                   display: "flex",
                   justifyContent: "space-between",
                   fontSize: "12px",
-                  fontWeight: 400,
+                  fontWeight: 800,
                   borderTop: "1.5px solid #000000",
                   paddingTop: "6px",
                   marginTop: "4px",
                 }}
               >
-                <span>Amount Payable (₹)</span>
-                <span>₹{finalTotal.toFixed(2)}</span>
+                <span style={{ fontWeight: 800 }}>Amount Payable (₹)</span>
+                <span style={{ fontWeight: 800 }}>₹{finalTotal.toFixed(2)}</span>
               </div>
             </div>
 
@@ -1363,24 +1340,9 @@ function TicketGeneratedModal({
                           boxSizing: "border-box",
                         }}
                       >
-                        <div
-                          style={{
-                            fontSize: "10px",
-                            fontWeight: 700,
-                            color: "#000000",
-                            marginBottom: "2px",
-                            textAlign: "center",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.02em",
-                            lineHeight: 1.2,
-                            wordBreak: "break-word",
-                          }}
-                        >
-                          {attractionLabel}
-                        </div>
                         <img
                           src={qrItem.qrCode}
-                          alt={`${attractionLabel} QR Code`}
+                          alt="Ticket QR Code"
                           style={{
                             width: qrSize,
                             height: qrSize,
@@ -1393,28 +1355,13 @@ function TicketGeneratedModal({
                     );
                   })}
                 </div>
-
-                <div
-                  style={{
-                    fontSize: "9px",
-                    fontWeight: 700,
-                    color: "#000000",
-                    marginTop: "6px",
-                    textAlign: "center",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    width: "100%",
-                  }}
-                >
-                  SCAN FOR ENTRY
-                </div>
               </div>
             )}
 
             {/* Clean Terms / Notice */}
             <div style={{ marginTop: "6px", paddingTop: "4px", fontSize: "11px", color: "#000000", lineHeight: "1.4", textAlign: "center", fontWeight: 700 }}>
-              <div style={{ fontWeight: 900, marginBottom: "2px", letterSpacing: "0.04em" }}>THANKS FOR VISIT</div>
-              <div style={{ fontSize: "10px", fontWeight: 600 }}>
+              <div style={{ fontSize: "10px", fontWeight: 600, marginBottom: "2px" }}>THANKS FOR VISIT</div>
+              <div style={{ fontWeight: 900, letterSpacing: "0.04em" }}>
                 Instagram: @toy_train_udaipur
               </div>
               <div style={{ fontSize: "10px", fontWeight: 600 }}>
@@ -1490,7 +1437,7 @@ function TicketGeneratedModal({
             width: 70mm !important;
             max-width: 70mm !important;
             margin: 0 auto !important;
-            padding: 3mm 4.5mm !important;
+            padding: 1.5mm 2.25mm !important;
             box-sizing: border-box !important;
             box-shadow: none !important;
             border: none !important;
