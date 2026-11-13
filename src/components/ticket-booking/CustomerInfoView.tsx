@@ -738,7 +738,6 @@ function TicketGeneratedModal({
     (confirmedData as any)?.data?.bookingId ||
     "-";
   const finalTotal = booking?.totalAmount ? parseFloat(String(booking.totalAmount)) : grandTotal;
-  const payMode = booking?.paymentMode || (confirmedData as any)?.paymentMode || "CASH";
   const rawDate = booking?.visitAt || booking?.createdAt || new Date().toISOString();
   const dateObj = rawDate ? new Date(rawDate) : null;
 
@@ -1031,6 +1030,7 @@ function TicketGeneratedModal({
                 >
                   {displayCin ? <div>CIN: {displayCin}</div> : null}
                   {displayGst ? <div>GST: {displayGst}</div> : null}
+                  Phone: 73000-95-806,73000-95-807,73000-95-808
                 </div>
               )}
 
@@ -1045,7 +1045,7 @@ function TicketGeneratedModal({
                     fontSize: "11px",
                     fontWeight: 800,
                     color: "#000000",
-                    fontFamily: "'Courier New', Courier, monospace",
+                    fontFamily: "'Plus Jakarta Sans', Arial, sans-serif",
                   }}
                 >
                   <div
@@ -1066,10 +1066,9 @@ function TicketGeneratedModal({
                     <div
                       style={{
                         fontWeight: 800,
-                        fontSize: "10.5px",
+                        fontSize: "11px",
                         textAlign: "center",
                         marginBottom: "6px",
-                        letterSpacing: "0.01em",
                       }}
                     >
                       Round No.(राउंड नं.) : {
@@ -1084,20 +1083,18 @@ function TicketGeneratedModal({
                         <>
                           <div
                             style={{
-                              fontWeight: 900,
-                              fontSize: "10.5px",
+                              fontWeight: 800,
+                              fontSize: "11px",
                               textAlign: "center",
-                              letterSpacing: "0.01em",
                               marginBottom: "3px",
-                              textDecoration: "underline",
                             }}
                           >
-                             Round No.(राउंड नं.) : {att.tripNo || (tripMap && tripMap[att.attractionId]) || 1}
+                            Round No.(राउंड नं.)  :  {att.tripNo || (tripMap && tripMap[att.attractionId]) || 1}
                           </div>
                           <div
                             style={{
-                              fontWeight: 900,
-                              fontSize: "10.5px",
+                              fontWeight: 800,
+                              fontSize: "11px",
                               textTransform: "uppercase",
                               letterSpacing: "0.03em",
                               marginBottom: "3px",
@@ -1117,7 +1114,7 @@ function TicketGeneratedModal({
                           }}
                         >
                           <span style={{ fontWeight: 800 }}>{sec.name}:</span>
-                          <span style={{ fontWeight: 700 }}>
+                          <span style={{ fontWeight: 800 }}>
                             Seat {sec.seats.join(", ")}
                           </span>
                         </div>
@@ -1131,15 +1128,20 @@ function TicketGeneratedModal({
                       marginTop: "6px",
                       paddingTop: "5px",
                       borderTop: "1px dashed #000000",
-                      fontSize: "10.5px",
+                      fontSize: "11px",
                       lineHeight: "1.4",
-                      fontWeight: 700,
+                      fontWeight: 800,
                       color: "#000000",
-                      textAlign: "center"
+                      textAlign: "center",
                     }}
                   >
-                    <div>स्टेशन: 1 समोर बाग से कमल तलाई तक विरम</div>
-                    <div>स्टेशन: 2 कमल तलाई से समोर बाग तक</div>
+                    <div>
+                      स्टेशन: 1 <span style={{ display: "inline-block", width: "9px", height: "9px", border: "1.5px solid #000000", margin: "0 3px 1px 3px", verticalAlign: "middle" }}></span> समोर बाग से कमल तलाई तक
+                    </div>
+                    <div>विराम</div>
+                    <div>
+                      स्टेशन: 2 <span style={{ display: "inline-block", width: "9px", height: "9px", border: "1.5px solid #000000", margin: "0 3px 1px 3px", verticalAlign: "middle" }}></span> कमल तलाई से समोर बाग तक
+                    </div>
                   </div>
                 </div>
               )}
@@ -1151,7 +1153,7 @@ function TicketGeneratedModal({
                 ₹{finalTotal.toFixed(2)}
               </div>
               <div style={{ fontSize: "11px", fontWeight: 500, color: "#000000", textTransform: "uppercase", marginTop: "2px" }}>
-                Total Amount Paid ({payMode || "-"})
+                Total Amount Paid
               </div>
             </div>
 
@@ -1267,26 +1269,26 @@ function TicketGeneratedModal({
               style={{
                 width: "100%",
                 textAlign: "left",
-                fontSize: "11px",
-                lineHeight: "1.5",
-                fontWeight: 700,
+                fontSize: "11.5px",
+                lineHeight: "1.4",
                 color: "#000000",
                 padding: "8px 0",
                 borderBottom: "1px dashed #000000",
                 boxSizing: "border-box",
                 wordBreak: "break-word",
+                fontFamily: "'Plus Jakarta Sans', Arial, sans-serif",
               }}
             >
-              <div>NOTE:</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "3px", width: "100%" }}>
+              <div style={{ fontWeight: 900, fontSize: "11.5px", marginBottom: "4px" }}>NOTE:</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "3px", width: "100%", fontWeight: 400 }}>
                 <div style={{ width: "100%" }}>1. कम से कम 50 सवारी होने पर ही ट्रेन रवाना होगी</div>
-                <div style={{ width: "100%" }}>2. कृपया किसी भी स्थिति में ट्रेन से हाथ बाहर ना निकालें।</div>
+                <div style={{ width: "100%" }}>2. कृपया किसी भी स्थिति में ट्रेन से शरीर का कोई भी अंग बाहर ना निकालें।</div>
                 <div style={{ width: "100%" }}>3. यात्री अपने सामान की सुरक्षा स्वयं करें।</div>
                 <div style={{ width: "100%" }}>4. टिकट लेने के पश्चात् कोई रिफंड नहीं किया जायेगा।</div>
                 <div style={{ width: "100%" }}>5. नाव में खड़ा होना और पानी में हाथ डालना प्रतिबंधित है।</div>
                 <div style={{ width: "100%" }}>6. पानी में कोई भी वस्तु फेंकना मना है।</div>
-                <div style={{ width: "100%" }}>7. नाव को नुकसान होने पर यात्री से वसूली की जाएगी।</div>
-                <div style={{ width: "100%" }}>8. नौकायन के दौरान लाइफ जैकेट पहन अनिवार्य है।</div>
+                <div style={{ width: "100%" }}>7. प्रोजेक्ट का किसी भी प्रकर का नुकसान होने पर यात्री से वसूली की जाएगी।</div>
+                <div style={{ width: "100%" }}>8. नौकायन के दौरान लाइफ जैकेट पहना अनिवार्य है।</div>
                 <div style={{ width: "100%" }}>9. नाव में खाना-पीना वर्जित है।</div>
                 <div style={{ width: "100%" }}>10. सभी मामले केवल उदयपुर न्याय क्षेत्र में मान्य होंगे।</div>
                 <div style={{ width: "100%" }}>11. प्रवेश का अधिकार प्रबंधन के पास सुरक्षित है (नगर निगम द्वारा स्वीकृत)</div>
@@ -2322,7 +2324,7 @@ function SeatAllocationPanel({
                           fontWeight: 600,
                           color: "#64748B",
                           textTransform: "uppercase",
-                          letterSpacing: "0.1px",
+                          letterSpacing: "0px",
                         }}
                       >
                         Round No.(राउंड नं.)
