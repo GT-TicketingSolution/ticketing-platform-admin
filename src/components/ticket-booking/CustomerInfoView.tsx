@@ -560,8 +560,10 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
         <title>Ticket Bill</title>
         <meta charset="utf-8" />
         <style>
-          @page { size: 80mm auto; margin: 0; }
+          @page { size: 80mm auto; margin: 0 !important; }
           html {
+            margin: 0 !important;
+            padding: 0 !important;
             height: fit-content;
             min-height: unset;
           }
@@ -571,8 +573,8 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
             background: #FFFFFF;
             width: 70mm;
             max-width: 70mm;
-            margin: 0 auto;
-            padding: 1.5mm 2.25mm;
+            margin: 0 auto !important;
+            padding: 0 4.5mm !important;
             box-sizing: border-box;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -588,7 +590,8 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
           img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
           .ticket-tax-meta, .ticket-tax-meta div, .ticket-tax-meta span { font-size: 8px !important; white-space: nowrap !important; letter-spacing: 0 !important; }
           .ticket-phone-line { font-size: 7.5px !important; white-space: nowrap !important; letter-spacing: -0.01em !important; display: block !important; }
-          .print-seat-allocation, .print-seat-allocation div, .print-seat-allocation span { font-size: 8px !important; }
+          .print-seat-allocation, .print-seat-allocation div, .print-seat-allocation span, .print-seat-allocation table, .print-seat-allocation td { font-size: 8px !important; }
+          .print-seat-table { table-layout: auto !important; width: 100% !important; border-collapse: collapse !important; }
           .print-station-route, .print-station-route div, .print-station-route span { font-size: 8.5px !important; line-height: 1.25 !important; }
           .print-invoice-meta, .print-invoice-meta div, .print-invoice-meta span { font-size: 9.5px !important; }
           .print-items-table, .print-items-table table, .print-items-table th, .print-items-table td, .print-items-table td div:first-child { font-size: 8.5px !important; }
@@ -1052,7 +1055,7 @@ function TicketGeneratedModal({
                     className="ticket-phone-line"
                     style={{ whiteSpace: "nowrap" }}
                   >
-                    Phone: 73000-95-806,73000-95-807,73000-95-808
+                    Mobile No.: 73000-95-806,73000-95-807,73000-95-808
                   </div>
                 </div>
               )}
@@ -1072,70 +1075,68 @@ function TicketGeneratedModal({
                     fontFamily: "'Plus Jakarta Sans', Arial, sans-serif",
                   }}
                 >
-                  {seatDetails.map((att, i) => {
-                    const roundNo = att.tripNo || (tripMap && tripMap[att.attractionId]) || 1;
-                    const attractionTitle = att.attractionName || attractionName || "";
-                    const firstSection = att.sections && att.sections.length > 0 ? att.sections[0] : null;
-                    const extraSections = att.sections && att.sections.length > 1 ? att.sections.slice(1) : [];
+                  <table
+                    className="print-seat-table"
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      tableLayout: "auto",
+                      marginTop: "2px",
+                      marginBottom: "2px",
+                    }}
+                  >
+                    <tbody>
+                      {seatDetails.map((att, i) => {
+                        const roundNo = att.tripNo || (tripMap && tripMap[att.attractionId]) || 1;
 
-                    return (
-                      <div key={att.attractionId} style={{ marginTop: i > 0 ? "6px" : "2px", marginBottom: i < seatDetails.length - 1 ? "4px" : 0 }}>
-                        {/* Line 1: Attraction Name on Left, First Section Name on Right */}
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "flex-start",
-                            marginBottom: "2px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: 800,
-                              fontSize: "11px",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.03em",
-                              textAlign: "left",
-                            }}
-                          >
-                            {attractionTitle}
-                          </div>
-                          {firstSection && (
-                            <div style={{ textAlign: "right", fontWeight: 800, fontSize: "11px" }}>
-                              {firstSection.name}:
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Line 2: Round No on Left, First Section Seats on Right (without 'Seat' text) */}
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "flex-start",
-                            marginBottom: "2px",
-                          }}
-                        >
-                          <div style={{ textAlign: "left", fontWeight: 800, fontSize: "11px", whiteSpace: "nowrap" }}>
-                            Round No.(राउंड नं.) : {roundNo}
-                          </div>
-                          {firstSection && (
-                            <div style={{ textAlign: "right", fontWeight: 800, fontSize: "11px" }}>
-                              {firstSection.seats.join(", ")}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Additional Sections (if any) */}
-                        {extraSections.map((sec) => (
-                          <div key={sec.name} style={{ textAlign: "right", marginBottom: "2px" }}>
-                            <div style={{ fontWeight: 800, fontSize: "11px" }}>{sec.name}:</div>
-                            <div style={{ fontWeight: 800, fontSize: "11px" }}>{sec.seats.join(", ")}</div>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })}
+                        return (
+                          <tr key={att.attractionId || i}>
+                            <td
+                              style={{
+                                whiteSpace: "nowrap",
+                                paddingRight: "6px",
+                                paddingTop: i > 0 ? "4px" : "1px",
+                                paddingBottom: i < seatDetails.length - 1 ? "4px" : "1px",
+                                borderRight: "1px solid #000000",
+                                verticalAlign: "middle",
+                                fontWeight: 800,
+                                fontSize: "11px",
+                                textAlign: "left",
+                                lineHeight: "1.3",
+                              }}
+                            >
+                              Round No.(राउंड नं.) : {roundNo}
+                            </td>
+                            <td
+                              style={{
+                                paddingLeft: "6px",
+                                paddingTop: i > 0 ? "4px" : "1px",
+                                paddingBottom: i < seatDetails.length - 1 ? "4px" : "1px",
+                                verticalAlign: "middle",
+                                textAlign: "left",
+                                fontWeight: 800,
+                                fontSize: "11px",
+                                wordBreak: "break-word",
+                                overflowWrap: "break-word",
+                                lineHeight: "1.3",
+                              }}
+                            >
+                              {att.sections?.map((sec, secIdx) => (
+                                <div
+                                  key={sec.name}
+                                  style={{
+                                    marginBottom: secIdx < (att.sections?.length || 0) - 1 ? "2px" : 0,
+                                  }}
+                                >
+                                  {sec.name} : Seat  : - {sec.seats.join(", ")}
+                                </div>
+                              ))}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
 
                   {/* Station Route Info - Rendered once at the bottom of all attractions */}
                   <div
@@ -1292,7 +1293,7 @@ function TicketGeneratedModal({
                 <div style={{ width: "100%" }}>4. टिकट लेने के पश्चात् कोई रिफंड नहीं किया जायेगा।</div>
                 <div style={{ width: "100%" }}>5. नाव में खड़ा होना और पानी में हाथ डालना प्रतिबंधित है।</div>
                 <div style={{ width: "100%" }}>6. पानी में कोई भी वस्तु फेंकना मना है।</div>
-                <div style={{ width: "100%" }}>7. प्रोजेक्ट का किसी भी प्रकर का नुकसान होने पर यात्री से वसूली की जाएगी।</div>
+                <div style={{ width: "100%" }}>7. यात्री द्वार प्रोजेक्ट का किसी भी प्रकर का नुकसान करने पर यात्री से नुक्सन की भरपाई करवाई जाएगी।</div>
                 <div style={{ width: "100%" }}>8. नौकायन के दौरान लाइफ जैकेट पहना अनिवार्य है।</div>
                 <div style={{ width: "100%" }}>9. नाव में खाना-पीना वर्जित है।</div>
                 <div style={{ width: "100%" }}>10. सभी मामले केवल उदयपुर न्याय क्षेत्र में मान्य होंगे।</div>
@@ -1422,6 +1423,10 @@ function TicketGeneratedModal({
       {/* Print stylesheet for clean thermal / receipt printout */}
       <style jsx global>{`
         @media print {
+          @page {
+            size: 80mm auto;
+            margin: 0 !important;
+          }
           body * {
             visibility: hidden !important;
           }
@@ -1437,7 +1442,7 @@ function TicketGeneratedModal({
             width: 70mm !important;
             max-width: 70mm !important;
             margin: 0 auto !important;
-            padding: 1.5mm 2.25mm !important;
+            padding: 0 4.5mm !important;
             box-sizing: border-box !important;
             box-shadow: none !important;
             border: none !important;
