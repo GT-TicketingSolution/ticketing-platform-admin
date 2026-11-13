@@ -4,7 +4,6 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
   bookings,
-  transactions,
   scannerInvoices,
   attractionsAgainstBooking,
   categoryOfAttractionAgainstBooking,
@@ -76,23 +75,8 @@ export async function GET(request: NextRequest) {
       return failure("Booking not found", 404, "BOOKING_NOT_FOUND");
     }
 
-    // 2. Fetch Transaction, Scanner Invoice, and Parent Admin (for Business Profile)
-    const [txRows, [scannerInvoice], [adminUser]] = await Promise.all([
-      db
-        .select({
-          paymentMode: transactions.paymentMode,
-          status: transactions.status,
-          amount: transactions.amount,
-        })
-        .from(transactions)
-        .where(
-          and(
-            eq(transactions.bookingId, booking.id),
-            eq(transactions.isDeleted, false),
-          ),
-        )
-        .limit(1),
-
+    // 2. Fetch Scanner Invoice and Parent Admin (for Business Profile)
+    const [[scannerInvoice], [adminUser]] = await Promise.all([
       db
         .select({
           id: scannerInvoices.id,
@@ -118,8 +102,6 @@ export async function GET(request: NextRequest) {
         .where(eq(users.id, adminId))
         .limit(1),
     ]);
-
-    const transaction = txRows[0];
 
     // 3. Fetch Booked Attractions
     const bookedAttractions = await db
@@ -325,7 +307,6 @@ export async function GET(request: NextRequest) {
         invoiceNumber: booking.invoiceNumber,
         customerName: booking.customerName || "Guest",
         mobileNumber: booking.mobileNumber || "-",
-        paymentMode: transaction?.paymentMode || "CASH",
         totalAmount: Number(booking.totalAmount),
         amountReceived: Number(booking.amountReceived),
         returnAmount: Number(booking.returnAmount),
