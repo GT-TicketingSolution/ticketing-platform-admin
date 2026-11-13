@@ -1075,6 +1075,30 @@ function TicketGeneratedModal({
                     fontFamily: "'Plus Jakarta Sans', Arial, sans-serif",
                   }}
                 >
+                    {/* Station Route Info - Rendered once at the bottom of all attractions */}
+                  <div
+                    className="print-station-route"
+                    style={{
+                      // marginTop: "6px",
+                      // paddingTop: "5px",
+                      paddingBottom: "5px",
+                      // borderTop: "1px dashed #000000",
+                      borderBottom: "1px dashed #000000",
+                      fontSize: "11px",
+                      lineHeight: "1.4",
+                      fontWeight: 800,
+                      color: "#000000",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div>
+                      स्टेशन: 1-2 <span style={{ display: "inline-block", width: "9px", height: "9px", border: "1.5px solid #000000", margin: "0 3px 1px 3px", verticalAlign: "middle" }}></span> समोर बाग से कमल तलाई तक
+                    </div>
+                    <div>विराम</div>
+                    <div>
+                      स्टेशन: 2-1 <span style={{ display: "inline-block", width: "9px", height: "9px", border: "1.5px solid #000000", margin: "0 3px 1px 3px", verticalAlign: "middle" }}></span> कमल तलाई से समोर बाग तक
+                    </div>
+                  </div>
                   <table
                     className="print-seat-table"
                     style={{
@@ -1083,11 +1107,16 @@ function TicketGeneratedModal({
                       tableLayout: "auto",
                       marginTop: "2px",
                       marginBottom: "2px",
+                      // paddingTop: "2px",
+                      // paddingBottom: "2px",
+
                     }}
                   >
                     <tbody>
                       {seatDetails.map((att, i) => {
                         const roundNo = att.tripNo || (tripMap && tripMap[att.attractionId]) || 1;
+                        const hasMultipleAttractions = seatDetails.length > 1;
+                        const attractionName = att.attractionName || "";
 
                         return (
                           <tr key={att.attractionId || i}>
@@ -1095,9 +1124,10 @@ function TicketGeneratedModal({
                               style={{
                                 whiteSpace: "nowrap",
                                 paddingRight: "6px",
-                                paddingTop: i > 0 ? "4px" : "1px",
-                                paddingBottom: i < seatDetails.length - 1 ? "4px" : "1px",
+                                paddingTop: i > 0 ? "5px" : "1px",
+                                paddingBottom: i < seatDetails.length - 1 ? "5px" : "1px",
                                 borderRight: "1px solid #000000",
+                                borderBottom: i < seatDetails.length - 1 ? "1px solid #000000" : "none",
                                 verticalAlign: "middle",
                                 fontWeight: 800,
                                 fontSize: "11px",
@@ -1105,13 +1135,27 @@ function TicketGeneratedModal({
                                 lineHeight: "1.3",
                               }}
                             >
-                              Round No.(राउंड नं.) : {roundNo}
+                              {hasMultipleAttractions && attractionName && (
+                                <div
+                                  style={{
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.03em",
+                                    marginBottom: "2px",
+                                    fontWeight: 800,
+                                    fontSize: "11px",
+                                  }}
+                                >
+                                  {attractionName}
+                                </div>
+                              )}
+                              <div>Round No.(राउंड नं.) : {roundNo}</div>
                             </td>
                             <td
                               style={{
                                 paddingLeft: "6px",
-                                paddingTop: i > 0 ? "4px" : "1px",
-                                paddingBottom: i < seatDetails.length - 1 ? "4px" : "1px",
+                                paddingTop: i > 0 ? "5px" : "1px",
+                                paddingBottom: i < seatDetails.length - 1 ? "5px" : "1px",
+                                borderBottom: i < seatDetails.length - 1 ? "1px solid #000000" : "none",
                                 verticalAlign: "middle",
                                 textAlign: "left",
                                 fontWeight: 800,
@@ -1138,36 +1182,13 @@ function TicketGeneratedModal({
                     </tbody>
                   </table>
 
-                  {/* Station Route Info - Rendered once at the bottom of all attractions */}
-                  <div
-                    className="print-station-route"
-                    style={{
-                      marginTop: "6px",
-                      paddingTop: "5px",
-                      paddingBottom: "5px",
-                      borderTop: "1px dashed #000000",
-                      borderBottom: "1px dashed #000000",
-                      fontSize: "11px",
-                      lineHeight: "1.4",
-                      fontWeight: 800,
-                      color: "#000000",
-                      textAlign: "center",
-                    }}
-                  >
-                    <div>
-                      स्टेशन: 1 <span style={{ display: "inline-block", width: "9px", height: "9px", border: "1.5px solid #000000", margin: "0 3px 1px 3px", verticalAlign: "middle" }}></span> समोर बाग से कमल तलाई तक
-                    </div>
-                    <div>विराम</div>
-                    <div>
-                      स्टेशन: 2 <span style={{ display: "inline-block", width: "9px", height: "9px", border: "1.5px solid #000000", margin: "0 3px 1px 3px", verticalAlign: "middle" }}></span> कमल तलाई से समोर बाग तक
-                    </div>
-                  </div>
+                
                 </div>
               )}
             </div>
 
             {/* Invoice & Customer Meta */}
-            <div className="print-invoice-meta" style={{ padding: "8px 0", borderBottom: "1px dashed #000000", fontSize: "11.5px", fontWeight: 400, color: "#000000" }}>
+            <div className="print-invoice-meta" style={{ padding: "8px 0", borderBottom: "1px dashed #000000",  borderTop: "1px dashed #000000", fontSize: "11.5px", fontWeight: 400, color: "#000000" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
                 <span><strong>Invoice:</strong> {ticketNo}</span>
                 <span><strong>Bill To:</strong> {custName}</span>
@@ -1293,7 +1314,7 @@ function TicketGeneratedModal({
                 <div style={{ width: "100%" }}>4. टिकट लेने के पश्चात् कोई रिफंड नहीं किया जायेगा।</div>
                 <div style={{ width: "100%" }}>5. नाव में खड़ा होना और पानी में हाथ डालना प्रतिबंधित है।</div>
                 <div style={{ width: "100%" }}>6. पानी में कोई भी वस्तु फेंकना मना है।</div>
-                <div style={{ width: "100%" }}>7. यात्री द्वार प्रोजेक्ट का किसी भी प्रकर का नुकसान करने पर यात्री से नुक्सन की भरपाई करवाई जाएगी।</div>
+                <div style={{ width: "100%" }}>7. यात्री द्वार प्रोजेक्ट का किसी भी प्रकर का नुकसान करने पर यात्री से नुकसान की भरपाई करवाई जाएगी।</div>
                 <div style={{ width: "100%" }}>8. नौकायन के दौरान लाइफ जैकेट पहना अनिवार्य है।</div>
                 <div style={{ width: "100%" }}>9. नाव में खाना-पीना वर्जित है।</div>
                 <div style={{ width: "100%" }}>10. सभी मामले केवल उदयपुर न्याय क्षेत्र में मान्य होंगे।</div>
@@ -1362,7 +1383,7 @@ function TicketGeneratedModal({
             {/* Clean Terms / Notice */}
             <div style={{ marginTop: "6px", paddingTop: "4px", fontSize: "11px", color: "#000000", lineHeight: "1.4", textAlign: "center", fontWeight: 700 }}>
               <div style={{ fontSize: "10px", fontWeight: 600, marginBottom: "2px" }}>THANKS FOR VISIT</div>
-              <div style={{ fontWeight: 900, letterSpacing: "0.04em" }}>
+              <div style={{ fontWeight: 700, letterSpacing: "0.04em" }}>
                 Instagram: @toy_train_udaipur
               </div>
               <div style={{ fontSize: "10px", fontWeight: 600 }}>
