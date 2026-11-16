@@ -16,6 +16,7 @@ interface DailySalesReportModalProps {
   toDate: string;
   fromTime?: string;
   toTime?: string;
+  selectedAttractionNames?: string[];
 }
 
 const emptySubscribe = () => () => { };
@@ -76,9 +77,11 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
         <title>Daily Sales Report</title>
         <meta charset="utf-8" />
         <style>
-          @page { size: 80mm auto; margin: 0; }
+          @page { size: 80mm auto; margin: 0 !important; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
           html {
+            margin: 0 !important;
+            padding: 0 !important;
             height: fit-content;
             min-height: unset;
           }
@@ -88,8 +91,8 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
             background: #FFFFFF;
             width: 70mm;
             max-width: 70mm;
-            margin: 0 auto;
-            padding: 3mm 4.5mm;
+            margin: 0 auto !important;
+            padding: 0 4.5mm !important;
             box-sizing: border-box;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -170,6 +173,7 @@ export default function DailySalesReportModal({
   toDate,
   fromTime = "00:00",
   toTime = "23:59",
+  selectedAttractionNames,
 }: DailySalesReportModalProps) {
   useModalBodyLock(isOpen);
   const isMounted = React.useSyncExternalStore(
@@ -222,9 +226,20 @@ export default function DailySalesReportModal({
   if (!isOpen || !isMounted) return null;
 
   // Attraction Title
-  const attractionDisplayName = attractionReport
-    ? attractionReport.attraction.name
-    : "ALL ATTRACTIONS (OVERALL REPORT)";
+  const isAll =
+    !selectedAttractionNames ||
+    selectedAttractionNames.includes("All Attractions") ||
+    selectedAttractionNames.includes("All") ||
+    selectedAttractionNames.length === 0;
+
+  let attractionDisplayName = "ALL ATTRACTIONS (OVERALL REPORT)";
+  if (attractionReport) {
+    attractionDisplayName = attractionReport.attraction.name;
+  } else if (!isAll && overallSummary && overallSummary.attractionReports.length > 0) {
+    attractionDisplayName = overallSummary.attractionReports
+      .map((r) => r.attraction.name)
+      .join(", ");
+  }
 
   // Overall or Attraction totals
   const totalRevenue = attractionReport
@@ -399,6 +414,10 @@ export default function DailySalesReportModal({
           to { opacity: 1; transform: scale(1); }
         }
         @media print {
+          @page {
+            size: 80mm auto;
+            margin: 0 !important;
+          }
           body * {
             visibility: hidden !important;
           }
@@ -414,7 +433,7 @@ export default function DailySalesReportModal({
             width: 70mm !important;
             max-width: 70mm !important;
             margin: 0 auto !important;
-            padding: 3mm 4.5mm !important;
+            padding: 0 4.5mm !important;
             box-sizing: border-box !important;
             box-shadow: none !important;
             border: none !important;
