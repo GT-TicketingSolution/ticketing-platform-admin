@@ -11,6 +11,7 @@ import {
   Trash2,
   ArrowLeft,
   Loader2,
+  Eye,
 } from "lucide-react";
 import { colors } from "@/lib/theme";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -18,6 +19,7 @@ import { AttractionManagement } from "./types";
 import type { CreateAttractionPayload, UpdateAttractionPayload } from "./types";
 import AttractionEmptyState from "@/components/attraction/AttractionEmptyState";
 import AddEditAttractionForm from "@/components/attraction/AddEditAttractionForm";
+import AttractionDetailView from "@/components/attraction/AttractionDetailView";
 import BulkUploadModal from "@/components/modals/BulkUploadModal";
 import { confirmDelete } from "@/lib/notify";
 import { canPerformRoleAction } from "@/lib/auth/role-actions";
@@ -96,13 +98,10 @@ function CastleIllustration({ width = 105, height = 64 }: { width?: number | str
 // ── Attraction Card ───────────────────────────────────────────────────────────
 interface AttractionCardProps {
   attraction: AttractionManagement;
-  onEdit: (a: AttractionManagement) => void;
-  onDelete: (a: AttractionManagement) => void;
-  canDelete: boolean;
+  onView: (a: AttractionManagement) => void;
 }
 
-function AttractionCard({ attraction, onEdit, onDelete, canDelete }: AttractionCardProps) {
-  const categoryColor = CATEGORY_COLOR[attraction.category] ?? "#F4BC43";
+function AttractionCard({ attraction, onView }: AttractionCardProps) {
   const [imgError, setImgError] = useState(false);
 
   useEffect(() => {
@@ -219,17 +218,24 @@ function AttractionCard({ attraction, onEdit, onDelete, canDelete }: AttractionC
             {attraction.name}
           </h3>
 
-          <span
+          {/* Description */}
+          <p
             style={{
-              display: "block",
-              fontWeight: 600,
-              fontSize: "9px",
-              color: categoryColor,
-              marginTop: "4px",
+              margin: "4px 0 0 0",
+              fontWeight: 500,
+              fontSize: "10px",
+              lineHeight: "14px",
+              color: "#64748B",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              minHeight: "28px",
             }}
           >
-            {attraction.category}
-          </span>
+            {attraction.description && attraction.description.trim() ? attraction.description : "—"}
+          </p>
 
           <div style={{ display: "flex", alignItems: "center", gap: "5px", marginTop: "12px" }}>
             <Clock size={10} color="#515252" strokeWidth={2} />
@@ -255,27 +261,30 @@ function AttractionCard({ attraction, onEdit, onDelete, canDelete }: AttractionC
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "14px", padding: "0 10px 10px 10px" }}>
+      {/* Action Button: Single View button matching Image 1 */}
+      <div style={{ marginTop: "14px", padding: "0 10px 10px 10px" }}>
         <button
-          onClick={() => onEdit(attraction)}
-          style={{ boxSizing: "border-box", flex: 1, height: "34px", background: "#FFFFFF", border: "1px solid #2372A5", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", cursor: "pointer", transition: "all 0.18s ease" }}
-          className="btn-edit"
+          type="button"
+          onClick={() => onView(attraction)}
+          style={{
+            boxSizing: "border-box",
+            width: "100%",
+            height: "34px",
+            background: "#FFFFFF",
+            border: "1px solid #2372A5",
+            borderRadius: "6px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "6px",
+            cursor: "pointer",
+            transition: "all 0.18s ease",
+          }}
+          className="btn-view"
         >
-          <Pencil size={13} color="#2372A5" strokeWidth={2} />
-          <span style={{ fontWeight: 500, fontSize: "12px", color: "#2372A5" }}>Edit</span>
+          <Eye size={14} color="#2372A5" strokeWidth={2} />
+          <span style={{ fontWeight: 600, fontSize: "12px", color: "#2372A5" }}>View</span>
         </button>
-
-        {canDelete && (
-          <button
-            onClick={() => onDelete(attraction)}
-            style={{ boxSizing: "border-box", flex: 1, height: "34px", background: "#FFFFFF", border: "1px solid #DC2626", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", cursor: "pointer", transition: "all 0.18s ease" }}
-            className="btn-delete"
-          >
-            <Trash2 size={13} color="#DC2626" strokeWidth={2} />
-            <span style={{ fontWeight: 500, fontSize: "12px", color: "#DC2626" }}>Delete</span>
-          </button>
-        )}
       </div>
     </div>
   );
@@ -313,8 +322,9 @@ export default function AttractionManagementPage() {
   const canDelete = canPerformRoleAction(profileRole, "ATTRACTION_DELETE");
 
   // UI State 
-  const [viewMode, setViewMode] = useState<"list" | "add" | "edit">("list");
+  const [viewMode, setViewMode] = useState<"list" | "add" | "edit" | "view">("list");
   const [attractionToEdit, setAttractionToEdit] = useState<AttractionManagement | null>(null);
+  const [viewingAttraction, setViewingAttraction] = useState<AttractionManagement | null>(null);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
 
   useEffect(() => {
@@ -342,7 +352,14 @@ export default function AttractionManagementPage() {
   // ── Handlers 
   const handleOpenAdd = () => {
     setAttractionToEdit(null);
+    setViewingAttraction(null);
     setViewMode("add");
+  };
+
+  const handleOpenView = (attraction: AttractionManagement) => {
+    setViewingAttraction(attraction);
+    setViewMode("view");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleOpenEdit = (attraction: AttractionManagement) => {
@@ -516,6 +533,7 @@ export default function AttractionManagementPage() {
         await createMutation.mutateAsync(payload);
       }
       setViewMode("list");
+      setViewingAttraction(null);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {
       // Detect 409 / duplicate-name from the original API error
@@ -556,6 +574,29 @@ export default function AttractionManagementPage() {
   // ── Render 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", boxSizing: "border-box" }}>
+
+      {/* ── DETAIL VIEW ── */}
+      {viewMode === "view" && viewingAttraction && (
+        <AttractionDetailView
+          attraction={
+            attractions.find((a) => a.id === viewingAttraction.id) || viewingAttraction
+          }
+          onBack={() => {
+            setViewMode("list");
+            setViewingAttraction(null);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          onEdit={(attr) => {
+            handleOpenEdit(attr);
+          }}
+          onDelete={async (attr) => {
+            await handleOpenDelete(attr);
+            setViewMode("list");
+            setViewingAttraction(null);
+          }}
+          canDelete={canDelete}
+        />
+      )}
 
       {/* ── ADD / EDIT FORM */}
       {(viewMode === "add" || viewMode === "edit") && (
@@ -794,9 +835,7 @@ export default function AttractionManagementPage() {
                 <AttractionCard
                   key={attraction.id}
                   attraction={attraction}
-                  onEdit={handleOpenEdit}
-                  onDelete={handleOpenDelete}
-                  canDelete={canDelete}
+                  onView={handleOpenView}
                 />
               ))}
             </div>
@@ -878,6 +917,7 @@ export default function AttractionManagementPage() {
           animation: attrShimmer 1.4s infinite linear;
         }
         .attraction-card-item:hover { transform: translateY(-3px); box-shadow: 0 10px 25px rgba(12,42,66,0.12); }
+        .btn-view:hover { background: #F0F7FF !important; }
         .btn-edit:hover { background: #F0F7FF !important; }
         .btn-delete:hover { background: #FEF2F2 !important; }
         .btn-add-attraction:hover { background: #173F63 !important; transform: translateY(-1px); }
