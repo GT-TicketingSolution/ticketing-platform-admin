@@ -304,6 +304,8 @@ export default function DailySalesReportModal({
   // Hide rows with no sales (qty 0 and amount 0) — they add noise to the thermal receipt
   items = items.filter((it) => it.qty > 0 || it.amount > 0);
 
+  const totalQuantity = items.reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
+
   // Helper to format adjustments with explicit +/- signs
   const formatAdj = (val: number) => {
     if (val >= 0) return `+₹${val.toFixed(2)}`;
@@ -495,21 +497,7 @@ export default function DailySalesReportModal({
             >
               {/* Receipt Header: Train Icon, Daily Sales Report, and Business Name */}
               <div style={{ textAlign: "center", borderBottom: "1px dashed #000000", paddingBottom: "10px" }}>
-                <div
-                  style={{
-                    width: "38px",
-                    height: "38px",
-                    borderRadius: "50%",
-                    border: "2px solid #002A45",
-                    background: "#E0F2FE",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    margin: "0 auto 6px auto",
-                  }}
-                >
-                  <Train size={20} color="#002A45" strokeWidth={2.5} />
-                </div>
+
                 <h2
                   style={{
                     margin: 0,
@@ -607,13 +595,13 @@ export default function DailySalesReportModal({
                     {items.length > 0 ? (
                       items.map((item, idx) => (
                         <tr key={idx} style={{ fontWeight: 600 }}>
-                          <td style={{ paddingTop: "5px", verticalAlign: "top", overflowWrap: "break-word", wordBreak: "normal" }}>
+                          <td style={{ paddingTop: "5px", paddingBottom: idx === items.length - 1 ? "5px" : 0, verticalAlign: "top", overflowWrap: "break-word", wordBreak: "normal" }}>
                             {item.name}
                           </td>
-                          <td style={{ paddingTop: "5px", textAlign: "center", verticalAlign: "top" }}>
+                          <td style={{ paddingTop: "5px", paddingBottom: idx === items.length - 1 ? "5px" : 0, textAlign: "center", verticalAlign: "top" }}>
                             {item.qty}
                           </td>
-                          <td style={{ paddingTop: "5px", textAlign: "right", verticalAlign: "top" }}>
+                          <td style={{ paddingTop: "5px", paddingBottom: idx === items.length - 1 ? "5px" : 0, textAlign: "right", verticalAlign: "top" }}>
                             {item.amount.toFixed(2)}
                           </td>
                         </tr>
@@ -636,6 +624,19 @@ export default function DailySalesReportModal({
                       </tr>
                     )}
                   </tbody>
+                  {items.length > 0 && (
+                    <tfoot>
+                      <tr style={{ borderTop: "1px dashed #000000", fontWeight: 800 }}>
+                        <td style={{ paddingTop: "5px", borderTop: "1px dashed #000000", verticalAlign: "top" }}>
+                          Total Qty
+                        </td>
+                        <td style={{ paddingTop: "5px", borderTop: "1px dashed #000000", textAlign: "center", verticalAlign: "top" }}>
+                          {totalQuantity}
+                        </td>
+                        <td style={{ paddingTop: "5px", borderTop: "1px dashed #000000", textAlign: "right", verticalAlign: "top" }}></td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
 

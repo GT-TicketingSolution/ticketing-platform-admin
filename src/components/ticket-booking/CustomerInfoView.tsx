@@ -1092,11 +1092,11 @@ function TicketGeneratedModal({
                     }}
                   >
                     <div>
-                      स्टेशन: 1-2 <span style={{ display: "inline-block", width: "9px", height: "9px", border: "1.5px solid #000000", margin: "0 3px 1px 3px", verticalAlign: "middle" }}></span> समोर बाग से कमल तलाई तक
+                      स्टेशन: 1 से 2 <span style={{ display: "inline-block", width: "9px", height: "9px", border: "1.5px solid #000000", margin: "0 3px 1px 3px", verticalAlign: "middle" }}></span> समोर बाग से कमल तलाई तक
                     </div>
                     <div>विराम</div>
                     <div>
-                      स्टेशन: 2-1 <span style={{ display: "inline-block", width: "9px", height: "9px", border: "1.5px solid #000000", margin: "0 3px 1px 3px", verticalAlign: "middle" }}></span> कमल तलाई से समोर बाग तक
+                      स्टेशन: 2 से 1 <span style={{ display: "inline-block", width: "9px", height: "9px", border: "1.5px solid #000000", margin: "0 3px 1px 3px", verticalAlign: "middle" }}></span> कमल तलाई से समोर बाग तक
                     </div>
                   </div>
                   <table
