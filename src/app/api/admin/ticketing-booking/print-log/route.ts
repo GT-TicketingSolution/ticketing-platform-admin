@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { bookings, ticketPrintLogs } from "@/db/schema";
@@ -18,8 +18,7 @@ const printLogSchema = z.object({
 /* =========================================================
    POST /api/admin/ticketing-booking/print-log
    Records every ticket print/reprint event.
-   - Computes sequential printCount per booking
-   - Automatically designates 1st as "INITIAL", subsequent as "REPRINT"
+   - Appends a log entry for each print event
    - Identifies staff from authenticated session
    - Returns concise confirmation message
 ========================================================= */
@@ -59,25 +58,10 @@ export async function POST(request: NextRequest) {
       return failure("Booking not found", 404, "BOOKING_NOT_FOUND");
     }
 
-    // 2. Determine previous print count to compute next count & print type
-    const [lastLog] = await db
-      .select({
-        printCount: ticketPrintLogs.printCount,
-      })
-      .from(ticketPrintLogs)
-      .where(eq(ticketPrintLogs.bookingId, bookingId))
-      .orderBy(desc(ticketPrintLogs.printCount))
-      .limit(1);
-
-    const nextCount = (lastLog?.printCount ?? 0) + 1;
-    const printType = nextCount === 1 ? "INITIAL" : "REPRINT";
-
-    // 3. Record print log
+    // 2. Record print log entry
     await db.insert(ticketPrintLogs).values({
       bookingId,
       printedBy: auth.user.id,
-      printCount: nextCount,
-      printType,
     });
 
     return success(

@@ -39,6 +39,7 @@ export const AppUrl = {
     create: "/admin/staff",
     update: (staffId: string) => `/admin/staff/${staffId}`,
     delete: (staffId: string) => `/admin/staff/${staffId}`,
+    crowdMode: "/admin/staff/crowd-mode",
   },
 
   // Booking Management

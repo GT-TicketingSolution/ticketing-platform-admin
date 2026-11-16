@@ -1,7 +1,7 @@
 import { eq, and, isNotNull } from "drizzle-orm";
 
 import { db } from "@/db";
-import { users, staffSystemModulePermissions } from "@/db/schema";
+import { users, staffSystemModulePermissions, staffCrowdMode } from "@/db/schema";
 
 /* =========================================================
 GET PROFILE
@@ -104,22 +104,35 @@ export async function getProfile(userId: string) {
   }
 
   if (user.role === "STAFF") {
-    const [reportAccess] = await db
-      .select({
-        reportAccessTiming: staffSystemModulePermissions.reportAccessTiming,
-        reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
-      })
-      .from(staffSystemModulePermissions)
-      .where(
-        and(
-          eq(staffSystemModulePermissions.staffId, userId),
-          isNotNull(staffSystemModulePermissions.reportAccessTiming)
+    const [[reportAccess], [crowdMode]] = await Promise.all([
+      db
+        .select({
+          reportAccessTiming: staffSystemModulePermissions.reportAccessTiming,
+          reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
+        })
+        .from(staffSystemModulePermissions)
+        .where(
+          and(
+            eq(staffSystemModulePermissions.staffId, userId),
+            isNotNull(staffSystemModulePermissions.reportAccessTiming)
+          )
         )
-      )
-      .limit(1);
+        .limit(1),
+
+      db
+        .select({
+          isAllowed: staffCrowdMode.isAllowed,
+          isEnabled: staffCrowdMode.isEnabled,
+        })
+        .from(staffCrowdMode)
+        .where(eq(staffCrowdMode.staffId, userId))
+        .limit(1),
+    ]);
 
     return {
       ...userProfile,
+      crowdModeAllowed: crowdMode?.isAllowed ?? false,
+      crowdModeEnabled: crowdMode?.isEnabled ?? false,
       reportAccessTiming: reportAccess?.reportAccessTiming ?? null,
       reportAccessUnit: reportAccess?.reportAccessUnit ?? null,
       ...(userRenewalData && {

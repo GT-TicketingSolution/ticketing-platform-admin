@@ -71,16 +71,17 @@ function ProcessPaymentModal({
   const [payMethod, setPayMethod] = useState<"cash" | "card" | "upi">("cash");
   const [amtRcv, setAmtRcv] = useState("");
   const [selectedNotes, setSelectedNotes] = useState<number[]>([]);
-  const defaultCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+  const defaultCash = grandTotal > 0 ? grandTotal.toFixed(2) : "";
   const isOnline = payMethod === "upi" || payMethod === "card";
   const numAmtRcv = parseFloat(amtRcv || "0");
   const change = isOnline ? 0 : (amtRcv ? Math.max(0, numAmtRcv - grandTotal) : 0);
-  const isCashAmountValid = isOnline || (amtRcv.trim() !== "" && numAmtRcv >= grandTotal);
+  const isCashLessThanDue = payMethod === "cash" && (amtRcv.trim() === "" || isNaN(numAmtRcv) || numAmtRcv < grandTotal);
+  const isCashAmountValid = isOnline || !isCashLessThanDue;
 
   useEffect(() => {
     if (isOpen) {
       setPayMethod("cash");
-      const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+      const initialCash = grandTotal > 0 ? grandTotal.toFixed(2) : "";
       setAmtRcv(initialCash);
       setSelectedNotes([]);
     }
@@ -91,24 +92,22 @@ function ProcessPaymentModal({
       setAmtRcv(grandTotal.toFixed(2));
       setSelectedNotes([]);
     } else if (payMethod === "cash") {
-      const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+      const initialCash = grandTotal > 0 ? grandTotal.toFixed(2) : "";
       setAmtRcv(initialCash);
       setSelectedNotes([]);
     }
   }, [payMethod, grandTotal]);
 
   const handleQuickNoteClick = (noteVal: number) => {
-    const defaultBase = grandTotal > 0 ? Math.ceil(grandTotal / 10) * 10 : 0;
-    const currentAmt = amtRcv.trim() !== "" ? parseFloat(amtRcv) : defaultBase;
-    const base = isNaN(currentAmt) ? defaultBase : currentAmt;
-    const nextAmt = base + noteVal;
-    setAmtRcv(nextAmt.toString());
-    setSelectedNotes((prev) => [...prev, noteVal]);
+    const newSelectedNotes = [...selectedNotes, noteVal];
+    const totalFromNotes = newSelectedNotes.reduce((sum, n) => sum + n, 0);
+    setSelectedNotes(newSelectedNotes);
+    setAmtRcv(totalFromNotes.toString());
   };
 
   const handleClearNotes = () => {
     setSelectedNotes([]);
-    const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+    const initialCash = grandTotal > 0 ? grandTotal.toFixed(2) : "";
     setAmtRcv(initialCash);
   };
 
@@ -157,6 +156,7 @@ function ProcessPaymentModal({
       }}
     >
       <div
+        className="process-payment-modal-card"
         style={{
           background: "#FFFFFF",
           borderRadius: "20px",
@@ -169,7 +169,7 @@ function ProcessPaymentModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ padding: "18px 24px 0 24px" }}>
+        <div className="process-payment-modal-header" style={{ padding: "18px 24px 0 24px" }}>
           <h2 style={{ margin: 0, fontWeight: 700, fontSize: "18px", lineHeight: "22px", color: "#011B2F" }}>
             Process Payment
           </h2>
@@ -180,9 +180,9 @@ function ProcessPaymentModal({
 
         <div style={{ height: "0.5px", background: "rgba(179,175,175,0.6)", margin: "14px 0 0 0" }} />
 
-        <div style={{ padding: "18px 24px 22px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+        <div className="process-payment-modal-body" style={{ padding: "18px 24px 22px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
           {/* Amount Due Card */}
-          <div style={{ background: "#002A45", borderRadius: "16px", padding: "14px 18px", textAlign: "center" }}>
+          <div className="process-payment-amount-due" style={{ background: "#002A45", borderRadius: "16px", padding: "14px 18px", textAlign: "center" }}>
             <p style={{ margin: 0, fontWeight: 800, fontSize: "14px", color: "#7599B0", letterSpacing: "0.05em" }}>
               AMOUNT DUE
             </p>
@@ -200,6 +200,7 @@ function ProcessPaymentModal({
               {methods.map((m) => (
                 <div
                   key={m.key}
+                  className="process-payment-method-btn"
                   onClick={() => setPayMethod(m.key)}
                   style={{
                     flex: 1,
@@ -259,7 +260,7 @@ function ProcessPaymentModal({
                   </button>
                 )}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <div className="process-payment-notes-grid" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {[
                   [
                     { label: "₹10", val: 10 },
@@ -279,6 +280,7 @@ function ProcessPaymentModal({
                       return (
                         <button
                           key={item.label}
+                          className="process-payment-note-btn"
                           type="button"
                           onClick={() => handleQuickNoteClick(item.val)}
                           style={{
@@ -338,43 +340,64 @@ function ProcessPaymentModal({
                 CHANGE RETURN
               </p>
             </div>
-            <div style={{ display: "flex", gap: "12px" }}>
-              <div
-                style={{
-                  flex: 1,
-                  height: "36px",
-                  background: "#FFFFFF",
-                  border: "1.5px solid rgba(179,175,175,0.51)",
-                  borderRadius: "10px",
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "0 10px",
-                }}
-              >
-                <span style={{ fontWeight: 800, fontSize: "14px", color: "#173F63" }}>Rs.</span>
-                <input
-                  type="number"
-                  disabled={isOnline}
-                  value={amtRcv}
-                  onChange={(e) => setAmtRcv(e.target.value)}
-                  placeholder="0.00"
-                  step="any"
-                  min="0"
+            <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                <div
+                  className="process-payment-input-box"
                   style={{
-                    flex: 1,
-                    border: "none",
-                    outline: "none",
-                    fontFamily: "'Plus Jakarta Sans',sans-serif",
-                    fontWeight: 800,
-                    fontSize: "14px",
-                    color: "#173F63",
-                    background: "transparent",
-                    marginLeft: "4px",
-                    cursor: isOnline ? "not-allowed" : "text",
+                    width: "100%",
+                    height: "36px",
+                    background: isOnline ? "#F8FAFC" : "#FFFFFF",
+                    border: isCashLessThanDue ? "1.5px solid #EF4444" : "1.5px solid rgba(179,175,175,0.51)",
+                    borderRadius: "10px",
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "0 10px",
+                    boxSizing: "border-box",
                   }}
-                />
+                >
+                  <span style={{ fontWeight: 800, fontSize: "14px", color: isCashLessThanDue ? "#EF4444" : "#173F63" }}>Rs.</span>
+                  <input
+                    type="number"
+                    disabled={isOnline}
+                    value={amtRcv}
+                    onChange={(e) => {
+                      setAmtRcv(e.target.value);
+                      setSelectedNotes([]);
+                    }}
+                    placeholder="0.00"
+                    step="any"
+                    min="0"
+                    style={{
+                      flex: 1,
+                      border: "none",
+                      outline: "none",
+                      fontFamily: "'Plus Jakarta Sans',sans-serif",
+                      fontWeight: 800,
+                      fontSize: "14px",
+                      color: isCashLessThanDue ? "#EF4444" : "#173F63",
+                      background: "transparent",
+                      marginLeft: "4px",
+                      cursor: isOnline ? "not-allowed" : "text",
+                    }}
+                  />
+                </div>
+                {isCashLessThanDue && (
+                  <span
+                    style={{
+                      marginTop: "4px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      color: "#DC2626",
+                      lineHeight: "1.3",
+                    }}
+                  >
+                    Amount received cannot be less than Amount Due (Rs.{grandTotal.toFixed(2)})
+                  </span>
+                )}
               </div>
               <div
+                className="process-payment-input-box"
                 style={{
                   flex: 1,
                   height: "36px",
@@ -384,6 +407,7 @@ function ProcessPaymentModal({
                   display: "flex",
                   alignItems: "center",
                   padding: "0 10px",
+                  boxSizing: "border-box",
                 }}
               >
                 <span style={{ fontWeight: 800, fontSize: "14px", color: "#173F63" }}>Rs.{change.toFixed(2)}</span>
@@ -397,7 +421,7 @@ function ProcessPaymentModal({
               onConfirm();
             }}
             disabled={!isCashAmountValid}
-            className="pay-confirm-btn"
+            className="pay-confirm-btn process-payment-confirm-btn"
             style={{
               width: "100%",
               height: "46px",
@@ -419,6 +443,40 @@ function ProcessPaymentModal({
       </div>
       <style jsx global>{`
         .pay-confirm-btn:hover { background: #e5af36 !important; transform: translateY(-1px); }
+        @media (min-width: 1024px) {
+          .process-payment-modal-card {
+            width: 630px !important;
+            max-width: 90vw !important;
+          }
+          .process-payment-modal-header {
+            padding: 22px 28px 0 28px !important;
+          }
+          .process-payment-modal-body {
+            padding: 20px 28px 26px 28px !important;
+            gap: 18px !important;
+          }
+          .process-payment-amount-due {
+            padding: 18px 20px !important;
+          }
+          .process-payment-method-btn {
+            padding: 15px 10px !important;
+          }
+          .process-payment-notes-grid {
+            gap: 8px !important;
+          }
+          .process-payment-note-btn {
+            height: 38px !important;
+            font-size: 13px !important;
+          }
+          .process-payment-input-box {
+            height: 44px !important;
+          }
+          .process-payment-confirm-btn {
+            height: 52px !important;
+            font-size: 17px !important;
+            margin-top: 6px !important;
+          }
+        }
       `}</style>
     </div>
   );

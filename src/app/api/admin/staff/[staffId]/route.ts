@@ -14,6 +14,7 @@ import {
   systemModules,
   sessions,
   passwordResetTokens,
+  staffCrowdMode,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
@@ -56,6 +57,8 @@ const updateStaffSchema = z.object({
   staffSystemModuleAllowedIds: z.array(z.string().uuid()).optional(),
 
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+
+  isCrowdModeAllowed: z.boolean().optional(),
 
   canViewReports: z.boolean().optional(),
 
@@ -182,6 +185,7 @@ export async function PATCH(
       roles,
       attractionIds,
       status,
+      isCrowdModeAllowed,
       reportAccessTiming,
       reportAccessUnit,
       staffSystemModuleAllowedIds,
@@ -691,6 +695,30 @@ export async function PATCH(
           eq(attractions.adminId, adminId),
         ),
       );
+
+    // -----------------------------------------------------
+    // Update Crowd Mode permission if provided
+    // -----------------------------------------------------
+
+    if (isCrowdModeAllowed !== undefined) {
+      await db
+        .insert(staffCrowdMode)
+        .values({
+          staffId,
+          isAllowed: isCrowdModeAllowed,
+          isEnabled: false,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: staffCrowdMode.staffId,
+          set: {
+            isAllowed: isCrowdModeAllowed,
+            // If admin revokes permission, automatically disable active crowd mode
+            ...(isCrowdModeAllowed === false ? { isEnabled: false } : {}),
+            updatedAt: new Date(),
+          },
+        });
+    }
 
     // -----------------------------------------------------
     // Response

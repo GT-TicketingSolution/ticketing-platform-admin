@@ -28,6 +28,8 @@ export interface UserProfile {
   lastLoginAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  crowdModeAllowed?: boolean;
+  crowdModeEnabled?: boolean;
   reportAccessTiming?: number | null;
   reportAccessUnit?: "HOURS" | "DAYS" | string | null;
   user_renewal_data?: UserRenewalData | null;

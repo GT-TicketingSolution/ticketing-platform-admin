@@ -31,6 +31,7 @@ import { colors, typography, spacing } from "@/lib/theme";
 import ChangePasswordModal from "@/components/modals/ChangePasswordModal";
 import EditProfileModal from "@/components/modals/EditProfileModal";
 import { useProfileQuery, useLogoutMutation } from "@/hooks/useAuthQueries";
+import { useToggleCrowdMode } from "@/hooks/useStaffQueries";
 import { confirmLogout } from "@/lib/notify";
 
 interface HeaderProps {
@@ -133,6 +134,7 @@ export default function Header({
   // Live profile data from API
   const { data: profileData, isLoading: profileLoading, isError: isProfileError } = useProfileQuery();
   const logoutMutation = useLogoutMutation();
+  const toggleCrowdModeMutation = useToggleCrowdMode();
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -173,6 +175,15 @@ export default function Header({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const effectiveRole = userRole && userRole !== "-" ? userRole : displayRole;
+
+  const isStaff = String(profile?.role || effectiveRole || "").toUpperCase() === "STAFF";
+  const showCrowdMode = isStaff && Boolean(profile?.crowdModeAllowed);
+  const isCrowdModeEnabled = Boolean(profile?.crowdModeEnabled);
+
+  const handleToggleCrowdMode = () => {
+    if (toggleCrowdModeMutation.isPending) return;
+    toggleCrowdModeMutation.mutate({ isEnabled: !isCrowdModeEnabled });
+  };
 
   // Derive dynamic header info based on pathname, propTitle, and userRole
   const matchedRoute = useMemo(
@@ -478,6 +489,77 @@ export default function Header({
               flexShrink: 0,
             }}
           /> */}
+
+          {/* Staff Crowd Mode Control */}
+          {showCrowdMode && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "4px 15px 5px 15px",
+                background: isCrowdModeEnabled ? "#F0F7FB" : "#F8FAFC",
+                border: isCrowdModeEnabled ? "1px solid #0C2A42" : "1px solid #E2E8F0",
+                borderRadius: "8px",
+                gap: "4px",
+                transition: "all 0.2s ease",
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: isCrowdModeEnabled ? "#0C2A42" : "#64748B",
+                  lineHeight: "13px",
+                  whiteSpace: "nowrap",
+                  letterSpacing: "0.01em",
+                  userSelect: "none",
+                  wordSpacing: "0.1em",
+                }}
+              >
+                Crowd <span style={{ marginLeft: "0.2em" }}>Mode</span>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isCrowdModeEnabled}
+                aria-label="Toggle Crowd mode"
+                onClick={handleToggleCrowdMode}
+                disabled={toggleCrowdModeMutation.isPending}
+                style={{
+                  width: "36px",
+                  height: "20px",
+                  borderRadius: "9999px",
+                  background: isCrowdModeEnabled ? "#F4BC43" : "#CBD5E1",
+                  border: "none",
+                  padding: "2px",
+                  cursor: toggleCrowdModeMutation.isPending ? "not-allowed" : "pointer",
+                  position: "relative",
+                  display: "flex",
+                  alignItems: "center",
+                  transition: "background-color 0.2s ease, opacity 0.2s ease",
+                  outline: "none",
+                  opacity: toggleCrowdModeMutation.isPending ? 0.6 : 1,
+                  boxSizing: "border-box",
+                }}
+              >
+                <span
+                  style={{
+                    display: "block",
+                    width: "16px",
+                    height: "16px",
+                    borderRadius: "50%",
+                    background: "#FFFFFF",
+                    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.25)",
+                    transform: isCrowdModeEnabled ? "translateX(16px)" : "translateX(0px)",
+                    transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                  }}
+                />
+              </button>
+            </div>
+          )}
 
           {/* ── Profile Dropdown Trigger ── */}
           <div style={{ position: "relative" }} ref={dropdownRef}>

@@ -4,7 +4,9 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tansta
 import { getData, postData, patchData, deleteData } from "@/lib/api/apiService";
 import { AppUrl } from "@/lib/api/endpoints";
 import { showSuccessNotify } from "@/lib/notify";
+import { showNotify } from "notify-bolt";
 import { showErrorOnce } from "@/lib/api/axiosConfig";
+import { authKeys } from "@/hooks/useAuthQueries";
 import {
   StaffListResponse,
   StaffUser,
@@ -199,6 +201,75 @@ export function useDeleteStaff() {
         error?.message ||
         "Failed to delete staff member.";
       showErrorOnce(message, "Delete Failed");
+    },
+  });
+}
+
+/**
+ * Toggle Crowd Mode for authenticated staff member (PATCH /api/admin/staff/crowd-mode)
+ */
+export function useToggleCrowdMode() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: { isEnabled: boolean }) => {
+      return patchData<{
+        crowdModeAllowed: boolean;
+        crowdModeEnabled: boolean;
+        message: string;
+      }>(AppUrl.staff.crowdMode, payload, { skipErrorToast: true } as any);
+    },
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(authKeys.profile(), (old: any) => {
+        if (!old) return old;
+        const profile = old.profile || old.data?.profile;
+        if (!profile) return old;
+        const updated = {
+          ...profile,
+          crowdModeEnabled: variables.isEnabled,
+        };
+        return old.profile
+          ? { ...old, profile: updated }
+          : { ...old, data: { ...old.data, profile: updated } };
+      });
+      queryClient.invalidateQueries({ queryKey: authKeys.profile() });
+
+      const msg =
+        (data as any)?.message ||
+        `Crowd mode ${variables.isEnabled ? "enabled" : "disabled"} successfully.`;
+
+      showNotify({
+        title: "Success",
+        message: msg,
+        variant: "classic",
+        status: "success",
+        size: "sm",
+        animation: "slide-up",
+        showCloseIcon: true,
+        showConfirmButton: true,
+        confirmButtonText: "OK",
+        allowOutsideClick: true,
+      });
+    },
+    onError: (error: any) => {
+      const message =
+        error?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to update crowd mode.";
+
+      showNotify({
+        title: "Error",
+        message,
+        variant: "classic",
+        status: "error",
+        size: "sm",
+        animation: "slide-up",
+        showCloseIcon: true,
+        showConfirmButton: true,
+        confirmButtonText: "OK",
+        allowOutsideClick: true,
+      });
     },
   });
 }

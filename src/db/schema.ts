@@ -2092,6 +2092,43 @@ export const categoryOfAttractionAgainstBooking = pgTable(
 );
 
 /* =========================================================
+   STAFF CROWD MODE
+========================================================= */
+
+export const staffCrowdMode = pgTable(
+  "staff_crowd_mode",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    staffId: uuid("staff_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "cascade",
+      }),
+
+    // Admin permission: whether this staff is allowed to use crowd mode
+    // Defaults to false
+    isAllowed: boolean("is_allowed").notNull().default(false),
+
+    // Staff status: whether crowd mode is currently enabled by staff
+    // Defaults to false
+    isEnabled: boolean("is_enabled").notNull().default(false),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    staffIdx: index("staff_crowd_mode_staff_idx").on(table.staffId),
+    uniqueStaff: uniqueIndex("staff_crowd_mode_staff_unique").on(table.staffId),
+  }),
+);
+
+/* =========================================================
    TICKET PRINT LOGS (Print & Reprint Tracking)
 ========================================================= */
 
@@ -2111,14 +2148,6 @@ export const ticketPrintLogs = pgTable(
       .references(() => users.id, {
         onDelete: "restrict",
       }),
-
-    // Cumulative print count for this booking (1, 2, 3...)
-    printCount: integer("print_count").notNull(),
-
-    // INITIAL (first generation) or REPRINT
-    printType: varchar("print_type", { length: 20 })
-      .notNull()
-      .default("REPRINT"),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
