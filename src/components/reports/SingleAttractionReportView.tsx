@@ -11,6 +11,7 @@ import {
   IndianRupee,
   Ticket,
   Layers,
+  Eye,
 } from "lucide-react";
 import { AttractionReportData } from "@/lib/reportsData";
 import { colors } from "@/lib/theme";
@@ -25,6 +26,7 @@ interface SingleAttractionReportViewProps {
   fromDate?: string;
   toDate?: string;
   onPrint?: () => void;
+  onViewTicket?: (invoiceNumber: string, bookingId?: string) => void;
 }
 
 export default function SingleAttractionReportView({
@@ -33,6 +35,7 @@ export default function SingleAttractionReportView({
   fromDate,
   toDate,
   onPrint,
+  onViewTicket,
 }: SingleAttractionReportViewProps) {
   const {
     attraction,
@@ -129,6 +132,46 @@ export default function SingleAttractionReportView({
         return hasStatus ? <StatusBadge status={String(rawStatus).trim()} /> : <span style={{ color: colors.text.muted }}>-</span>;
       },
     },
+    ...(onViewTicket
+      ? [
+          {
+            header: "Action",
+            align: "center" as const,
+            cell: (t: Transaction) => {
+              const rawInv = t.invoiceId || (t as any).invoiceNumber || t.id;
+              const invNumber = rawInv && String(rawInv).trim() !== "" && String(rawInv).trim() !== "-" ? String(rawInv).trim() : "";
+              return (
+                <button
+                  type="button"
+                  onClick={() => onViewTicket(invNumber || t.id, t.id)}
+                  disabled={!invNumber && !t.id}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "5px",
+                    padding: "5px 12px",
+                    borderRadius: "6px",
+                    backgroundColor: "#2372A5",
+                    color: "#FFFFFF",
+                    border: "none",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                    transition: "background-color 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#1b5a84")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#2372A5")}
+                >
+                  <Eye size={13} />
+                  <span>View</span>
+                </button>
+              );
+            },
+          },
+        ]
+      : []),
   ];
 
   return (
