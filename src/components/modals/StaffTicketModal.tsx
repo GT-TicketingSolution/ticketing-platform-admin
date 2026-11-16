@@ -5,6 +5,7 @@ import { Check, Printer, Loader2 } from "lucide-react";
 import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 import axiosInstance from "@/lib/api/axiosConfig";
 import { showToast } from "@/components/ui/Toast";
+import { useProfileQuery } from "@/hooks/useAuthQueries";
 
 export interface StaffTicketData {
   booking: {
@@ -206,6 +207,9 @@ export default function StaffTicketModal({
   ticketData,
 }: StaffTicketModalProps) {
   useModalBodyLock(isOpen);
+  const { data: profileData } = useProfileQuery();
+  const profile = profileData?.profile || (profileData as any)?.data?.profile;
+  const isCrowdMode = Boolean(profile?.crowdModeEnabled);
   const isPrintingRef = useRef(false);
 
   if (!isOpen) return null;
@@ -533,78 +537,150 @@ export default function StaffTicketModal({
                       style={{
                         width: "100%",
                         borderCollapse: "collapse",
-                        tableLayout: "auto",
+                        tableLayout: isCrowdMode ? "fixed" : "auto",
                         marginTop: "2px",
                         marginBottom: "2px",
                       }}
                     >
                       <tbody>
-                        {seatDetails.map((att, i) => {
-                          const roundNo = att.tripNo || 1;
-                          const hasMultipleAttractions = seatDetails.length > 1;
-                          const attractionName = att.attractionName || attractionTitle || "";
-
-                          return (
-                            <tr key={att.attractionId || i}>
+                        {isCrowdMode ? (
+                          seatDetails.length <= 1 ? (
+                            <tr>
                               <td
                                 style={{
-                                  whiteSpace: "nowrap",
-                                  paddingRight: "6px",
-                                  paddingTop: i > 0 ? "5px" : "1px",
-                                  paddingBottom: i < seatDetails.length - 1 ? "5px" : "1px",
-                                  borderRight: "1px solid #000000",
-                                  borderBottom: i < seatDetails.length - 1 ? "1px solid #000000" : "none",
+                                  padding: "4px 2px",
+                                  borderRight: "none",
+                                  borderBottom: "none",
                                   verticalAlign: "middle",
                                   fontWeight: 800,
                                   fontSize: "11px",
-                                  textAlign: "left",
+                                  textAlign: "center",
                                   lineHeight: "1.3",
                                 }}
                               >
-                                {hasMultipleAttractions && attractionName && (
-                                  <div
-                                    style={{
-                                      textTransform: "uppercase",
-                                      letterSpacing: "0.03em",
-                                      marginBottom: "2px",
-                                      fontWeight: 800,
-                                      fontSize: "11px",
-                                    }}
-                                  >
-                                    {attractionName}
-                                  </div>
-                                )}
-                                <div>Round No.(राउंड नं.) : {roundNo}</div>
-                              </td>
-                              <td
-                                style={{
-                                  paddingLeft: "6px",
-                                  paddingTop: i > 0 ? "5px" : "1px",
-                                  paddingBottom: i < seatDetails.length - 1 ? "5px" : "1px",
-                                  borderBottom: i < seatDetails.length - 1 ? "1px solid #000000" : "none",
-                                  verticalAlign: "middle",
-                                  textAlign: "left",
-                                  fontWeight: 800,
-                                  fontSize: "11px",
-                                  wordBreak: "break-word",
-                                  overflowWrap: "break-word",
-                                  lineHeight: "1.3",
-                                }}
-                              >
-                                {att.sections?.map((sec, secIdx) => (
-                                  <div
-                                    key={sec.name}
-                                    style={{
-                                      marginBottom: secIdx < (att.sections?.length || 0) - 1 ? "2px" : 0,
-                                    }}
-                                  >
-                                    {sec.name} : Seat  : - {sec.seats.join(", ")}
-                                  </div>
-                                ))}
+                                <div>Round No.(राउंड नं.) : {seatDetails[0]?.tripNo || 1}</div>
                               </td>
                             </tr>
-                          );
-                        })}
+                          ) : (
+                            (() => {
+                              const rows: (typeof seatDetails)[] = [];
+                              for (let idx = 0; idx < seatDetails.length; idx += 3) {
+                                rows.push(seatDetails.slice(idx, idx + 3));
+                              }
+                              return rows.map((rowAttractions, rowIdx) => {
+                                const isLastRow = rowIdx === rows.length - 1;
+                                return (
+                                  <tr key={rowIdx}>
+                                    {rowAttractions.map((att, colIdx) => {
+                                      const isLastCol = colIdx === rowAttractions.length - 1;
+                                      const roundNo = att.tripNo || 1;
+                                      const attractionName = att.attractionName || attractionTitle || "";
+
+                                      return (
+                                        <td
+                                          key={att.attractionId || colIdx}
+                                          style={{
+                                            width: `${100 / rowAttractions.length}%`,
+                                            padding: "4px 2px",
+                                            textAlign: "center",
+                                            verticalAlign: "middle",
+                                            fontWeight: 800,
+                                            fontSize: "10px",
+                                            lineHeight: "1.25",
+                                            borderRight: isLastCol ? "none" : "1px solid #000000",
+                                            borderBottom: isLastRow ? "none" : "1px solid #000000",
+                                          }}
+                                        >
+                                          {attractionName && (
+                                            <div
+                                              style={{
+                                                textTransform: "uppercase",
+                                                letterSpacing: "0.02em",
+                                                marginBottom: "2px",
+                                                fontWeight: 800,
+                                                fontSize: "9.5px",
+                                              }}
+                                            >
+                                              {attractionName}
+                                            </div>
+                                          )}
+                                          <div>Round No.(राउंड नं.) : {roundNo}</div>
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                );
+                              });
+                            })()
+                          )
+                        ) : (
+                          seatDetails.map((att, i) => {
+                            const roundNo = att.tripNo || 1;
+                            const hasMultipleAttractions = seatDetails.length > 1;
+                            const attractionName = att.attractionName || attractionTitle || "";
+
+                            return (
+                              <tr key={att.attractionId || i}>
+                                <td
+                                  style={{
+                                    whiteSpace: "nowrap",
+                                    paddingRight: "6px",
+                                    paddingTop: i > 0 ? "5px" : "1px",
+                                    paddingBottom: i < seatDetails.length - 1 ? "5px" : "1px",
+                                    borderRight: "1px solid #000000",
+                                    borderBottom: i < seatDetails.length - 1 ? "1px solid #000000" : "none",
+                                    verticalAlign: "middle",
+                                    fontWeight: 800,
+                                    fontSize: "11px",
+                                    textAlign: "left",
+                                    lineHeight: "1.3",
+                                  }}
+                                >
+                                  {hasMultipleAttractions && attractionName && (
+                                    <div
+                                      style={{
+                                        textTransform: "uppercase",
+                                        letterSpacing: "0.03em",
+                                        marginBottom: "2px",
+                                        fontWeight: 800,
+                                        fontSize: "11px",
+                                      }}
+                                    >
+                                      {attractionName}
+                                    </div>
+                                  )}
+                                  <div>Round No.(राउंड नं.) : {roundNo}</div>
+                                </td>
+                                <td
+                                  style={{
+                                    paddingLeft: "6px",
+                                    paddingTop: i > 0 ? "5px" : "1px",
+                                    paddingBottom: i < seatDetails.length - 1 ? "5px" : "1px",
+                                    borderBottom: i < seatDetails.length - 1 ? "1px solid #000000" : "none",
+                                    verticalAlign: "middle",
+                                    textAlign: "left",
+                                    fontWeight: 800,
+                                    fontSize: "11px",
+                                    wordBreak: "break-word",
+                                    overflowWrap: "break-word",
+                                    lineHeight: "1.3",
+                                  }}
+                                >
+                                  {att.sections?.map((sec, secIdx) => (
+                                    <div
+                                      key={sec.name}
+                                      style={{
+                                        marginBottom: secIdx < (att.sections?.length || 0) - 1 ? "2px" : 0,
+                                      }}
+                                    >
+                                      {sec.name} : Seat  : - {sec.seats.join(", ")}
+                                    </div>
+                                  ))}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
                       </tbody>
                     </table>
 

@@ -111,16 +111,17 @@ function ProcessPaymentModal({
   const [payMethod, setPayMethod] = useState<"cash" | "card" | "upi">("cash");
   const [amtRcv, setAmtRcv] = useState("");
   const [selectedNotes, setSelectedNotes] = useState<number[]>([]);
-  const defaultCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+  const defaultCash = grandTotal > 0 ? grandTotal.toFixed(2) : "";
   const isOnline = payMethod === "upi" || payMethod === "card";
   const numAmtRcv = parseFloat(amtRcv || "0");
   const change = isOnline ? 0 : (amtRcv ? Math.max(0, numAmtRcv - grandTotal) : 0);
-  const isCashAmountValid = isOnline || (amtRcv.trim() !== "" && numAmtRcv >= grandTotal);
+  const isCashLessThanDue = payMethod === "cash" && (amtRcv.trim() === "" || isNaN(numAmtRcv) || numAmtRcv < grandTotal);
+  const isCashAmountValid = isOnline || !isCashLessThanDue;
 
   useEffect(() => {
     if (isOpen) {
       setPayMethod("cash");
-      const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+      const initialCash = grandTotal > 0 ? grandTotal.toFixed(2) : "";
       setAmtRcv(initialCash);
       setSelectedNotes([]);
     }
@@ -131,24 +132,22 @@ function ProcessPaymentModal({
       setAmtRcv(grandTotal.toFixed(2));
       setSelectedNotes([]);
     } else if (payMethod === "cash") {
-      const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+      const initialCash = grandTotal > 0 ? grandTotal.toFixed(2) : "";
       setAmtRcv(initialCash);
       setSelectedNotes([]);
     }
   }, [payMethod, grandTotal]);
 
   const handleQuickNoteClick = (noteVal: number) => {
-    const defaultBase = grandTotal > 0 ? Math.ceil(grandTotal / 10) * 10 : 0;
-    const currentAmt = amtRcv.trim() !== "" ? parseFloat(amtRcv) : defaultBase;
-    const base = isNaN(currentAmt) ? defaultBase : currentAmt;
-    const nextAmt = base + noteVal;
-    setAmtRcv(nextAmt.toString());
-    setSelectedNotes((prev) => [...prev, noteVal]);
+    const newSelectedNotes = [...selectedNotes, noteVal];
+    const totalFromNotes = newSelectedNotes.reduce((sum, n) => sum + n, 0);
+    setSelectedNotes(newSelectedNotes);
+    setAmtRcv(totalFromNotes.toString());
   };
 
   const handleClearNotes = () => {
     setSelectedNotes([]);
-    const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+    const initialCash = grandTotal > 0 ? grandTotal.toFixed(2) : "";
     setAmtRcv(initialCash);
   };
 
@@ -198,6 +197,7 @@ function ProcessPaymentModal({
       }}
     >
       <div
+        className="process-payment-modal-card"
         style={{
           background: "#FFFFFF",
           borderRadius: "20px",
@@ -212,7 +212,7 @@ function ProcessPaymentModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header with Close Icon */}
-        <div style={{ padding: "18px 24px 0 24px", position: "relative" }}>
+        <div className="process-payment-modal-header" style={{ padding: "18px 24px 0 24px", position: "relative" }}>
           <button
             type="button"
             onClick={onClose}
@@ -246,9 +246,9 @@ function ProcessPaymentModal({
 
         <div style={{ height: "0.5px", background: "rgba(179,175,175,0.6)", margin: "14px 0 0 0" }} />
 
-        <div style={{ padding: "18px 24px 22px 24px", display: "flex", flexDirection: "column", gap: "14px" }}>
+        <div className="process-payment-modal-body" style={{ padding: "18px 24px 22px 24px", display: "flex", flexDirection: "column", gap: "14px" }}>
           {/* Amount Due Card */}
-          <div style={{ background: "#002A45", borderRadius: "16px", padding: "14px 18px", textAlign: "center" }}>
+          <div className="process-payment-amount-due" style={{ background: "#002A45", borderRadius: "16px", padding: "14px 18px", textAlign: "center" }}>
             <p style={{ margin: 0, fontWeight: 800, fontSize: "13px", color: "#7599B0", letterSpacing: "0.05em" }}>
               AMOUNT DUE
             </p>
@@ -266,6 +266,7 @@ function ProcessPaymentModal({
               {methods.map((m) => (
                 <div
                   key={m.key}
+                  className="process-payment-method-btn"
                   onClick={() => {
                     if (!m.disabled) setPayMethod(m.key);
                   }}
@@ -313,7 +314,7 @@ function ProcessPaymentModal({
           {/* Quick Cash Options when Cash is selected */}
           {payMethod === "cash" && (
             <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "15px" }}>
                 <p style={{ margin: 0, fontWeight: 700, fontSize: "12px", color: "rgba(81,82,82,0.85)" }}>
                   QUICK CASH / NOTES
                 </p>
@@ -338,7 +339,7 @@ function ProcessPaymentModal({
                   </button>
                 )}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <div className="process-payment-notes-grid" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {[
                   [
                     { label: "₹10", val: 10 },
@@ -358,6 +359,7 @@ function ProcessPaymentModal({
                       return (
                         <button
                           key={item.label}
+                          className="process-payment-note-btn"
                           type="button"
                           onClick={() => handleQuickNoteClick(item.val)}
                           style={{
@@ -417,43 +419,64 @@ function ProcessPaymentModal({
                 CHANGE RETURN
               </p>
             </div>
-            <div style={{ display: "flex", gap: "12px" }}>
-              <div
-                style={{
-                  flex: 1,
-                  height: "38px",
-                  background: isOnline ? "#F8FAFC" : "#FFFFFF",
-                  border: "1.5px solid rgba(179,175,175,0.51)",
-                  borderRadius: "10px",
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "0 10px",
-                }}
-              >
-                <span style={{ fontWeight: 800, fontSize: "14px", color: "#173F63" }}>Rs.</span>
-                <input
-                  type="number"
-                  disabled={isOnline}
-                  value={amtRcv}
-                  onChange={(e) => setAmtRcv(e.target.value)}
-                  placeholder="0.00"
-                  step="any"
-                  min="0"
+            <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                <div
+                  className="process-payment-input-box"
                   style={{
-                    flex: 1,
-                    border: "none",
-                    outline: "none",
-                    fontFamily: "'Plus Jakarta Sans',sans-serif",
-                    fontWeight: 800,
-                    fontSize: "14px",
-                    color: "#173F63",
-                    background: "transparent",
-                    marginLeft: "4px",
-                    cursor: isOnline ? "not-allowed" : "text",
+                    width: "100%",
+                    height: "38px",
+                    background: isOnline ? "#F8FAFC" : "#FFFFFF",
+                    border: isCashLessThanDue ? "1.5px solid #EF4444" : "1.5px solid rgba(179,175,175,0.51)",
+                    borderRadius: "10px",
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "0 10px",
+                    boxSizing: "border-box",
                   }}
-                />
+                >
+                  <span style={{ fontWeight: 800, fontSize: "14px", color: isCashLessThanDue ? "#EF4444" : "#173F63" }}>Rs.</span>
+                  <input
+                    type="number"
+                    disabled={isOnline}
+                    value={amtRcv}
+                    onChange={(e) => {
+                      setAmtRcv(e.target.value);
+                      setSelectedNotes([]);
+                    }}
+                    placeholder="0.00"
+                    step="any"
+                    min="0"
+                    style={{
+                      flex: 1,
+                      border: "none",
+                      outline: "none",
+                      fontFamily: "'Plus Jakarta Sans',sans-serif",
+                      fontWeight: 800,
+                      fontSize: "14px",
+                      color: isCashLessThanDue ? "#EF4444" : "#173F63",
+                      background: "transparent",
+                      marginLeft: "4px",
+                      cursor: isOnline ? "not-allowed" : "text",
+                    }}
+                  />
+                </div>
+                {isCashLessThanDue && (
+                  <span
+                    style={{
+                      marginTop: "4px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      color: "#DC2626",
+                      lineHeight: "1.3",
+                    }}
+                  >
+                    Amount received cannot be less than Amount Due (Rs.{grandTotal.toFixed(2)})
+                  </span>
+                )}
               </div>
               <div
+                className="process-payment-input-box"
                 style={{
                   flex: 1,
                   height: "38px",
@@ -463,6 +486,7 @@ function ProcessPaymentModal({
                   display: "flex",
                   alignItems: "center",
                   padding: "0 10px",
+                  boxSizing: "border-box",
                 }}
               >
                 <span style={{ fontWeight: 800, fontSize: "14px", color: "#173F63" }}>Rs.{change.toFixed(2)}</span>
@@ -481,7 +505,7 @@ function ProcessPaymentModal({
               onConfirm(mode, netAmountPaid, receivedAmt, returnAmt);
             }}
             disabled={isSubmitting || !isCashAmountValid}
-            className="pay-confirm-btn"
+            className="pay-confirm-btn process-payment-confirm-btn"
             style={{
               width: "100%",
               height: "46px",
@@ -504,6 +528,40 @@ function ProcessPaymentModal({
       </div>
       <style jsx global>{`
         .pay-confirm-btn:hover { background: #e5af36 !important; transform: translateY(-1px); }
+        @media (min-width: 1024px) {
+          .process-payment-modal-card {
+            width: 630px !important;
+            max-width: 90vw !important;
+          }
+          .process-payment-modal-header {
+            padding: 22px 28px 0 28px !important;
+          }
+          .process-payment-modal-body {
+            padding: 20px 28px 26px 28px !important;
+            gap: 18px !important;
+          }
+          .process-payment-amount-due {
+            padding: 18px 20px !important;
+          }
+          .process-payment-method-btn {
+            padding: 15px 10px !important;
+          }
+          .process-payment-notes-grid {
+            gap: 8px !important;
+          }
+          .process-payment-note-btn {
+            height: 38px !important;
+            font-size: 13px !important;
+          }
+          .process-payment-input-box {
+            height: 44px !important;
+          }
+          .process-payment-confirm-btn {
+            height: 52px !important;
+            font-size: 17px !important;
+            margin-top: 6px !important;
+          }
+        }
       `}</style>
     </div>
   );
@@ -717,6 +775,9 @@ function TicketGeneratedModal({
   tripMap?: Record<string, number>;
 }) {
   useModalBodyLock(isOpen);
+  const { data: profileData } = useProfileQuery();
+  const profile = profileData?.profile || (profileData as any)?.data?.profile;
+  const isCrowdMode = Boolean(profile?.crowdModeEnabled);
   const booking =
     (confirmedData as any)?.data?.booking ||
     (confirmedData as any)?.booking ||
@@ -1075,7 +1136,7 @@ function TicketGeneratedModal({
                     fontFamily: "'Plus Jakarta Sans', Arial, sans-serif",
                   }}
                 >
-                    {/* Station Route Info - Rendered once at the bottom of all attractions */}
+                  {/* Station Route Info - Rendered once at the bottom of all attractions */}
                   <div
                     className="print-station-route"
                     style={{
@@ -1104,91 +1165,160 @@ function TicketGeneratedModal({
                     style={{
                       width: "100%",
                       borderCollapse: "collapse",
-                      tableLayout: "auto",
+                      tableLayout: isCrowdMode ? "fixed" : "auto",
                       marginTop: "2px",
                       marginBottom: "2px",
-                      // paddingTop: "2px",
-                      // paddingBottom: "2px",
-
                     }}
                   >
                     <tbody>
-                      {seatDetails.map((att, i) => {
-                        const roundNo = att.tripNo || (tripMap && tripMap[att.attractionId]) || 1;
-                        const hasMultipleAttractions = seatDetails.length > 1;
-                        const attractionName = att.attractionName || "";
-
-                        return (
-                          <tr key={att.attractionId || i}>
+                      {isCrowdMode ? (
+                        seatDetails.length <= 1 ? (
+                          <tr>
                             <td
                               style={{
-                                whiteSpace: "nowrap",
-                                paddingRight: "6px",
-                                paddingTop: i > 0 ? "5px" : "1px",
-                                paddingBottom: i < seatDetails.length - 1 ? "5px" : "1px",
-                                borderRight: "1px solid #000000",
-                                borderBottom: i < seatDetails.length - 1 ? "1px solid #000000" : "none",
+                                padding: "4px 2px",
+                                borderRight: "none",
+                                borderBottom: "none",
                                 verticalAlign: "middle",
                                 fontWeight: 800,
                                 fontSize: "11px",
-                                textAlign: "left",
+                                textAlign: "center",
                                 lineHeight: "1.3",
                               }}
                             >
-                              {hasMultipleAttractions && attractionName && (
-                                <div
-                                  style={{
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.03em",
-                                    marginBottom: "2px",
-                                    fontWeight: 800,
-                                    fontSize: "11px",
-                                  }}
-                                >
-                                  {attractionName}
-                                </div>
-                              )}
-                              <div>Round No.(राउंड नं.) : {roundNo}</div>
-                            </td>
-                            <td
-                              style={{
-                                paddingLeft: "6px",
-                                paddingTop: i > 0 ? "5px" : "1px",
-                                paddingBottom: i < seatDetails.length - 1 ? "5px" : "1px",
-                                borderBottom: i < seatDetails.length - 1 ? "1px solid #000000" : "none",
-                                verticalAlign: "middle",
-                                textAlign: "left",
-                                fontWeight: 800,
-                                fontSize: "11px",
-                                wordBreak: "break-word",
-                                overflowWrap: "break-word",
-                                lineHeight: "1.3",
-                              }}
-                            >
-                              {att.sections?.map((sec, secIdx) => (
-                                <div
-                                  key={sec.name}
-                                  style={{
-                                    marginBottom: secIdx < (att.sections?.length || 0) - 1 ? "2px" : 0,
-                                  }}
-                                >
-                                  {sec.name} : Seat  : - {sec.seats.join(", ")}
-                                </div>
-                              ))}
+                              <div>Round No.(राउंड नं.) : {seatDetails[0]?.tripNo || (tripMap && tripMap[seatDetails[0]?.attractionId]) || 1}</div>
                             </td>
                           </tr>
-                        );
-                      })}
+                        ) : (
+                          (() => {
+                            const rows: (typeof seatDetails)[] = [];
+                            for (let idx = 0; idx < seatDetails.length; idx += 3) {
+                              rows.push(seatDetails.slice(idx, idx + 3));
+                            }
+                            return rows.map((rowAttractions, rowIdx) => {
+                              const isLastRow = rowIdx === rows.length - 1;
+                              return (
+                                <tr key={rowIdx}>
+                                  {rowAttractions.map((att, colIdx) => {
+                                    const isLastCol = colIdx === rowAttractions.length - 1;
+                                    const roundNo = att.tripNo || (tripMap && tripMap[att.attractionId]) || 1;
+                                    const attractionName = att.attractionName || "";
+
+                                    return (
+                                      <td
+                                        key={att.attractionId || colIdx}
+                                        style={{
+                                          width: `${100 / rowAttractions.length}%`,
+                                          padding: "4px 2px",
+                                          textAlign: "center",
+                                          verticalAlign: "middle",
+                                          fontWeight: 800,
+                                          fontSize: "10px",
+                                          lineHeight: "1.25",
+                                          borderRight: isLastCol ? "none" : "1px solid #000000",
+                                          borderBottom: isLastRow ? "none" : "1px solid #000000",
+                                        }}
+                                      >
+                                        {attractionName && (
+                                          <div
+                                            style={{
+                                              textTransform: "uppercase",
+                                              letterSpacing: "0.02em",
+                                              marginBottom: "2px",
+                                              fontWeight: 800,
+                                              fontSize: "9.5px",
+                                            }}
+                                          >
+                                            {attractionName}
+                                          </div>
+                                        )}
+                                        <div>Round No.(राउंड नं.) : {roundNo}</div>
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            });
+                          })()
+                        )
+                      ) : (
+                        seatDetails.map((att, i) => {
+                          const roundNo = att.tripNo || (tripMap && tripMap[att.attractionId]) || 1;
+                          const hasMultipleAttractions = seatDetails.length > 1;
+                          const attractionName = att.attractionName || "";
+
+                          return (
+                            <tr key={att.attractionId || i}>
+                              <td
+                                style={{
+                                  whiteSpace: "nowrap",
+                                  paddingRight: "6px",
+                                  paddingTop: i > 0 ? "5px" : "1px",
+                                  paddingBottom: i < seatDetails.length - 1 ? "5px" : "1px",
+                                  borderRight: "1px solid #000000",
+                                  borderBottom: i < seatDetails.length - 1 ? "1px solid #000000" : "none",
+                                  verticalAlign: "middle",
+                                  fontWeight: 800,
+                                  fontSize: "11px",
+                                  textAlign: "left",
+                                  lineHeight: "1.3",
+                                }}
+                              >
+                                {hasMultipleAttractions && attractionName && (
+                                  <div
+                                    style={{
+                                      textTransform: "uppercase",
+                                      letterSpacing: "0.03em",
+                                      marginBottom: "2px",
+                                      fontWeight: 800,
+                                      fontSize: "11px",
+                                    }}
+                                  >
+                                    {attractionName}
+                                  </div>
+                                )}
+                                <div>Round No.(राउंड नं.) : {roundNo}</div>
+                              </td>
+                              <td
+                                style={{
+                                  paddingLeft: "6px",
+                                  paddingTop: i > 0 ? "5px" : "1px",
+                                  paddingBottom: i < seatDetails.length - 1 ? "5px" : "1px",
+                                  borderBottom: i < seatDetails.length - 1 ? "1px solid #000000" : "none",
+                                  verticalAlign: "middle",
+                                  textAlign: "left",
+                                  fontWeight: 800,
+                                  fontSize: "11px",
+                                  wordBreak: "break-word",
+                                  overflowWrap: "break-word",
+                                  lineHeight: "1.3",
+                                }}
+                              >
+                                {att.sections?.map((sec, secIdx) => (
+                                  <div
+                                    key={sec.name}
+                                    style={{
+                                      marginBottom: secIdx < (att.sections?.length || 0) - 1 ? "2px" : 0,
+                                    }}
+                                  >
+                                    {sec.name} : Seat  : - {sec.seats.join(", ")}
+                                  </div>
+                                ))}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
 
-                
+
                 </div>
               )}
             </div>
 
             {/* Invoice & Customer Meta */}
-            <div className="print-invoice-meta" style={{ padding: "8px 0", borderBottom: "1px dashed #000000",  borderTop: "1px dashed #000000", fontSize: "11.5px", fontWeight: 400, color: "#000000" }}>
+            <div className="print-invoice-meta" style={{ padding: "8px 0", borderBottom: "1px dashed #000000", borderTop: "1px dashed #000000", fontSize: "11.5px", fontWeight: 400, color: "#000000" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
                 <span><strong>Invoice:</strong> {ticketNo}</span>
                 <span><strong>Bill To:</strong> {custName}</span>
