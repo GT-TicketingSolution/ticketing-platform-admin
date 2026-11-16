@@ -483,7 +483,7 @@ export default function StaffTicketModal({
                   }}
                 >
                   <div>
-                    स्टेशन: 1-2{" "}
+                    स्टेशन: 1 से 2{" "}
                     <span
                       style={{
                         display: "inline-block",
@@ -498,7 +498,7 @@ export default function StaffTicketModal({
                   </div>
                   <div>विराम</div>
                   <div>
-                    स्टेशन: 2-1{" "}
+                    स्टेशन: 2 से 1{" "}
                     <span
                       style={{
                         display: "inline-block",
