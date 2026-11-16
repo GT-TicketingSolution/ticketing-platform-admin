@@ -2127,3 +2127,38 @@ export const staffCrowdMode = pgTable(
     uniqueStaff: uniqueIndex("staff_crowd_mode_staff_unique").on(table.staffId),
   }),
 );
+
+/* =========================================================
+   TICKET PRINT LOGS (Print & Reprint Tracking)
+========================================================= */
+
+export const ticketPrintLogs = pgTable(
+  "ticket_print_logs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, {
+        onDelete: "cascade",
+      }),
+
+    printedBy: uuid("printed_by")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+      }),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    bookingIdx: index("ticket_print_logs_booking_idx").on(table.bookingId),
+    printedByIdx: index("ticket_print_logs_printed_by_idx").on(table.printedBy),
+    bookingCreatedIdx: index("ticket_print_logs_booking_created_idx").on(
+      table.bookingId,
+      table.createdAt,
+    ),
+  }),
+);

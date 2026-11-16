@@ -36,6 +36,27 @@
       "when": 1793708445192,
       "tag": "0004_staff_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794816024208,
+      "tag": "0005_staff_crowd_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794816676498,
+      "tag": "0006_ticket_print_logs",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794820192458,
+      "tag": "0007_remove_print_count_type",
+      "breakpoints": true
     }
   ]
 }
