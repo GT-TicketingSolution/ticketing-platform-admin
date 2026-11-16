@@ -533,8 +533,10 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
         <title>Ticket Bill</title>
         <meta charset="utf-8" />
         <style>
-          @page { size: 80mm auto; margin: 0; }
+          @page { size: 80mm auto; margin: 0 !important; }
           html {
+            margin: 0 !important;
+            padding: 0 !important;
             height: fit-content;
             min-height: unset;
           }
@@ -544,8 +546,8 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
             background: #FFFFFF;
             width: 70mm;
             max-width: 70mm;
-            margin: 0 auto;
-            padding: 3mm 4.5mm;
+            margin: 0 auto !important;
+            padding: 0 4.5mm !important;
             box-sizing: border-box;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -1228,6 +1230,10 @@ function TicketGeneratedModal({
       {/* Print stylesheet for clean thermal / receipt printout */}
       <style jsx global>{`
         @media print {
+          @page {
+            size: 80mm auto;
+            margin: 0 !important;
+          }
           body * {
             visibility: hidden !important;
           }
@@ -1238,11 +1244,12 @@ function TicketGeneratedModal({
           #printable-ticket-receipt {
             position: fixed !important;
             left: 0 !important;
+            right: 0 !important;
             top: 0 !important;
             width: 70mm !important;
             max-width: 70mm !important;
             margin: 0 auto !important;
-            padding: 3mm 4.5mm !important;
+            padding: 0 4.5mm !important;
             box-sizing: border-box !important;
             box-shadow: none !important;
             border: none !important;

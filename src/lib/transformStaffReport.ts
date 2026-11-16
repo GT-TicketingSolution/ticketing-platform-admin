@@ -130,7 +130,7 @@ function transformAttractionReport(
  */
 export function transformStaffReportResponse(
   data: StaffReportAPIResponse,
-  selectedAttractionName?: string
+  selectedAttractionNames?: string | string[]
 ): OverallReportSummary {
   const { attractions, bookings, transactions } = data;
 
@@ -196,27 +196,31 @@ export function transformStaffReportResponse(
     return transformAttractionReport(attraction, booking, txns, invRange);
   });
 
-  // Filter by selected attraction if specified
+  // Filter by selected attraction(s) if specified
+  const selectedList: string[] = Array.isArray(selectedAttractionNames)
+    ? selectedAttractionNames.map((s) => s.trim())
+    : selectedAttractionNames
+    ? [selectedAttractionNames.trim()]
+    : [];
+
+  const isAll =
+    selectedAttractionNames === undefined ||
+    selectedList.includes("All") ||
+    selectedList.includes("All Attractions");
+
   let filteredReports = attractionReports;
-  if (
-    selectedAttractionName &&
-    selectedAttractionName !== "All" &&
-    selectedAttractionName !== "All Attractions"
-  ) {
-    filteredReports = attractionReports.filter(
-      (r) => r.attraction.name.toLowerCase() === selectedAttractionName.toLowerCase()
+  if (!isAll) {
+    const selectedLower = new Set(selectedList.map((s) => s.toLowerCase()));
+    filteredReports = attractionReports.filter((r) =>
+      selectedLower.has(r.attraction.name.toLowerCase().trim())
     );
   }
 
-  // Calculate totals — if inactive attractions exist or a specific attraction is filtered, sum from active/filtered reports
+  // Calculate totals — if inactive attractions exist or specific attractions are filtered, sum from active/filtered reports
   const hasInactive = (attractions || []).some(
     (a) => a.status && a.status.toUpperCase() === "INACTIVE"
   );
-  const isFiltered = Boolean(
-    selectedAttractionName &&
-      selectedAttractionName !== "All" &&
-      selectedAttractionName !== "All Attractions"
-  );
+  const isFiltered = !isAll;
 
   const totalRevenue =
     hasInactive || isFiltered
@@ -242,7 +246,26 @@ export function transformStaffReportResponse(
     }
   }
 
-  const overallInvoiceRange = globalFrom || globalTo ? { from: globalFrom, to: globalTo } : null;
+  // Invoice range for filtered reports
+  let filteredFrom: string | null = null;
+  let filteredTo: string | null = null;
+  for (const r of filteredReports) {
+    if (r.invoiceRange?.from) {
+      if (!filteredFrom || r.invoiceRange.from < filteredFrom) {
+        filteredFrom = r.invoiceRange.from;
+      }
+    }
+    if (r.invoiceRange?.to) {
+      if (!filteredTo || r.invoiceRange.to > filteredTo) {
+        filteredTo = r.invoiceRange.to;
+      }
+    }
+  }
+
+  const overallInvoiceRange =
+    filteredFrom || filteredTo
+      ? { from: filteredFrom, to: filteredTo }
+      : (globalFrom || globalTo ? { from: globalFrom, to: globalTo } : null);
 
   return {
     totalRevenue,

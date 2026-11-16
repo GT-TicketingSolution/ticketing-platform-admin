@@ -107,7 +107,26 @@ export default function StaffReportsView() {
   const [isCustomRange, setIsCustomRange] = useState(false);
   const [fromTime, setFromTime] = useState<string>("00:00");
   const [toTime, setToTime] = useState<string>(() => getCurrentTimeStr());
-  const [selectedAttraction, setSelectedAttraction] = useState<string>("All Attractions");
+  const [selectedAttractions, setSelectedAttractions] = useState<string[]>(["All Attractions"]);
+  const [isAttractionDropdownOpen, setIsAttractionDropdownOpen] = useState(false);
+  const attractionDropdownRef = useRef<HTMLDivElement>(null);
+  const [viewingDetailReport, setViewingDetailReport] = useState<AttractionReportData | null>(null);
+
+  // Close attraction dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        attractionDropdownRef.current &&
+        !attractionDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsAttractionDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   // Authorized banner window info from Profile API response: does not change when date range is selected in the UI
   const bannerTitle = staffReportAccess.accessLabel || "Past Reports Window";
@@ -305,32 +324,105 @@ export default function StaffReportsView() {
 
   const overallSummary = useMemo(() => {
     if (!reportData) return getEmptyOverallSummary();
-    return transformStaffReportResponse(reportData, selectedAttraction);
-  }, [reportData, selectedAttraction]);
+    return transformStaffReportResponse(reportData, selectedAttractions);
+  }, [reportData, selectedAttractions]);
 
-  // Attraction options dropdown — built from API response (excluding INACTIVE attractions)
-  const attractionDropdownOptions = useMemo(() => {
-    if (!reportData?.attractions?.length) return ["All Attractions"];
-    const activeAttractions = reportData.attractions.filter(
-      (a) => !a.status || a.status.toUpperCase() !== "INACTIVE"
-    );
-    return ["All Attractions", ...activeAttractions.map((a) => a.name)];
+  // Active attractions list built from API response (excluding INACTIVE attractions)
+  const activeAttractionNames = useMemo(() => {
+    if (!reportData?.attractions?.length) return [];
+    return reportData.attractions
+      .filter((a) => !a.status || a.status.toUpperCase() !== "INACTIVE")
+      .map((a) => a.name);
   }, [reportData]);
 
-  // If currently selected attraction is INACTIVE, reset to "All Attractions"
-  useEffect(() => {
+  const isAllAttractionsSelected = useMemo(() => {
     if (
-      selectedAttraction !== "All Attractions" &&
-      reportData?.attractions?.length
+      selectedAttractions.includes("All Attractions") ||
+      selectedAttractions.includes("All")
     ) {
-      const found = reportData.attractions.find(
-        (a) => a.name.toLowerCase() === selectedAttraction.toLowerCase()
+      return true;
+    }
+    if (activeAttractionNames.length > 0) {
+      const selSet = new Set(selectedAttractions.map((s) => s.toLowerCase()));
+      return activeAttractionNames.every((name) => selSet.has(name.toLowerCase()));
+    }
+    return false;
+  }, [selectedAttractions, activeAttractionNames]);
+
+  const handleToggleAllAttractions = () => {
+    if (isAllAttractionsSelected) {
+      setSelectedAttractions([]);
+    } else {
+      setSelectedAttractions(["All Attractions"]);
+    }
+  };
+
+  const handleToggleAttraction = (attractionName: string) => {
+    if (isAllAttractionsSelected) {
+      const remaining = activeAttractionNames.filter(
+        (name) => name.toLowerCase() !== attractionName.toLowerCase()
       );
-      if (found && found.status && found.status.toUpperCase() === "INACTIVE") {
-        setSelectedAttraction("All Attractions");
+      setSelectedAttractions(remaining);
+    } else {
+      const isAlreadySelected = selectedAttractions.some(
+        (name) => name.toLowerCase() === attractionName.toLowerCase()
+      );
+      let next: string[];
+      if (isAlreadySelected) {
+        next = selectedAttractions.filter(
+          (name) => name.toLowerCase() !== attractionName.toLowerCase()
+        );
+      } else {
+        next = [...selectedAttractions, attractionName];
+      }
+      if (
+        activeAttractionNames.length > 0 &&
+        activeAttractionNames.every((name) =>
+          next.some((n) => n.toLowerCase() === name.toLowerCase())
+        )
+      ) {
+        setSelectedAttractions(["All Attractions"]);
+      } else {
+        setSelectedAttractions(next);
       }
     }
-  }, [reportData, selectedAttraction]);
+  };
+
+  const dropdownButtonLabel = useMemo(() => {
+    if (isAllAttractionsSelected) {
+      return "All Attractions";
+    }
+    if (selectedAttractions.length === 0) {
+      return "Select Attraction";
+    }
+    if (selectedAttractions.length === 1) {
+      return selectedAttractions[0];
+    }
+    if (selectedAttractions.length === 2) {
+      return selectedAttractions.join(", ");
+    }
+    return `${selectedAttractions.length} Attractions Selected`;
+  }, [isAllAttractionsSelected, selectedAttractions]);
+
+  // If currently selected attraction is INACTIVE, filter it out
+  useEffect(() => {
+    if (
+      !selectedAttractions.includes("All Attractions") &&
+      reportData?.attractions?.length
+    ) {
+      const inactiveNames = new Set(
+        reportData.attractions
+          .filter((a) => a.status && a.status.toUpperCase() === "INACTIVE")
+          .map((a) => a.name.toLowerCase())
+      );
+      const filtered = selectedAttractions.filter(
+        (name) => !inactiveNames.has(name.toLowerCase())
+      );
+      if (filtered.length !== selectedAttractions.length) {
+        setSelectedAttractions(filtered.length > 0 ? filtered : ["All Attractions"]);
+      }
+    }
+  }, [reportData, selectedAttractions]);
 
   // Accordion Toggle Handlers
   const handleToggleCardExpand = (id: string) => {
@@ -374,7 +466,7 @@ export default function StaffReportsView() {
           ["Earliest Authorized Date", bannerFromDate ? formatDateSlash(bannerFromDate) : "N/A"],
           ["Date Range From", fromDate ? formatDateSlash(fromDate) : "Authorized Window Start"],
           ["Date Range To", toDate || "Today"],
-          ["Selected Attraction", selectedAttraction],
+          ["Selected Attraction", isAllAttractionsSelected ? "All Attractions" : selectedAttractions.join(", ")],
           [
             "Total Revenue",
             `₹${overallSummary.totalRevenue.toLocaleString("en-IN")}`,
@@ -413,20 +505,8 @@ export default function StaffReportsView() {
     );
   };
 
-  // Single attraction report view
-  const singleAttractionReport = useMemo(() => {
-    if (
-      selectedAttraction === "All" ||
-      selectedAttraction === "All Attractions"
-    ) {
-      return null;
-    }
-    return (
-      overallSummary.attractionReports.find(
-        (r) => r.attraction.name.toLowerCase() === selectedAttraction.toLowerCase()
-      ) || null
-    );
-  }, [selectedAttraction, overallSummary]);
+  // Single attraction report view (if viewing detail)
+  const singleAttractionReport = viewingDetailReport;
 
   // Overall data availability flags
   const hasOverallData =
@@ -872,37 +952,149 @@ export default function StaffReportsView() {
                 Select Attraction
               </label>
             </div>
-            <div style={{ position: "relative", height: "42px" }}>
-              <select
-                value={selectedAttraction}
-                onChange={(e) => setSelectedAttraction(e.target.value)}
+            <div ref={attractionDropdownRef} style={{ position: "relative", height: "42px" }}>
+              <button
+                type="button"
+                onClick={() => setIsAttractionDropdownOpen((prev) => !prev)}
                 style={{
                   width: "100%",
                   height: "42px",
-                  padding: "0 36px 0 14px",
+                  padding: "0 14px",
                   borderRadius: "8px",
-                  border: "1px solid #CBD5E1",
+                  border: isAttractionDropdownOpen ? "1.5px solid #0C2A42" : "1px solid #CBD5E1",
                   backgroundColor: "#FFFFFF",
-                  color: colors.text.primary,
+                  color: selectedAttractions.length === 0 ? "#94A3B8" : colors.text.primary,
                   fontSize: "14px",
                   fontWeight: 600,
                   outline: "none",
-                  appearance: "none",
                   cursor: "pointer",
                   boxSizing: "border-box",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  textAlign: "left",
+                  transition: "all 0.15s ease",
                 }}
               >
-                {attractionDropdownOptions.map((opt: string) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={18}
-                color="#64748B"
-                style={{ position: "absolute", right: 12, top: 12, pointerEvents: "none" }}
-              />
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    paddingRight: "8px",
+                  }}
+                >
+                  {dropdownButtonLabel}
+                </span>
+                <ChevronDown
+                  size={18}
+                  color="#64748B"
+                  style={{
+                    transform: isAttractionDropdownOpen ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.15s ease",
+                    flexShrink: 0,
+                  }}
+                />
+              </button>
+
+              {isAttractionDropdownOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "46px",
+                    left: 0,
+                    right: 0,
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "8px",
+                    border: "1px solid #CBD5E1",
+                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+                    maxHeight: "260px",
+                    overflowY: "auto",
+                    zIndex: 50,
+                    padding: "4px 0",
+                  }}
+                >
+                  {/* "All Attractions" Option */}
+                  <div
+                    onClick={handleToggleAllAttractions}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "9px 14px",
+                      cursor: "pointer",
+                      backgroundColor: isAllAttractionsSelected ? "#F1F5F9" : "transparent",
+                      borderBottom: "1px solid #E2E8F0",
+                      fontWeight: 700,
+                      fontSize: "13px",
+                      color: colors.text.primary,
+                      userSelect: "none",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isAllAttractionsSelected}
+                      onChange={() => {}}
+                      style={{
+                        cursor: "pointer",
+                        width: "16px",
+                        height: "16px",
+                        accentColor: "#0C2A42",
+                      }}
+                    />
+                    <span>All Attractions</span>
+                  </div>
+
+                  {/* Individual Attractions */}
+                  {activeAttractionNames.map((name) => {
+                    const isChecked =
+                      isAllAttractionsSelected ||
+                      selectedAttractions.some(
+                        (s) => s.toLowerCase() === name.toLowerCase()
+                      );
+                    return (
+                      <div
+                        key={name}
+                        onClick={() => handleToggleAttraction(name)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          padding: "8px 14px",
+                          cursor: "pointer",
+                          backgroundColor: isChecked ? "#F8FAFC" : "transparent",
+                          fontSize: "13px",
+                          fontWeight: isChecked ? 600 : 500,
+                          color: isChecked ? "#0C2A42" : colors.text.primary,
+                          userSelect: "none",
+                          transition: "background-color 0.1s ease",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {}}
+                          style={{
+                            cursor: "pointer",
+                            width: "16px",
+                            height: "16px",
+                            accentColor: "#0C2A42",
+                          }}
+                        />
+                        <span
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {name}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1605,7 +1797,7 @@ export default function StaffReportsView() {
         {singleAttractionReport ? (
           <SingleAttractionReportView
             reportData={singleAttractionReport}
-            onBackToAll={() => setSelectedAttraction("All Attractions")}
+            onBackToAll={() => setViewingDetailReport(null)}
             fromDate={fromDate}
             toDate={toDate}
             onViewTicket={handleViewTicket}
@@ -1809,22 +2001,44 @@ export default function StaffReportsView() {
 
             {/* List of Collapsible Attraction Cards */}
             <div>
-              {overallSummary.attractionReports.map((report) => (
-                <AttractionReportCard
-                  key={report.attraction.id}
-                  report={report}
-                  isExpanded={expandedAttractionIds.has(report.attraction.id)}
-                  onToggleExpand={() => handleToggleCardExpand(report.attraction.id)}
-                  onSelectSingle={(attractionName) => setSelectedAttraction(attractionName)}
-                  fromDate={fromDate}
-                  toDate={toDate}
-                  onViewTicket={handleViewTicket}
-                  onPrint={(rep) => {
-                    setSelectedPrintReport(rep);
-                    setIsPrintModalOpen(true);
+              {overallSummary.attractionReports.length === 0 ? (
+                <div
+                  style={{
+                    backgroundColor: colors.bg.card,
+                    borderRadius: "14px",
+                    border: "1px dashed #CBD5E1",
+                    padding: "40px 20px",
+                    textAlign: "center",
+                    color: colors.text.muted,
                   }}
-                />
-              ))}
+                >
+                  <p style={{ fontSize: "14px", fontWeight: 600 }}>
+                    No attractions found matching the selected filter.
+                  </p>
+                </div>
+              ) : (
+                overallSummary.attractionReports.map((report) => (
+                  <AttractionReportCard
+                    key={report.attraction.id}
+                    report={report}
+                    isExpanded={expandedAttractionIds.has(report.attraction.id)}
+                    onToggleExpand={() => handleToggleCardExpand(report.attraction.id)}
+                    onSelectSingle={(attractionName) => {
+                      const rep = overallSummary.attractionReports.find(
+                        (r) => r.attraction.name.toLowerCase() === attractionName.toLowerCase()
+                      );
+                      if (rep) setViewingDetailReport(rep);
+                    }}
+                    fromDate={fromDate}
+                    toDate={toDate}
+                    onViewTicket={handleViewTicket}
+                    onPrint={(rep) => {
+                      setSelectedPrintReport(rep);
+                      setIsPrintModalOpen(true);
+                    }}
+                  />
+                ))
+              )}
             </div>
           </div>
         )}
@@ -1843,6 +2057,7 @@ export default function StaffReportsView() {
         toDate={toDate}
         fromTime={fromTime}
         toTime={toTime}
+        selectedAttractionNames={selectedAttractions}
       />
 
       {/* Ticket View & Print Modal */}

@@ -46,20 +46,30 @@ function buildReceiptHtml(innerHtml: string): string {
 <head>
   <meta charset="utf-8" />
   <style>
-    @page { size: 80mm auto; margin: 0; }
+    @page { size: 80mm auto; margin: 0 !important; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html {
+      margin: 0 !important;
+      padding: 0 !important;
+      height: fit-content;
+      min-height: unset;
+    }
     body {
       font-family: 'Courier New', Courier, monospace;
       color: #000;
       background: #fff;
       width: 70mm;
       max-width: 70mm;
-      margin: 0 auto;
-      padding: 3mm 4.5mm;
+      margin: 0 auto !important;
+      padding: 0 4.5mm !important;
       box-sizing: border-box;
       font-size: 11.5px;
       font-weight: 600;
       line-height: 1.35;
+      height: fit-content;
+      min-height: unset;
+      display: block;
+      overflow: hidden;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
