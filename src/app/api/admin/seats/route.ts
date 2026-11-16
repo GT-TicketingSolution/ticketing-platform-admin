@@ -9,7 +9,8 @@ import {
 
 import { failure, success } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
-import { requireModuleAccess } from "@/lib/auth/authorization";
+import { requireModuleAccess, getAdminId } from "@/lib/auth/authorization";
+import { canPerformRoleAction } from "@/lib/auth/role-actions";
 
 const createSeatSchema = z
   .object({
@@ -139,8 +140,8 @@ export async function GET(request: NextRequest) {
       status,
 
       // IMPORTANT:
-      // Always use authenticated admin ID.
-      adminId: auth.user.id,
+      // Always the tenant's admin: managers read the admin's layouts.
+      adminId: getAdminId(auth),
     });
 
     return success(data);
@@ -196,6 +197,10 @@ export async function POST(request: NextRequest) {
     const auth = await requireAuth(request);
 
     await requireModuleAccess(auth, "SEAT_MANAGEMENT");
+
+    if (!canPerformRoleAction(auth.user.role, "SEAT_LAYOUT_MANAGE")) {
+      return failure("Only admin can create seat layouts.", 403, "FORBIDDEN");
+    }
 
     // ---------------------------------------------
     // BODY

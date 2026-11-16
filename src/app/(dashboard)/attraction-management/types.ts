@@ -25,6 +25,7 @@ export interface AttractionManagement {
   hasSeating: boolean;
   description: string | null;
   status: string;
+  categories?: any[];
   seatLayoutId?: string | null;
   seatLayouts?: Array<{
     id: string;
@@ -45,7 +46,23 @@ export interface AttractionManagement {
    * Expanded allocation list for UI chips.
    * Same layout ID may appear multiple times (quantity).
    */
-  seatLayoutIds?: string[] | Array<{ id: string; name: string; status: string; position: number }>;
+  seatLayoutIds?: string[] | Array<{
+    attractionSeatId?: string;
+    seatLayoutId?: string;
+    id?: string;
+    name: string;
+    status: string;
+    position: number;
+  }>;
+  /** Per-coach attraction seats returned from the API */
+  attractionSeats?: Array<{
+    id: string;
+    attractionId: string;
+    seatLayoutId: string;
+    name: string;
+    seatOrder: number;
+    isActive: boolean;
+  }>;
   createdAt?: string;
   updatedAt?: string;
   /**
@@ -93,13 +110,15 @@ export interface AttractionCategoryPayloadItem {
 }
 
 export interface AttractionSeatLayoutPayloadItem {
-  id: string;
+  attractionSeatId?: string;
+  seatLayoutId?: string;
+  id?: string;
   name: string;
   status: string;
   position: number;
 }
 
-// ── Create payload ───────────────────────────────────────────────────────────
+// ── Create payload 
 export interface CreateAttractionPayload {
   name: string;
   category: string;

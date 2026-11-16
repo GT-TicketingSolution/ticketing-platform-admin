@@ -1,7 +1,7 @@
 import { eq, and, isNotNull } from "drizzle-orm";
 
 import { db } from "@/db";
-import { users, staffSystemModulePermissions } from "@/db/schema";
+import { users, staffSystemModulePermissions, staffCrowdMode } from "@/db/schema";
 
 /* =========================================================
 GET PROFILE
@@ -11,6 +11,7 @@ export async function getProfile(userId: string) {
   const [user] = await db
     .select({
       id: users.id,
+      adminId: users.adminId,
       name: users.name,
       email: users.email,
       role: users.role,
@@ -37,6 +38,25 @@ export async function getProfile(userId: string) {
 
   if (user.status !== "ACTIVE") {
     throw new Error("ACCOUNT_NOT_ACTIVE");
+  }
+
+  const { adminId, ...userProfile } = user;
+
+  // Inherit business GST and CIN from the parent ADMIN for STAFF/MANAGER accounts
+  if ((user.role === "STAFF" || user.role === "MANAGER") && adminId) {
+    const [admin] = await db
+      .select({
+        gst: users.gst,
+        cin: users.cin,
+      })
+      .from(users)
+      .where(eq(users.id, adminId))
+      .limit(1);
+
+    if (admin) {
+      userProfile.gst = admin.gst ?? userProfile.gst;
+      userProfile.cin = admin.cin ?? userProfile.cin;
+    }
   }
 
   const today = new Date();
@@ -84,22 +104,35 @@ export async function getProfile(userId: string) {
   }
 
   if (user.role === "STAFF") {
-    const [reportAccess] = await db
-      .select({
-        reportAccessTiming: staffSystemModulePermissions.reportAccessTiming,
-        reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
-      })
-      .from(staffSystemModulePermissions)
-      .where(
-        and(
-          eq(staffSystemModulePermissions.staffId, userId),
-          isNotNull(staffSystemModulePermissions.reportAccessTiming)
+    const [[reportAccess], [crowdMode]] = await Promise.all([
+      db
+        .select({
+          reportAccessTiming: staffSystemModulePermissions.reportAccessTiming,
+          reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
+        })
+        .from(staffSystemModulePermissions)
+        .where(
+          and(
+            eq(staffSystemModulePermissions.staffId, userId),
+            isNotNull(staffSystemModulePermissions.reportAccessTiming)
+          )
         )
-      )
-      .limit(1);
+        .limit(1),
+
+      db
+        .select({
+          isAllowed: staffCrowdMode.isAllowed,
+          isEnabled: staffCrowdMode.isEnabled,
+        })
+        .from(staffCrowdMode)
+        .where(eq(staffCrowdMode.staffId, userId))
+        .limit(1),
+    ]);
 
     return {
-      ...user,
+      ...userProfile,
+      crowdModeAllowed: crowdMode?.isAllowed ?? false,
+      crowdModeEnabled: crowdMode?.isEnabled ?? false,
       reportAccessTiming: reportAccess?.reportAccessTiming ?? null,
       reportAccessUnit: reportAccess?.reportAccessUnit ?? null,
       ...(userRenewalData && {
@@ -109,7 +142,7 @@ export async function getProfile(userId: string) {
   }
 
   return {
-    ...user,
+    ...userProfile,
     ...(userRenewalData && {
       user_renewal_data: userRenewalData,
     }),
@@ -174,7 +207,7 @@ export async function updateProfile(
         id: users.id,
       })
       .from(users)
-      .where(eq(users.email, normalizedEmail))
+      .where(and(eq(users.email, normalizedEmail), eq(users.isDeleted, false)))
       .limit(1);
 
     if (emailOwner && emailOwner.id !== userId) {

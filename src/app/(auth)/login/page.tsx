@@ -53,6 +53,7 @@ export default function LoginPage() {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -70,7 +71,7 @@ export default function LoginPage() {
         // ignore
       }
       const result = await loginMutation.mutateAsync({
-        email: data.email,
+        email: data.email.trim(),
         password: data.password,
         role: ROLE_MAP[selectedRole],
       });
@@ -390,7 +391,28 @@ export default function LoginPage() {
                     id="email"
                     type="text"
                     placeholder="Enter your email"
-                    {...register("email")}
+                    {...register("email", {
+                      onChange: (e) => {
+                        if (e.target.value.startsWith(" ")) {
+                          const trimmed = e.target.value.trimStart();
+                          e.target.value = trimmed;
+                          setValue("email", trimmed, { shouldValidate: true });
+                        }
+                      },
+                    })}
+                    onPaste={(e) => {
+                      const pasted = e.clipboardData.getData("text");
+                      if (pasted.startsWith(" ") || /^\s/.test(pasted)) {
+                        e.preventDefault();
+                        const input = e.currentTarget;
+                        const start = input.selectionStart ?? 0;
+                        const end = input.selectionEnd ?? 0;
+                        const current = input.value;
+                        const trimmedPaste = pasted.trimStart();
+                        const nextVal = (current.slice(0, start) + trimmedPaste + current.slice(end)).trimStart();
+                        setValue("email", nextVal, { shouldValidate: true, shouldDirty: true });
+                      }
+                    }}
                     style={{
                       width: "100%",
                       border: "none",

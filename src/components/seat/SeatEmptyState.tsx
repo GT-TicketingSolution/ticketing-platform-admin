@@ -4,7 +4,7 @@ import React from "react";
 import { Plus } from "lucide-react";
 
 interface SeatEmptyStateProps {
-  onCreateSeat: () => void;
+  onCreateSeat?: () => void;
 }
 
 export default function SeatEmptyState({ onCreateSeat }: SeatEmptyStateProps) {
@@ -175,38 +175,40 @@ export default function SeatEmptyState({ onCreateSeat }: SeatEmptyStateProps) {
           flexWrap: "wrap",
         }}
       >
-        <button
-          onClick={onCreateSeat}
-          style={{
-            boxSizing: "border-box",
-            height: "51px",
-            padding: "0 28px",
-            background: "#0C2A42",
-            borderRadius: "10px",
-            border: "none",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "10px",
-            cursor: "pointer",
-            boxShadow: "0px 4px 12px rgba(12, 42, 66, 0.2)",
-            transition: "all 0.18s ease",
-          }}
-          className="btn-empty-add"
-        >
-          <Plus size={22} color="#FFFFFF" strokeWidth={2.8} />
-          <span
+        {onCreateSeat && (
+          <button
+            onClick={onCreateSeat}
             style={{
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontWeight: 500,
-              fontSize: "16px",
-              lineHeight: "20px",
-              color: "#FFFFFF",
+              boxSizing: "border-box",
+              height: "51px",
+              padding: "0 28px",
+              background: "#0C2A42",
+              borderRadius: "10px",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              cursor: "pointer",
+              boxShadow: "0px 4px 12px rgba(12, 42, 66, 0.2)",
+              transition: "all 0.18s ease",
             }}
+            className="btn-empty-add"
           >
-            Create Seat Layout
-          </span>
-        </button>
+            <Plus size={22} color="#FFFFFF" strokeWidth={2.8} />
+            <span
+              style={{
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                fontWeight: 500,
+                fontSize: "16px",
+                lineHeight: "20px",
+                color: "#FFFFFF",
+              }}
+            >
+              Create Seat Layout
+            </span>
+          </button>
+        )}
       </div>
 
       <style>{`

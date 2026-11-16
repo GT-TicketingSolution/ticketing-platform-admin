@@ -18,6 +18,7 @@ import { colors, typography } from "@/lib/theme";
 import { useToast } from "@/components/ui/Toast";
 import { confirmDelete } from "@/lib/notify";
 import TransactionDetailsModal from "@/components/modals/TransactionDetailsModal";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import {
   useTransactionList,
   fetchTransactionList,
@@ -33,7 +34,6 @@ import {
   fetchAllPages,
 } from "@/lib/exportUtils";
 
-const ITEMS_PER_PAGE = 10;
 
 // ── Status badge renderer ─────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
@@ -73,6 +73,7 @@ export default function TransactionsPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
 
@@ -84,8 +85,24 @@ export default function TransactionsPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Reset to page 1 on filter change
+  useInitFromUrl({
+    page: (v) => { const n = Number(v); if (n > 0) setCurrentPage(n); },
+    limit: (v) => { const n = Number(v); if (n > 0) setPageSize(n); },
+    search: (v) => { setSearchQuery(v); setDebouncedSearch(v); },
+    attractionId: (v) => setSelectedAttractionId(v),
+    paymentMode: (v) => setSelectedPaymentMode(v),
+    status: (v) => setSelectedStatus(v),
+    fromDate: (v) => setFromDate(v),
+    toDate: (v) => setToDate(v),
+  });
+
+  const isInitialFilterMount = useRef(true);
+  // Reset to page 1 on filter change (skip initial mount)
   useEffect(() => {
+    if (isInitialFilterMount.current) {
+      isInitialFilterMount.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [debouncedSearch, selectedAttractionId, selectedPaymentMode, selectedStatus, fromDate, toDate]);
 
@@ -117,7 +134,7 @@ export default function TransactionsPage() {
   // ── API ──────────────────────────────────────────────────────────────────
   const queryParams: TransactionListParams = {
     page: currentPage,
-    limit: ITEMS_PER_PAGE,
+    limit: pageSize,
     search: debouncedSearch || undefined,
     attractionId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
     paymentMode: selectedPaymentMode !== "All" ? selectedPaymentMode : undefined,
@@ -126,11 +143,13 @@ export default function TransactionsPage() {
     toDate: toDate || undefined,
   };
 
+  useSyncParamsToUrl(queryParams);
+
   const { data, isLoading, isFetching, isError } = useTransactionList(queryParams);
   const deleteTransaction = useDeleteTransaction();
 
   const transactions = data?.items ?? [];
-  const pagination = data?.pagination ?? { page: 1, limit: ITEMS_PER_PAGE, total: 0, totalPages: 0 };
+  const pagination = data?.pagination ?? { page: 1, limit: pageSize, total: 0, totalPages: 0 };
 
   // Accumulate unique attractions from transaction list responses so dropdown options remain stable
   const [allAttractions, setAllAttractions] = useState<Array<{ id: string; name: string }>>([]);
@@ -229,7 +248,7 @@ export default function TransactionsPage() {
     };
 
     if (scope === "current") {
-      const res = await fetchTransactionList({ ...base, page: currentPage, limit: ITEMS_PER_PAGE });
+      const res = await fetchTransactionList({ ...base, page: currentPage, limit: pageSize });
       return res.items;
     } else {
       return await fetchAllPages<TransactionListItem>((page, limit) =>
@@ -253,7 +272,7 @@ export default function TransactionsPage() {
         filename: `Transactions_${scopeLabel}_${dateKey}.pdf`,
         orientation: "landscape",
         columns: [
-          { header: "#", accessor: (_, i) => (scope === "all" ? i + 1 : (currentPage - 1) * ITEMS_PER_PAGE + i + 1), width: "30px" },
+          { header: "#", accessor: (_, i) => (scope === "all" ? i + 1 : (currentPage - 1) * pageSize + i + 1), width: "30px" },
           { header: "Invoice Number", accessor: (t) => t.invoiceNumber || t.transactionId || "-" },
           { header: "Customer", accessor: (t) => t.customer?.name || t.customerName || "-" },
           { header: "Mobile", accessor: (t) => t.customer?.mobileNumber || t.mobileNumber || "-" },
@@ -308,7 +327,7 @@ export default function TransactionsPage() {
       const rows = items.map((t, i) => {
         const dStr = t.dateTime || t.transactionDate;
         return [
-          scope === "all" ? i + 1 : (currentPage - 1) * ITEMS_PER_PAGE + i + 1,
+          scope === "all" ? i + 1 : (currentPage - 1) * pageSize + i + 1,
           t.invoiceNumber || t.transactionId || "-",
           t.customer?.name || t.customerName || "-",
           t.customer?.mobileNumber || t.mobileNumber || "-",
@@ -567,9 +586,10 @@ export default function TransactionsPage() {
         ]}
         data={transactions}
         keyExtractor={(item) => item.id}
-        pageSize={ITEMS_PER_PAGE}
+        pageSize={pageSize}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
+        onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1); }}
         totalItems={pagination.total}
         totalPages={pagination.totalPages}
         showSNo={true}

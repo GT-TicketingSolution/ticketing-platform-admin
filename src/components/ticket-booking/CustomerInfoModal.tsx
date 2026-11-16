@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useProfileQuery } from "@/hooks/useAuthQueries";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 import {
   AlertCircle,
   ArrowLeft,
@@ -66,19 +67,21 @@ function ProcessPaymentModal({
   grandTotal: number;
   attractionName: string;
 }) {
+  useModalBodyLock(isOpen);
   const [payMethod, setPayMethod] = useState<"cash" | "card" | "upi">("cash");
   const [amtRcv, setAmtRcv] = useState("");
   const [selectedNotes, setSelectedNotes] = useState<number[]>([]);
-  const defaultCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+  const defaultCash = grandTotal > 0 ? grandTotal.toFixed(2) : "";
   const isOnline = payMethod === "upi" || payMethod === "card";
   const numAmtRcv = parseFloat(amtRcv || "0");
   const change = isOnline ? 0 : (amtRcv ? Math.max(0, numAmtRcv - grandTotal) : 0);
-  const isCashAmountValid = isOnline || (amtRcv.trim() !== "" && numAmtRcv >= grandTotal);
+  const isCashLessThanDue = payMethod === "cash" && (amtRcv.trim() === "" || isNaN(numAmtRcv) || numAmtRcv < grandTotal);
+  const isCashAmountValid = isOnline || !isCashLessThanDue;
 
   useEffect(() => {
     if (isOpen) {
       setPayMethod("cash");
-      const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+      const initialCash = grandTotal > 0 ? grandTotal.toFixed(2) : "";
       setAmtRcv(initialCash);
       setSelectedNotes([]);
     }
@@ -89,24 +92,22 @@ function ProcessPaymentModal({
       setAmtRcv(grandTotal.toFixed(2));
       setSelectedNotes([]);
     } else if (payMethod === "cash") {
-      const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+      const initialCash = grandTotal > 0 ? grandTotal.toFixed(2) : "";
       setAmtRcv(initialCash);
       setSelectedNotes([]);
     }
   }, [payMethod, grandTotal]);
 
   const handleQuickNoteClick = (noteVal: number) => {
-    const defaultBase = grandTotal > 0 ? Math.ceil(grandTotal / 10) * 10 : 0;
-    const currentAmt = amtRcv.trim() !== "" ? parseFloat(amtRcv) : defaultBase;
-    const base = isNaN(currentAmt) ? defaultBase : currentAmt;
-    const nextAmt = base + noteVal;
-    setAmtRcv(nextAmt.toString());
-    setSelectedNotes((prev) => [...prev, noteVal]);
+    const newSelectedNotes = [...selectedNotes, noteVal];
+    const totalFromNotes = newSelectedNotes.reduce((sum, n) => sum + n, 0);
+    setSelectedNotes(newSelectedNotes);
+    setAmtRcv(totalFromNotes.toString());
   };
 
   const handleClearNotes = () => {
     setSelectedNotes([]);
-    const initialCash = grandTotal > 0 ? (Math.ceil(grandTotal / 10) * 10).toString() : "";
+    const initialCash = grandTotal > 0 ? grandTotal.toFixed(2) : "";
     setAmtRcv(initialCash);
   };
 
@@ -153,9 +154,9 @@ function ProcessPaymentModal({
         padding: "16px",
         backdropFilter: "blur(3px)",
       }}
-      onClick={onClose}
     >
       <div
+        className="process-payment-modal-card"
         style={{
           background: "#FFFFFF",
           borderRadius: "20px",
@@ -168,7 +169,7 @@ function ProcessPaymentModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ padding: "18px 24px 0 24px" }}>
+        <div className="process-payment-modal-header" style={{ padding: "18px 24px 0 24px" }}>
           <h2 style={{ margin: 0, fontWeight: 700, fontSize: "18px", lineHeight: "22px", color: "#011B2F" }}>
             Process Payment
           </h2>
@@ -179,9 +180,9 @@ function ProcessPaymentModal({
 
         <div style={{ height: "0.5px", background: "rgba(179,175,175,0.6)", margin: "14px 0 0 0" }} />
 
-        <div style={{ padding: "18px 24px 22px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+        <div className="process-payment-modal-body" style={{ padding: "18px 24px 22px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
           {/* Amount Due Card */}
-          <div style={{ background: "#002A45", borderRadius: "16px", padding: "14px 18px", textAlign: "center" }}>
+          <div className="process-payment-amount-due" style={{ background: "#002A45", borderRadius: "16px", padding: "14px 18px", textAlign: "center" }}>
             <p style={{ margin: 0, fontWeight: 800, fontSize: "14px", color: "#7599B0", letterSpacing: "0.05em" }}>
               AMOUNT DUE
             </p>
@@ -199,6 +200,7 @@ function ProcessPaymentModal({
               {methods.map((m) => (
                 <div
                   key={m.key}
+                  className="process-payment-method-btn"
                   onClick={() => setPayMethod(m.key)}
                   style={{
                     flex: 1,
@@ -258,7 +260,7 @@ function ProcessPaymentModal({
                   </button>
                 )}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <div className="process-payment-notes-grid" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {[
                   [
                     { label: "₹10", val: 10 },
@@ -278,6 +280,7 @@ function ProcessPaymentModal({
                       return (
                         <button
                           key={item.label}
+                          className="process-payment-note-btn"
                           type="button"
                           onClick={() => handleQuickNoteClick(item.val)}
                           style={{
@@ -337,43 +340,64 @@ function ProcessPaymentModal({
                 CHANGE RETURN
               </p>
             </div>
-            <div style={{ display: "flex", gap: "12px" }}>
-              <div
-                style={{
-                  flex: 1,
-                  height: "36px",
-                  background: "#FFFFFF",
-                  border: "1.5px solid rgba(179,175,175,0.51)",
-                  borderRadius: "10px",
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "0 10px",
-                }}
-              >
-                <span style={{ fontWeight: 800, fontSize: "14px", color: "#173F63" }}>Rs.</span>
-                <input
-                  type="number"
-                  disabled={isOnline}
-                  value={amtRcv}
-                  onChange={(e) => setAmtRcv(e.target.value)}
-                  placeholder="0.00"
-                  step="any"
-                  min="0"
+            <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                <div
+                  className="process-payment-input-box"
                   style={{
-                    flex: 1,
-                    border: "none",
-                    outline: "none",
-                    fontFamily: "'Plus Jakarta Sans',sans-serif",
-                    fontWeight: 800,
-                    fontSize: "14px",
-                    color: "#173F63",
-                    background: "transparent",
-                    marginLeft: "4px",
-                    cursor: isOnline ? "not-allowed" : "text",
+                    width: "100%",
+                    height: "36px",
+                    background: isOnline ? "#F8FAFC" : "#FFFFFF",
+                    border: isCashLessThanDue ? "1.5px solid #EF4444" : "1.5px solid rgba(179,175,175,0.51)",
+                    borderRadius: "10px",
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "0 10px",
+                    boxSizing: "border-box",
                   }}
-                />
+                >
+                  <span style={{ fontWeight: 800, fontSize: "14px", color: isCashLessThanDue ? "#EF4444" : "#173F63" }}>Rs.</span>
+                  <input
+                    type="number"
+                    disabled={isOnline}
+                    value={amtRcv}
+                    onChange={(e) => {
+                      setAmtRcv(e.target.value);
+                      setSelectedNotes([]);
+                    }}
+                    placeholder="0.00"
+                    step="any"
+                    min="0"
+                    style={{
+                      flex: 1,
+                      border: "none",
+                      outline: "none",
+                      fontFamily: "'Plus Jakarta Sans',sans-serif",
+                      fontWeight: 800,
+                      fontSize: "14px",
+                      color: isCashLessThanDue ? "#EF4444" : "#173F63",
+                      background: "transparent",
+                      marginLeft: "4px",
+                      cursor: isOnline ? "not-allowed" : "text",
+                    }}
+                  />
+                </div>
+                {isCashLessThanDue && (
+                  <span
+                    style={{
+                      marginTop: "4px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      color: "#DC2626",
+                      lineHeight: "1.3",
+                    }}
+                  >
+                    Amount received cannot be less than Amount Due (Rs.{grandTotal.toFixed(2)})
+                  </span>
+                )}
               </div>
               <div
+                className="process-payment-input-box"
                 style={{
                   flex: 1,
                   height: "36px",
@@ -383,6 +407,7 @@ function ProcessPaymentModal({
                   display: "flex",
                   alignItems: "center",
                   padding: "0 10px",
+                  boxSizing: "border-box",
                 }}
               >
                 <span style={{ fontWeight: 800, fontSize: "14px", color: "#173F63" }}>Rs.{change.toFixed(2)}</span>
@@ -396,7 +421,7 @@ function ProcessPaymentModal({
               onConfirm();
             }}
             disabled={!isCashAmountValid}
-            className="pay-confirm-btn"
+            className="pay-confirm-btn process-payment-confirm-btn"
             style={{
               width: "100%",
               height: "46px",
@@ -418,6 +443,40 @@ function ProcessPaymentModal({
       </div>
       <style jsx global>{`
         .pay-confirm-btn:hover { background: #e5af36 !important; transform: translateY(-1px); }
+        @media (min-width: 1024px) {
+          .process-payment-modal-card {
+            width: 630px !important;
+            max-width: 90vw !important;
+          }
+          .process-payment-modal-header {
+            padding: 22px 28px 0 28px !important;
+          }
+          .process-payment-modal-body {
+            padding: 20px 28px 26px 28px !important;
+            gap: 18px !important;
+          }
+          .process-payment-amount-due {
+            padding: 18px 20px !important;
+          }
+          .process-payment-method-btn {
+            padding: 15px 10px !important;
+          }
+          .process-payment-notes-grid {
+            gap: 8px !important;
+          }
+          .process-payment-note-btn {
+            height: 38px !important;
+            font-size: 13px !important;
+          }
+          .process-payment-input-box {
+            height: 44px !important;
+          }
+          .process-payment-confirm-btn {
+            height: 52px !important;
+            font-size: 17px !important;
+            margin-top: 6px !important;
+          }
+        }
       `}</style>
     </div>
   );
@@ -474,8 +533,10 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
         <title>Ticket Bill</title>
         <meta charset="utf-8" />
         <style>
-          @page { size: 80mm auto; margin: 0; }
+          @page { size: 80mm auto; margin: 0 !important; }
           html {
+            margin: 0 !important;
+            padding: 0 !important;
             height: fit-content;
             min-height: unset;
           }
@@ -485,8 +546,8 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
             background: #FFFFFF;
             width: 70mm;
             max-width: 70mm;
-            margin: 0 auto;
-            padding: 3mm 4.5mm;
+            margin: 0 auto !important;
+            padding: 0 4.5mm !important;
             box-sizing: border-box;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -596,6 +657,7 @@ function TicketGeneratedModal({
   gstAmount?: number;
   roundOff?: number;
 }) {
+  useModalBodyLock(isOpen);
   const booking = confirmedData?.booking || (confirmedData as any)?.data || (confirmedData as any);
   const qrCodes: Array<{ attractionId?: string; qrCode: string;[key: string]: unknown }> =
     confirmedData?.qrCodes || (confirmedData as any)?.data?.qrCodes || [];
@@ -751,7 +813,6 @@ function TicketGeneratedModal({
         backdropFilter: "blur(4px)",
         overflowY: "auto",
       }}
-      onClick={onClose}
     >
       <div
         className="ticket-modal-content"
@@ -908,7 +969,7 @@ function TicketGeneratedModal({
                 <thead>
                   <tr style={{ borderBottom: "1.5px solid #000000", textAlign: "left", fontWeight: 900 }}>
                     <th style={{ paddingBottom: "4px", width: "12%" }}>S.No.</th>
-                    <th style={{ paddingBottom: "4px", width: "50%" }}>Category / Item</th>
+                    <th style={{ paddingBottom: "4px", width: "50%" }}>Items/SAC</th>
                     <th style={{ paddingBottom: "4px", width: "15%", textAlign: "center" }}>Qty</th>
                     <th style={{ paddingBottom: "4px", width: "23%", textAlign: "right" }}>Amount</th>
                   </tr>
@@ -918,7 +979,12 @@ function TicketGeneratedModal({
                     itemsList.map((item, idx) => (
                       <tr key={idx} style={{ fontWeight: 700 }}>
                         <td style={{ paddingTop: "5px", verticalAlign: "top" }}>{item.sNo}</td>
-                        <td style={{ paddingTop: "5px" }}>{item.name}</td>
+                        <td style={{ paddingTop: "5px", verticalAlign: "top" }}>
+                          <div>{item.name}</div>
+                          <div style={{ fontSize: "10px", color: "#000000", fontWeight: 400, marginTop: "1px" }}>
+                            SAC: 996411
+                          </div>
+                        </td>
                         <td style={{ paddingTop: "5px", textAlign: "center", verticalAlign: "top" }}>{item.qty}</td>
                         <td style={{ paddingTop: "5px", textAlign: "right", verticalAlign: "top" }}>
                           ₹{item.amount.toFixed(2)}
@@ -927,10 +993,15 @@ function TicketGeneratedModal({
                     ))
                   ) : (
                     <tr style={{ fontWeight: 700 }}>
-                      <td style={{ paddingTop: "5px" }}>1</td>
-                      <td style={{ paddingTop: "5px" }}>{attractionName || "-"}</td>
-                      <td style={{ paddingTop: "5px", textAlign: "center" }}>{totalPax || 1}</td>
-                      <td style={{ paddingTop: "5px", textAlign: "right" }}>₹{calculatedSubtotal.toFixed(2)}</td>
+                      <td style={{ paddingTop: "5px", verticalAlign: "top" }}>1</td>
+                      <td style={{ paddingTop: "5px", verticalAlign: "top" }}>
+                        <div>{attractionName || "-"}</div>
+                        <div style={{ fontSize: "10px", color: "#000000", fontWeight: 400, marginTop: "1px" }}>
+                          SAC: 996411
+                        </div>
+                      </td>
+                      <td style={{ paddingTop: "5px", textAlign: "center", verticalAlign: "top" }}>{totalPax || 1}</td>
+                      <td style={{ paddingTop: "5px", textAlign: "right", verticalAlign: "top" }}>₹{calculatedSubtotal.toFixed(2)}</td>
                     </tr>
                   )}
                 </tbody>
@@ -976,185 +1047,121 @@ function TicketGeneratedModal({
               </div>
             </div>
 
-            {/* Notes and QR Codes Section (Side-by-Side) */}
-            {qrCodes && qrCodes.length > 0 ? (
+            {/* Notes / Instructions Section (Full Width Above Scanners) */}
+            <div
+              style={{
+                width: "100%",
+                textAlign: "left",
+                fontSize: "11px",
+                lineHeight: "1.5",
+                fontWeight: 700,
+                color: "#000000",
+                padding: "8px 0",
+                borderBottom: "1px dashed #000000",
+                boxSizing: "border-box",
+                wordBreak: "break-word",
+              }}
+            >
+              <div>NOTE:</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "3px", width: "100%" }}>
+                <div style={{ width: "100%" }}>1. कम से कम 50 सवारी होने पर ही ट्रेन रवाना होगी</div>
+                <div style={{ width: "100%" }}>2. कृपया किसी भी स्थिति में ट्रेन से हाथ बाहर ना निकालें।</div>
+                <div style={{ width: "100%" }}>3. यात्री अपने सामान की सुरक्षा स्वयं करें।</div>
+                <div style={{ width: "100%" }}>4. टिकट लेने के पश्चात् कोई रिफंड नहीं किया जायेगा।</div>
+                <div style={{ width: "100%" }}>5. नाव में खड़ा होना और पानी में हाथ डालना प्रतिबंधित है।</div>
+                <div style={{ width: "100%" }}>6. पानी में कोई भी वस्तु फेंकना मना है।</div>
+                <div style={{ width: "100%" }}>7. नाव को नुकसान होने पर यात्री से वसूली की जाएगी।</div>
+                <div style={{ width: "100%" }}>8. नौकायन के दौरान लाइफ जैकेट पहन अनिवार्य है।</div>
+                <div style={{ width: "100%" }}>9. नाव में खाना-पीना वर्जित है।</div>
+                <div style={{ width: "100%" }}>10. सभी मामले केवल उदयपुर न्याय क्षेत्र में मान्य होंगे।</div>
+                <div style={{ width: "100%" }}>11. प्रवेश का अधिकार प्रबंधन के पास सुरक्षित है (नगर निगम द्वारा स्वीकृत)</div>
+              </div>
+            </div>
+
+            {/* QR Codes / Scanners Section (Centered Below Notes) */}
+            {qrCodes && qrCodes.length > 0 && (
               <div
                 style={{
+                  width: "100%",
                   display: "flex",
-                  flexDirection: "row",
-                  alignItems: "stretch",
-                  justifyContent: "space-between",
-                  gap: "6px",
+                  flexDirection: "column",
+                  alignItems: "center",
                   padding: "10px 0 8px 0",
                   borderBottom: "1px dashed #000000",
+                  boxSizing: "border-box",
                 }}
               >
-                {/* Left: Notes / Instructions (40% width) */}
                 <div
                   style={{
-                    width: "40%",
-                    flex: "0 0 40%",
-                    textAlign: "left",
-                    fontSize: "8px",
-                    lineHeight: "1.3",
-                    fontWeight: 600,
-                    color: "#000000",
-                    boxSizing: "border-box",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                    <div>1. कम से कम 50 सवारी होने पर ही ट्रेन रवाना होगी</div>
-                    <div>2. कृपया किसी भी स्थिति में ट्रेन से हाथ बाहर ना निकालें।</div>
-                    <div>3. यात्री अपने सामान की सुरक्षा स्वयं करें।</div>
-                    <div>4. टिकट लेने के पश्चात् कोई रिफंड नहीं किया जायेगा।</div>
-                    <div>5. नाव में खड़ा होना और पानी में हाथ डालना प्रतिबंधित है।</div>
-                    <div>6. पानी में कोई भी वस्तु फेंकना मना है।</div>
-                    <div>7. नाव को नुकसान होने पर यात्री से वसूली की जाएगी।</div>
-                    <div>8. नौकायन के दौरान लाइफ जैकेट पहन अनिवार्य है।</div>
-                    <div>9. नाव में खाना-पीना वर्जित है।</div>
-                    <div>10. सभी मामले केवल उदयपुर न्याय क्षेत्र में मान्य होंगे।</div>
-                    <div>11. प्रवेश का अधिकार प्रबंधन के पास सुरक्षित है (नगर निगम द्वारा स्वीकृत)</div>
-                  </div>
-                </div>
-
-                {/* Right: QR Codes Column (60% width) */}
-                <div
-                  style={{
-                    width: "60%",
-                    flex: "0 0 60%",
                     display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    boxSizing: "border-box",
+                    flexWrap: "wrap",
+                    justifyContent: "center",
+                    alignItems: "flex-start",
+                    gap: "12px",
+                    width: "100%",
                   }}
                 >
-                  {/* QR codes container: 2-column grid starting from left for >= 3, or column stack for 1 or 2 */}
-                  <div
-                    style={
-                      qrCodes.length >= 3
-                        ? {
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
-                            gap: "4px",
-                            rowGap: "3px",
-                            width: "100%",
-                            justifyItems: "center",
-                            alignContent: "start",
-                            gridAutoRows: "max-content",
-                          }
-                        : {
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: "6px",
-                            width: "100%",
-                          }
-                    }
-                  >
-                    {qrCodes.map((qrItem, idx) => {
-                      const matchedAttraction = bookingSummary.find((b) => b.attractionId === qrItem.attractionId);
-                      const attractionLabel = matchedAttraction?.attractionName || (qrCodes.length > 1 ? `Station ${idx + 1}` : "Scan for Entry");
-                      const isGrid = qrCodes.length >= 3;
-                      const qrSize = qrCodes.length === 1 ? "75px" : qrCodes.length === 2 ? "70px" : "60px";
+                  {qrCodes.map((qrItem, idx) => {
+                    const matchedAttraction = bookingSummary.find((b) => b.attractionId === qrItem.attractionId);
+                    const attractionLabel = matchedAttraction?.attractionName || (qrCodes.length > 1 ? `Station ${idx + 1}` : (attractionName || "Entry"));
+                    const qrSize = qrCodes.length === 1 ? "85px" : "75px";
 
-                      return (
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          width: qrCodes.length === 1 ? "100%" : "calc(50% - 8px)",
+                          maxWidth: qrCodes.length === 1 ? "140px" : "130px",
+                          boxSizing: "border-box",
+                        }}
+                      >
                         <div
-                          key={idx}
                           style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            boxSizing: "border-box",
-                            width: "100%",
-                            border: "none",
-                            padding: "0",
-                            margin: "0",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            color: "#000000",
+                            marginBottom: "2px",
+                            textAlign: "center",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.02em",
+                            lineHeight: 1.2,
+                            wordBreak: "break-word",
                           }}
                         >
-                          <div
-                            style={{
-                              fontSize: isGrid ? "8.5px" : "10px",
-                              fontWeight: 400,
-                              color: "#000000",
-                              marginBottom: "1px",
-                              textAlign: "center",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.02em",
-                              lineHeight: 1.1,
-                              wordBreak: "break-word",
-                              minHeight: isGrid ? "19px" : undefined,
-                              display: "flex",
-                              alignItems: "flex-end",
-                              justifyContent: "center",
-                              width: "100%",
-                            }}
-                          >
-                            {attractionLabel}
-                          </div>
-                          <img
-                            src={qrItem.qrCode}
-                            alt={`${attractionLabel} QR Code`}
-                            style={{
-                              width: qrSize,
-                              height: qrSize,
-                              objectFit: "contain",
-                              background: "#FFFFFF",
-                              display: "block",
-                            }}
-                          />
+                          {attractionLabel}
                         </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Single common Scan for Entry — always fixed at the bottom of the QR column */}
-                  <div
-                    style={{
-                      fontSize: "8.5px",
-                      fontWeight: 400,
-                      color: "#000000",
-                      marginTop: "auto",
-                      paddingTop: "6px",
-                      textAlign: "center",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.02em",
-                      lineHeight: 1.1,
-                      width: "100%",
-                    }}
-                  >
-                    Scan for Entry
-                  </div>
+                        <img
+                          src={qrItem.qrCode}
+                          alt={`${attractionLabel} QR Code`}
+                          style={{
+                            width: qrSize,
+                            height: qrSize,
+                            objectFit: "contain",
+                            background: "#FFFFFF",
+                            display: "block",
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
-            ) : (
-              /* Fallback Notes if no QR codes */
-              <div
-                style={{
-                  marginTop: "6px",
-                  paddingTop: "2px",
-                  paddingBottom: "8px",
-                  borderBottom: "1px dashed #000000",
-                  textAlign: "left",
-                  fontSize: "9px",
-                  lineHeight: "1.4",
-                  fontWeight: 600,
-                  color: "#000000",
-                }}
-              >
-                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                  <div>1. कम से कम 50 सवारी होने पर ही ट्रेन रवाना होगी</div>
-                  <div>2. कृपया किसी भी स्थिति में ट्रेन से हाथ बाहर ना निकालें।</div>
-                  <div>3. यात्री अपने सामान की सुरक्षा स्वयं करें।</div>
-                  <div>4. टिकट लेने के पश्चात् कोई रिफंड नहीं किया जायेगा।</div>
-                  <div>5. नाव में खड़ा होना और पानी में हाथ डालना प्रतिबंधित है।</div>
-                  <div>6. पानी में कोई भी वस्तु फेंकना मना है।</div>
-                  <div>7. नाव को नुकसान होने पर यात्री से वसूली की जाएगी।</div>
-                  <div>8. नौकायन के दौरान लाइफ जैकेट पहन अनिवार्य है।</div>
-                  <div>9. नाव में खाना-पीना वर्जित है।</div>
-                  <div>10. सभी मामले केवल उदयपुर न्याय क्षेत्र में मान्य होंगे।</div>
-                  <div>11. प्रवेश का अधिकार प्रबंधन के पास सुरक्षित है (नगर निगम द्वारा स्वीकृत)</div>
+
+                <div
+                  style={{
+                    fontSize: "9px",
+                    fontWeight: 700,
+                    color: "#000000",
+                    marginTop: "6px",
+                    textAlign: "center",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    width: "100%",
+                  }}
+                >
+                  SCAN FOR ENTRY
                 </div>
               </div>
             )}
@@ -1162,6 +1169,9 @@ function TicketGeneratedModal({
             {/* Clean Terms / Notice */}
             <div style={{ marginTop: "6px", paddingTop: "4px", fontSize: "11px", color: "#000000", lineHeight: "1.4", textAlign: "center", fontWeight: 700 }}>
               <div style={{ fontWeight: 900, marginBottom: "2px", letterSpacing: "0.04em" }}>THANKS FOR VISIT</div>
+              <div style={{ fontSize: "10px", fontWeight: 600 }}>
+                Instagram: @toy_train_udaipur
+              </div>
               <div style={{ fontSize: "10px", fontWeight: 600 }}>
                 Please present this QR code at the entrance gate. Keep this ticket safe.
               </div>
@@ -1220,6 +1230,10 @@ function TicketGeneratedModal({
       {/* Print stylesheet for clean thermal / receipt printout */}
       <style jsx global>{`
         @media print {
+          @page {
+            size: 80mm auto;
+            margin: 0 !important;
+          }
           body * {
             visibility: hidden !important;
           }
@@ -1230,11 +1244,12 @@ function TicketGeneratedModal({
           #printable-ticket-receipt {
             position: fixed !important;
             left: 0 !important;
+            right: 0 !important;
             top: 0 !important;
             width: 70mm !important;
             max-width: 70mm !important;
             margin: 0 auto !important;
-            padding: 3mm 4.5mm !important;
+            padding: 0 4.5mm !important;
             box-sizing: border-box !important;
             box-shadow: none !important;
             border: none !important;
@@ -1449,6 +1464,7 @@ export default function CustomerInfoModal({
   onContinue,
   bookingSummary,
 }: CustomerInfoModalProps) {
+  useModalBodyLock(isOpen);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -1558,7 +1574,6 @@ export default function CustomerInfoModal({
           padding: "16px",
           backdropFilter: "blur(3px)",
         }}
-        onClick={onBack}
       >
         {/* Modal Dialog Container - Frame 24 / Rectangle 170 */}
         <div

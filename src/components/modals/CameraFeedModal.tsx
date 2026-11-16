@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { X, Maximize2, Star, Play, Pause, Volume2, VolumeX, RefreshCw } from "lucide-react";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface CameraFeedModalProps {
   isOpen: boolean;
@@ -22,6 +23,7 @@ export default function CameraFeedModal({
   onToggleFavorite,
   videoBgUrl,
 }: CameraFeedModalProps) {
+  useModalBodyLock(isOpen);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(true);
   const [currentTime, setCurrentTime] = useState("");
@@ -51,7 +53,6 @@ export default function CameraFeedModal({
         zIndex: 1100,
         padding: "20px",
       }}
-      onClick={onClose}
     >
       <div
         style={{

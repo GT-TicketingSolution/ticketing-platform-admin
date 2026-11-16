@@ -46,6 +46,17 @@ export const showErrorOnce = (message: string, title: string = "Error") => {
   }
 };
 
+// ── Request Timeout
+// Configurable via NEXT_PUBLIC_API_TIMEOUT_MS (inlined at build time).
+// Invalid, empty or non-positive values fall back to the default — never 0,
+// which would disable the timeout entirely in Axios.
+const DEFAULT_API_TIMEOUT_MS = 60000;
+
+const API_TIMEOUT_MS = (() => {
+  const value = Number(process.env.NEXT_PUBLIC_API_TIMEOUT_MS);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_API_TIMEOUT_MS;
+})();
+
 // Axios Instance
 const axiosInstance = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || "/api",
@@ -53,7 +64,7 @@ const axiosInstance = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 15000,
+  timeout: API_TIMEOUT_MS,
 });
 
 //Request Interceptor 

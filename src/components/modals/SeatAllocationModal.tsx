@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { X, Armchair, Check, Search, Loader2 } from "lucide-react";
 import { SeatConfigData } from "@/components/modals/CreateSeatModal";
 import { useSeatLayouts } from "@/hooks/useSeatQueries";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface SeatAllocationModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ export default function SeatAllocationModal({
   onSelectMultiple,
   isLoading = false,
 }: SeatAllocationModalProps) {
+  useModalBodyLock(isOpen);
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -176,7 +178,6 @@ export default function SeatAllocationModal({
         zIndex: 9000,
         padding: "20px",
       }}
-      onClick={onClose}
     >
       <div
         style={{

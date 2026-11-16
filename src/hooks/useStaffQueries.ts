@@ -4,7 +4,9 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tansta
 import { getData, postData, patchData, deleteData } from "@/lib/api/apiService";
 import { AppUrl } from "@/lib/api/endpoints";
 import { showSuccessNotify } from "@/lib/notify";
+import { showNotify } from "notify-bolt";
 import { showErrorOnce } from "@/lib/api/axiosConfig";
+import { authKeys } from "@/hooks/useAuthQueries";
 import {
   StaffListResponse,
   StaffUser,
@@ -52,6 +54,7 @@ export async function fetchStaffList(params?: StaffQueryParams): Promise<StaffLi
     const total = payload.pagination?.total ?? payload.items.length;
     return {
       items: payload.items,
+      staffSystemModules: Array.isArray(payload.staffSystemModules) ? payload.staffSystemModules : [],
       pagination: payload.pagination || {
         page,
         limit,
@@ -63,6 +66,7 @@ export async function fetchStaffList(params?: StaffQueryParams): Promise<StaffLi
   if (Array.isArray(payload)) {
     return {
       items: payload,
+      staffSystemModules: [],
       pagination: {
         page,
         limit,
@@ -73,6 +77,7 @@ export async function fetchStaffList(params?: StaffQueryParams): Promise<StaffLi
   }
   return {
     items: [],
+    staffSystemModules: [],
     pagination: { page: 1, limit, total: 0, totalPages: 0 },
   };
 }
@@ -102,19 +107,6 @@ export function useStaffList(params?: StaffQueryParams) {
     placeholderData: keepPreviousData,
     staleTime: 0,
     refetchOnWindowFocus: true,
-  });
-}
-
-/**
- * Fetch a single staff member by ID (GET /api/admin/staff/:staffId)
- */
-export function useStaffMember(staffId: string, enabled = true) {
-  return useQuery<{ staff: StaffUser }>({
-    queryKey: staffKeys.detail(staffId),
-    queryFn: async () => {
-      return getData<{ staff: StaffUser }>(AppUrl.staff.get(staffId));
-    },
-    enabled: Boolean(staffId) && enabled,
   });
 }
 
@@ -184,35 +176,6 @@ export function useUpdateStaff() {
 }
 
 /**
- * Disable staff member mutation (PATCH /api/admin/staff/:staffId/disable)
- */
-export function useDisableStaff() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (staffId: string) => {
-      return patchData<{ message: string; staff: StaffUser }>(
-        AppUrl.staff.disable(staffId),
-        {}
-      );
-    },
-    onSuccess: (_, staffId) => {
-      queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: staffKeys.detail(staffId) });
-      showSuccessNotify("Staff account has been disabled.", "Staff Disabled");
-    },
-    onError: (error: any) => {
-      const message =
-        error?.response?.data?.message ||
-        error?.error?.message ||
-        error?.message ||
-        "Failed to disable staff.";
-      showErrorOnce(message, "Action Failed");
-    },
-  });
-}
-
-/**
  * Delete a staff member (DELETE /api/admin/staff/:staffId)
  */
 export function useDeleteStaff() {
@@ -222,10 +185,14 @@ export function useDeleteStaff() {
     mutationFn: async (staffId: string) => {
       return deleteData<{ message: string; staff?: { id: string } }>(AppUrl.staff.delete(staffId));
     },
-    onSuccess: (_, staffId) => {
+    onSuccess: (data: any, staffId) => {
       queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
       queryClient.invalidateQueries({ queryKey: staffKeys.detail(staffId) });
-      showSuccessNotify("Staff member deleted successfully.", "Deleted");
+      const message =
+        data?.message ||
+        data?.data?.message ||
+        "Staff member deleted successfully.";
+      showSuccessNotify(message, "Deleted");
     },
     onError: (error: any) => {
       const message =
@@ -234,6 +201,75 @@ export function useDeleteStaff() {
         error?.message ||
         "Failed to delete staff member.";
       showErrorOnce(message, "Delete Failed");
+    },
+  });
+}
+
+/**
+ * Toggle Crowd Mode for authenticated staff member (PATCH /api/admin/staff/crowd-mode)
+ */
+export function useToggleCrowdMode() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: { isEnabled: boolean }) => {
+      return patchData<{
+        crowdModeAllowed: boolean;
+        crowdModeEnabled: boolean;
+        message: string;
+      }>(AppUrl.staff.crowdMode, payload, { skipErrorToast: true } as any);
+    },
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(authKeys.profile(), (old: any) => {
+        if (!old) return old;
+        const profile = old.profile || old.data?.profile;
+        if (!profile) return old;
+        const updated = {
+          ...profile,
+          crowdModeEnabled: variables.isEnabled,
+        };
+        return old.profile
+          ? { ...old, profile: updated }
+          : { ...old, data: { ...old.data, profile: updated } };
+      });
+      queryClient.invalidateQueries({ queryKey: authKeys.profile() });
+
+      const msg =
+        (data as any)?.message ||
+        `Crowd mode ${variables.isEnabled ? "enabled" : "disabled"} successfully.`;
+
+      showNotify({
+        title: "Success",
+        message: msg,
+        variant: "classic",
+        status: "success",
+        size: "sm",
+        animation: "slide-up",
+        showCloseIcon: true,
+        showConfirmButton: true,
+        confirmButtonText: "OK",
+        allowOutsideClick: true,
+      });
+    },
+    onError: (error: any) => {
+      const message =
+        error?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to update crowd mode.";
+
+      showNotify({
+        title: "Error",
+        message,
+        variant: "classic",
+        status: "error",
+        size: "sm",
+        animation: "slide-up",
+        showCloseIcon: true,
+        showConfirmButton: true,
+        confirmButtonText: "OK",
+        allowOutsideClick: true,
+      });
     },
   });
 }

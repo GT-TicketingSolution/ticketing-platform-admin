@@ -7,6 +7,7 @@ import {
   SeatConfigData,
   AisleOrientation,
 } from "@/app/(dashboard)/seat-management/types";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 export type { SeatConfigData };
 
@@ -28,6 +29,7 @@ export default function CreateSeatModal({
   onSave,
   isLoading = false,
 }: CreateSeatModalProps) {
+  useModalBodyLock(isOpen);
   // Form State
   const [name, setName] = useState<string>("");
   const [rows, setRows] = useState<number | "">(1);
@@ -284,7 +286,6 @@ export default function CreateSeatModal({
         zIndex: 9000,
         padding: "16px",
       }}
-      onClick={onClose}
     >
       <div
         style={{

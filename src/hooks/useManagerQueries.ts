@@ -300,6 +300,7 @@ export function useUpdateManagerPermissions() {
       );
     },
     onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: managerKeys.lists() });
       queryClient.invalidateQueries({ queryKey: managerKeys.permissions(variables.managerId) });
       showSuccessNotify("Manager permissions updated successfully.", "Permissions Updated");
     },
@@ -326,9 +327,13 @@ export function useDisableManager() {
         AppUrl.manager.disable(managerId)
       );
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: managerKeys.lists() });
-      showSuccessNotify("Manager account has been disabled.", "Manager Disabled");
+      const message =
+        data?.message ||
+        data?.data?.message ||
+        "Manager account has been disabled.";
+      showSuccessNotify(message, "Manager Deleted");
     },
     onError: (error: any) => {
       const message =

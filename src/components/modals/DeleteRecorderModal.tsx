@@ -3,6 +3,7 @@
 import React from "react";
 import { AlertTriangle, X, Trash2 } from "lucide-react";
 import { typography } from "@/lib/theme";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface DeleteRecorderModalProps {
   isOpen: boolean;
@@ -17,6 +18,8 @@ export default function DeleteRecorderModal({
   recorderName,
   onConfirmDelete,
 }: DeleteRecorderModalProps) {
+  useModalBodyLock(isOpen);
+
   if (!isOpen) return null;
 
   return (
@@ -32,7 +35,6 @@ export default function DeleteRecorderModal({
         zIndex: 1100,
         padding: "16px",
       }}
-      onClick={onClose}
     >
       <div
         style={{

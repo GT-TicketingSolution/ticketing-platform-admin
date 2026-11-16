@@ -37,10 +37,9 @@ export const AppUrl = {
   staff: {
     list: "/admin/staff",
     create: "/admin/staff",
-    get: (staffId: string) => `/admin/staff/${staffId}`,
     update: (staffId: string) => `/admin/staff/${staffId}`,
-    disable: (staffId: string) => `/admin/staff/${staffId}/disable`,
     delete: (staffId: string) => `/admin/staff/${staffId}`,
+    crowdMode: "/admin/staff/crowd-mode",
   },
 
   // Booking Management
@@ -78,7 +77,11 @@ export const AppUrl = {
     bulk: "/admin/attraction-management/bulk",
     update: (id: string) => `/admin/attraction-management/${id}`,
     delete: (id: string) => `/admin/attraction-management/${id}`,
-    assignSeat: (id: string) => `/admin/attraction-management/${id}/seat`,
+  },
+
+  // Attraction Seats Management
+  attractionSeats: {
+    delete: (id: string) => `/admin/attraction-seats/${id}`,
   },
 
   // Seat Layout Management
@@ -123,11 +126,7 @@ export const AppUrl = {
 
   // Reports
   reports: {
-    summary: "/admin/reports/summary",
-    attraction: "/admin/reports/attractions",
-    attractions: "/admin/reports/attractions",
-    payment: "/admin/reports/payment",
-    tickets: "/admin/reports/tickets",
+    admin: "/admin/reports",
     staff: "/admin/reports",
   },
 

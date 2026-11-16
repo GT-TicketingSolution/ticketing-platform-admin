@@ -4,6 +4,7 @@ import React from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { typography } from "@/lib/theme";
 import { Attraction } from "@/types/admin";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface DeleteAttractionModalProps {
   isOpen: boolean;
@@ -18,6 +19,8 @@ export default function DeleteAttractionModal({
   attraction,
   onConfirmDelete,
 }: DeleteAttractionModalProps) {
+  useModalBodyLock(isOpen);
+
   if (!isOpen || !attraction) return null;
 
   return (
@@ -33,7 +36,6 @@ export default function DeleteAttractionModal({
         zIndex: 1000,
         padding: "16px",
       }}
-      onClick={onClose}
     >
       <div
         style={{

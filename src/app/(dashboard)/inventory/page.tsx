@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   AlertTriangle,
   Plus,
@@ -19,9 +19,9 @@ import {
   InventoryItem,
   InventoryListParams,
 } from "@/hooks/useInventoryQueries";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import { useAttractionManagementList } from "@/hooks/useAttractionManagementQueries";
 
-const ITEMS_PER_PAGE = 10;
 
 export default function InventoryPage() {
   // ── Search & Filter State ──────────────────────────────────────────────────
@@ -32,6 +32,7 @@ export default function InventoryPage() {
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
   // ── Modal State ────────────────────────────────────────────────────────────
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
@@ -47,26 +48,42 @@ export default function InventoryPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Reset page when filters change
+  useInitFromUrl({
+    page: (v) => { const n = Number(v); if (n > 0) setCurrentPage(n); },
+    limit: (v) => { const n = Number(v); if (n > 0) setPageSize(n); },
+    search: (v) => { setSearchQuery(v); setDebouncedSearch(v); },
+    attractionId: (v) => setSelectedAttractionId(v),
+    dateFrom: (v) => setDateFrom(v),
+    dateTo: (v) => setDateTo(v),
+  });
+
+  const isInitialFilterMount = useRef(true);
+  // Reset page when filters change (skip initial mount)
   useEffect(() => {
+    if (isInitialFilterMount.current) {
+      isInitialFilterMount.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [debouncedSearch, selectedAttractionId, statusFilter, dateFrom, dateTo]);
 
   // ── Live API Queries ───────────────────────────────────────────────────────
   const queryParams: InventoryListParams = {
     page: currentPage,
-    limit: ITEMS_PER_PAGE,
+    limit: pageSize,
     search: debouncedSearch || undefined,
     attractionId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
   };
 
+  useSyncParamsToUrl(queryParams);
+
   const { data: inventoryData, isLoading, refetch } = useInventoryList(queryParams);
   const { data: attractionsData = [] } = useAttractionManagementList();
 
   const inventoryItems = inventoryData?.items ?? [];
-  const pagination = inventoryData?.pagination ?? { page: 1, limit: ITEMS_PER_PAGE, total: 0, totalPages: 0 };
+  const pagination = inventoryData?.pagination ?? { page: 1, limit: pageSize, total: 0, totalPages: 0 };
 
   // Attractions for filter dropdown & modal
   const attractionOptions = useMemo(() => {
@@ -807,9 +824,10 @@ export default function InventoryPage() {
         columns={columns}
         data={filteredItems}
         keyExtractor={(item) => item.id}
-        pageSize={ITEMS_PER_PAGE}
+        pageSize={pageSize}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
+        onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1); }}
         totalItems={pagination.total}
         totalPages={pagination.totalPages}
         showSNo={true}

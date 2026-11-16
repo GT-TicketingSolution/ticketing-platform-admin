@@ -1,10 +1,9 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import QRCode from "qrcode";
-import crypto from "crypto";
 import { eq } from "drizzle-orm";
 
 import { generateInvoiceNumber } from "@/services/invoice.service";
+import { generateBookingQRCode } from "@/lib/qr";
 
 import { db } from "@/db";
 import {
@@ -66,104 +65,6 @@ const createBookingSchema = z.object({
   attractions: z.array(attractionSchema).min(1),
 });
 
-/* =========================================================
-   QR PAYLOAD
-========================================================= */
-function createQrPayload({
-  bookingId,
-  invoiceNumber,
-  scannerInvoiceId,
-  attractionId,
-  attractionName,
-  categories,
-  date,
-}: {
-  bookingId: string;
-  invoiceNumber: string;
-  scannerInvoiceId: string;
-  attractionId: string;
-  attractionName: string;
-  categories: {
-    categoryId: string;
-    noOfVisitors: number;
-  }[];
-  date: string;
-}): string {
-  const secret = process.env.QR_SECRET;
-
-  if (!secret) {
-    throw new Error("QR_SECRET_NOT_CONFIGURED");
-  }
-
-  const data = JSON.stringify({
-    bookingId,
-    invoiceNumber,
-    scannerInvoiceId,
-    attractionId,
-    attractionName,
-    categories,
-    date,
-  });
-
-  const signature = crypto
-    .createHmac("sha256", secret)
-    .update(data)
-    .digest("hex");
-
-  return JSON.stringify({
-    bookingId,
-    invoiceNumber,
-    scannerInvoiceId,
-    attractionId,
-    attractionName,
-    categories,
-    date,
-    signature,
-  });
-}
-
-/* =========================================================
-   GENERATE QR
-========================================================= */
-
-async function generateBookingQRCode({
-  bookingId,
-  invoiceNumber,
-  scannerInvoiceId,
-  attractionId,
-  attractionName,
-  categories,
-  date,
-}: {
-  bookingId: string;
-  invoiceNumber: string;
-  scannerInvoiceId: string;
-  attractionId: string;
-  attractionName: string;
-  categories: {
-    categoryId: string;
-    noOfVisitors: number;
-  }[];
-  date: string;
-}) {
-  const payload = createQrPayload({
-    bookingId,
-    invoiceNumber,
-    scannerInvoiceId,
-    attractionId,
-    attractionName,
-    categories,
-    date,
-  });
-
-  const qrCode = await QRCode.toDataURL(payload);
-
-  return {
-    attractionId,
-    attractionName,
-    qrCode,
-  };
-}
 /* =========================================================
    POST
    CREATE BOOKING + TRANSACTION + SCANNER INVOICE

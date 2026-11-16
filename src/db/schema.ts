@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { AnyPgColumn } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 /* =========================================================
    ENUMS
@@ -110,9 +111,7 @@ export const users = pgTable(
 
     email: varchar("email", {
       length: 255,
-    })
-      .notNull()
-      .unique(),
+    }).notNull(),
 
     passwordHash: varchar("password_hash", {
       length: 255,
@@ -151,6 +150,16 @@ export const users = pgTable(
       withTimezone: true,
     }),
 
+    deletedAt: timestamp("deleted_at", {
+      withTimezone: true,
+    }),
+
+    deletedBy: uuid("deleted_by").references((): AnyPgColumn => users.id, {
+      onDelete: "set null",
+    }),
+
+    isDeleted: boolean("is_deleted").notNull().default(false),
+
     createdAt: timestamp("created_at", {
       withTimezone: true,
     })
@@ -166,6 +175,11 @@ export const users = pgTable(
 
   (table) => ({
     emailIdx: index("users_email_idx").on(table.email),
+
+    // An email can be reused once its previous owner is soft deleted.
+    activeEmailUnique: uniqueIndex("users_active_email_unique")
+      .on(table.email)
+      .where(sql`${table.isDeleted} = false`),
 
     roleIdx: index("users_role_idx").on(table.role),
 
@@ -2074,5 +2088,77 @@ export const categoryOfAttractionAgainstBooking = pgTable(
     categoryIdIdx: index(
       "category_attraction_against_booking_category_id_idx",
     ).on(table.categoryId),
+  }),
+);
+
+/* =========================================================
+   STAFF CROWD MODE
+========================================================= */
+
+export const staffCrowdMode = pgTable(
+  "staff_crowd_mode",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    staffId: uuid("staff_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "cascade",
+      }),
+
+    // Admin permission: whether this staff is allowed to use crowd mode
+    // Defaults to false
+    isAllowed: boolean("is_allowed").notNull().default(false),
+
+    // Staff status: whether crowd mode is currently enabled by staff
+    // Defaults to false
+    isEnabled: boolean("is_enabled").notNull().default(false),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    staffIdx: index("staff_crowd_mode_staff_idx").on(table.staffId),
+    uniqueStaff: uniqueIndex("staff_crowd_mode_staff_unique").on(table.staffId),
+  }),
+);
+
+/* =========================================================
+   TICKET PRINT LOGS (Print & Reprint Tracking)
+========================================================= */
+
+export const ticketPrintLogs = pgTable(
+  "ticket_print_logs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, {
+        onDelete: "cascade",
+      }),
+
+    printedBy: uuid("printed_by")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+      }),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    bookingIdx: index("ticket_print_logs_booking_idx").on(table.bookingId),
+    printedByIdx: index("ticket_print_logs_printed_by_idx").on(table.printedBy),
+    bookingCreatedIdx: index("ticket_print_logs_booking_created_idx").on(
+      table.bookingId,
+      table.createdAt,
+    ),
   }),
 );

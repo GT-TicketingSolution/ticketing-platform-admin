@@ -4,6 +4,7 @@ import React, { useEffect } from "react";
 import { X, CreditCard, Download, Printer, CheckCircle2, XCircle, Clock, Tag, Users } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import { TransactionListItem } from "@/hooks/useTransactionQueries";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface TransactionDetailsModalProps {
   transaction: TransactionListItem | null;
@@ -228,17 +229,7 @@ function handlePrintInvoice(item: TransactionListItem) {
 }
 
 export default function TransactionDetailsModal({ transaction, isOpen, onClose }: TransactionDetailsModalProps) {
-  // Prevent body scroll while open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [isOpen]);
+  useModalBodyLock(isOpen);
 
   if (!isOpen || !transaction) return null;
 
@@ -274,7 +265,6 @@ export default function TransactionDetailsModal({ transaction, isOpen, onClose }
         padding: "16px",
         overflowY: "auto",
       }}
-      onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}

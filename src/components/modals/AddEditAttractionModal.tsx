@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, Landmark } from "lucide-react";
 import { typography } from "@/lib/theme";
 import { Attraction } from "@/types/admin";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 type AttractionTicketPricing = { adult: number; child: number; student: number; senior: number; foreigner: number };
 
@@ -20,6 +21,7 @@ export default function AddEditAttractionModal({
   attractionToEdit,
   onSave,
 }: AddEditAttractionModalProps) {
+  useModalBodyLock(isOpen);
   const isEditing = Boolean(attractionToEdit);
 
   const [name, setName] = useState("");
@@ -87,7 +89,6 @@ export default function AddEditAttractionModal({
         zIndex: 1000,
         padding: "16px",
       }}
-      onClick={onClose}
     >
       <div
         style={{

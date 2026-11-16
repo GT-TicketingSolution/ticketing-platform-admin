@@ -31,6 +31,7 @@ import { colors, typography, spacing } from "@/lib/theme";
 import ChangePasswordModal from "@/components/modals/ChangePasswordModal";
 import EditProfileModal from "@/components/modals/EditProfileModal";
 import { useProfileQuery, useLogoutMutation } from "@/hooks/useAuthQueries";
+import { useToggleCrowdMode } from "@/hooks/useStaffQueries";
 import { confirmLogout } from "@/lib/notify";
 
 interface HeaderProps {
@@ -61,7 +62,11 @@ const ROUTE_HEADER_MAP: Record<string, { title: string; icon: React.ElementType 
   "/settings": { title: "Settings", icon: Settings },
 };
 
-function getRouteHeaderInfo(pathname: string, propTitle?: string): { title: string; icon: React.ElementType } {
+function getRouteHeaderInfo(
+  pathname: string,
+  propTitle?: string,
+  userRole?: string
+): { title: string; icon: React.ElementType } {
   if (propTitle && propTitle.trim()) {
     return { title: propTitle, icon: Landmark };
   }
@@ -81,7 +86,15 @@ function getRouteHeaderInfo(pathname: string, propTitle?: string): { title: stri
   if (clean.includes("scanner") || clean.includes("scan")) return { title: "Ticket Scanner", icon: ScanLine };
   if (clean.includes("manager")) return { title: "Manager Management", icon: UserCheck };
   if (clean.includes("staff")) return { title: "Staff Management", icon: UserCog };
-  if (clean.includes("dashboard")) return { title: "Dashboard", icon: LayoutDashboard };
+  if (clean.includes("dashboard")) {
+    const dashTitle =
+      userRole === "Manager"
+        ? "Manager Dashboard"
+        : userRole === "Staff"
+        ? "Staff Dashboard"
+        : "Admin Dashboard";
+    return { title: dashTitle, icon: LayoutDashboard };
+  }
   if (clean.includes("setting")) return { title: "Settings", icon: Settings };
 
   if (ROUTE_HEADER_MAP[clean]) {
@@ -100,7 +113,7 @@ function getRouteHeaderInfo(pathname: string, propTitle?: string): { title: stri
     };
   }
   return {
-    title: "Dashboard",
+    title: userRole === "Manager" ? "Manager Dashboard" : "Admin Dashboard",
     icon: LayoutDashboard,
   };
 }
@@ -121,6 +134,7 @@ export default function Header({
   // Live profile data from API
   const { data: profileData, isLoading: profileLoading, isError: isProfileError } = useProfileQuery();
   const logoutMutation = useLogoutMutation();
+  const toggleCrowdModeMutation = useToggleCrowdMode();
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -160,8 +174,22 @@ export default function Header({
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Derive dynamic header info based on pathname and propTitle
-  const matchedRoute = useMemo(() => getRouteHeaderInfo(pathname, propTitle), [pathname, propTitle]);
+  const effectiveRole = userRole && userRole !== "-" ? userRole : displayRole;
+
+  const isStaff = String(profile?.role || effectiveRole || "").toUpperCase() === "STAFF";
+  const showCrowdMode = isStaff && Boolean(profile?.crowdModeAllowed);
+  const isCrowdModeEnabled = Boolean(profile?.crowdModeEnabled);
+
+  const handleToggleCrowdMode = () => {
+    if (toggleCrowdModeMutation.isPending) return;
+    toggleCrowdModeMutation.mutate({ isEnabled: !isCrowdModeEnabled });
+  };
+
+  // Derive dynamic header info based on pathname, propTitle, and userRole
+  const matchedRoute = useMemo(
+    () => getRouteHeaderInfo(pathname, propTitle, effectiveRole),
+    [pathname, propTitle, effectiveRole]
+  );
   const activeTitle = matchedRoute.title;
   const ActiveIcon = matchedRoute.icon;
 
@@ -171,20 +199,19 @@ export default function Header({
     const fullTitle = `${activeTitle} | Ticketing Solution`;
     document.title = fullTitle;
 
-    const raf = requestAnimationFrame(() => {
-      document.title = fullTitle;
-    });
-    const t1 = setTimeout(() => {
-      document.title = fullTitle;
-    }, 60);
-    const t2 = setTimeout(() => {
-      document.title = fullTitle;
-    }, 200);
+    const interval = setInterval(() => {
+      if (document.title !== fullTitle) {
+        document.title = fullTitle;
+      }
+    }, 100);
+
+    const timeout = setTimeout(() => {
+      clearInterval(interval);
+    }, 2000);
 
     return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(t1);
-      clearTimeout(t2);
+      clearInterval(interval);
+      clearTimeout(timeout);
     };
   }, [activeTitle, pathname]);
 
@@ -365,14 +392,14 @@ export default function Header({
           }}
         >
           {/* ── Notification Bell ── */}
-          <div style={{ position: "relative", display: "inline-block" }}>
+          {/* <div style={{ position: "relative", display: "inline-block" }}>
             <button
               aria-label="Notifications"
               onMouseEnter={() => setBellHovered(true)}
               onMouseLeave={() => setBellHovered(false)}
               style={{
                 background: "transparent",
-                // border: `1.5px solid ${colors.header.iconColor}`,
+                border: `1.5px solid ${colors.header.iconColor}`,
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
@@ -387,7 +414,7 @@ export default function Header({
               }}
               className="header-bell-btn"
             >
-              <Bell size={22} color={colors.header.iconColor} strokeWidth={1.8} />
+              <Bell size={22} color={colors.header.iconColor} strokeWidth={1.8} /> */}
 
               {/* Red notification badge counter matching screenshot */}
               {/* <span
@@ -414,10 +441,10 @@ export default function Header({
               >
                 6+
               </span> */}
-            </button>
+            {/* </button> */}
 
             {/* Bell tooltip */}
-            {bellHovered && (
+            {/* {bellHovered && (
               <div
                 style={{
                   position: "absolute",
@@ -450,18 +477,89 @@ export default function Header({
                 />
                 Notifications
               </div>
-            )}
-          </div>
+            )} */}
+          {/* </div> */}
 
           {/* Vertical divider */}
-          <div
+          {/* <div
             style={{
               width: "2px",
               height: "36px",
               background: colors.header.border,
               flexShrink: 0,
             }}
-          />
+          /> */}
+
+          {/* Staff Crowd Mode Control */}
+          {showCrowdMode && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "4px 15px 5px 15px",
+                background: isCrowdModeEnabled ? "#F0F7FB" : "#F8FAFC",
+                border: isCrowdModeEnabled ? "1px solid #0C2A42" : "1px solid #E2E8F0",
+                borderRadius: "8px",
+                gap: "4px",
+                transition: "all 0.2s ease",
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: isCrowdModeEnabled ? "#0C2A42" : "#64748B",
+                  lineHeight: "13px",
+                  whiteSpace: "nowrap",
+                  letterSpacing: "0.01em",
+                  userSelect: "none",
+                  wordSpacing: "0.1em",
+                }}
+              >
+                Crowd <span style={{ marginLeft: "0.2em" }}>Mode</span>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isCrowdModeEnabled}
+                aria-label="Toggle Crowd mode"
+                onClick={handleToggleCrowdMode}
+                disabled={toggleCrowdModeMutation.isPending}
+                style={{
+                  width: "36px",
+                  height: "20px",
+                  borderRadius: "9999px",
+                  background: isCrowdModeEnabled ? "#F4BC43" : "#CBD5E1",
+                  border: "none",
+                  padding: "2px",
+                  cursor: toggleCrowdModeMutation.isPending ? "not-allowed" : "pointer",
+                  position: "relative",
+                  display: "flex",
+                  alignItems: "center",
+                  transition: "background-color 0.2s ease, opacity 0.2s ease",
+                  outline: "none",
+                  opacity: toggleCrowdModeMutation.isPending ? 0.6 : 1,
+                  boxSizing: "border-box",
+                }}
+              >
+                <span
+                  style={{
+                    display: "block",
+                    width: "16px",
+                    height: "16px",
+                    borderRadius: "50%",
+                    background: "#FFFFFF",
+                    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.25)",
+                    transform: isCrowdModeEnabled ? "translateX(16px)" : "translateX(0px)",
+                    transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                  }}
+                />
+              </button>
+            </div>
+          )}
 
           {/* ── Profile Dropdown Trigger ── */}
           <div style={{ position: "relative" }} ref={dropdownRef}>

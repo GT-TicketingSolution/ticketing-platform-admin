@@ -2,6 +2,7 @@
 
 import { AlertTriangle, X, Trash2 } from "lucide-react";
 import { Customer } from "@/types/admin";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface DeleteCustomerModalProps {
   isOpen: boolean;
@@ -16,6 +17,8 @@ export default function DeleteCustomerModal({
   customer,
   onConfirmDelete,
 }: DeleteCustomerModalProps) {
+  useModalBodyLock(isOpen);
+
   if (!isOpen || !customer) return null;
 
   return (
@@ -32,7 +35,6 @@ export default function DeleteCustomerModal({
         padding: "16px",
         animation: "deleteModalFadeIn 0.2s ease-out",
       }}
-      onClick={onClose}
     >
       <div
         style={{

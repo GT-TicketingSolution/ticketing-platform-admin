@@ -60,11 +60,14 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { isLoading } = useUserRole();
+  const { role, isLoading } = useUserRole();
 
   useEffect(() => {
-    document.title = META_CONSTANTS.dashboard.fullTitle;
-  }, []);
+    document.title =
+      role === "Manager"
+        ? META_CONSTANTS.managerDashboard.fullTitle
+        : META_CONSTANTS.dashboard.fullTitle;
+  }, [role]);
 
   if (isLoading) {
     return <DashboardSkeleton />;

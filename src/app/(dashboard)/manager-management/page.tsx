@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusToggle from "@/components/ui/StatusToggle";
@@ -31,6 +31,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import {
   ManagerUser,
   AttractionPermission,
@@ -41,6 +42,7 @@ import { addManagerSchema, AddManagerFormData } from "./schema";
 import { DataTable, Column } from "@/components/ui/DataTable";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import ExportButtons from "@/components/ui/ExportButtons";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 import {
   useManagers,
   fetchManagers,
@@ -719,12 +721,13 @@ function ManagerManagementInner() {
   );
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  useModalBodyLock(isAddModalOpen);
   const [showAddPassword, setShowAddPassword] = useState(false);
   const [selectedManager, setSelectedManager] = useState<ManagerUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
 
   // Debounce search input for API
   useEffect(() => {
@@ -735,8 +738,21 @@ function ManagerManagementInner() {
     return () => clearTimeout(handler);
   }, [searchQuery]);
 
-  // Reset to page 1 on filter or search change
+  useInitFromUrl({
+    page: (v) => { const n = Number(v); if (n > 0) setCurrentPage(n); },
+    limit: (v) => { const n = Number(v); if (n > 0) setPageSize(n); },
+    search: (v) => { setSearchQuery(v); setDebouncedSearch(v); },
+    attractionId: (v) => setSelectedAttractionFilter(v),
+    status: (v) => setSelectedStatusFilter(v),
+  });
+
+  const isInitialFilterMount = useRef(true);
+  // Reset to page 1 on filter or search change (skip initial mount)
   useEffect(() => {
+    if (isInitialFilterMount.current) {
+      isInitialFilterMount.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [debouncedSearch, selectedAttractionFilter, selectedStatusFilter]);
 
@@ -748,14 +764,18 @@ function ManagerManagementInner() {
         ? ("INACTIVE" as const)
         : undefined;
 
-  // TanStack Query Hooks — directly driven by API
-  const { data: apiManagerData, isLoading: isFetchingManagers } = useManagers({
+  const managerQueryParams = {
+    page: currentPage,
+    limit: pageSize,
     search: debouncedSearch.trim() || undefined,
     status: apiStatus,
     attractionId: selectedAttractionFilter !== "All" ? selectedAttractionFilter : undefined,
-    page: currentPage,
-    limit: pageSize,
-  });
+  };
+
+  useSyncParamsToUrl(managerQueryParams);
+
+  // TanStack Query Hooks — directly driven by API
+  const { data: apiManagerData, isLoading: isFetchingManagers } = useManagers(managerQueryParams);
 
   const pagination = apiManagerData?.pagination ?? {
     page: currentPage,
@@ -995,7 +1015,12 @@ function ManagerManagementInner() {
       return;
     }
     const computedAttraction = getAttractionFromPermissions(selectedManager.attractionPermissions || [], attractionsList);
-    const updated = { ...selectedManager, attraction: computedAttraction };
+    const assignedIds = new Set(selectedManager.attractionPermissions.map((p) => p.attractionId));
+    const updated = {
+      ...selectedManager,
+      attraction: computedAttraction,
+      attractions: attractionsList.filter((a) => assignedIds.has(a.id)),
+    };
 
     try {
       await updateManagerMutation.mutateAsync({
@@ -1341,10 +1366,6 @@ function ManagerManagementInner() {
                 <h1 style={{ fontFamily: typography.fontFamily.sans, fontWeight: 700, fontSize: "20px", color: colors.text.primary, margin: 0 }}>
                   {selectedManager.name}
                 </h1>
-                <span style={{ background: "rgba(35,114,165,0.1)", color: colors.brand.accent, padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 700 }}>
-                  {selectedManager.role || "MANAGER"}
-                </span>
-                <StatusBadge status={selectedManager.status === "ACTIVE" || selectedManager.status === "Active" ? "Active" : "Inactive"} />
               </div>
             </div>
           </div>
@@ -1685,6 +1706,7 @@ function ManagerManagementInner() {
         pageSize={pageSize}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
+        onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1); }}
         totalItems={pagination.total}
         totalPages={pagination.totalPages}
         isLoading={isFetchingManagers}

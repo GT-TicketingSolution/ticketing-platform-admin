@@ -4,6 +4,7 @@ import React, { useEffect } from "react";
 import { X, User, Ticket, CreditCard, Download, Printer } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import { BookingListItem } from "@/hooks/useBookingQueries";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface BookingDetailsModalProps {
   booking: BookingListItem | null;
@@ -172,15 +173,7 @@ function handlePrintInvoice(booking: BookingListItem) {
 }
 
 export default function BookingDetailsModal({ booking, isOpen, onClose }: BookingDetailsModalProps) {
-  // Prevent body scroll while open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => { document.body.style.overflow = ""; };
-  }, [isOpen]);
+  useModalBodyLock(isOpen);
 
   if (!isOpen || !booking) return null;
 
@@ -222,7 +215,6 @@ export default function BookingDetailsModal({ booking, isOpen, onClose }: Bookin
         padding: "20px 16px",
         overflowY: "auto",
       }}
-      onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}

@@ -18,6 +18,7 @@ import {
   ChangePasswordFormData,
 } from "@/lib/validation/auth.schema";
 import { useChangePasswordMutation } from "@/hooks/useAuthQueries";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface ChangePasswordModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ export default function ChangePasswordModal({
   isOpen,
   onClose,
 }: ChangePasswordModalProps) {
+  useModalBodyLock(isOpen);
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -185,7 +187,6 @@ export default function ChangePasswordModal({
         backdropFilter: "blur(4px)",
         padding: "16px",
       }}
-      onClick={handleClose}
     >
       <div
         style={{

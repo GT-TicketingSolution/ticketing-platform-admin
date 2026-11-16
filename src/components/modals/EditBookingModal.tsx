@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, Save, AlertCircle, Loader2 } from "lucide-react";
 import { BookingListItem } from "@/hooks/useBookingQueries";
 import { colors, typography } from "@/lib/theme";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 // ─── Schema-based validation
 interface FormErrors {
@@ -112,6 +113,7 @@ export default function EditBookingModal({
   onSave,
   isSaving = false,
 }: EditBookingModalProps) {
+  useModalBodyLock(isOpen);
   const [customerName, setCustomerName] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
   const [gstNumber, setGstNumber] = useState("");
@@ -163,7 +165,6 @@ export default function EditBookingModal({
         backdropFilter: "blur(4px)",
         padding: "16px",
       }}
-      onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}

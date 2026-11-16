@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { Attraction } from "@/types/admin";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 // ── Types
 export interface SeatingConfig {
@@ -320,6 +321,7 @@ export default function SeatingConfigModal({
   onSave,
   isSaving = false,
 }: SeatingConfigModalProps) {
+  useModalBodyLock(isOpen);
   const [rows, setRows] = useState(initialConfig?.rows ?? 8);
   const [leftCols, setLeftCols] = useState(initialConfig?.leftCols ?? 2);
   const [rightCols, setRightCols] = useState(initialConfig?.rightCols ?? 1);
@@ -380,7 +382,6 @@ export default function SeatingConfigModal({
           zIndex: 1000,
           padding: "16px",
         }}
-        onClick={onClose}
       >
         {/* Modal Card matching Image 1 */}
         <div

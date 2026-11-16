@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import { db } from "@/db";
 
@@ -14,6 +14,7 @@ import {
 import { success, failure } from "@/lib/api/response";
 
 import { requireAuth } from "@/lib/auth/require-auth";
+import { canPerformRoleAction } from "@/lib/auth/role-actions";
 
 import {
   requireModuleAccess,
@@ -39,6 +40,44 @@ export async function GET(request: Request) {
     const auth = await requireAuth(request);
 
     await requireModuleAccess(auth, "ATTRACTION_MANAGEMENT");
+
+    // =====================================================
+    // FILTERS (?search=, ?status=, ?category=)
+    // =====================================================
+
+    const params = new URL(request.url).searchParams;
+
+    const search = params.get("search")?.trim() ?? "";
+    const status = params.get("status")?.trim().toUpperCase() ?? "";
+    const category = params.get("category")?.trim() ?? "";
+
+    if (status && !["ALL", "ACTIVE", "INACTIVE"].includes(status)) {
+      return failure(
+        "Invalid status. Allowed values: ACTIVE, INACTIVE.",
+        400,
+        "VALIDATION_ERROR",
+      );
+    }
+
+    const filters: SQL[] = [];
+
+    if (search) {
+      // Case-insensitive partial match on name or category.
+      // Escape LIKE wildcards so user input is matched literally.
+      const pattern = `%${search.replace(/[\\%_]/g, "\\$&")}%`;
+
+      filters.push(
+        or(ilike(attractions.name, pattern), ilike(attractions.type, pattern))!,
+      );
+    }
+
+    if (status === "ACTIVE" || status === "INACTIVE") {
+      filters.push(eq(attractions.status, status));
+    }
+
+    if (category) {
+      filters.push(sql`lower(${attractions.type}) = lower(${category})`);
+    }
 
     let managementData;
 
@@ -83,7 +122,7 @@ export async function GET(request: Request) {
           attractions,
           eq(attractionManagement.attractionId, attractions.id),
         )
-        .where(eq(attractionManagement.adminId, auth.user.id));
+        .where(and(eq(attractionManagement.adminId, auth.user.id), ...filters));
     }
 
     // =====================================================
@@ -132,7 +171,9 @@ export async function GET(request: Request) {
           attractions,
           eq(attractionManagement.attractionId, attractions.id),
         )
-        .where(inArray(attractionManagement.attractionId, allowedIds));
+        .where(
+          and(inArray(attractionManagement.attractionId, allowedIds), ...filters),
+        );
     }
 
     // =====================================================
@@ -473,7 +514,7 @@ export async function POST(request: Request) {
     // ONLY ADMIN
     // =====================================================
 
-    if (auth.user.role !== "ADMIN") {
+    if (!canPerformRoleAction(auth.user.role, "ATTRACTION_CREATE")) {
       return failure("Only admin can create attraction", 403, "FORBIDDEN");
     }
 

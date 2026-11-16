@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { X, Upload, Download, FileSpreadsheet, Loader2, AlertCircle, CheckCircle2, FileX } from "lucide-react";
 import { useBulkUploadAttractions } from "@/hooks/useAttractionManagementQueries";
 import { useToast } from "@/components/ui/Toast";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 import type { BulkAttractionPayload } from "@/app/(dashboard)/attraction-management/types";
 import {
   bulkUploadFormSchema,
@@ -91,6 +92,7 @@ export default function BulkUploadModal({
   onClose,
   onUploadSuccess,
 }: BulkUploadModalProps) {
+  useModalBodyLock(isOpen);
   const [dragActive, setDragActive] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
 
@@ -228,7 +230,6 @@ export default function BulkUploadModal({
         zIndex: 1000,
         padding: "16px",
       }}
-      onClick={onClose}
     >
       <div
         style={{

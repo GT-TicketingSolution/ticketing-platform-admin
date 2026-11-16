@@ -7,7 +7,11 @@ import {
 
 import { failure, success } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
-import { requireModuleAccess } from "@/lib/auth/authorization";
+import {
+  requireModuleAccess,
+  getManagerAttractionScope,
+  hasAttractionAccess,
+} from "@/lib/auth/authorization";
 
 export async function GET(request: NextRequest) {
   try {
@@ -61,6 +65,7 @@ export async function GET(request: NextRequest) {
       limit,
       search,
       attractionId,
+      attractionIds: await getManagerAttractionScope(auth),
       dateFrom,
       dateTo,
     });
@@ -158,6 +163,21 @@ export async function POST(request: NextRequest) {
         "Total capacity must be a non-negative integer.",
         400,
         "INVALID_CAPACITY",
+      );
+    }
+
+    // =====================================================
+    // MANAGER: ASSIGNED ATTRACTIONS ONLY
+    // =====================================================
+
+    if (
+      auth.user.role === "MANAGER" &&
+      !(await hasAttractionAccess(auth, attractionId))
+    ) {
+      return failure(
+        "This attraction is not assigned to you.",
+        403,
+        "ATTRACTION_NOT_ASSIGNED",
       );
     }
 

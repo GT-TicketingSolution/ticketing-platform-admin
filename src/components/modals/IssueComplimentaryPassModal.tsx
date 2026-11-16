@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { X, ChevronDown, Loader2 } from "lucide-react";
 import type { ComplimentaryPass, Reference, ComplimentaryPassPayload } from "@/app/(dashboard)/complimentary-passes/types";
 import { validatePass } from "@/app/(dashboard)/complimentary-passes/schema";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface IssueComplimentaryPassModalProps {
   isOpen: boolean;
@@ -56,6 +57,7 @@ export default function IssueComplimentaryPassModal({
   onSave,
   isSaving = false,
 }: IssueComplimentaryPassModalProps) {
+  useModalBodyLock(isOpen);
   const [visitorName, setVisitorName] = useState("");
   const [mobile, setMobile] = useState("");
   const [attractionId, setAttractionId] = useState("");

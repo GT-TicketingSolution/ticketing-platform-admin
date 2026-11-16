@@ -8,14 +8,23 @@ import {
   users,
   staffRoles,
   staffAttractionAssignments,
-  managerAttractionPermissions,
   attractions,
   staffSystemModulePermissions,
   systemModules,
+  bookings,
+  staffCrowdMode,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
-import { requireModuleAccess } from "@/lib/auth/authorization";
+import {
+  requireModuleAccess,
+  getManagerAttractionScope,
+  getGrantableStaffModules,
+} from "@/lib/auth/authorization";
+import {
+  STAFF_ALLOWED_MODULES,
+  getStaffRoleModuleKeys,
+} from "@/lib/auth/staff-role-modules";
 import { hashPassword } from "@/lib/auth/password";
 
 import { success, failure } from "@/lib/api/response";
@@ -39,7 +48,11 @@ const createStaffSchema = z.object({
 
   attractionIds: z.array(z.string().uuid()).optional().default([]),
 
+  staffSystemModuleAllowedIds: z.array(z.string().uuid()).optional().default([]).optional().default([]),
+
   status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
+
+  isCrowdModeAllowed: z.boolean().optional().default(false),
 
   reportAccessTiming: z.number().int().positive().optional(),
 
@@ -62,7 +75,7 @@ function canViewStaff(role: string) {
 }
 
 /**
- * Staff creation is restricted to ADMIN.
+ * Staff creation is restricted to ADMIN and MANAGER.
  */
 function canCreateStaff(role: string) {
   return role === "ADMIN" || role === "MANAGER";
@@ -81,24 +94,20 @@ async function grantStaffDefaultModulePermissions(
   staffId: string,
   reportAccessTiming?: number,
   reportAccessUnit?: string,
+  staffSystemModuleAllowedIds?: string[],
 ) {
-  const STAFF_ALLOWED_MODULES = [
-    "TICKET_BOOKING",
-    "BOOKINGS_VIEW",
-    "CUSTOMER_VIEW",
-    "SCANNER_USE",
-  ];
-
   try {
     const staffModules = await db
       .select({
         id: systemModules.id,
+        name: systemModules.key,
       })
       .from(systemModules)
       .where(
         and(
-          inArray(systemModules.key, STAFF_ALLOWED_MODULES),
+          inArray(systemModules.id, staffSystemModuleAllowedIds ?? []),
           eq(systemModules.isActive, "ACTIVE"),
+          inArray(systemModules.key, STAFF_ALLOWED_MODULES),
         ),
       );
 
@@ -199,6 +208,13 @@ export async function GET(request: NextRequest) {
 
     const offset = (page - 1) * limit;
 
+    // MANAGER: limited to the attractions assigned to them.
+    const managerAttractionIds = await getManagerAttractionScope(auth);
+
+    const attractionScope = managerAttractionIds
+      ? [inArray(attractions.id, managerAttractionIds)]
+      : [];
+
     // -----------------------------------------------------
     // Validate attraction filter
     //
@@ -216,6 +232,7 @@ export async function GET(request: NextRequest) {
           and(
             eq(attractions.id, attractionId),
             eq(attractions.adminId, adminId),
+            ...attractionScope,
           ),
         )
         .limit(1);
@@ -231,11 +248,30 @@ export async function GET(request: NextRequest) {
 
     const conditions = [
       eq(users.role, "STAFF"),
+      eq(users.isDeleted, false),
 
       // CRITICAL:
       // Staff must belong to the authenticated admin.
       eq(users.adminId, adminId),
     ];
+
+    // Managers only see staff working on their attractions.
+    if (managerAttractionIds) {
+      conditions.push(
+        inArray(
+          users.id,
+          db
+            .select({ staffId: staffAttractionAssignments.staffId })
+            .from(staffAttractionAssignments)
+            .where(
+              inArray(
+                staffAttractionAssignments.attractionId,
+                managerAttractionIds,
+              ),
+            ),
+        ),
+      );
+    }
 
     // -----------------------------------------------------
     // Search
@@ -287,6 +323,8 @@ export async function GET(request: NextRequest) {
       if (staffIds.length === 0) {
         return success({
           items: [],
+          staffSystemModules: [],
+          staffTotalBookings: [],
 
           pagination: {
             page,
@@ -350,6 +388,22 @@ export async function GET(request: NextRequest) {
           .from(staffRoles)
           .where(eq(staffRoles.staffId, member.id));
 
+        const reportPermissions = await db
+          .select({
+            reportAccessTiming: staffSystemModulePermissions.reportAccessTiming,
+            reportAccessUnit: staffSystemModulePermissions.reportAccessUnit,
+          })
+          .from(staffSystemModulePermissions)
+          .where(eq(staffSystemModulePermissions.staffId, member.id)).limit(1);
+
+        const staffTotalBookings = await db
+          .select({
+            totalBookings: sql<number>`count(*)`,
+          })
+          .from(bookings)
+          .where(eq(bookings.createdBy, member.id))
+          .limit(1);
+
         // -----------------------------------------------
         // Staff attractions
         // -----------------------------------------------
@@ -370,14 +424,38 @@ export async function GET(request: NextRequest) {
 
               // Never expose another admin's attractions.
               eq(attractions.adminId, adminId),
+              ...attractionScope,
             ),
           );
+
+        const [staffCrowdModeRecord] = await db
+          .select({
+            isAllowed: staffCrowdMode.isAllowed,
+            isEnabled: staffCrowdMode.isEnabled,
+          })
+          .from(staffCrowdMode)
+          .where(eq(staffCrowdMode.staffId, member.id))
+          .limit(1);
 
         return {
           ...member,
           roles,
+          reportPermissions,
+          staffTotalBookings,
+          crowdMode: {
+            isAllowed: staffCrowdModeRecord?.isAllowed ?? false,
+            isEnabled: staffCrowdModeRecord?.isEnabled ?? false,
+          },
           attractions: assignedAttractions,
         };
+      }),
+    );
+
+    // Modules this user can give to staff
+    const staffModules = (await getGrantableStaffModules(auth)).map(
+      (module) => ({
+        id: module.id,
+        name: module.key,
       }),
     );
 
@@ -387,6 +465,7 @@ export async function GET(request: NextRequest) {
 
     return success({
       items: staffWithDetails,
+      staffSystemModules: staffModules,
 
       pagination: {
         page,
@@ -436,8 +515,7 @@ export async function POST(request: Request) {
     // -----------------------------------------------------
     // Authorization
     //
-    // Only ADMIN can create staff.
-    // MANAGER can view but cannot create.
+    // ADMIN and MANAGER can create staff.
     // -----------------------------------------------------
 
     if (!canCreateStaff(auth.user.role)) {
@@ -479,8 +557,10 @@ export async function POST(request: Request) {
       roles,
       attractionIds,
       status,
+      isCrowdModeAllowed,
       reportAccessTiming,
       reportAccessUnit,
+      staffSystemModuleAllowedIds,
     } = parsed.data;
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -494,7 +574,7 @@ export async function POST(request: Request) {
         id: users.id,
       })
       .from(users)
-      .where(eq(users.email, normalizedEmail))
+      .where(and(eq(users.email, normalizedEmail), eq(users.isDeleted, false)))
       .limit(1);
 
     if (existingUser) {
@@ -512,74 +592,23 @@ export async function POST(request: Request) {
     //   to that manager.
     // -----------------------------------------------------
 
-    if (attractionIds.length > 0) {
-      if (auth.user.role === "ADMIN") {
-        // -----------------------------------------------
-        // ADMIN: validate attraction ownership
-        // -----------------------------------------------
+    const managerAttractionIds = await getManagerAttractionScope(auth);
 
-        const existingAttractions = await db
-          .select({
-            id: attractions.id,
-          })
-          .from(attractions)
-          .where(
-            and(
-              inArray(attractions.id, attractionIds),
-              eq(attractions.adminId, adminId),
-            ),
-          );
-
-        const existingAttractionIds = new Set(
-          existingAttractions.map((attraction) => attraction.id),
-        );
-
-        const invalidAttractionIds = attractionIds.filter(
-          (id) => !existingAttractionIds.has(id),
-        );
-
-        if (invalidAttractionIds.length > 0) {
-          return failure(
-            "One or more attractions are invalid or do not belong to this admin.",
-            400,
-            "INVALID_ATTRACTION",
-          );
-        }
-      }
-    } else {
+    if (managerAttractionIds) {
       // -----------------------------------------------
       // MANAGER: validate attraction assignment
       // -----------------------------------------------
-      //
-      // Manager attractions are stored in:
-      // managerAttractionPermissions
-      //
-      // staffAttractionAssignments is only used to store
-      // the attractions assigned to the newly created staff.
-      //
 
-      const managerAttractions = await db
-        .select({
-          attractionId: managerAttractionPermissions.attractionId,
-        })
-        .from(managerAttractionPermissions)
-        .innerJoin(
-          attractions,
-          eq(managerAttractionPermissions.attractionId, attractions.id),
-        )
-        .where(
-          and(
-            eq(managerAttractionPermissions.managerId, auth.user.id),
-            eq(attractions.adminId, adminId),
-          ),
+      if (attractionIds.length === 0) {
+        return failure(
+          "Please assign at least one attraction.",
+          400,
+          "ATTRACTION_REQUIRED",
         );
-
-      const managerAttractionIds = new Set(
-        managerAttractions.map((item) => item.attractionId),
-      );
+      }
 
       const invalidAttractionIds = attractionIds.filter(
-        (id) => !managerAttractionIds.has(id),
+        (id) => !managerAttractionIds.includes(id),
       );
 
       if (invalidAttractionIds.length > 0) {
@@ -587,6 +616,63 @@ export async function POST(request: Request) {
           "One or more attractions are not assigned to this manager.",
           403,
           "ATTRACTION_NOT_ASSIGNED",
+        );
+      }
+    } else if (attractionIds.length > 0) {
+      // -----------------------------------------------
+      // ADMIN: validate attraction ownership
+      // -----------------------------------------------
+
+      const existingAttractions = await db
+        .select({
+          id: attractions.id,
+        })
+        .from(attractions)
+        .where(
+          and(
+            inArray(attractions.id, attractionIds),
+            eq(attractions.adminId, adminId),
+          ),
+        );
+
+      const existingAttractionIds = new Set(
+        existingAttractions.map((attraction) => attraction.id),
+      );
+
+      const invalidAttractionIds = attractionIds.filter(
+        (id) => !existingAttractionIds.has(id),
+      );
+
+      if (invalidAttractionIds.length > 0) {
+        return failure(
+          "One or more attractions are invalid or do not belong to this admin.",
+          400,
+          "INVALID_ATTRACTION",
+        );
+      }
+    }
+
+    // -----------------------------------------------------
+    // MANAGER: can only give the modules they hold
+    // -----------------------------------------------------
+
+    if (auth.user.role === "MANAGER") {
+      const grantableModules = await getGrantableStaffModules(auth);
+
+      const grantableIds = new Set(grantableModules.map((item) => item.id));
+      const grantableKeys = new Set(grantableModules.map((item) => item.key));
+
+      const hasOtherModule =
+        staffSystemModuleAllowedIds.some((id) => !grantableIds.has(id)) ||
+        roles.some((role) =>
+          getStaffRoleModuleKeys(role).some((key) => !grantableKeys.has(key)),
+        );
+
+      if (hasOtherModule) {
+        return failure(
+          "You can only give staff the permissions you have.",
+          403,
+          "MODULE_NOT_GRANTABLE",
         );
       }
     }
@@ -667,7 +753,18 @@ export async function POST(request: Request) {
       staff.id,
       reportAccessTiming,
       reportAccessUnit,
+      staffSystemModuleAllowedIds
     );
+
+    // -----------------------------------------------------
+    // Create initial crowd mode record
+    // -----------------------------------------------------
+
+    await db.insert(staffCrowdMode).values({
+      staffId: staff.id,
+      isAllowed: isCrowdModeAllowed ?? false,
+      isEnabled: false,
+    });
 
     // -----------------------------------------------------
     // Response

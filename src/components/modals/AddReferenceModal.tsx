@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, Loader2 } from "lucide-react";
 import type { Reference, ReferencePayload } from "@/app/(dashboard)/complimentary-passes/types";
 import { validateReference } from "@/app/(dashboard)/complimentary-passes/schema";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface AddReferenceModalProps {
   isOpen: boolean;
@@ -52,6 +53,7 @@ export default function AddReferenceModal({
   onSave,
   isSaving = false,
 }: AddReferenceModalProps) {
+  useModalBodyLock(isOpen);
   const [referenceName, setReferenceName] = useState("");
   const [department, setDepartment] = useState("");
   const [contactPerson, setContactPerson] = useState("");

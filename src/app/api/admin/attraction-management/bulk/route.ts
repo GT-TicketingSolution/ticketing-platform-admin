@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { attractions, attractionManagement } from "@/db/schema";
 import { success, failure } from "@/lib/api/response";
 import { requireAuth } from "@/lib/auth/require-auth";
+import { canPerformRoleAction } from "@/lib/auth/role-actions";
 import { requireModuleAccess } from "@/lib/auth/authorization";
 import { eq, and } from "drizzle-orm";
 
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
 
     const auth = await requireAuth(request);
 
-    if (auth.user.role !== "ADMIN") {
+    if (!canPerformRoleAction(auth.user.role, "ATTRACTION_BULK_UPLOAD")) {
       return failure("Only admin can bulk upload", 403, "FORBIDDEN");
     }
 

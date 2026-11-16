@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-import { and, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
 
@@ -12,10 +12,18 @@ import {
   attractions,
   managerAttractionPermissions,
   systemModules,
+  sessions,
+  passwordResetTokens,
+  staffCrowdMode,
 } from "@/db/schema";
 
 import { requireAuth } from "@/lib/auth/require-auth";
-import { requireModuleAccess } from "@/lib/auth/authorization";
+import {
+  requireModuleAccess,
+  getManagerAttractionScope,
+  getGrantableStaffModules,
+} from "@/lib/auth/authorization";
+import { getStaffRoleModuleKeys } from "@/lib/auth/staff-role-modules";
 import { hashPassword } from "@/lib/auth/password";
 
 import { success, failure } from "@/lib/api/response";
@@ -23,575 +31,7 @@ import { success, failure } from "@/lib/api/response";
 import { z } from "zod";
 
 /* =========================================================
-   STAFF ROLE → SYSTEM MODULE MAPPING
-========================================================= */
-
-const STAFF_ROLE_MODULES: Record<string, string[]> = {
-  "Counter Operator": ["TICKET_BOOKING"],
-  Validator: ["SCANNER"],
-};
-
-/* =========================================================
    VALIDATION
-========================================================= */
-
-const createStaffSchema = z.object({
-  name: z.string().min(2).max(150),
-
-  email: z.string().email(),
-
-  phone: z.string().max(20).optional(),
-
-  password: z.string().min(8),
-
-  roles: z.array(z.string().min(1)).optional().default([]),
-
-  attractionIds: z.array(z.string().uuid()).optional().default([]),
-
-  status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
-
-  reportAccessTiming: z.number().int().positive().optional(),
-
-  reportAccessUnit: z.string().max(20).optional(),
-});
-
-/* =========================================================
-   STAFF ACCESS
-========================================================= */
-
-function canViewStaff(role: string) {
-  return role === "ADMIN" || role === "MANAGER";
-}
-
-function canCreateStaff(role: string) {
-  return role === "ADMIN" || role === "MANAGER";
-}
-
-/* =========================================================
-   GET /api/admin/staff
-========================================================= */
-
-export async function GET(request: NextRequest) {
-  try {
-    // -----------------------------------------------------
-    // Authentication
-    // -----------------------------------------------------
-
-    const auth = await requireAuth(request);
-
-    await requireModuleAccess(auth, "STAFF_MANAGEMENT");
-
-    // -----------------------------------------------------
-    // Authorization
-    // -----------------------------------------------------
-
-    if (!canViewStaff(auth.user.role)) {
-      return failure("Admin or manager access required.", 403, "FORBIDDEN");
-    }
-
-    // -----------------------------------------------------
-    // Determine tenant/admin owner
-    // -----------------------------------------------------
-
-    const adminId =
-      auth.user.role === "ADMIN" ? auth.user.id : auth.user.adminId;
-
-    if (!adminId) {
-      return failure(
-        "Unable to determine admin ownership.",
-        403,
-        "ADMIN_CONTEXT_NOT_FOUND",
-      );
-    }
-
-    // -----------------------------------------------------
-    // Query params
-    // -----------------------------------------------------
-
-    const { searchParams } = new URL(request.url);
-
-    const pageParam = Number(searchParams.get("page") || "1");
-
-    const limitParam = Number(searchParams.get("limit") || "10");
-
-    const page = Number.isFinite(pageParam) ? Math.max(pageParam, 1) : 1;
-
-    const limit = Number.isFinite(limitParam)
-      ? Math.min(Math.max(limitParam, 1), 100)
-      : 10;
-
-    const search = searchParams.get("search")?.trim() || "";
-
-    const status = searchParams.get("status");
-
-    const attractionId = searchParams.get("attractionId");
-
-    const offset = (page - 1) * limit;
-
-    // -----------------------------------------------------
-    // Validate attraction filter
-    // -----------------------------------------------------
-
-    if (attractionId) {
-      const [attraction] = await db
-        .select({
-          id: attractions.id,
-        })
-        .from(attractions)
-        .where(
-          and(
-            eq(attractions.id, attractionId),
-            eq(attractions.adminId, adminId),
-          ),
-        )
-        .limit(1);
-
-      if (!attraction) {
-        return failure("Attraction not found.", 404, "ATTRACTION_NOT_FOUND");
-      }
-    }
-
-    // -----------------------------------------------------
-    // Base staff conditions
-    // -----------------------------------------------------
-
-    const conditions = [eq(users.role, "STAFF"), eq(users.adminId, adminId)];
-
-    // -----------------------------------------------------
-    // Search
-    // -----------------------------------------------------
-
-    if (search) {
-      conditions.push(
-        or(
-          ilike(users.name, `%${search}%`),
-          ilike(users.email, `%${search}%`),
-          ilike(users.phone, `%${search}%`),
-        )!,
-      );
-    }
-
-    // -----------------------------------------------------
-    // Status filter
-    // -----------------------------------------------------
-
-    if (status === "ACTIVE" || status === "INACTIVE") {
-      conditions.push(eq(users.status, status));
-    }
-
-    // -----------------------------------------------------
-    // Attraction filter
-    // -----------------------------------------------------
-
-    if (attractionId) {
-      const assignedStaff = await db
-        .select({
-          staffId: staffAttractionAssignments.staffId,
-        })
-        .from(staffAttractionAssignments)
-        .innerJoin(
-          attractions,
-          eq(staffAttractionAssignments.attractionId, attractions.id),
-        )
-        .where(
-          and(
-            eq(staffAttractionAssignments.attractionId, attractionId),
-            eq(attractions.adminId, adminId),
-          ),
-        );
-
-      const staffIds = assignedStaff.map((item) => item.staffId);
-
-      if (staffIds.length === 0) {
-        return success({
-          items: [],
-          pagination: {
-            page,
-            limit,
-            total: 0,
-            totalPages: 0,
-          },
-        });
-      }
-
-      conditions.push(inArray(users.id, staffIds));
-    }
-
-    // -----------------------------------------------------
-    // Total count
-    // -----------------------------------------------------
-
-    const [{ count }] = await db
-      .select({
-        count: sql<number>`count(*)`,
-      })
-      .from(users)
-      .where(and(...conditions));
-
-    const total = Number(count);
-
-    // -----------------------------------------------------
-    // Staff list
-    // -----------------------------------------------------
-
-    const staff = await db
-      .select({
-        id: users.id,
-        name: users.name,
-        email: users.email,
-        phone: users.phone,
-        status: users.status,
-        joinedDate: users.createdAt,
-      })
-      .from(users)
-      .where(and(...conditions))
-      .orderBy(sql`${users.createdAt} DESC`)
-      .limit(limit)
-      .offset(offset);
-
-    // -----------------------------------------------------
-    // Attach roles + attractions
-    // -----------------------------------------------------
-
-    const staffWithDetails = await Promise.all(
-      staff.map(async (member) => {
-        // -----------------------------------------------
-        // Staff roles
-        // -----------------------------------------------
-
-        const roles = await db
-          .select({
-            id: staffRoles.id,
-            role: staffRoles.role,
-          })
-          .from(staffRoles)
-          .where(eq(staffRoles.staffId, member.id));
-
-        // -----------------------------------------------
-        // Staff attractions
-        // -----------------------------------------------
-
-        const assignedAttractions = await db
-          .select({
-            id: attractions.id,
-            name: attractions.name,
-          })
-          .from(staffAttractionAssignments)
-          .innerJoin(
-            attractions,
-            eq(staffAttractionAssignments.attractionId, attractions.id),
-          )
-          .where(
-            and(
-              eq(staffAttractionAssignments.staffId, member.id),
-              eq(attractions.adminId, adminId),
-            ),
-          );
-
-        return {
-          ...member,
-          roles,
-          attractions: assignedAttractions,
-        };
-      }),
-    );
-
-    // -----------------------------------------------------
-    // Response
-    // -----------------------------------------------------
-
-    return success({
-      items: staffWithDetails,
-
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  } catch (error: unknown) {
-    if (error instanceof Error) {
-      switch (error.message) {
-        case "UNAUTHORIZED":
-          return failure("Authentication required.", 401, "UNAUTHORIZED");
-
-        case "ACCOUNT_NOT_ACTIVE":
-          return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
-
-        case "FORBIDDEN":
-          return failure(
-            "You are not authorized to access this module.",
-            403,
-            "FORBIDDEN",
-          );
-      }
-    }
-
-    console.error("Get staff error:", error);
-
-    return failure("Unable to fetch staff.", 500, "INTERNAL_SERVER_ERROR");
-  }
-}
-
-/* =========================================================
-   POST /api/admin/staff
-========================================================= */
-
-export async function POST(request: Request) {
-  try {
-    // -----------------------------------------------------
-    // Authentication
-    // -----------------------------------------------------
-
-    const auth = await requireAuth(request);
-
-    await requireModuleAccess(auth, "STAFF_MANAGEMENT");
-
-    // -----------------------------------------------------
-    // Authorization
-    // -----------------------------------------------------
-
-    if (!canCreateStaff(auth.user.role)) {
-      return failure("Admin access required.", 403, "FORBIDDEN");
-    }
-
-    // -----------------------------------------------------
-    // Admin becomes staff owner
-    // -----------------------------------------------------
-
-    const adminId = auth.user.id;
-
-    // -----------------------------------------------------
-    // Validate request body
-    // -----------------------------------------------------
-
-    const body = await request.json();
-
-    const parsed = createStaffSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return failure("Invalid staff details.", 400, "VALIDATION_ERROR");
-    }
-
-    const { name, email, phone, password, roles, attractionIds, status } =
-      parsed.data;
-
-    // -----------------------------------------------------
-    // Normalize roles
-    // -----------------------------------------------------
-
-    const normalizedRoles = [...new Set(roles.map((role) => role.trim()))];
-
-    // -----------------------------------------------------
-    // Check duplicate email
-    // -----------------------------------------------------
-
-    const normalizedEmail = email.trim().toLowerCase();
-
-    const [existingUser] = await db
-      .select({
-        id: users.id,
-      })
-      .from(users)
-      .where(eq(users.email, normalizedEmail))
-      .limit(1);
-
-    if (existingUser) {
-      return failure("Email already exists.", 409, "EMAIL_ALREADY_EXISTS");
-    }
-
-    // -----------------------------------------------------
-    // Validate attractions
-    // -----------------------------------------------------
-
-    if (attractionIds.length > 0) {
-      const existingAttractions = await db
-        .select({
-          id: attractions.id,
-        })
-        .from(attractions)
-        .where(
-          and(
-            inArray(attractions.id, attractionIds),
-            eq(attractions.adminId, adminId),
-          ),
-        );
-
-      const existingAttractionIds = new Set(
-        existingAttractions.map((attraction) => attraction.id),
-      );
-
-      const invalidAttractionIds = attractionIds.filter(
-        (id) => !existingAttractionIds.has(id),
-      );
-
-      if (invalidAttractionIds.length > 0) {
-        return failure(
-          "One or more attractions are invalid or do not belong to this admin.",
-          400,
-          "INVALID_ATTRACTION",
-        );
-      }
-    }
-
-    // -----------------------------------------------------
-    // Resolve modules from roles
-    // -----------------------------------------------------
-
-    const moduleKeys = [
-      ...new Set(
-        normalizedRoles.flatMap((role) => STAFF_ROLE_MODULES[role] ?? []),
-      ),
-    ];
-
-    let roleModules: {
-      id: string;
-      key: string;
-    }[] = [];
-
-    if (moduleKeys.length > 0) {
-      roleModules = await db
-        .select({
-          id: systemModules.id,
-          key: systemModules.key,
-        })
-        .from(systemModules)
-        .where(
-          and(
-            inArray(systemModules.key, moduleKeys),
-            eq(systemModules.isActive, "ACTIVE"),
-          ),
-        );
-
-      if (roleModules.length !== moduleKeys.length) {
-        return failure(
-          "One or more role modules are not configured.",
-          400,
-          "ROLE_MODULE_NOT_CONFIGURED",
-        );
-      }
-    }
-
-    // -----------------------------------------------------
-    // Hash password
-    // -----------------------------------------------------
-
-    const passwordHash = await hashPassword(password);
-
-    // -----------------------------------------------------
-    // Create staff
-    // -----------------------------------------------------
-
-    const [staff] = await db
-      .insert(users)
-      .values({
-        name: name.trim(),
-
-        email: normalizedEmail,
-
-        phone: phone?.trim() || null,
-
-        passwordHash,
-
-        role: "STAFF",
-
-        status,
-
-        adminId,
-      })
-      .returning({
-        id: users.id,
-        name: users.name,
-        email: users.email,
-        phone: users.phone,
-        role: users.role,
-        status: users.status,
-        createdAt: users.createdAt,
-      });
-
-    if (!staff) {
-      throw new Error("STAFF_CREATE_FAILED");
-    }
-
-    // -----------------------------------------------------
-    // Insert staff roles
-    // -----------------------------------------------------
-
-    if (normalizedRoles.length > 0) {
-      await db.insert(staffRoles).values(
-        normalizedRoles.map((role) => ({
-          staffId: staff.id,
-          role,
-        })),
-      );
-    }
-
-    // -----------------------------------------------------
-    // Insert staff module permissions
-    // -----------------------------------------------------
-
-    if (roleModules.length > 0) {
-      await db
-        .insert(staffSystemModulePermissions)
-        .values(
-          roleModules.map((module) => ({
-            staffId: staff.id,
-            moduleId: module.id,
-          })),
-        )
-        .onConflictDoNothing();
-    }
-
-    // -----------------------------------------------------
-    // Insert attraction assignments
-    // -----------------------------------------------------
-
-    if (attractionIds.length > 0) {
-      await db.insert(staffAttractionAssignments).values(
-        attractionIds.map((attractionId) => ({
-          staffId: staff.id,
-          attractionId,
-        })),
-      );
-    }
-
-    // -----------------------------------------------------
-    // Response
-    // -----------------------------------------------------
-
-    return success(
-      {
-        staff,
-      },
-      201,
-    );
-  } catch (error: unknown) {
-    if (error instanceof Error) {
-      switch (error.message) {
-        case "UNAUTHORIZED":
-          return failure("Authentication required.", 401, "UNAUTHORIZED");
-
-        case "ACCOUNT_NOT_ACTIVE":
-          return failure("Account is not active.", 403, "ACCOUNT_NOT_ACTIVE");
-
-        case "FORBIDDEN":
-          return failure(
-            "You are not authorized to access this module.",
-            403,
-            "FORBIDDEN",
-          );
-      }
-    }
-
-    console.error("Create staff error:", error);
-
-    return failure("Unable to create staff.", 500, "INTERNAL_SERVER_ERROR");
-  }
-}
-
-/* =========================================================
-   PATCH /api/admin/staff/[staffId]
 ========================================================= */
 
 const updateStaffSchema = z.object({
@@ -603,16 +43,33 @@ const updateStaffSchema = z.object({
 
   password: z.string().min(8).optional(),
 
-  roles: z.array(z.string().min(1)).optional(),
+  roles: z
+    .array(
+      z.object({
+        id: z.string().uuid().optional(),
+        role: z.string().min(1),
+      }),
+    )
+    .optional(),
 
   attractionIds: z.array(z.string().uuid()).optional(),
 
+  staffSystemModuleAllowedIds: z.array(z.string().uuid()).optional(),
+
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+
+  isCrowdModeAllowed: z.boolean().optional(),
+
+  canViewReports: z.boolean().optional(),
 
   reportAccessTiming: z.number().int().positive().optional(),
 
-  reportAccessUnit: z.enum(["HOURS", "DAYS"]).optional(),
+  reportAccessUnit: z.enum(["HOURS"]).optional(),
 });
+
+/* =========================================================
+   PATCH /api/admin/staff/[staffId]
+========================================================= */
 
 export async function PATCH(
   request: NextRequest,
@@ -670,6 +127,7 @@ export async function PATCH(
         and(
           eq(users.id, staffId),
           eq(users.role, "STAFF"),
+          eq(users.isDeleted, false),
           eq(users.adminId, adminId),
         ),
       )
@@ -677,6 +135,34 @@ export async function PATCH(
 
     if (!existingStaff) {
       return failure("Staff member not found.", 404, "STAFF_NOT_FOUND");
+    }
+
+    // -----------------------------------------------------
+    // MANAGER: staff must work on an assigned attraction
+    // -----------------------------------------------------
+
+    const managerAttractionIds = await getManagerAttractionScope(auth);
+
+    if (managerAttractionIds) {
+      const [sharedAssignment] = await db
+        .select({
+          id: staffAttractionAssignments.id,
+        })
+        .from(staffAttractionAssignments)
+        .where(
+          and(
+            eq(staffAttractionAssignments.staffId, staffId),
+            inArray(
+              staffAttractionAssignments.attractionId,
+              managerAttractionIds,
+            ),
+          ),
+        )
+        .limit(1);
+
+      if (!sharedAssignment) {
+        return failure("Staff member not found.", 404, "STAFF_NOT_FOUND");
+      }
     }
 
     // -----------------------------------------------------
@@ -699,8 +185,10 @@ export async function PATCH(
       roles,
       attractionIds,
       status,
+      isCrowdModeAllowed,
       reportAccessTiming,
       reportAccessUnit,
+      staffSystemModuleAllowedIds,
     } = parsed.data;
 
     // -----------------------------------------------------
@@ -715,7 +203,7 @@ export async function PATCH(
           id: users.id,
         })
         .from(users)
-        .where(eq(users.email, normalizedEmail))
+        .where(and(eq(users.email, normalizedEmail), eq(users.isDeleted, false)))
         .limit(1);
 
       if (emailUser && emailUser.id !== staffId) {
@@ -727,31 +215,106 @@ export async function PATCH(
     // Validate attractions
     // -----------------------------------------------------
 
-    if (attractionIds) {
-      if (attractionIds.length > 0) {
-        const validAttractions = await db
-          .select({
-            id: attractions.id,
-          })
-          .from(attractions)
-          .where(
-            and(
-              inArray(attractions.id, attractionIds),
-              eq(attractions.adminId, adminId),
-            ),
-          );
+    if (managerAttractionIds && attractionIds !== undefined) {
+      if (attractionIds.length === 0) {
+        return failure(
+          "Please assign at least one attraction.",
+          400,
+          "ATTRACTION_REQUIRED",
+        );
+      }
 
-        const validIds = new Set(validAttractions.map((item) => item.id));
+      if (attractionIds.some((id) => !managerAttractionIds.includes(id))) {
+        return failure(
+          "One or more attractions are not assigned to this manager.",
+          403,
+          "ATTRACTION_NOT_ASSIGNED",
+        );
+      }
+    }
 
-        const invalidIds = attractionIds.filter((id) => !validIds.has(id));
+    if (attractionIds !== undefined && attractionIds.length > 0) {
+      const validAttractions = await db
+        .select({
+          id: attractions.id,
+        })
+        .from(attractions)
+        .where(
+          and(
+            inArray(attractions.id, attractionIds),
+            eq(attractions.adminId, adminId),
+          ),
+        );
 
-        if (invalidIds.length > 0) {
-          return failure(
-            "One or more attractions are invalid or do not belong to this admin.",
-            400,
-            "INVALID_ATTRACTION",
-          );
-        }
+      const validIds = new Set(validAttractions.map((item) => item.id));
+
+      const invalidIds = attractionIds.filter((id) => !validIds.has(id));
+
+      if (invalidIds.length > 0) {
+        return failure(
+          "One or more attractions are invalid or do not belong to this admin.",
+          400,
+          "INVALID_ATTRACTION",
+        );
+      }
+    }
+
+    // -----------------------------------------------------
+    // MANAGER: can only give the modules they hold
+    //
+    // What the staff member already has from an admin stays
+    // as it is; the manager can neither add nor remove it.
+    // -----------------------------------------------------
+
+    const grantableModules =
+      auth.user.role === "MANAGER" ? await getGrantableStaffModules(auth) : null;
+
+    const grantableIds =
+      grantableModules && new Set(grantableModules.map((item) => item.id));
+
+    const grantableKeys =
+      grantableModules && new Set(grantableModules.map((item) => item.key));
+
+    const isGrantableRole = (role: string) =>
+      !grantableKeys ||
+      getStaffRoleModuleKeys(role).every((key) => grantableKeys.has(key));
+
+    if (grantableIds && roles !== undefined) {
+      const currentRoles = await db
+        .select({
+          role: staffRoles.role,
+        })
+        .from(staffRoles)
+        .where(eq(staffRoles.staffId, staffId));
+
+      const currentModules = await db
+        .select({
+          moduleId: staffSystemModulePermissions.moduleId,
+        })
+        .from(staffSystemModulePermissions)
+        .where(eq(staffSystemModulePermissions.staffId, staffId));
+
+      const currentRoleNames = new Set(currentRoles.map((item) => item.role));
+      const currentModuleIds = new Set(
+        currentModules.map((item) => item.moduleId),
+      );
+
+      const addsOtherModule =
+        roles.some(
+          (item) =>
+            !currentRoleNames.has(item.role.trim()) &&
+            !isGrantableRole(item.role),
+        ) ||
+        (staffSystemModuleAllowedIds ?? []).some(
+          (id) => !currentModuleIds.has(id) && !grantableIds.has(id),
+        );
+
+      if (addsOtherModule) {
+        return failure(
+          "You can only give staff the permissions you have.",
+          403,
+          "MODULE_NOT_GRANTABLE",
+        );
       }
     }
 
@@ -805,6 +368,7 @@ export async function PATCH(
           and(
             eq(users.id, staffId),
             eq(users.role, "STAFF"),
+            eq(users.isDeleted, false),
             eq(users.adminId, adminId),
           ),
         )
@@ -830,7 +394,10 @@ export async function PATCH(
     // -----------------------------------------------------
 
     if (roles !== undefined) {
-      const normalizedRoles = [...new Set(roles.map((role) => role.trim()))];
+      const normalizedRoles = roles.map((item) => ({
+        id: item.id,
+        role: item.role.trim(),
+      }));
 
       // -----------------------------------------------
       // Resolve modules from the new roles
@@ -838,7 +405,9 @@ export async function PATCH(
 
       const moduleKeys = [
         ...new Set(
-          normalizedRoles.flatMap((role) => STAFF_ROLE_MODULES[role] ?? []),
+          normalizedRoles.flatMap(
+            (item) => getStaffRoleModuleKeys(item.role),
+          ),
         ),
       ];
 
@@ -871,41 +440,162 @@ export async function PATCH(
       }
 
       // -----------------------------------------------
-      // Update roles
+      // Fetch existing roles
       // -----------------------------------------------
 
-      await db.delete(staffRoles).where(eq(staffRoles.staffId, staffId));
+      const existingRoles = await db
+        .select({
+          id: staffRoles.id,
+          role: staffRoles.role,
+        })
+        .from(staffRoles)
+        .where(eq(staffRoles.staffId, staffId));
 
-      if (normalizedRoles.length > 0) {
-        await db.insert(staffRoles).values(
-          normalizedRoles.map((role) => ({
+      const existingRoleIds = new Set(
+        existingRoles.map((item) => item.id),
+      );
+
+      const incomingRoleIds = new Set(
+        normalizedRoles
+          .filter((item) => item.id)
+          .map((item) => item.id!),
+      );
+
+      // -----------------------------------------------
+      // Delete only removed roles
+      // -----------------------------------------------
+
+      const rolesToDelete = existingRoles
+        .filter(
+          (item) =>
+            !incomingRoleIds.has(item.id) && isGrantableRole(item.role),
+        )
+        .map((item) => item.id);
+
+      if (rolesToDelete.length > 0) {
+        await db
+          .delete(staffRoles)
+          .where(inArray(staffRoles.id, rolesToDelete));
+      }
+
+      // -----------------------------------------------
+      // Update existing roles / insert new roles
+      // -----------------------------------------------
+
+      for (const item of normalizedRoles) {
+        if (item.id && existingRoleIds.has(item.id)) {
+          await db
+            .update(staffRoles)
+            .set({
+              role: item.role,
+            })
+            .where(
+              and(
+                eq(staffRoles.id, item.id),
+                eq(staffRoles.staffId, staffId),
+              ),
+            );
+        } else {
+          await db.insert(staffRoles).values({
             staffId,
-            role,
-          })),
-        );
+            role: item.role,
+          });
+        }
       }
 
       // -----------------------------------------------
       // Synchronize module permissions
       // -----------------------------------------------
 
-      await db
-        .delete(staffSystemModulePermissions)
+      const allowedModuleIds = staffSystemModuleAllowedIds ?? [];
+
+      const existingPermissions = await db
+        .select({
+          id: staffSystemModulePermissions.id,
+          moduleId: staffSystemModulePermissions.moduleId,
+        })
+        .from(staffSystemModulePermissions)
         .where(eq(staffSystemModulePermissions.staffId, staffId));
 
-      if (roleModules.length > 0) {
+      const existingPermissionModuleIds = new Set(
+        existingPermissions.map((item) => item.moduleId),
+      );
+
+      const incomingPermissionModuleIds = new Set(allowedModuleIds);
+
+      // -----------------------------------------------
+      // Delete only removed permissions
+      // -----------------------------------------------
+
+      const permissionsToDelete = existingPermissions
+        .filter(
+          (item) =>
+            !incomingPermissionModuleIds.has(item.moduleId) &&
+            (!grantableIds || grantableIds.has(item.moduleId)),
+        )
+        .map((item) => item.id);
+
+      if (permissionsToDelete.length > 0) {
+        await db
+          .delete(staffSystemModulePermissions)
+          .where(
+            inArray(
+              staffSystemModulePermissions.id,
+              permissionsToDelete,
+            ),
+          );
+      }
+
+      // -----------------------------------------------
+      // Insert only new permissions
+      // -----------------------------------------------
+
+      const permissionsToInsert = allowedModuleIds.filter(
+        (moduleId) => !existingPermissionModuleIds.has(moduleId),
+      );
+
+      if (permissionsToInsert.length > 0) {
         await db
           .insert(staffSystemModulePermissions)
           .values(
-            roleModules.map((module) => ({
+            permissionsToInsert.map((moduleId) => ({
               staffId,
-              moduleId: module.id,
+              moduleId,
 
               reportAccessTiming: reportAccessTiming ?? null,
               reportAccessUnit: reportAccessUnit ?? null,
             })),
           )
           .onConflictDoNothing();
+      }
+
+      // -----------------------------------------------
+      // Update report settings on existing permissions
+      // -----------------------------------------------
+
+      if (
+        reportAccessTiming !== undefined ||
+        reportAccessUnit !== undefined
+      ) {
+        await db
+          .update(staffSystemModulePermissions)
+          .set({
+            ...(reportAccessTiming !== undefined && {
+              reportAccessTiming,
+            }),
+            ...(reportAccessUnit !== undefined && {
+              reportAccessUnit,
+            }),
+          })
+          .where(
+            and(
+              eq(staffSystemModulePermissions.staffId, staffId),
+              inArray(
+                staffSystemModulePermissions.moduleId,
+                allowedModuleIds,
+              ),
+            ),
+          );
       }
     }
 
@@ -914,13 +604,58 @@ export async function PATCH(
     // -----------------------------------------------------
 
     if (attractionIds !== undefined) {
-      await db
-        .delete(staffAttractionAssignments)
+      const existingAssignments = await db
+        .select({
+          id: staffAttractionAssignments.id,
+          attractionId: staffAttractionAssignments.attractionId,
+        })
+        .from(staffAttractionAssignments)
         .where(eq(staffAttractionAssignments.staffId, staffId));
 
-      if (attractionIds.length > 0) {
+      const existingAttractionIds = new Set(
+        existingAssignments.map((item) => item.attractionId),
+      );
+
+      const incomingAttractionIds = new Set(attractionIds);
+
+      // -----------------------------------------------
+      // Delete only removed assignments
+      //
+      // A manager can only remove their own attractions;
+      // the staff member keeps every other assignment.
+      // -----------------------------------------------
+
+      const assignmentsToDelete = existingAssignments
+        .filter(
+          (item) =>
+            !incomingAttractionIds.has(item.attractionId) &&
+            (!managerAttractionIds ||
+              managerAttractionIds.includes(item.attractionId)),
+        )
+        .map((item) => item.id);
+
+      if (assignmentsToDelete.length > 0) {
+        await db
+          .delete(staffAttractionAssignments)
+          .where(
+            inArray(
+              staffAttractionAssignments.id,
+              assignmentsToDelete,
+            ),
+          );
+      }
+
+      // -----------------------------------------------
+      // Insert only new assignments
+      // -----------------------------------------------
+
+      const assignmentsToInsert = attractionIds.filter(
+        (attractionId) => !existingAttractionIds.has(attractionId),
+      );
+
+      if (assignmentsToInsert.length > 0) {
         await db.insert(staffAttractionAssignments).values(
-          attractionIds.map((attractionId) => ({
+          assignmentsToInsert.map((attractionId) => ({
             staffId,
             attractionId,
           })),
@@ -960,6 +695,30 @@ export async function PATCH(
           eq(attractions.adminId, adminId),
         ),
       );
+
+    // -----------------------------------------------------
+    // Update Crowd Mode permission if provided
+    // -----------------------------------------------------
+
+    if (isCrowdModeAllowed !== undefined) {
+      await db
+        .insert(staffCrowdMode)
+        .values({
+          staffId,
+          isAllowed: isCrowdModeAllowed,
+          isEnabled: false,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: staffCrowdMode.staffId,
+          set: {
+            isAllowed: isCrowdModeAllowed,
+            // If admin revokes permission, automatically disable active crowd mode
+            ...(isCrowdModeAllowed === false ? { isEnabled: false } : {}),
+            updatedAt: new Date(),
+          },
+        });
+    }
 
     // -----------------------------------------------------
     // Response
@@ -1057,6 +816,7 @@ export async function DELETE(
         and(
           eq(users.id, staffId),
           eq(users.role, "STAFF"),
+          eq(users.isDeleted, false),
           eq(users.adminId, adminId),
         ),
       )
@@ -1135,40 +895,48 @@ export async function DELETE(
     }
 
     // -----------------------------------------------------
-    // Delete attraction assignments
+    // Soft delete staff user
+    //
+    // The row stays so bookings keep their creator. Roles and
+    // assignments stay for history; deleted staff are hidden
+    // from every list. The email becomes free to reuse.
     // -----------------------------------------------------
 
-    await db
-      .delete(staffAttractionAssignments)
-      .where(eq(staffAttractionAssignments.staffId, staffId));
+    await db.transaction(async (tx) => {
+      const now = new Date();
 
-    // -----------------------------------------------------
-    // Delete staff module permissions
-    // -----------------------------------------------------
+      await tx
+        .update(users)
+        .set({
+          isDeleted: true,
+          deletedAt: now,
+          deletedBy: auth.user.id,
+          status: "INACTIVE",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(users.id, staffId),
+            eq(users.role, "STAFF"),
+            eq(users.adminId, adminId),
+          ),
+        );
 
-    await db
-      .delete(staffSystemModulePermissions)
-      .where(eq(staffSystemModulePermissions.staffId, staffId));
+      await tx
+        .update(sessions)
+        .set({ revokedAt: now })
+        .where(and(eq(sessions.userId, staffId), isNull(sessions.revokedAt)));
 
-    // -----------------------------------------------------
-    // Delete staff roles
-    // -----------------------------------------------------
-
-    await db.delete(staffRoles).where(eq(staffRoles.staffId, staffId));
-
-    // -----------------------------------------------------
-    // Delete staff user
-    // -----------------------------------------------------
-
-    await db
-      .delete(users)
-      .where(
-        and(
-          eq(users.id, staffId),
-          eq(users.role, "STAFF"),
-          eq(users.adminId, adminId),
-        ),
-      );
+      await tx
+        .update(passwordResetTokens)
+        .set({ usedAt: now })
+        .where(
+          and(
+            eq(passwordResetTokens.userId, staffId),
+            isNull(passwordResetTokens.usedAt),
+          ),
+        );
+    });
 
     // -----------------------------------------------------
     // Response

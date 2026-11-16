@@ -16,6 +16,7 @@ import { confirmDelete } from "@/lib/notify";
 import DateRangePicker from "@/components/ui/DateRangePicker";
 import ExportButtons from "@/components/ui/ExportButtons";
 import { GlobalDataTable } from "@/components/ui/GlobalDataTable";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import {
   useBookingList,
   useUpdateBooking,
@@ -28,7 +29,6 @@ import EditBookingModal from "@/components/modals/EditBookingModal";
 import { exportToCSV, exportTableToPDF, renderStatusBadgeHTML, fetchAllPages } from "@/lib/exportUtils";
 import { ExportScope } from "@/components/ui/ExportButtons";
 
-const ITEMS_PER_PAGE = 10;
 
 // ── Skeleton shimmer ─────────────────────────────────────────────────────────
 const shimmerCSS = `
@@ -122,6 +122,7 @@ export default function BookingsPage() {
   const [toDate, setToDate] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // ── Export Loading State ─────────────────────────────────────────────────
   const [isExportingPDF, setIsExportingPDF] = useState(false);
@@ -145,8 +146,24 @@ export default function BookingsPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  // Reset page when filters change
+  useInitFromUrl({
+    page: (v) => { const n = Number(v); if (n > 0) setCurrentPage(n); },
+    limit: (v) => { const n = Number(v); if (n > 0) setPageSize(n); },
+    search: (v) => { setSearch(v); setDebouncedSearch(v); },
+    attractionId: (v) => setSelectedAttractionId(v),
+    attractionManagementId: (v) => setSelectedAttractionId(v),
+    status: (v) => setSelectedStatus(v),
+    fromDate: (v) => setFromDate(v),
+    toDate: (v) => setToDate(v),
+  });
+
+  const isInitialFilterMount = useRef(true);
+  // Reset page when filters change (skip initial mount)
   useEffect(() => {
+    if (isInitialFilterMount.current) {
+      isInitialFilterMount.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [debouncedSearch, selectedAttractionId, fromDate, toDate, selectedStatus]);
 
@@ -163,15 +180,19 @@ export default function BookingsPage() {
   }, []);
 
   // ── Queries 
-  const { data: bookingsData, isLoading, isFetching } = useBookingList({
+  const bookingQueryParams = {
     page: currentPage,
-    limit: ITEMS_PER_PAGE,
+    limit: pageSize,
     search: debouncedSearch || undefined,
     attractionManagementId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
     status: selectedStatus !== "All" ? selectedStatus : undefined,
     fromDate: fromDate || undefined,
     toDate: toDate || undefined,
-  });
+  };
+
+  useSyncParamsToUrl(bookingQueryParams);
+
+  const { data: bookingsData, isLoading, isFetching } = useBookingList(bookingQueryParams);
 
   const updateBookingMutation = useUpdateBooking();
   const deleteBookingMutation = useDeleteBooking();
@@ -351,7 +372,7 @@ export default function BookingsPage() {
       const res = await fetchBookingList({
         ...params,
         page: currentPage,
-        limit: ITEMS_PER_PAGE,
+        limit: pageSize,
       });
       return res.items;
     } else {
@@ -402,7 +423,7 @@ export default function BookingsPage() {
         filename: `Bookings_${scopeLabel}_${dateKey}.pdf`,
         orientation: "landscape",
         columns: [
-          { header: "#", accessor: (_, idx) => (scope === "all" ? idx + 1 : (currentPage - 1) * ITEMS_PER_PAGE + idx + 1), width: "30px" },
+          { header: "#", accessor: (_, idx) => (scope === "all" ? idx + 1 : (currentPage - 1) * pageSize + idx + 1), width: "30px" },
           { header: "Invoice Number", accessor: (b) => b.invoiceNumber || b.bookingId || "-" },
           { header: "Customer", accessor: (b) => b.customer?.name || b.customerName || "-" },
           { header: "Mobile", accessor: (b) => b.customer?.mobileNumber || b.mobileNumber || "-" },
@@ -468,7 +489,7 @@ export default function BookingsPage() {
       const rows = dataToExport.map((b, i) => {
         const dStr = b.dateTime || b.bookingDate || b.createdAt;
         return [
-          scope === "all" ? i + 1 : (currentPage - 1) * ITEMS_PER_PAGE + i + 1,
+          scope === "all" ? i + 1 : (currentPage - 1) * pageSize + i + 1,
           b.invoiceNumber || b.bookingId || "-",
           b.customer?.name || b.customerName || "-",
           b.customer?.mobileNumber || b.mobileNumber || "-",
@@ -870,9 +891,10 @@ export default function BookingsPage() {
         ]}
         data={bookings}
         keyExtractor={(item: BookingListItem) => item.id}
-        pageSize={ITEMS_PER_PAGE}
+        pageSize={pageSize}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
+        onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1); }}
         totalItems={pagination?.total}
         totalPages={totalPages}
         showSNo={true}

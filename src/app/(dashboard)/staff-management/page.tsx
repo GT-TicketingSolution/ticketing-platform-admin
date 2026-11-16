@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, Suspense, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Search,
@@ -25,7 +25,8 @@ import { colors, typography } from "@/lib/theme";
 import { StaffUser } from "./types";
 import { DataTable, Column } from "@/components/ui/DataTable";
 import { useToast } from "@/components/ui/Toast";
-import { confirmAdd, confirmDelete, confirmStatusChange } from "@/lib/notify";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
+import { confirmAdd, confirmDelete } from "@/lib/notify";
 import { staffSchema } from "./schema";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -35,12 +36,12 @@ import MultiSelectDropdown from "@/components/ui/MultiSelectDropdown";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import ExportButtons from "@/components/ui/ExportButtons";
 import ReportTimingModal from "@/components/modals/ReportTimingModal";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 import {
   useStaffList,
   fetchStaffList,
   useCreateStaff,
   useUpdateStaff,
-  useDisableStaff,
   useDeleteStaff,
   StaffQueryParams,
 } from "@/hooks/useStaffQueries";
@@ -52,8 +53,24 @@ import {
   fetchAllPages,
 } from "@/lib/exportUtils";
 import { useAttractions, AttractionItem } from "@/hooks/useManagerQueries";
+import { useSystemModules } from "@/hooks/useSystemModuleQueries";
+import { useProfileQuery } from "@/hooks/useAuthQueries";
+import { getStaffRoleModuleKeys } from "@/lib/auth/staff-role-modules";
 
 const MultiSelect = MultiSelectDropdown;
+
+const formatStaffDisplayDate = (value?: string | null): string => {
+  if (!value) return "—";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+
+  const day = String(parsed.getUTCDate()).padStart(2, "0");
+  const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+  const year = parsed.getUTCFullYear();
+
+  return `${day}/${month}/${year}`;
+};
 
 const STAFF_ROLES = [
   "Counter Operator",
@@ -66,16 +83,28 @@ const STAFF_ROLES = [
 function StaffManagementInner() {
   const { showToast } = useToast();
   const searchParams = useSearchParams();
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   // Filters State
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedAttractionFilter, setSelectedAttractionFilter] = useState("All");
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>(
-    searchParams.get("status") ?? "All"
-  );
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("All");
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    const statusFromUrl = searchParams.get("status");
+    if (statusFromUrl) {
+      setSelectedStatusFilter(statusFromUrl);
+    } else {
+      setSelectedStatusFilter("All");
+    }
+  }, [searchParams]);
 
   // Debounce search
   useEffect(() => {
@@ -85,8 +114,21 @@ function StaffManagementInner() {
     return () => clearTimeout(handler);
   }, [search]);
 
-  // Reset to page 1 on filter or search change
+  useInitFromUrl({
+    page: (v) => { const n = Number(v); if (n > 0) setCurrentPage(n); },
+    limit: (v) => { const n = Number(v); if (n > 0) setPageSize(n); },
+    search: (v) => { setSearch(v); setDebouncedSearch(v); },
+    attractionId: (v) => setSelectedAttractionFilter(v),
+    status: (v) => setSelectedStatusFilter(v),
+  });
+
+  const isInitialFilterMount = useRef(true);
+  // Reset to page 1 on filter or search change (skip initial mount)
   useEffect(() => {
+    if (isInitialFilterMount.current) {
+      isInitialFilterMount.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [debouncedSearch, selectedAttractionFilter, selectedStatusFilter]);
 
@@ -106,18 +148,22 @@ function StaffManagementInner() {
         ? "INACTIVE"
         : undefined;
 
-  // Staff Queries & Mutations
-  const {
-    data: staffData,
-    isLoading: isFetchingStaff,
-    isFetching,
-  } = useStaffList({
+  const staffQueryParams = {
     page: currentPage,
     limit: pageSize,
     search: debouncedSearch || undefined,
     status: apiStatus,
     attractionId: selectedAttractionFilter !== "All" ? selectedAttractionFilter : undefined,
-  });
+  };
+
+  useSyncParamsToUrl(staffQueryParams);
+
+  // Staff Queries & Mutations
+  const {
+    data: staffData,
+    isLoading: isFetchingStaff,
+    isFetching,
+  } = useStaffList(staffQueryParams);
 
   const pagination = staffData?.pagination ?? {
     page: currentPage,
@@ -128,8 +174,66 @@ function StaffManagementInner() {
 
   const createStaffMutation = useCreateStaff();
   const updateStaffMutation = useUpdateStaff();
-  const disableStaffMutation = useDisableStaff();
   const deleteStaffMutation = useDeleteStaff();
+
+  const { data: systemModulesList } = useSystemModules();
+
+  // Managers can only give the roles whose module they hold themselves.
+  const { data: profileData } = useProfileQuery();
+  const isManagerUser =
+    (profileData?.profile || (profileData as any)?.data?.profile)?.role === "MANAGER";
+  const availableStaffRoles = isManagerUser
+    ? STAFF_ROLES.filter((role) =>
+      getStaffRoleModuleKeys(role).every((key) =>
+        systemModulesList?.some((m) => m.key === key),
+      ),
+    )
+    : STAFF_ROLES;
+
+  // Helper to map selected roles to staffSystemModuleAllowedIds
+  // TICKET_BOOKING for Counter Operator
+  // REPORTS for Reports Access
+  // SCANNER for Validator
+  const getStaffSystemModuleAllowedIds = (roles: string[], canReports: boolean): string[] => {
+    const availableModules =
+      staffData?.staffSystemModules && staffData.staffSystemModules.length > 0
+        ? staffData.staffSystemModules
+        : (systemModulesList ?? []);
+
+    const findId = (key: string) => {
+      return availableModules.find(
+        (m) =>
+          m.name?.toUpperCase() === key.toUpperCase() ||
+          (m as any).key?.toUpperCase() === key.toUpperCase()
+      )?.id;
+    };
+
+    const ids: string[] = [];
+
+    const isCounterOperator = roles.some((r) =>
+      r.toLowerCase().includes("counter operator")
+    );
+    const isValidator = roles.some((r) =>
+      r.toLowerCase().includes("validator")
+    );
+    const isReportsAccess =
+      roles.some((r) => r.toLowerCase().includes("reports access")) || canReports;
+
+    if (isCounterOperator) {
+      const id = findId("TICKET_BOOKING");
+      if (id) ids.push(id);
+    }
+    if (isReportsAccess) {
+      const id = findId("REPORTS");
+      if (id) ids.push(id);
+    }
+    if (isValidator) {
+      const id = findId("SCANNER");
+      if (id) ids.push(id);
+    }
+
+    return ids;
+  };
 
   const rawStaffItems = staffData?.items ?? [];
 
@@ -144,33 +248,59 @@ function StaffManagementInner() {
       return String(r);
     };
 
-    const rolesArr: string[] = Array.isArray(s.role)
-      ? (s.role as any[]).map(normalizeRole)
-      : Array.isArray(s.roles)
-        ? (s.roles as any[]).map(normalizeRole)
+    const roleDetails: Array<{ id?: string; role: string }> = Array.isArray(s.roles)
+      ? (s.roles as any[]).map((item) => ({
+        id: item?.id,
+        role: normalizeRole(item),
+      }))
+      : Array.isArray(s.role)
+        ? (s.role as any[]).map((item) => ({
+          id: typeof item === "object" ? item?.id : undefined,
+          role: normalizeRole(item),
+        }))
         : typeof s.role === "string" && s.role
-          ? [s.role]
+          ? [{ role: s.role }]
           : s.role && typeof s.role === "object"
-            ? [normalizeRole(s.role)]
-            : ["STAFF"];
+            ? [{ id: (s.role as any)?.id, role: normalizeRole(s.role) }]
+            : [{ role: "STAFF" }];
+
+    const rolesArr: string[] = roleDetails.map((item) => item.role);
+
+    const reportPermission = Array.isArray(s.reportPermissions) && s.reportPermissions.length > 0
+      ? s.reportPermissions[0]
+      : null;
+
+    const getRoleTimingHours = (value?: string | null): number | null => {
+      if (!value) return null;
+      const match = value.match(/Reports Access\s*\((\d+)\s*h\)/i) ?? value.match(/(\d+)\s*h/i);
+      if (!match) return null;
+      const parsed = Number(match[1]);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    };
 
     let hasReportsAccess = s.canViewReports ?? false;
-    let durationHours: number | null = s.reportViewDurationHours ?? null;
+    let durationHours: number | null =
+      reportPermission?.reportAccessTiming !== null &&
+        reportPermission?.reportAccessTiming !== undefined
+        ? Number(reportPermission.reportAccessTiming)
+        : s.reportAccessTiming !== null && s.reportAccessTiming !== undefined
+          ? Number(s.reportAccessTiming)
+          : null;
 
     const normalizedRoles = rolesArr.map((r) => {
       if (r.toLowerCase().startsWith("reports access")) {
         hasReportsAccess = true;
-        const match = r.match(/(\d+)/);
-        if (match && !durationHours) {
-          durationHours = parseInt(match[1], 10);
+        const roleTiming = getRoleTimingHours(r);
+        if (roleTiming !== null && (!durationHours || durationHours <= 0)) {
+          durationHours = roleTiming;
         }
         return "Reports Access";
       }
-      return r;
+      return r.replace(/\s*\(\d+h\)/i, "").trim();
     });
 
     if (hasReportsAccess && !durationHours) {
-      durationHours = 24;
+      durationHours = null;
     }
 
     const attractionNames =
@@ -180,6 +310,13 @@ function StaffManagementInner() {
           ? s.attractions.map((a) => a.name)
           : [];
 
+    const totalBookingsCount =
+      Array.isArray(s.staffTotalBookings) && s.staffTotalBookings.length > 0
+        ? Number(s.staffTotalBookings[0]?.totalBookings ?? 0)
+        : typeof s.ticketsIssued === "number"
+          ? s.ticketsIssued
+          : Number(s.ticketsIssued ?? 0);
+
     return {
       id: s.id,
       name: s.name || "—",
@@ -187,27 +324,42 @@ function StaffManagementInner() {
       phone: s.phone ?? "—",
       role: normalizedRoles,
       roles: normalizedRoles,
+      roleDetails,
       assignedAttraction: attractionNames,
       attractions: s.attractions || [],
       attractionIds: s.attractionIds || s.attractions?.map((a) => a.id) || [],
-      joinedDate: s.joinedDate
-        ? new Date(s.joinedDate).toLocaleDateString("en-IN")
-        : s.createdAt
-          ? new Date(s.createdAt).toLocaleDateString("en-IN")
-          : "—",
+      joinedDate: formatStaffDisplayDate(s.joinedDate ?? s.createdAt),
       status: s.status,
-      ticketsIssued: s.ticketsIssued ?? 0,
+      ticketsIssued: Number.isFinite(totalBookingsCount) ? totalBookingsCount : 0,
+      staffTotalBookings: s.staffTotalBookings,
       canViewReports: hasReportsAccess,
-      reportViewDurationHours: durationHours,
+      reportAccessTiming: durationHours,
     };
   });
 
   // Modal & Selection States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  useModalBodyLock(isAddModalOpen);
   const [showAddPassword, setShowAddPassword] = useState(false);
   const [showEditPassword, setShowEditPassword] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Keep selectedStaff in sync if staffList is updated
+  useEffect(() => {
+    if (selectedStaff?.id) {
+      const current = staffList.find((s) => s.id === selectedStaff.id);
+      if (
+        current &&
+        (current.ticketsIssued !== selectedStaff.ticketsIssued ||
+          current.status !== selectedStaff.status)
+      ) {
+        setSelectedStaff((prev) =>
+          prev && prev.id === current.id ? { ...prev, ...current } : prev
+        );
+      }
+    }
+  }, [staffList]);
 
   // Report Access Timing Modal State
   const [isReportTimingModalOpen, setIsReportTimingModalOpen] = useState(false);
@@ -224,7 +376,7 @@ function StaffManagementInner() {
     assignedAttraction: [] as string[],
     status: "Active" as "Active" | "Inactive",
     canViewReports: false,
-    reportViewDurationHours: "" as string | number,
+    reportAccessTiming: null as number | null,
   });
 
   // Validation errors from Zod
@@ -240,7 +392,7 @@ function StaffManagementInner() {
       assignedAttraction: [],
       status: "Active",
       canViewReports: false,
-      reportViewDurationHours: "",
+      reportAccessTiming: null,
     });
     setFormErrors({});
     setPendingRoleSelection(null);
@@ -271,7 +423,13 @@ function StaffManagementInner() {
     const isAct = String(staff.status).toUpperCase() === "ACTIVE";
 
     let hasReports = staff.canViewReports ?? false;
-    let duration: number | string = staff.reportViewDurationHours ?? "";
+    const rawDuration = staff.reportAccessTiming;
+    let duration: number | null =
+      typeof rawDuration === "number"
+        ? rawDuration
+        : rawDuration
+          ? parseInt(String(rawDuration), 10)
+          : null;
 
     const cleanedRoles = roleArr.map((r) => {
       if (r.toLowerCase().startsWith("reports access")) {
@@ -301,7 +459,7 @@ function StaffManagementInner() {
       assignedAttraction: [...attrArr],
       status: isAct ? "Active" : "Inactive",
       canViewReports: hasReports,
-      reportViewDurationHours: duration,
+      reportAccessTiming: duration,
     });
     setIsEditing(true);
   };
@@ -330,9 +488,9 @@ function StaffManagementInner() {
         ...prev,
         role: newRoles,
         canViewReports: false,
-        reportViewDurationHours: "",
+        reportAccessTiming: null,
       }));
-      setFormErrors((p) => ({ ...p, role: "", reportViewDurationHours: "" }));
+      setFormErrors((p) => ({ ...p, role: "", reportAccessTiming: "" }));
     } else {
       setFormData((prev) => ({ ...prev, role: newRoles }));
       setFormErrors((p) => ({ ...p, role: "" }));
@@ -351,7 +509,7 @@ function StaffManagementInner() {
       ...prev,
       role: nextRoles,
       canViewReports: true,
-      reportViewDurationHours: hours,
+      reportAccessTiming: hours,
     }));
 
     if (typeof window !== "undefined") {
@@ -366,7 +524,7 @@ function StaffManagementInner() {
 
     setPendingRoleSelection(null);
     setIsReportTimingModalOpen(false);
-    setFormErrors((p) => ({ ...p, role: "", reportViewDurationHours: "" }));
+    setFormErrors((p) => ({ ...p, role: "", reportAccessTiming: "" }));
   };
 
   // Cancel Reports Access Timing modal
@@ -376,7 +534,7 @@ function StaffManagementInner() {
       setFormData((prev) => ({
         ...prev,
         role: prev.role.filter((r) => r !== "Reports Access"),
-        reportViewDurationHours: "",
+        reportAccessTiming: null,
       }));
     }
     setPendingRoleSelection(null);
@@ -389,13 +547,12 @@ function StaffManagementInner() {
     // Prepare data for validation — normalize optional fields so empty string doesn't fail validation
     const dataToValidate = {
       ...formData,
-      reportViewDurationHours:
+      reportAccessTiming:
         !formData.canViewReports ||
-          formData.reportViewDurationHours === "" ||
-          formData.reportViewDurationHours === null ||
-          formData.reportViewDurationHours === undefined
+          formData.reportAccessTiming === null ||
+          formData.reportAccessTiming === undefined
           ? undefined
-          : formData.reportViewDurationHours,
+          : formData.reportAccessTiming,
     };
 
     // Zod validation
@@ -427,14 +584,23 @@ function StaffManagementInner() {
       .map((name) => attractionsList.find((a) => a.name === name)?.id)
       .filter(Boolean) as string[];
 
-    // Format roles: tag Reports Access with assigned duration for display and persistence
-    const finalRoles = formData.role.map((r) => {
-      if (r === "Reports Access") {
-        const hours = formData.reportViewDurationHours || 24;
-        return `Reports Access (${hours}h)`;
-      }
-      return r;
-    });
+    const isReportsAccess =
+      formData.role.some((r) => r.toLowerCase().includes("reports access")) ||
+      Boolean(formData.canViewReports);
+
+    // Format roles: strip any "(336h)" / "(XXh)" so we send "Reports Access" directly in payload
+    const finalRoles = formData.role.map((r) =>
+      r.toLowerCase().startsWith("reports access") ? "Reports Access" : r
+    );
+
+    const reportHours = isReportsAccess
+      ? Number(formData.reportAccessTiming || 24)
+      : undefined;
+
+    const staffSystemModuleAllowedIds = getStaffSystemModuleAllowedIds(
+      formData.role,
+      isReportsAccess
+    );
 
     try {
       await createStaffMutation.mutateAsync({
@@ -444,11 +610,11 @@ function StaffManagementInner() {
         password: formData.password,
         roles: finalRoles.length > 0 ? finalRoles : ["STAFF"],
         attractionIds: attractionIds.length > 0 ? attractionIds : [],
+        staffSystemModuleAllowedIds,
         status: formData.status === "Active" ? "ACTIVE" : "INACTIVE",
-        canViewReports: formData.role.includes("Reports Access"),
-        reportViewDurationHours: formData.role.includes("Reports Access")
-          ? Number(formData.reportViewDurationHours || 24)
-          : null,
+        canViewReports: isReportsAccess,
+        reportAccessTiming: reportHours,
+        reportAccessUnit: isReportsAccess ? "HOURS" : undefined,
       });
       setIsAddModalOpen(false);
       resetForm();
@@ -463,13 +629,12 @@ function StaffManagementInner() {
     // Prepare data for validation — normalize optional fields so empty string doesn't fail validation
     const dataToValidate = {
       ...formData,
-      reportViewDurationHours:
+      reportAccessTiming:
         !formData.canViewReports ||
-          formData.reportViewDurationHours === "" ||
-          formData.reportViewDurationHours === null ||
-          formData.reportViewDurationHours === undefined
+          formData.reportAccessTiming === null ||
+          formData.reportAccessTiming === undefined
           ? undefined
-          : formData.reportViewDurationHours,
+          : formData.reportAccessTiming,
     };
 
     // Zod validation
@@ -489,12 +654,38 @@ function StaffManagementInner() {
       .map((name) => attractionsList.find((a) => a.name === name)?.id)
       .filter(Boolean) as string[];
 
-    const finalRoles = formData.role.map((r) => {
-      if (r === "Reports Access") {
-        const hours = formData.reportViewDurationHours || 24;
-        return `Reports Access (${hours}h)`;
-      }
-      return r;
+    const isReportsAccess =
+      formData.role.some((r) => r.toLowerCase().includes("reports access")) ||
+      Boolean(formData.canViewReports);
+
+    // Format roles: strip any "(336h)" / "(XXh)" so we send "Reports Access" directly in payload
+    const finalRoles = formData.role.map((r) =>
+      r.toLowerCase().startsWith("reports access") ? "Reports Access" : r
+    );
+
+    const reportHours = isReportsAccess
+      ? Number(formData.reportAccessTiming || 24)
+      : undefined;
+
+    const staffSystemModuleAllowedIds = getStaffSystemModuleAllowedIds(
+      formData.role,
+      isReportsAccess
+    );
+
+    const existingRoleMap = new Map(
+      (Array.isArray(selectedStaff?.roleDetails) ? selectedStaff.roleDetails : []).map((item) => [
+        String(item?.role ?? "").trim().toLowerCase(),
+        item,
+      ])
+    );
+
+    const rolePayload = (finalRoles.length > 0 ? finalRoles : ["STAFF"]).map((role) => {
+      const normalizedRole = String(role).trim();
+      const matchedRole = existingRoleMap.get(normalizedRole.toLowerCase());
+      return {
+        id: matchedRole?.id,
+        role: normalizedRole,
+      };
     });
 
     try {
@@ -505,13 +696,13 @@ function StaffManagementInner() {
           email: formData.email.trim(),
           phone: formData.phone.trim(),
           password: formData.password?.trim() ? formData.password : undefined,
-          roles: finalRoles.length > 0 ? finalRoles : ["STAFF"],
+          roles: rolePayload,
           attractionIds: attractionIds.length > 0 ? attractionIds : [],
+          staffSystemModuleAllowedIds,
           status: formData.status === "Active" ? "ACTIVE" : "INACTIVE",
-          canViewReports: formData.role.includes("Reports Access"),
-          reportViewDurationHours: formData.role.includes("Reports Access")
-            ? Number(formData.reportViewDurationHours || 24)
-            : null,
+          canViewReports: isReportsAccess,
+          reportAccessTiming: reportHours,
+          reportAccessUnit: isReportsAccess ? "HOURS" : undefined,
         },
       });
 
@@ -522,11 +713,12 @@ function StaffManagementInner() {
         phone: formData.phone,
         role: formData.role,
         roles: formData.role,
+        roleDetails: rolePayload,
         assignedAttraction: formData.assignedAttraction,
         status: formData.status === "Active" ? "ACTIVE" : "INACTIVE",
         canViewReports: formData.canViewReports,
-        reportViewDurationHours: formData.canViewReports && formData.reportViewDurationHours !== ""
-          ? Number(formData.reportViewDurationHours)
+        reportAccessTiming: formData.canViewReports && formData.reportAccessTiming != null
+          ? Number(formData.reportAccessTiming)
           : null,
       });
       setIsEditing(false);
@@ -544,28 +736,6 @@ function StaffManagementInner() {
       await deleteStaffMutation.mutateAsync(id);
       setSelectedStaff(null);
       setIsEditing(false);
-    } catch {
-      // Handled by onError
-    }
-  };
-
-  const handleStatusToggle = async (staff: StaffUser, newStatus: StaffUser["status"]) => {
-    const confirmed = await confirmStatusChange(staff.name, newStatus);
-    if (!confirmed) return;
-
-    try {
-      if (newStatus === "Inactive" || newStatus === "INACTIVE") {
-        await disableStaffMutation.mutateAsync(staff.id);
-      } else {
-        await updateStaffMutation.mutateAsync({
-          staffId: staff.id,
-          data: { status: "ACTIVE" },
-        });
-      }
-
-      if (selectedStaff?.id === staff.id) {
-        setSelectedStaff({ ...selectedStaff, status: newStatus });
-      }
     } catch {
       // Handled by onError
     }
@@ -714,7 +884,7 @@ function StaffManagementInner() {
       assignedAttraction: [...attrArr],
       status: isAct ? "Active" : "Inactive",
       canViewReports: s.canViewReports ?? false,
-      reportViewDurationHours: s.reportViewDurationHours ?? "",
+      reportAccessTiming: s.reportAccessTiming ?? null,
     });
     setIsEditing(false);
   };
@@ -767,10 +937,8 @@ function StaffManagementInner() {
         return (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
             {roles.map((r) => {
-              const isReports = r.toLowerCase().startsWith("reports access");
-              const label = isReports && s.reportViewDurationHours
-                ? `Reports Access (${s.reportViewDurationHours}h)`
-                : r;
+              const cleanRole = r.replace(/\s*\(\d+h\)/i, "").trim();
+              const isReports = cleanRole.toLowerCase().startsWith("reports access");
               return (
                 <span
                   key={r}
@@ -789,8 +957,8 @@ function StaffManagementInner() {
                     gap: "4px",
                   }}
                 >
-                  {isReports && <BarChart2 size={12} color="#2563EB" />}
-                  {label}
+                  {isReports}
+                  {cleanRole}
                 </span>
               );
             })}
@@ -922,34 +1090,7 @@ function StaffManagementInner() {
                 >
                   {selectedStaff.name}
                 </h1>
-                <span
-                  style={{
-                    background: isAct ? "#F0FDF4" : "#FEF2F2",
-                    color: isAct ? colors.status.success : colors.status.error,
-                    padding: "2px 10px",
-                    borderRadius: "12px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                  }}
-                >
-                  {isAct ? "Active" : "Inactive"}
-                </span>
               </div>
-              <p
-                style={{
-                  fontFamily: typography.fontFamily.sans,
-                  fontSize: "13px",
-                  color: colors.text.muted,
-                  margin: "2px 0 0",
-                }}
-              >
-                Assigned Attractions:{" "}
-                <strong>
-                  {selectedStaff.assignedAttraction && selectedStaff.assignedAttraction.length > 0
-                    ? selectedStaff.assignedAttraction.join(", ")
-                    : "None"}
-                </strong>
-              </p>
             </div>
           </div>
 
@@ -1223,7 +1364,7 @@ function StaffManagementInner() {
                 <MultiSelect
                   label="Staff Role"
                   required
-                  options={STAFF_ROLES}
+                  options={availableStaffRoles}
                   selected={formData.role}
                   onChange={(vals) => handleRoleChange(vals, "edit")}
                   closeOnSelectOption={(opt) => opt === "Reports Access"}
@@ -1249,7 +1390,11 @@ function StaffManagementInner() {
                       <span style={{ fontSize: "13px", fontWeight: 600, color: "#0C2A42" }}>
                         Reports Access:{" "}
                         <span style={{ fontWeight: 700 }}>
-                          Past {formData.reportViewDurationHours || 24} Hours ({((Number(formData.reportViewDurationHours) || 24) / 24).toFixed(1).replace(/\.0$/, "")} Days)
+                          Past {formData.reportAccessTiming !== null && formData.reportAccessTiming !== undefined
+                            ? Number(formData.reportAccessTiming)
+                            : 24} Hours ({((formData.reportAccessTiming !== null && formData.reportAccessTiming !== undefined
+                              ? Number(formData.reportAccessTiming)
+                              : 24) / 24).toFixed(1).replace(/\.0$/, "")} Days)
                         </span>
                       </span>
                     </div>
@@ -1284,7 +1429,7 @@ function StaffManagementInner() {
                             ...formData,
                             role: formData.role.filter((r) => r !== "Reports Access"),
                             canViewReports: false,
-                            reportViewDurationHours: "",
+                            reportAccessTiming: null,
                           });
                         }}
                         style={{
@@ -1406,19 +1551,15 @@ function StaffManagementInner() {
                       </div>
                       <div style={{ marginTop: "4px", display: "flex", flexWrap: "wrap", gap: "4px" }}>
                         {selectedRoles.map((r) => {
-                          const isReports = r.toLowerCase().startsWith("reports access");
-                          const hours = selectedStaff.reportViewDurationHours || 24;
-                          const days = ((Number(hours) || 24) / 24).toFixed(1).replace(/\.0$/, "");
-                          const label = isReports
-                            ? `Reports Access: Past ${hours} Hours (${days} Days)`
-                            : r;
+                          const cleanRole = r.replace(/\s*\(\d+h\)/i, "").trim();
+                          const isReports = cleanRole.toLowerCase().startsWith("reports access");
                           return (
                             <span
                               key={r}
                               style={{
-                                background: isReports ? "rgba(244, 188, 67, 0.15)" : "rgba(35,114,165,0.1)",
-                                color: isReports ? "#0C2A42" : colors.brand.accent,
-                                border: isReports ? "1px solid rgba(244, 188, 67, 0.5)" : "none",
+                                background: "rgba(35,114,165,0.1)",
+                                color: colors.brand.accent,
+                                border: "none",
                                 padding: "3px 10px",
                                 borderRadius: "6px",
                                 fontSize: "12px",
@@ -1428,8 +1569,8 @@ function StaffManagementInner() {
                                 gap: "6px",
                               }}
                             >
-                              {isReports && <BarChart2 size={13} color="#B45309" />}
-                              {label}
+                              {isReports}
+                              {cleanRole}
                             </span>
                           );
                         })}
@@ -1495,7 +1636,7 @@ function StaffManagementInner() {
                         </div>
                         <div>
                           <div style={{ fontSize: "14px", fontWeight: 700, color: "#0C2A42" }}>
-                            Reports Access: Past {selectedStaff.reportViewDurationHours || 24} Hours ({((Number(selectedStaff.reportViewDurationHours) || 24) / 24).toFixed(1).replace(/\.0$/, "")} Days)
+                            Reports Access: Past {selectedStaff.reportAccessTiming || 24} Hours ({((Number(selectedStaff.reportAccessTiming) || 24) / 24).toFixed(1).replace(/\.0$/, "")} Days)
                           </div>
                           <div style={{ fontSize: "12px", color: "#64748B", marginTop: "2px" }}>
                             Staff member can view historical reports and analytics within this assigned past time window.
@@ -1541,7 +1682,12 @@ function StaffManagementInner() {
                           marginTop: "4px",
                         }}
                       >
-                        {(selectedStaff.ticketsIssued ?? 0).toLocaleString()}
+                        {(
+                          selectedStaff.ticketsIssued ??
+                          (Array.isArray(selectedStaff.staffTotalBookings) && selectedStaff.staffTotalBookings.length > 0
+                            ? Number(selectedStaff.staffTotalBookings[0]?.totalBookings ?? 0)
+                            : 0)
+                        ).toLocaleString()}
                       </div>
                     </div>
                     <div
@@ -1651,7 +1797,9 @@ function StaffManagementInner() {
           isOpen={isReportTimingModalOpen}
           onClose={handleCloseReportTimingModal}
           onApply={handleApplyReportTiming}
-          currentHours={formData.reportViewDurationHours ? Number(formData.reportViewDurationHours) : 24}
+          currentHours={formData.reportAccessTiming !== null && formData.reportAccessTiming !== undefined
+            ? Number(formData.reportAccessTiming)
+            : 24}
           targetLabel={timingModalTarget === "add" ? "New Staff Member" : (formData.name || "Staff Member")}
         />
       </div>
@@ -1659,6 +1807,10 @@ function StaffManagementInner() {
   }
 
   // ─── Main Staff List View ─────────────────────────────────────────────────
+  if (!isHydrated) {
+    return null;
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* Header Bar */}
@@ -1805,6 +1957,7 @@ function StaffManagementInner() {
         pageSize={pageSize}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
+        onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1); }}
         totalItems={pagination.total}
         totalPages={pagination.totalPages}
         isLoading={isFetchingStaff}
@@ -2095,7 +2248,7 @@ function StaffManagementInner() {
                   <MultiSelect
                     label="Staff Role"
                     required
-                    options={STAFF_ROLES}
+                    options={availableStaffRoles}
                     selected={formData.role}
                     onChange={(vals) => handleRoleChange(vals, "add")}
                     closeOnSelectOption={(opt) => opt === "Reports Access"}
@@ -2187,7 +2340,9 @@ function StaffManagementInner() {
         isOpen={isReportTimingModalOpen}
         onClose={handleCloseReportTimingModal}
         onApply={handleApplyReportTiming}
-        currentHours={formData.reportViewDurationHours ? Number(formData.reportViewDurationHours) : 24}
+        currentHours={formData.reportAccessTiming !== null && formData.reportAccessTiming !== undefined
+          ? Number(formData.reportAccessTiming)
+          : 24}
         targetLabel={timingModalTarget === "add" ? "New Staff Member" : (formData.name || "Staff Member")}
       />
     </div>

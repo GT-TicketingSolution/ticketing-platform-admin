@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 
@@ -31,7 +31,7 @@ export async function login(input: LoginInput) {
   const result = await db
     .select()
     .from(users)
-    .where(sql`lower(${users.email}) = ${email}`)
+    .where(and(sql`lower(${users.email}) = ${email}`, eq(users.isDeleted, false)))
     .limit(1);
 
   const user = result[0];

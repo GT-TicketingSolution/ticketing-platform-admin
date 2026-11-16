@@ -20,6 +20,9 @@ import AttractionEmptyState from "@/components/attraction/AttractionEmptyState";
 import AddEditAttractionForm from "@/components/attraction/AddEditAttractionForm";
 import BulkUploadModal from "@/components/modals/BulkUploadModal";
 import { confirmDelete } from "@/lib/notify";
+import { canPerformRoleAction } from "@/lib/auth/role-actions";
+import { useProfileQuery } from "@/hooks/useAuthQueries";
+import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import {
   useAttractionManagementList,
   useCreateAttraction,
@@ -95,9 +98,10 @@ interface AttractionCardProps {
   attraction: AttractionManagement;
   onEdit: (a: AttractionManagement) => void;
   onDelete: (a: AttractionManagement) => void;
+  canDelete: boolean;
 }
 
-function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
+function AttractionCard({ attraction, onEdit, onDelete, canDelete }: AttractionCardProps) {
   const categoryColor = CATEGORY_COLOR[attraction.category] ?? "#F4BC43";
   const [imgError, setImgError] = useState(false);
 
@@ -105,7 +109,27 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
     setImgError(false);
   }, [attraction.image]);
 
-  const p = attraction.pricing ?? { adult: 0, child: 0, student: 0, senior: 0, foreigner: 0 };
+  const categoriesList: Array<{ name: string; price: number }> = Array.isArray((attraction as any).categories)
+    ? (attraction as any).categories
+        .filter((c: any) => c && typeof c.name === "string" && c.name.trim() !== "")
+        .map((c: any) => {
+          const priceVal = Number(c.basePrice ?? c.price);
+          return {
+            name: c.name.trim(),
+            price: !isNaN(priceVal) ? priceVal : 0,
+          };
+        })
+    : [];
+
+  if (!Array.isArray((attraction as any).categories) && attraction.pricing) {
+    const pr = attraction.pricing;
+    if (pr.adult) categoriesList.push({ name: "Adult", price: pr.adult });
+    if (pr.child) categoriesList.push({ name: "Child", price: pr.child });
+    if (pr.student) categoriesList.push({ name: "Student", price: pr.student });
+    if (pr.senior) categoriesList.push({ name: "Senior", price: pr.senior });
+    if (pr.foreigner) categoriesList.push({ name: "Foreigner", price: pr.foreigner });
+  }
+
   const hasValidImage = Boolean(attraction.image && attraction.image.trim() !== "" && !imgError);
 
   return (
@@ -215,11 +239,17 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
           </div>
 
           <div style={{ display: "flex", alignItems: "flex-start", gap: "4px", marginTop: "10px" }}>
-            <span style={{ fontWeight: 600, fontSize: "9px", color: "#515252", marginTop: "1px" }}>₹</span>
+            <span style={{ fontWeight: 600, fontSize: "9px", color: "#515252", marginTop: "1px", flexShrink: 0 }}>₹</span>
             <span style={{ fontWeight: 600, fontSize: "9px", lineHeight: "13px", color: "rgba(81,82,82,0.84)" }}>
-              Adult: ₹{p.adult ?? 0} Child: ₹{p.child ?? 0} Student: ₹{p.student ?? 0}
-              <br />
-              Senior: ₹{p.senior ?? 0} Foreigner: ₹{p.foreigner ?? 0}
+              {categoriesList.length > 0 ? (
+                categoriesList.map((cat, idx) => (
+                  <span key={idx} style={{ whiteSpace: "nowrap", marginRight: "6px", display: "inline-block" }}>
+                    {cat.name}: ₹{cat.price}
+                  </span>
+                ))
+              ) : (
+                "—"
+              )}
             </span>
           </div>
         </div>
@@ -236,14 +266,16 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
           <span style={{ fontWeight: 500, fontSize: "12px", color: "#2372A5" }}>Edit</span>
         </button>
 
-        <button
-          onClick={() => onDelete(attraction)}
-          style={{ boxSizing: "border-box", flex: 1, height: "34px", background: "#FFFFFF", border: "1px solid #DC2626", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", cursor: "pointer", transition: "all 0.18s ease" }}
-          className="btn-delete"
-        >
-          <Trash2 size={13} color="#DC2626" strokeWidth={2} />
-          <span style={{ fontWeight: 500, fontSize: "12px", color: "#DC2626" }}>Delete</span>
-        </button>
+        {canDelete && (
+          <button
+            onClick={() => onDelete(attraction)}
+            style={{ boxSizing: "border-box", flex: 1, height: "34px", background: "#FFFFFF", border: "1px solid #DC2626", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", cursor: "pointer", transition: "all 0.18s ease" }}
+            className="btn-delete"
+          >
+            <Trash2 size={13} color="#DC2626" strokeWidth={2} />
+            <span style={{ fontWeight: 500, fontSize: "12px", color: "#DC2626" }}>Delete</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -251,9 +283,12 @@ function AttractionCard({ attraction, onEdit, onDelete }: AttractionCardProps) {
 
 // ── Page ────────────────────────────────────────────────────────────────────
 export default function AttractionManagementPage() {
-  // ── Search state (debounced) ───────────────────
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useInitFromUrl({
+    search: (v) => { setSearchQuery(v); setDebouncedSearch(v); },
+  });
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -262,12 +297,20 @@ export default function AttractionManagementPage() {
     return () => clearTimeout(handler);
   }, [searchQuery]);
 
+  useSyncParamsToUrl({ search: debouncedSearch || undefined });
+
   // ── Queries / Mutations ──────────────────────────────────────────
   const { data: attractions = [], isLoading, isError, isFetching } = useAttractionManagementList({ search: debouncedSearch || undefined });
   const createMutation = useCreateAttraction();
   const updateMutation = useUpdateAttraction();
   const deleteMutation = useDeleteAttraction();
   const bulkMutation = useBulkUploadAttractions();
+
+  const { data: profileData } = useProfileQuery();
+  const profileRole = (profileData?.profile || (profileData as any)?.data?.profile)?.role;
+  const canCreate = canPerformRoleAction(profileRole, "ATTRACTION_CREATE");
+  const canBulkUpload = canPerformRoleAction(profileRole, "ATTRACTION_BULK_UPLOAD");
+  const canDelete = canPerformRoleAction(profileRole, "ATTRACTION_DELETE");
 
   // UI State 
   const [viewMode, setViewMode] = useState<"list" | "add" | "edit">("list");
@@ -318,7 +361,7 @@ export default function AttractionManagementPage() {
   const handleSaveAttraction = async (data: any) => {
     try {
       const selectedSeats = data.seatLayoutIds ?? data.assignedSeatIds ?? [];  // Prioritize new format
-      const selectedSeatsIds = Array.isArray(selectedSeats) ? selectedSeats.map((s: any) => typeof s === "string" ? s : s.id).filter(Boolean) : [];
+      const selectedSeatsIds = Array.isArray(selectedSeats) ? selectedSeats.map((s: any) => typeof s === "string" ? s : (s.seatLayoutId || s.id || s.layoutId)).filter(Boolean) : [];
       const hasSeating = Boolean(data.hasSeating ?? (selectedSeatsIds.length > 0));
 
       const adultSeats = Number(data.seating?.adult ?? data.adultSeats ?? 0);
@@ -389,18 +432,26 @@ export default function AttractionManagementPage() {
           ? rawSeatLayouts.map((seat: any, idx: number) => {
             if (typeof seat === "string") {
               return {
-                id: seat,
+                seatLayoutId: seat,
                 name: `Seat Layout ${idx + 1}`,
                 status: "active",
                 position: idx + 1,
               };
             }
-            return {
-              id: seat.id || seat.layoutId,
+            const seatObj: {
+              attractionSeatId?: string;
+              seatLayoutId: string;
+              name: string;
+              status: string;
+              position: number;
+            } = {
+              ...(seat.attractionSeatId ? { attractionSeatId: seat.attractionSeatId } : {}),
+              seatLayoutId: seat.seatLayoutId || seat.layoutId || seat.id,
               name: seat.name || seat.displayName || `Seat ${idx + 1}`,
               status: seat.status || (seat.isDisabled ? "inactive" : "active"),
               position: Number(seat.position) || idx + 1,
             };
+            return seatObj;
           })
           : []
         : [];
@@ -670,56 +721,60 @@ export default function AttractionManagementPage() {
 
             {/* Action buttons */}
             <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-              <button
-                onClick={handleOpenAdd}
-                style={{
-                  boxSizing: "border-box",
-                  minWidth: "186px",
-                  height: "51px",
-                  background: "#0C2A42",
-                  borderRadius: "10px",
-                  border: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "10px",
-                  cursor: "pointer",
-                  padding: "0 18px",
-                  boxShadow: "0 4px 12px rgba(12, 42, 66, 0.2)",
-                  transition: "background 0.18s ease, transform 0.18s ease",
-                }}
-                className="btn-add-attraction"
-              >
-                <Plus size={24} color="#FFFFFF" strokeWidth={2.8} />
-                <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "16px", color: "#FFFFFF", whiteSpace: "nowrap" }}>
-                  Add Attraction
-                </span>
-              </button>
+              {canCreate && (
+                <button
+                  onClick={handleOpenAdd}
+                  style={{
+                    boxSizing: "border-box",
+                    minWidth: "186px",
+                    height: "51px",
+                    background: "#0C2A42",
+                    borderRadius: "10px",
+                    border: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "10px",
+                    cursor: "pointer",
+                    padding: "0 18px",
+                    boxShadow: "0 4px 12px rgba(12, 42, 66, 0.2)",
+                    transition: "background 0.18s ease, transform 0.18s ease",
+                  }}
+                  className="btn-add-attraction"
+                >
+                  <Plus size={24} color="#FFFFFF" strokeWidth={2.8} />
+                  <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "16px", color: "#FFFFFF", whiteSpace: "nowrap" }}>
+                    Add Attraction
+                  </span>
+                </button>
+              )}
 
-              <button
-                onClick={() => setIsBulkOpen(true)}
-                style={{
-                  boxSizing: "border-box",
-                  minWidth: "186px",
-                  height: "51px",
-                  background: "#FFFFFF",
-                  border: "2px solid #0C2A42",
-                  borderRadius: "10px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "10px",
-                  cursor: "pointer",
-                  padding: "0 18px",
-                  transition: "background 0.18s ease, transform 0.18s ease",
-                }}
-                className="btn-bulk-upload"
-              >
-                <Upload size={20} color="#011B2F" strokeWidth={2} />
-                <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "16px", color: "#011B2F", whiteSpace: "nowrap" }}>
-                  Bulk Upload
-                </span>
-              </button>
+              {canBulkUpload && (
+                <button
+                  onClick={() => setIsBulkOpen(true)}
+                  style={{
+                    boxSizing: "border-box",
+                    minWidth: "186px",
+                    height: "51px",
+                    background: "#FFFFFF",
+                    border: "2px solid #0C2A42",
+                    borderRadius: "10px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "10px",
+                    cursor: "pointer",
+                    padding: "0 18px",
+                    transition: "background 0.18s ease, transform 0.18s ease",
+                  }}
+                  className="btn-bulk-upload"
+                >
+                  <Upload size={20} color="#011B2F" strokeWidth={2} />
+                  <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "16px", color: "#011B2F", whiteSpace: "nowrap" }}>
+                    Bulk Upload
+                  </span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -741,6 +796,7 @@ export default function AttractionManagementPage() {
                   attraction={attraction}
                   onEdit={handleOpenEdit}
                   onDelete={handleOpenDelete}
+                  canDelete={canDelete}
                 />
               ))}
             </div>

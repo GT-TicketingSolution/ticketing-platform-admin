@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Calendar, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface DateRangePickerProps {
   fromDate: string; // "YYYY-MM-DD"
@@ -11,6 +12,8 @@ interface DateRangePickerProps {
   onToDateChange: (date: string) => void;
   onClear?: () => void;
   minDate?: string; // "YYYY-MM-DD"
+  autoOpen?: boolean;
+  onClose?: () => void;
 }
 
 const MONTHS = [
@@ -45,8 +48,12 @@ export default function DateRangePicker({
   onToDateChange,
   onClear,
   minDate,
+  autoOpen,
+  onClose,
 }: DateRangePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
+
+  useModalBodyLock(isOpen);
   const [selecting, setSelecting] = useState<"from" | "to">("from");
   const [hoverDate, setHoverDate] = useState<string>("");
   const [mounted, setMounted] = useState(false);
@@ -148,7 +155,14 @@ export default function DateRangePicker({
   const closeDialog = () => {
     setIsOpen(false);
     setHoverDate("");
+    onClose?.();
   };
+
+  useEffect(() => {
+    if (autoOpen) {
+      openDialog();
+    }
+  }, [autoOpen]);
 
   const handleApply = () => {
     if (draftFrom) onFromDateChange(draftFrom);
@@ -428,7 +442,6 @@ export default function DateRangePicker({
     <>
       {/* Backdrop */}
       <div
-        onClick={closeDialog}
         style={{
           position: "fixed",
           inset: 0,

@@ -6,6 +6,7 @@ import { typography } from "@/lib/theme";
 import { useToast } from "@/components/ui/Toast";
 import { validateUpsertCapacitySchema } from "@/app/(dashboard)/inventory/schema";
 import { useUpsertDailyCapacity, InventoryItem } from "@/hooks/useInventoryQueries";
+import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 
 interface AttractionOption {
   id: string;
@@ -27,6 +28,7 @@ export default function AddCapacityModal({
   attractionsList,
   onSuccess,
 }: AddCapacityModalProps) {
+  useModalBodyLock(isOpen);
   const { showToast } = useToast();
   const upsertMutation = useUpsertDailyCapacity();
 
@@ -109,7 +111,6 @@ export default function AddCapacityModal({
         zIndex: 1000,
         padding: "16px",
       }}
-      onClick={onClose}
     >
       <div
         style={{
