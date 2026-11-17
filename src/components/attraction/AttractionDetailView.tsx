@@ -13,7 +13,7 @@ interface AttractionDetailViewProps {
   canDelete: boolean;
 }
 
-// ── Castle Illustration Placeholder ──────────────────────────────────────────
+// ── Castle Illustration Placeholder
 function CastleIllustration({ width = 110, height = 70 }: { width?: number | string; height?: number | string }) {
   return (
     <svg
@@ -49,7 +49,7 @@ function CastleIllustration({ width = 110, height = 70 }: { width?: number | str
   );
 }
 
-// ── Visitor Category Avatar Helper ───────────────────────────────────────────
+// ── Visitor Category Avatar Helper
 function getVisitorCategoryAvatar(name: string, customImage?: string | null): string {
   if (customImage && customImage.trim() && !customImage.includes("placeholder") && !customImage.startsWith("/")) {
     return customImage;
@@ -77,17 +77,10 @@ export default function AttractionDetailView({
   const hasValidImage = Boolean(attraction.image && attraction.image.trim() !== "");
 
   // Duration display
-  const durationVal = attraction.duration || attraction.durationMins || "20";
-  const durationUnit = (attraction as any).durationUnit || "Minutes";
+  const durationVal = attraction.duration || attraction.durationMins || "-";
+  const durationUnit = (attraction as any).durationUnit || "";
   const durationDisplay = `${durationVal} ${durationUnit}`;
 
-  // Multi-station count / badge text
-  const stationsCount =
-    (attraction as any).noOfStations ??
-    (attraction as any).stationCount ??
-    (Array.isArray((attraction as any).stations) ? (attraction as any).stations.length : null) ??
-    ((attraction as any).isMultiStation ? 4 : null);
-  const stationsBadgeText = stationsCount ? `No. of Stations: ${stationsCount}` : "No. of Stations: 4";
 
   // Allocated seats list
   const allocatedSeatsList = useMemo(() => {
@@ -401,7 +394,7 @@ export default function AttractionDetailView({
                       fontWeight: 600,
                     }}
                   >
-                    {stationsBadgeText}
+                    0
                   </span>
                 </div>
               </div>

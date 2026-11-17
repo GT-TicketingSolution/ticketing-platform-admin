@@ -108,27 +108,6 @@ function AttractionCard({ attraction, onView }: AttractionCardProps) {
     setImgError(false);
   }, [attraction.image]);
 
-  const categoriesList: Array<{ name: string; price: number }> = Array.isArray((attraction as any).categories)
-    ? (attraction as any).categories
-        .filter((c: any) => c && typeof c.name === "string" && c.name.trim() !== "")
-        .map((c: any) => {
-          const priceVal = Number(c.basePrice ?? c.price);
-          return {
-            name: c.name.trim(),
-            price: !isNaN(priceVal) ? priceVal : 0,
-          };
-        })
-    : [];
-
-  if (!Array.isArray((attraction as any).categories) && attraction.pricing) {
-    const pr = attraction.pricing;
-    if (pr.adult) categoriesList.push({ name: "Adult", price: pr.adult });
-    if (pr.child) categoriesList.push({ name: "Child", price: pr.child });
-    if (pr.student) categoriesList.push({ name: "Student", price: pr.student });
-    if (pr.senior) categoriesList.push({ name: "Senior", price: pr.senior });
-    if (pr.foreigner) categoriesList.push({ name: "Foreigner", price: pr.foreigner });
-  }
-
   const hasValidImage = Boolean(attraction.image && attraction.image.trim() !== "" && !imgError);
 
   return (
@@ -137,7 +116,7 @@ function AttractionCard({ attraction, onView }: AttractionCardProps) {
         boxSizing: "border-box",
         width: "100%",
         maxWidth: "237px",
-        minHeight: "355px",
+        height: "100%",
         background: "#FFFFFF",
         border: "1.5px solid rgba(179, 175, 175, 0.51)",
         borderRadius: "8px",
@@ -218,50 +197,51 @@ function AttractionCard({ attraction, onView }: AttractionCardProps) {
             {attraction.name}
           </h3>
 
-          {/* Description */}
-          <p
-            style={{
-              margin: "4px 0 0 0",
-              fontWeight: 500,
-              fontSize: "10px",
-              lineHeight: "14px",
-              color: "#64748B",
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              minHeight: "28px",
-            }}
-          >
-            {attraction.description && attraction.description.trim() ? attraction.description : "—"}
-          </p>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "5px", marginTop: "12px" }}>
-            <Clock size={10} color="#515252" strokeWidth={2} />
-            <span style={{ fontWeight: 600, fontSize: "9px", color: "rgba(81,82,82,0.84)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "5px", marginTop: "10px" }}>
+            <Clock size={11} color="#515252" strokeWidth={2} />
+            <span style={{ fontWeight: 600, fontSize: "10px", color: "rgba(81,82,82,0.84)" }}>
               {attraction.timing ?? "—"}
             </span>
           </div>
 
-          <div style={{ display: "flex", alignItems: "flex-start", gap: "4px", marginTop: "10px" }}>
-            <span style={{ fontWeight: 600, fontSize: "9px", color: "#515252", marginTop: "1px", flexShrink: 0 }}>₹</span>
-            <span style={{ fontWeight: 600, fontSize: "9px", lineHeight: "13px", color: "rgba(81,82,82,0.84)" }}>
-              {categoriesList.length > 0 ? (
-                categoriesList.map((cat, idx) => (
-                  <span key={idx} style={{ whiteSpace: "nowrap", marginRight: "6px", display: "inline-block" }}>
-                    {cat.name}: ₹{cat.price}
-                  </span>
-                ))
-              ) : (
-                "—"
-              )}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "5px", marginTop: "10px" }}>
+            <span
+              style={{
+                fontWeight: 600,
+                fontSize: "10px",
+                lineHeight: "14px",
+                color: "rgba(33, 36, 36, 0.84)",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              Description :
+            </span>
+            <span
+              style={{
+                margin: 0,
+                fontWeight: 500,
+                fontSize: "10px",
+                lineHeight: "14px",
+                color: "#64748B",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                minHeight: "28px",
+                flex: 1,
+                minWidth: 0,
+                wordBreak: "break-word",
+              }}
+            >
+              {attraction.description && attraction.description.trim() ? attraction.description : "—"}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Action Button: Single View button matching Image 1 */}
+      {/* Action Button: Single View button */}
       <div style={{ marginTop: "14px", padding: "0 10px 10px 10px" }}>
         <button
           type="button"
@@ -282,15 +262,15 @@ function AttractionCard({ attraction, onView }: AttractionCardProps) {
           }}
           className="btn-view"
         >
-          <Eye size={14} color="#2372A5" strokeWidth={2} />
-          <span style={{ fontWeight: 600, fontSize: "12px", color: "#2372A5" }}>View</span>
+          <Eye size={16} color="#2372A5" strokeWidth={2} />
+          <span style={{ fontWeight: 800, fontSize: "14px", color: "#2372A5" }}>View</span>
         </button>
       </div>
     </div>
   );
 }
 
-// ── Page ────────────────────────────────────────────────────────────────────
+// ── Page 
 export default function AttractionManagementPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
