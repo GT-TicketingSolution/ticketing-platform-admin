@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, RotateCw, TrainFront } from "lucide-react";
 import { AttractionManagement } from "@/app/(dashboard)/attraction-management/types";
 import { useSeatLayouts } from "@/hooks/useSeatQueries";
 
@@ -77,9 +77,9 @@ export default function AttractionDetailView({
   const hasValidImage = Boolean(attraction.image && attraction.image.trim() !== "");
 
   // Duration display
-  const durationVal = attraction.duration || attraction.durationMins || "-";
+  const durationVal = attraction.duration || "";
   const durationUnit = (attraction as any).durationUnit || "";
-  const durationDisplay = `${durationVal} ${durationUnit}`;
+  const durationDisplay =  durationVal ? `${durationVal} ${durationUnit}` :'-';
 
 
   // Allocated seats list
@@ -157,6 +157,9 @@ export default function AttractionDetailView({
 
   // Visitor Categories List
   const visitorCategoriesList = useMemo(() => {
+    const defHsn =  "998551";
+    const defSac =  "996411";
+
     if (Array.isArray(attraction.categories) && attraction.categories.length > 0) {
       return attraction.categories
         .filter((c: any) => c && typeof c.name === "string" && c.name.trim() !== "")
@@ -164,18 +167,20 @@ export default function AttractionDetailView({
           name: c.name.trim(),
           basePrice: Number(c.basePrice ?? c.price ?? 0),
           noOfSeats: Number(c.noOfSeats ?? c.seats ?? 1),
+          hsnCode: defHsn,
+          sacCode: defSac,
           imageLink: c.imageLink ?? c.image ?? null,
         }));
     }
 
-    const list: Array<{ name: string; basePrice: number; noOfSeats: number; imageLink: string | null }> = [];
+    const list: Array<{ name: string; basePrice: number; noOfSeats: number; hsnCode: string; sacCode: string; imageLink: string | null }> = [];
     const pr = attraction.pricing || ({} as any);
     const st = attraction.seating || ({} as any);
-    if (pr.adult !== undefined) list.push({ name: "Adult", basePrice: pr.adult, noOfSeats: st.adult || 1, imageLink: null });
-    if (pr.child !== undefined) list.push({ name: "Child", basePrice: pr.child, noOfSeats: st.child || 1, imageLink: null });
-    if (pr.student !== undefined) list.push({ name: "Student", basePrice: pr.student, noOfSeats: st.student || 1, imageLink: null });
-    if (pr.senior !== undefined) list.push({ name: "Senior", basePrice: pr.senior, noOfSeats: st.senior || 1, imageLink: null });
-    if (pr.foreigner !== undefined) list.push({ name: "Foreigner", basePrice: pr.foreigner, noOfSeats: st.foreigner || 1, imageLink: null });
+    if (pr.adult !== undefined) list.push({ name: "Adult", basePrice: pr.adult, noOfSeats: st.adult || 1, hsnCode: defHsn, sacCode: defSac, imageLink: null });
+    if (pr.child !== undefined) list.push({ name: "Child", basePrice: pr.child, noOfSeats: st.child || 1, hsnCode: defHsn, sacCode: defSac, imageLink: null });
+    if (pr.student !== undefined) list.push({ name: "Student", basePrice: pr.student, noOfSeats: st.student || 1, hsnCode: defHsn, sacCode: defSac, imageLink: null });
+    if (pr.senior !== undefined) list.push({ name: "Senior", basePrice: pr.senior, noOfSeats: st.senior || 1, hsnCode: defHsn, sacCode: defSac, imageLink: null });
+    if (pr.foreigner !== undefined) list.push({ name: "Foreigner", basePrice: pr.foreigner, noOfSeats: st.foreigner || 1, hsnCode: defHsn, sacCode: defSac, imageLink: null });
     return list;
   }, [attraction]);
 
@@ -274,7 +279,7 @@ export default function AttractionDetailView({
         </div>
       </div>
 
-      {/* ── Top 2-Column Grid: Basic Information (Left) & Status (Right) ── */}
+      {/* ── Top 2-Column Grid: Basic Information & Multi-Station (Left) & Status (Right) ── */}
       <div
         style={{
           display: "grid",
@@ -284,92 +289,93 @@ export default function AttractionDetailView({
         }}
         className="attraction-top-grid"
       >
-        {/* Left Column: Basic Information */}
-        <div
-          style={{
-            background: "#FFFFFF",
-            borderRadius: "20px",
-            border: "1px solid #E2E8F0",
-            padding: "26px 28px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
-            boxSizing: "border-box",
-            display: "flex",
-            flexDirection: "column",
-            gap: "20px",
-          }}
-        >
-          <h3
-            style={{
-              margin: 0,
-              fontSize: "18px",
-              fontWeight: 800,
-              color: "#0C2A42",
-            }}
-          >
-            Basic Information
-          </h3>
-
+        {/* Left Column: Basic Information + Multi-Station (Route) */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "24px", minWidth: 0 }}>
+          {/* 1. Basic Information Card */}
           <div
             style={{
+              background: "#FFFFFF",
+              borderRadius: "20px",
+              border: "1px solid #E2E8F0",
+              padding: "26px 28px",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+              boxSizing: "border-box",
               display: "flex",
-              justifyContent: "space-between",
+              flexDirection: "column",
               gap: "20px",
-              flexWrap: "wrap",
             }}
           >
-            {/* Left Fields */}
-            <div
+            <h3
               style={{
-                flex: 1,
-                minWidth: "220px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "18px",
+                margin: 0,
+                fontSize: "18px",
+                fontWeight: 800,
+                color: "#0C2A42",
               }}
             >
-              {/* Attraction Name & Category */}
-              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "16px" }}>
+              Basic Information
+            </h3>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "20px",
+                flexWrap: "wrap",
+              }}
+            >
+              {/* Left Fields */}
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: "220px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "18px",
+                }}
+              >
+                {/* Attraction Name & Category */}
+                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "16px" }}>
+                  <div>
+                    <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 500, marginBottom: "4px" }}>
+                      Attraction Name
+                    </div>
+                    <div style={{ fontSize: "16px", fontWeight: 700, color: "#0C2A42", wordBreak: "break-word" }}>
+                      {attraction.name ?? "-"}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 500, marginBottom: "6px" }}>
+                      Category
+                    </div>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        background: "#FEF3C7",
+                        color: "#B45309",
+                        padding: "3px 14px",
+                        borderRadius: "9999px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {attraction.category ?? "-"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Operating Hours */}
                 <div>
                   <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 500, marginBottom: "4px" }}>
-                    Attraction Name
+                    Operating Hours
                   </div>
-                  <div style={{ fontSize: "16px", fontWeight: 700, color: "#0C2A42", wordBreak: "break-word" }}>
-                    {attraction.name}
+                  <div style={{ fontSize: "15px", fontWeight: 700, color: "#0C2A42" }}>
+                    {attraction.timing || "09:00 AM – 06:00 PM"}
                   </div>
                 </div>
 
-                <div>
-                  <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 500, marginBottom: "6px" }}>
-                    Category
-                  </div>
-                  <span
-                    style={{
-                      display: "inline-block",
-                      background: "#FEF3C7",
-                      color: "#B45309",
-                      padding: "3px 14px",
-                      borderRadius: "9999px",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {attraction.category}
-                  </span>
-                </div>
-              </div>
-
-              {/* Operating Hours */}
-              <div>
-                <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 500, marginBottom: "4px" }}>
-                  Operating Hours
-                </div>
-                <div style={{ fontSize: "15px", fontWeight: 700, color: "#0C2A42" }}>
-                  {attraction.timing || "09:00 AM – 06:00 PM"}
-                </div>
-              </div>
-
-              {/* Average Trip Duration & Multi-Station */}
-              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "16px", alignItems: "flex-start" }}>
+                {/* Average Trip Duration */}
                 <div>
                   <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 500, marginBottom: "4px" }}>
                     Average Trip Duration
@@ -379,73 +385,306 @@ export default function AttractionDetailView({
                   </div>
                 </div>
 
+                {/* Description */}
                 <div>
-                  <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 500, marginBottom: "6px" }}>
-                    Multi-Station
+                  <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 500, marginBottom: "4px" }}>
+                    Description
+                  </div>
+                  <div style={{ fontSize: "14px", color: "#334155", fontWeight: 500, lineHeight: "1.5" }}>
+                    {attraction.description && attraction.description.trim() ? attraction.description : "-"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Thumbnail Image */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignSelf: "flex-start" }}>
+                <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 500 }}>
+                  Attraction image
+                </div>
+                <div
+                  style={{
+                    width: "140px",
+                    height: "185px",
+                    borderRadius: "14px",
+                    overflow: "hidden",
+                    border: "1px solid #E2E8F0",
+                    background: "#F8FAFC",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+                  }}
+                >
+                  {hasValidImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={attraction.image!}
+                      alt={attraction.name}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    <CastleIllustration width={100} height={65} />
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Multi-Station (Route) Card */}
+          <div
+            style={{
+              background: "#FFFFFF",
+              border: "1px solid #E5E9F0",
+              borderRadius: "16px",
+              padding: "24px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "20px",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+              boxSizing: "border-box",
+              width: "100%",
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 600,
+                    fontSize: "18px",
+                    lineHeight: "28px",
+                    color: "#0D2B43",
+                  }}
+                >
+                  Multi-Station (Route)
+                </h3>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    padding: "2px 10px",
+                    background: "#DCFCE7",
+                    borderRadius: "9999px",
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: 600,
+                    fontSize: "12px",
+                    lineHeight: "16px",
+                    color: "#22C55E",
+                  }}
+                >
+                  Enabled
+                </span>
+              </div>
+              <p
+                style={{
+                  margin: 0,
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 400,
+                  fontSize: "12px",
+                  lineHeight: "16px",
+                  color: "#6B7280",
+                }}
+              >
+                Manage and view the station sequence and route for this attraction.
+              </p>
+            </div>
+
+            {/* Route Track Visualisation Diagram */}
+            <div
+              style={{
+                boxSizing: "border-box",
+                width: "100%",
+                background: "#F8FAFC",
+                border: "2px dashed #2563EB",
+                borderRadius: "16px",
+                padding: "24px 24px 20px 24px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                position: "relative",
+              }}
+            >
+              {/* Stations Track Container */}
+              <div
+                style={{
+                  position: "relative",
+                  width: "100%",
+                  maxWidth: "460px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  padding: "0 10px",
+                  boxSizing: "border-box",
+                }}
+              >
+                {/* Direct Connecting Line */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "18px",
+                    left: "32px",
+                    right: "32px",
+                    height: "3px",
+                    background: "#2563EB",
+                    zIndex: 1,
+                  }}
+                />
+
+                {/* Station 1 Node */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    position: "relative",
+                    zIndex: 2,
+                    minWidth: "60px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "38px",
+                      height: "38px",
+                      borderRadius: "50%",
+                      background: "#1E66F5",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
+                    }}
+                  >
+                    <TrainFront size={18} color="#FFFFFF" strokeWidth={2.2} />
                   </div>
                   <span
                     style={{
-                      display: "inline-block",
-                      background: "#EFF6FF",
-                      color: "#2563EB",
-                      padding: "4px 12px",
-                      borderRadius: "6px",
+                      marginTop: "8px",
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 700,
                       fontSize: "12px",
-                      fontWeight: 600,
+                      lineHeight: "16px",
+                      color: "#0D2B43",
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    0
+                    Station 1
+                  </span>
+                </div>
+
+                {/* Station 2 Node */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    position: "relative",
+                    zIndex: 2,
+                    minWidth: "60px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "22px",
+                      height: "22px",
+                      marginTop: "8px",
+                      borderRadius: "50%",
+                      background: "#FFFFFF",
+                      border: "4px solid #1E66F5",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <span
+                    style={{
+                      marginTop: "16px",
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 600,
+                      fontSize: "12px",
+                      lineHeight: "16px",
+                      color: "#0D2B43",
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Station 2
+                  </span>
+                </div>
+
+                {/* Station 3 Node */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    position: "relative",
+                    zIndex: 2,
+                    minWidth: "60px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "22px",
+                      height: "22px",
+                      marginTop: "8px",
+                      borderRadius: "50%",
+                      background: "#FFFFFF",
+                      border: "4px solid #1E66F5",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <span
+                    style={{
+                      marginTop: "16px",
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 600,
+                      fontSize: "12px",
+                      lineHeight: "16px",
+                      color: "#0D2B43",
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Station 3
                   </span>
                 </div>
               </div>
 
-              {/* Description */}
-              <div>
-                <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 500, marginBottom: "4px" }}>
-                  Description
-                </div>
-                <div style={{ fontSize: "14px", color: "#334155", fontWeight: 500, lineHeight: "1.5" }}>
-                  {attraction.description && attraction.description.trim() ? attraction.description : "—"}
-                </div>
-              </div>
-            </div>
-
-            {/* Right Thumbnail Image */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignSelf: "flex-start" }}>
-              <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 500 }}>
-                Attraction image
-              </div>
+              {/* Cyclic Return Path Pill Indicator */}
               <div
                 style={{
-                  width: "140px",
-                  height: "185px",
-                  borderRadius: "14px",
-                  overflow: "hidden",
-                  border: "1px solid #E2E8F0",
-                  background: "#F8FAFC",
-                  display: "flex",
+                  marginTop: "20px",
+                  display: "inline-flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+                  gap: "6px",
+                  background: "#EFF6FF",
+                  border: "1px solid #BFDBFE",
+                  borderRadius: "9999px",
+                  padding: "5px 16px",
+                  boxSizing: "border-box",
                 }}
               >
-                {hasValidImage ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={attraction.image!}
-                    alt={attraction.name}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                ) : (
-                  <CastleIllustration width={100} height={65} />
-                )}
+                <RotateCw size={13} color="#1D4ED8" strokeWidth={2.2} />
+                <span
+                  style={{
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: 500,
+                    fontSize: "12px",
+                    lineHeight: "16px",
+                    color: "#1D4ED8",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Round Trip (Cyclic Route)
+                </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Status Card */}
+        {/* Right Column: Status Card (fits and aligns with left column height) */}
         <div
+          className="attraction-status-card"
           style={{
             background: "#FFFFFF",
             borderRadius: "20px",
@@ -456,6 +695,8 @@ export default function AttractionDetailView({
             display: "flex",
             flexDirection: "column",
             gap: "18px",
+            minWidth: 0,
+            height: "100%",
           }}
         >
           <h3
@@ -501,8 +742,8 @@ export default function AttractionDetailView({
 
           <div style={{ height: "1px", background: "#F1F5F9" }} />
 
-          {/* Seat Allocation Header */}
-          <div>
+          {/* Seat Allocation Section */}
+          <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0C2A42" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -540,7 +781,9 @@ export default function AttractionDetailView({
                 display: "flex",
                 flexDirection: "column",
                 gap: "8px",
-                maxHeight: "220px",
+                flex: 1,
+                minHeight: "140px",
+                maxHeight: "360px",
                 overflowY: "auto",
                 paddingRight: "2px",
               }}
@@ -630,18 +873,24 @@ export default function AttractionDetailView({
             {allocatedSeatsList.length > 0 && (
               <div
                 style={{
-                  marginTop: "12px",
-                  background: "#ECFDF5",
-                  border: "1px solid #A7F3D0",
-                  borderRadius: "8px",
-                  padding: "10px 14px",
-                  textAlign: "center",
-                  color: "#065F46",
-                  fontWeight: 700,
-                  fontSize: "12px",
+                  marginTop: "auto",
+                  paddingTop: "14px",
                 }}
               >
-                {activeSeatsCount} active seat layouts allocated ({totalCapacity} total seats capacity)
+                <div
+                  style={{
+                    background: "#ECFDF5",
+                    border: "1px solid #A7F3D0",
+                    borderRadius: "8px",
+                    padding: "10px 14px",
+                    textAlign: "center",
+                    color: "#065F46",
+                    fontWeight: 700,
+                    fontSize: "12px",
+                  }}
+                >
+                  {activeSeatsCount} active seat layouts allocated ({totalCapacity} total seats capacity)
+                </div>
               </div>
             )}
           </div>
@@ -675,35 +924,40 @@ export default function AttractionDetailView({
         </h3>
 
         <div
+          className="visitor-categories-track"
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-            gap: "18px",
+            display: "flex",
+            overflowX: "auto",
+            gap: "20px",
             width: "100%",
+            paddingBottom: "14px",
+            boxSizing: "border-box",
           }}
         >
           {visitorCategoriesList.map((cat, idx) => (
             <div
               key={idx}
+              className="visitor-category-card"
               style={{
+                flex: "0 0 calc((100% - 40px) / 3)",
+                minWidth: "260px",
                 background: "#FFFFFF",
-                border: "1px solid #E2E8F0",
+                border: "1px solid #E5E9F0",
                 borderRadius: "16px",
-                padding: "16px 12px",
+                padding: "24px 20px",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: "12px",
+                gap: "16px",
                 boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
                 boxSizing: "border-box",
-                transition: "transform 0.15s ease, box-shadow 0.15s ease",
               }}
             >
               <div
                 style={{
                   fontWeight: 700,
-                  fontSize: "14px",
-                  color: "#0C2A42",
+                  fontSize: "16px",
+                  color: "#0D2B43",
                   textAlign: "center",
                 }}
               >
@@ -712,8 +966,8 @@ export default function AttractionDetailView({
 
               <div
                 style={{
-                  width: "74px",
-                  height: "74px",
+                  width: "80px",
+                  height: "80px",
                   borderRadius: "50%",
                   overflow: "hidden",
                   border: "2px solid #F1F5F9",
@@ -740,41 +994,86 @@ export default function AttractionDetailView({
                 />
               </div>
 
-              {/* Base Price Box */}
+              {/* 2x2 Metric Grid (Base Price, HSN Code, SAC Code, No. of Seats) */}
               <div
                 style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "10px",
                   width: "100%",
-                  background: "#EFF6FF",
-                  borderRadius: "8px",
-                  padding: "8px 10px",
-                  textAlign: "center",
-                  boxSizing: "border-box",
                 }}
               >
-                <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "2px" }}>
-                  Base Price
+                {/* Base Price Box */}
+                <div
+                  style={{
+                    background: "#EFF6FF",
+                    borderRadius: "8px",
+                    padding: "10px 8px",
+                    textAlign: "center",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "4px" }}>
+                    Base Price
+                  </div>
+                  <div style={{ fontSize: "15px", fontWeight: 700, color: "#0C2A42", whiteSpace: "nowrap" }}>
+                    ₹{Number(cat.basePrice).toFixed(2)}
+                  </div>
                 </div>
-                <div style={{ fontSize: "15px", fontWeight: 800, color: "#0C2A42" }}>
-                  ₹{Number(cat.basePrice).toFixed(2)}
-                </div>
-              </div>
 
-              {/* No. of Seats Box */}
-              <div
-                style={{
-                  width: "100%",
-                  background: "#F0FDF4",
-                  borderRadius: "8px",
-                  padding: "8px 10px",
-                  textAlign: "center",
-                  boxSizing: "border-box",
-                }}
-              >
-                <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "2px" }}>
-                  No. of Seats
+                {/* HSN Code Box */}
+                <div
+                  style={{
+                    background: "#EFF6FF",
+                    borderRadius: "8px",
+                    padding: "10px 8px",
+                    textAlign: "center",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "4px" }}>
+                    HSN Code
+                  </div>
+                  <div style={{ fontSize: "15px", fontWeight: 700, color: "#0C2A42", whiteSpace: "nowrap" }}>
+                    {cat.hsnCode || "998551"}
+                  </div>
                 </div>
-                <div style={{ fontSize: "15px", fontWeight: 800, color: "#0C2A42" }}>
-                  {cat.noOfSeats}
+
+                {/* SAC Code Box */}
+                <div
+                  style={{
+                    background: "#EFF6FF",
+                    borderRadius: "8px",
+                    padding: "10px 8px",
+                    textAlign: "center",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "4px" }}>
+                    SAC Code
+                  </div>
+                  <div style={{ fontSize: "15px", fontWeight: 700, color: "#0C2A42", whiteSpace: "nowrap" }}>
+                    996411
+                  </div>
+                </div>
+
+                {/* No. of Seats Box */}
+                <div
+                  style={{
+                    background: "#F0FDF4",
+                    border: "1px solid #DCFCE7",
+                    borderRadius: "8px",
+                    padding: "10px 8px",
+                    textAlign: "center",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "4px" }}>
+                    No. of Seats
+                  </div>
+                  <div style={{ fontSize: "15px", fontWeight: 700, color: "#0C2A42", whiteSpace: "nowrap" }}>
+                    {cat.noOfSeats}
+                  </div>
                 </div>
               </div>
             </div>
@@ -791,9 +1090,33 @@ export default function AttractionDetailView({
           background: #FEF2F2 !important;
           transform: translateY(-1px);
         }
+        .visitor-categories-track::-webkit-scrollbar {
+          height: 6px;
+        }
+        .visitor-categories-track::-webkit-scrollbar-track {
+          background: #E2E8F0;
+          border-radius: 9999px;
+        }
+        .visitor-categories-track::-webkit-scrollbar-thumb {
+          background: #94A3B8;
+          border-radius: 9999px;
+        }
+        .visitor-categories-track::-webkit-scrollbar-thumb:hover {
+          background: #64748B;
+        }
         @media (max-width: 900px) {
           .attraction-top-grid {
             grid-template-columns: 1fr !important;
+          }
+          .visitor-category-card {
+            flex: 0 0 calc((100% - 20px) / 2) !important;
+            min-width: 240px !important;
+          }
+        }
+        @media (max-width: 640px) {
+          .visitor-category-card {
+            flex: 0 0 100% !important;
+            min-width: 220px !important;
           }
         }
       `}</style>

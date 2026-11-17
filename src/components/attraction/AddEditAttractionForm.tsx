@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Upload, Plus, Trash2, X, Check, Armchair, ChevronDown, ChevronUp, Search, Loader2, GripVertical, Power, User } from "lucide-react";
+import { Upload, Plus, Trash2, X, Check, Armchair, ChevronDown, ChevronUp, Search, Loader2, GripVertical, Power, User, TrainFront, RotateCw, Pencil } from "lucide-react";
 import { Attraction } from "@/app/(dashboard)/attraction-management/types";
 import { confirmDelete } from "@/lib/notify";
 import { validateAttractionForm } from "@/app/(dashboard)/attraction-management/schema";
@@ -9,6 +9,8 @@ import { SeatConfigData } from "@/app/(dashboard)/seat-management/types";
 import { useSeatLayouts } from "@/hooks/useSeatQueries";
 import { useDeleteAttractionSeat } from "@/hooks/useAttractionManagementQueries";
 import { useModalBodyLock } from "@/hooks/useModalBodyLock";
+import AttractionImageCropper from "./AttractionImageCropper";
+import EditVisitorCategoryModal from "./EditVisitorCategoryModal";
 
 // ── Shared required asterisk
 const Req = () => <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>;
@@ -41,8 +43,11 @@ export interface CategoryItem {
   imageLink?: string | null;
   basePrice: string;
   futurePrice: string;
+  futurePriceType?: "recurring" | "onetime";
   effectiveFrom: string;
   numberOfSeats: string;
+  hsnCode?: string;
+  sacCode?: string;
 }
 
 interface AddEditAttractionFormProps {
@@ -355,11 +360,11 @@ function VisitorCategoryAvatar({ src, name }: { src?: string; name: string }) {
 
 // ── Default categories using local /Assets/Visitors/ images 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
-  { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", basePrice: "100.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
-  { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", basePrice: "50.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
-  { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", basePrice: "60.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
-  { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.jpg", basePrice: "75.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
-  { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", basePrice: "500.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
+  { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", basePrice: "100.00", futurePrice: "+10%", futurePriceType: "recurring", effectiveFrom: "2027-01-01", numberOfSeats: "1", hsnCode: "998551", sacCode: "998554" },
+  { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", basePrice: "60.00", futurePrice: "75.00", futurePriceType: "onetime", effectiveFrom: "2026-12-15", numberOfSeats: "1", hsnCode: "998551", sacCode: "998554" },
+  { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", basePrice: "90.00", futurePrice: "+5%", futurePriceType: "recurring", effectiveFrom: "2027-01-01", numberOfSeats: "1", hsnCode: "998551", sacCode: "998554" },
+  { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.jpg", basePrice: "75.00", futurePrice: "00.00", futurePriceType: "recurring", effectiveFrom: "", numberOfSeats: "1", hsnCode: "998551", sacCode: "998554" },
+  { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", basePrice: "500.00", futurePrice: "00.00", futurePriceType: "recurring", effectiveFrom: "", numberOfSeats: "1", hsnCode: "998551", sacCode: "998554" },
 ];
 
 // ── Default image map per category name key ────────────────────────────────
@@ -399,12 +404,15 @@ function apiCategoriesToCategoryItems(apiCats: any[]): CategoryItem[] {
       futurePrice:
         c.futurePrice != null && !isNaN(Number(c.futurePrice))
           ? Number(c.futurePrice).toFixed(2)
-          : "00.00",
+          : (c.futurePrice || "00.00"),
+      futurePriceType: c.futurePriceType || "recurring",
       effectiveFrom: c.effectiveFrom || "",
       numberOfSeats:
         c.noOfSeats != null && Number(c.noOfSeats) >= 1
           ? String(Number(c.noOfSeats))
           : "1",
+      hsnCode:  "998551",
+      sacCode: "996411",
     };
   });
 }
@@ -474,12 +482,14 @@ export default function AddEditAttractionForm({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const seatDropdownRef = useRef<HTMLDivElement>(null);
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<CategoryItem | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   // ── Operating hours (display-only, no booking enforcement) 
   const [openTime, setOpenTime] = useState("09:00");
   const [closeTime, setCloseTime] = useState("18:00");
+  const [isRoundTrip, setIsRoundTrip] = useState<boolean>(true);
 
   // ── Fetch active seat layouts from backend API.
   // The dropdown is populated from /api/admin/seats in BOTH create and edit modes
@@ -767,6 +777,7 @@ export default function AddEditAttractionForm({
         setOpenTime("09:00");
         setCloseTime("18:00");
       }
+      setIsRoundTrip((attractionToEdit as any).isRoundTrip !== false);
     } else {
       // Reset for new attraction
       setName("");
@@ -780,18 +791,11 @@ export default function AddEditAttractionForm({
       setCloseTime("18:00");
       setDurationValue("");
       setDurationUnit("minutes");
+      setIsRoundTrip(true);
     }
   }, [attractionToEdit]);
 
   // ── Handlers ───────────────────────────────────────────────────────────
-  const handleAttractionImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setImagePreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
-  };
-
   const handleCategoryImageUpload = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -818,8 +822,11 @@ export default function AddEditAttractionForm({
         image: image || "",
         basePrice: basePrice || "00.00",
         futurePrice: "00.00",
+        futurePriceType: "recurring",
         effectiveFrom: "",
         numberOfSeats: numberOfSeats && Number(numberOfSeats) >= 1 ? numberOfSeats : "1",
+        hsnCode: "998551",
+        sacCode: "996411",
       },
     ]);
   };
@@ -1202,24 +1209,34 @@ export default function AddEditAttractionForm({
         fontFamily: "'Plus Jakarta Sans', sans-serif",
       }}
     >
-      {/* ── Top Row: Basic Info + Status ─────────────────────────────── */}
-      <div style={{ display: "flex", gap: "32px", width: "100%", flexWrap: "wrap" }}>
-        {/* Rectangle 171: Basic Information Box */}
-        <div
-          style={{
-            boxSizing: "border-box",
-            flex: "1 1 600px",
-            minHeight: "373px",
-            background: "#FFFFFF",
-            border: "0.5px solid rgba(0, 0, 0, 0.43)",
-            boxShadow: "0px 4px 11.9px -6px rgba(0, 0, 0, 0.32)",
-            borderRadius: "15px",
-            padding: "24px 31px",
-            display: "flex",
-            flexDirection: "column",
-          }}
-          className="card-basic-info"
-        >
+      {/* ── Top Row: Basic Info & Multi-Station (Left) + Status (Right) ─────────────────────────────── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.15fr 0.85fr",
+          gap: "24px",
+          width: "100%",
+        }}
+        className="attraction-top-grid"
+      >
+        {/* Left Column: Basic Information + Multi-Station (Route) */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "24px", minWidth: 0 }}>
+          {/* Rectangle 171: Basic Information Box */}
+          <div
+            style={{
+              boxSizing: "border-box",
+              width: "100%",
+              minHeight: "373px",
+              background: "#FFFFFF",
+              border: "0.5px solid rgba(0, 0, 0, 0.43)",
+              boxShadow: "0px 4px 11.9px -6px rgba(0, 0, 0, 0.32)",
+              borderRadius: "15px",
+              padding: "24px 31px",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            className="card-basic-info"
+          >
           <h3 style={{ margin: "0 0 20px 0", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "18px", color: "#0C2A42" }}>
             Basic Information
           </h3>
@@ -1484,137 +1501,524 @@ export default function AddEditAttractionForm({
               </div>
             </div>
 
-            {/* Attraction Image Dropzone */}
+            {/* Attraction Image Dropzone with In-Place Grab & Crop */}
             <div style={{ flex: "1 1 260px" }} id="field-image">
               <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
                 Attraction image
                 <span style={{ marginLeft: "4px", fontWeight: 400, fontSize: "11px", color: "#9CA3AF" }}>(Optional)</span>
               </label>
-              <div
-                style={{
-                  boxSizing: "border-box",
-                  width: "100%",
-                  maxWidth: "313px",
-                  height: "176px",
-                  background: "#FFFFFF",
-                  border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                  borderRadius: "8px",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: "12px",
-                  position: "relative",
-                  overflow: "hidden",
-                }}
-              >
-                {imagePreview ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={imagePreview}
-                      alt="Preview"
-                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                    <div style={{ position: "absolute", bottom: "8px", right: "8px", display: "flex", gap: "6px", zIndex: 2 }}>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setImagePreview(null);
-                        }}
-                        style={{
-                          background: "rgba(220, 38, 38, 0.85)",
-                          color: "#FFFFFF",
-                          fontSize: "10px",
-                          fontWeight: 600,
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          border: "none",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Remove
-                      </button>
-                      <label
-                        htmlFor="attraction-image-upload"
-                        style={{
-                          background: "rgba(12,42,66,0.85)",
-                          color: "#FFFFFF",
-                          fontSize: "10px",
-                          fontWeight: 600,
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Change
-                      </label>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <Upload size={24} color="#2372A5" strokeWidth={1.8} />
-                    <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "10px", color: "#011B2F", marginTop: "8px" }}>
-                      Drag & Drop Image here
-                    </span>
-                    <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "10px", color: "#011B2F", margin: "2px 0 6px 0" }}>
-                      or
-                    </span>
-                    <label
-                      htmlFor="attraction-image-upload"
-                      style={{
-                        boxSizing: "border-box",
-                        width: "88px",
-                        height: "28px",
-                        border: "2px solid #2372A5",
-                        borderRadius: "8px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "pointer",
-                        fontFamily: "'Plus Jakarta Sans', sans-serif",
-                        fontWeight: 500,
-                        fontSize: "10px",
-                        color: "#2372A5",
-                        background: "transparent",
-                      }}
-                    >
-                      Browse File
-                    </label>
-                    <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "10px", color: "rgba(107,114,128,0.68)", marginTop: "8px" }}>
-                      JPG, PNG or WEBP (Max. 5MB)
-                    </span>
-                  </>
-                )}
-                <input
-                  id="attraction-image-upload"
-                  type="file"
-                  accept="image/png, image/jpeg, image/webp"
-                  onChange={handleAttractionImageUpload}
-                  style={{ display: "none" }}
-                />
-              </div>
+              <AttractionImageCropper
+                value={imagePreview}
+                onChange={(newImg) => setImagePreview(newImg)}
+                disabled={isSaving}
+              />
             </div>
           </div>
         </div>
 
-        {/* Rectangle 172: Status & Seat Allocation Box */}
+        {/* 2. Multi-Station (Route) Card */}
         <div
           style={{
-            boxSizing: "border-box",
-            flex: "1 1 340px",
-            minHeight: "373px",
             background: "#FFFFFF",
-            border: "0.5px solid rgba(0, 0, 0, 0.43)",
-            boxShadow: "0px 4px 11.9px -6px rgba(0, 0, 0, 0.32)",
-            borderRadius: "15px",
-            padding: "24px 28px",
+            border: "1px solid #E5E9F0",
+            borderRadius: "16px",
+            padding: "24px",
             display: "flex",
             flexDirection: "column",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+            boxSizing: "border-box",
+            width: "100%",
           }}
-          className="card-status-seating"
         >
+          {/* Header */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%", marginBottom: "18px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 600,
+                    fontSize: "18px",
+                    lineHeight: "28px",
+                    color: "#0D2B43",
+                  }}
+                >
+                  Multi-Station (Route)
+                </h3>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    padding: "2px 10px",
+                    background: "#DCFCE7",
+                    borderRadius: "9999px",
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: 600,
+                    fontSize: "12px",
+                    lineHeight: "16px",
+                    color: "#22C55E",
+                  }}
+                >
+                  Enabled
+                </span>
+              </div>
+
+            </div>
+
+            <p
+              style={{
+                margin: 0,
+                fontFamily: "'Inter', sans-serif",
+                fontWeight: 400,
+                fontSize: "12px",
+                lineHeight: "16px",
+                color: "#6B7280",
+              }}
+            >
+              Manage and view the station sequence and route for this attraction.
+            </p>
+          </div>
+
+          {/* Toggle Bar: Round Trip (Cyclic Route) */}
+          <div
+            style={{
+              background: "#EFF6FF",
+              borderRadius: "12px",
+              padding: "10px 16px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              width: "100%",
+              boxSizing: "border-box",
+              marginBottom: isRoundTrip ? "20px" : "24px",
+            }}
+          >
+            <span
+              style={{
+                fontFamily: "'Inter', sans-serif",
+                fontWeight: 600,
+                fontSize: "13px",
+                color: "#0D2B43",
+              }}
+            >
+              Round Trip (Cyclic Route)
+            </span>
+
+            {/* Toggle switch */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isRoundTrip}
+              onClick={() => setIsRoundTrip(!isRoundTrip)}
+              style={{
+                width: "44px",
+                height: "24px",
+                borderRadius: "9999px",
+                background: isRoundTrip ? "#22C55E" : "#D1D5DB",
+                border: "none",
+                cursor: "pointer",
+                position: "relative",
+                padding: "2px",
+                transition: "background-color 0.2s ease",
+                display: "flex",
+                alignItems: "center",
+                outline: "none",
+              }}
+            >
+              <div
+                style={{
+                  width: "20px",
+                  height: "20px",
+                  borderRadius: "50%",
+                  background: "#FFFFFF",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                  transform: isRoundTrip ? "translateX(20px)" : "translateX(0px)",
+                  transition: "transform 0.2s ease",
+                }}
+              />
+            </button>
+          </div>
+
+          {/* Route Visualisation based on isRoundTrip */}
+          {isRoundTrip ? (
+            /* State 1: Cyclic Route Diagram (Matching Image 1) */
+            <div
+              style={{
+                boxSizing: "border-box",
+                width: "100%",
+                paddingTop: "24px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                position: "relative",
+              }}
+            >
+              {/* Dashed Loop Container */}
+              <div
+                style={{
+                  position: "relative",
+                  width: "100%",
+                  minHeight: "130px",
+                  border: "2px dashed #2563EB",
+                  borderRadius: "16px",
+                  background: "#FFFFFF",
+                  padding: "0 20px 16px 20px",
+                  boxSizing: "border-box",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                }}
+              >
+                {/* Station Nodes & Connecting Solid Line on Top Track */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "-19px",
+                    left: "24px",
+                    right: "24px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    zIndex: 2,
+                  }}
+                >
+                  {/* Solid Blue Line between Station 1 and Station 3 */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "17.5px",
+                      left: "19px",
+                      right: "19px",
+                      height: "3px",
+                      background: "#2563EB",
+                      zIndex: 1,
+                    }}
+                  />
+
+                  {/* Station 1 Node */}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      position: "relative",
+                      zIndex: 2,
+                      minWidth: "64px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "38px",
+                        height: "38px",
+                        borderRadius: "50%",
+                        background: "#1E66F5",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
+                      }}
+                    >
+                      <TrainFront size={18} color="#FFFFFF" strokeWidth={2.2} />
+                    </div>
+                    <span
+                      style={{
+                        marginTop: "8px",
+                        fontFamily: "'Inter', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "13px",
+                        lineHeight: "16px",
+                        color: "#0D2B43",
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Station 1
+                    </span>
+                  </div>
+
+                  {/* Station 2 Node */}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      position: "relative",
+                      zIndex: 2,
+                      minWidth: "64px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "22px",
+                        height: "22px",
+                        marginTop: "8px",
+                        borderRadius: "50%",
+                        background: "#FFFFFF",
+                        border: "4px solid #1E66F5",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                    <span
+                      style={{
+                        marginTop: "16px",
+                        fontFamily: "'Inter', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "13px",
+                        lineHeight: "16px",
+                        color: "#0D2B43",
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Station 2
+                    </span>
+                  </div>
+
+                  {/* Station 3 Node */}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      position: "relative",
+                      zIndex: 2,
+                      minWidth: "64px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "22px",
+                        height: "22px",
+                        marginTop: "8px",
+                        borderRadius: "50%",
+                        background: "#FFFFFF",
+                        border: "4px solid #1E66F5",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                    <span
+                      style={{
+                        marginTop: "16px",
+                        fontFamily: "'Inter', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "13px",
+                        lineHeight: "16px",
+                        color: "#0D2B43",
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Station 3
+                    </span>
+                  </div>
+                </div>
+
+                {/* Cyclic Return Path Pill Indicator */}
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "#EFF6FF",
+                    border: "1px solid #BFDBFE",
+                    borderRadius: "9999px",
+                    padding: "6px 18px",
+                    boxSizing: "border-box",
+                    marginTop: "60px",
+                  }}
+                >
+                  <RotateCw size={13} color="#1D4ED8" strokeWidth={2.2} />
+                  <span
+                    style={{
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 500,
+                      fontSize: "12px",
+                      lineHeight: "16px",
+                      color: "#1D4ED8",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Round Trip (Cyclic Route)
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* State 2: Linear One-Way Route Diagram (Matching Image 2) */
+            <div
+              style={{
+                boxSizing: "border-box",
+                width: "100%",
+                padding: "16px 10px 10px 10px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                position: "relative",
+              }}
+            >
+              <div
+                style={{
+                  position: "relative",
+                  width: "100%",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                }}
+              >
+                {/* Solid Blue Line between Station 1 and Station 3 */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "17.5px",
+                    left: "19px",
+                    right: "19px",
+                    height: "3px",
+                    background: "#2563EB",
+                    zIndex: 1,
+                  }}
+                />
+
+                {/* Station 1 Node */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    position: "relative",
+                    zIndex: 2,
+                    minWidth: "64px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "38px",
+                      height: "38px",
+                      borderRadius: "50%",
+                      background: "#1E66F5",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
+                    }}
+                  >
+                    <TrainFront size={18} color="#FFFFFF" strokeWidth={2.2} />
+                  </div>
+                  <span
+                    style={{
+                      marginTop: "8px",
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 700,
+                      fontSize: "13px",
+                      lineHeight: "16px",
+                      color: "#0D2B43",
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Station 1
+                  </span>
+                </div>
+
+                {/* Station 2 Node */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    position: "relative",
+                    zIndex: 2,
+                    minWidth: "64px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "22px",
+                      height: "22px",
+                      marginTop: "8px",
+                      borderRadius: "50%",
+                      background: "#FFFFFF",
+                      border: "4px solid #1E66F5",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <span
+                    style={{
+                      marginTop: "16px",
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 700,
+                      fontSize: "13px",
+                      lineHeight: "16px",
+                      color: "#0D2B43",
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Station 2
+                  </span>
+                </div>
+
+                {/* Station 3 Node */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    position: "relative",
+                    zIndex: 2,
+                    minWidth: "64px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "22px",
+                      height: "22px",
+                      marginTop: "8px",
+                      borderRadius: "50%",
+                      background: "#FFFFFF",
+                      border: "4px solid #1E66F5",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <span
+                    style={{
+                      marginTop: "16px",
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 700,
+                      fontSize: "13px",
+                      lineHeight: "16px",
+                      color: "#0D2B43",
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Station 3
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+        {/* Right Column: Status & Seat Allocation Card */}
+        <div style={{ minWidth: 0, height: "100%" }}>
+          <div
+            style={{
+              boxSizing: "border-box",
+              width: "100%",
+              height: "100%",
+              background: "#FFFFFF",
+              border: "0.5px solid rgba(0, 0, 0, 0.43)",
+              boxShadow: "0px 4px 11.9px -6px rgba(0, 0, 0, 0.32)",
+              borderRadius: "15px",
+              padding: "24px 28px",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            className="card-status-seating"
+          >
           {/* Status Section */}
           <h3 style={{ margin: "0 0 16px 0", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "18px", color: "#0C2A42" }}>
             Status
@@ -2166,28 +2570,23 @@ export default function AddEditAttractionForm({
             {allocatedSeats.length > 0 && (
               <div
                 style={{
-                  marginTop: "10px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "6px 10px",
-                  background: "#F0FDF4",
-                  border: "1px solid #BBF7D0",
-                  borderRadius: "6px",
+                  marginTop: "auto",
+                  paddingTop: "14px",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <Check size={14} color="#16A34A" strokeWidth={2.5} />
-                  <span
-                    style={{
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                      fontWeight: 600,
-                      fontSize: "11px",
-                      color: "#15803D",
-                    }}
-                  >
-                    {decoratedAllocatedSeats.filter((s) => !s.isDisabled).length} active seat layout{decoratedAllocatedSeats.filter((s) => !s.isDisabled).length > 1 ? "s" : ""} allocated ({decoratedAllocatedSeats.filter((s) => !s.isDisabled).reduce((sum, s) => sum + s.capacity, 0)} total seats capacity)
-                  </span>
+                <div
+                  style={{
+                    background: "#ECFDF5",
+                    border: "1px solid #A7F3D0",
+                    borderRadius: "8px",
+                    padding: "10px 14px",
+                    textAlign: "center",
+                    color: "#065F46",
+                    fontWeight: 700,
+                    fontSize: "12px",
+                  }}
+                >
+                  {decoratedAllocatedSeats.filter((s) => !s.isDisabled).length} active seat layout{decoratedAllocatedSeats.filter((s) => !s.isDisabled).length > 1 ? "s" : ""} allocated ({decoratedAllocatedSeats.filter((s) => !s.isDisabled).reduce((sum, s) => sum + s.capacity, 0)} total seats capacity)
                 </div>
               </div>
             )}
@@ -2209,6 +2608,7 @@ export default function AddEditAttractionForm({
           </div>
         </div>
       </div>
+    </div>
 
       {/* ── Rectangle 205: Visitor Categories & Pricing ──────────────── */}
       <div
@@ -2226,282 +2626,445 @@ export default function AddEditAttractionForm({
         }}
         className="card-categories-pricing"
       >
-        <h3 style={{ margin: "0 0 24px 0", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "18px", color: "#0C2A42" }}>
-          Visitor Categories & Pricing
-        </h3>
-
-        {/* Scrollable cards row */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "20px", overflowX: "auto", paddingBottom: "12px" }}>
-          {categories.map((cat) => (
-            <div
-              key={cat.id}
-              style={{
-                boxSizing: "border-box",
-                width: "176px",
-                flexShrink: 0,
-                background: "#FFFFFF",
-                border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                borderRadius: "4px",
-                padding: "12px 10px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "10px",
-              }}
-            >
-              {/* Category Name */}
-              <span
-                style={{
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 700,
-                  fontSize: "14px",
-                  letterSpacing: "0.07em",
-                  color: "#011B2F",
-                  textAlign: "center",
-                }}
-              >
-                {cat.name}
-              </span>
-
-              {/* Avatar Circle - uses profile icon if not uploaded or error */}
-              <VisitorCategoryAvatar src={cat.image} name={cat.name} />
-
-              {/* Upload Image Button */}
-              <label
-                htmlFor={`cat-img-${cat.id}`}
-                style={{
-                  boxSizing: "border-box",
-                  width: "143px",
-                  height: "25px",
-                  background: "#FFFFFF",
-                  border: "1.5px dashed #2372A5",
-                  borderRadius: "4px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 500,
-                  fontSize: "10px",
-                  color: "#2372A5",
-                }}
-              >
-                Upload Image
-              </label>
-              <input
-                id={`cat-img-${cat.id}`}
-                type="file"
-                accept="image/*"
-                onChange={(e) => handleCategoryImageUpload(cat.id, e)}
-                style={{ display: "none" }}
-              />
-
-              {/* Base Price */}
-              <div style={{ width: "100%", textAlign: "center" }}>
-                <span style={{ display: "block", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "10px", color: "#011B2F", marginBottom: "4px" }}>
-                  Base Price (₹)*
-                </span>
-                <input
-                  type="text"
-                  value={cat.basePrice}
-                  onChange={(e) => handleCategoryChange(cat.id, "basePrice", e.target.value.replace(/[^0-9.]/g, ""))}
-                  style={{
-                    boxSizing: "border-box",
-                    width: "144px",
-                    height: "21px",
-                    background: "#FFFFFF",
-                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                    borderRadius: "4px",
-                    textAlign: "center",
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 500,
-                    fontSize: "9px",
-                    color: "rgba(55, 65, 81, 0.84)",
-                    outline: "none",
-                  }}
-                />
-              </div>
-
-              {/* Future Price */}
-              <div style={{ width: "100%", textAlign: "center" }}>
-                <span style={{ display: "block", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "10px", color: "#011B2F", marginBottom: "4px" }}>
-                  Future Price (₹)
-                </span>
-                <input
-                  type="text"
-                  value={cat.futurePrice}
-                  onChange={(e) => handleCategoryChange(cat.id, "futurePrice", e.target.value.replace(/[^0-9.]/g, ""))}
-                  style={{
-                    boxSizing: "border-box",
-                    width: "144px",
-                    height: "21px",
-                    background: "#FFFFFF",
-                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                    borderRadius: "4px",
-                    textAlign: "center",
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 500,
-                    fontSize: "9px",
-                    color: "rgba(55, 65, 81, 0.84)",
-                    outline: "none",
-                  }}
-                />
-              </div>
-
-              {/* Effective From */}
-              <div style={{ width: "100%", textAlign: "center" }}>
-                <span style={{ display: "block", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "10px", color: "#011B2F", marginBottom: "4px" }}>
-                  Effective From
-                </span>
-                <input
-                  type="text"
-                  placeholder="Select Date"
-                  value={cat.effectiveFrom}
-                  onFocus={(e) => { e.target.type = "date"; }}
-                  onBlur={(e) => { if (!e.target.value) e.target.type = "text"; }}
-                  onChange={(e) => handleCategoryChange(cat.id, "effectiveFrom", e.target.value)}
-                  style={{
-                    boxSizing: "border-box",
-                    width: "144px",
-                    height: "21px",
-                    background: "#FFFFFF",
-                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                    borderRadius: "4px",
-                    textAlign: "center",
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 500,
-                    fontSize: "9px",
-                    color: "rgba(55, 65, 81, 0.84)",
-                    outline: "none",
-                  }}
-                />
-              </div>
-
-              {/* Number of Seats (Required) */}
-              <div style={{ width: "100%", textAlign: "center" }} id={`field-seats-${cat.id}`}>
-                <span style={{ display: "block", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "10px", color: "#011B2F", marginBottom: "4px" }}>
-                  No. of Seats<span style={{ color: "#DC2626" }}>*</span>
-                </span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="e.g. 10"
-                  value={cat.numberOfSeats}
-                  onChange={(e) => {
-                    handleCategoryChange(cat.id, "numberOfSeats", e.target.value.replace(/\D/g, ""));
-                    setFormErrors((prev) => {
-                      if (!prev[`seats-${cat.id}`]) return prev;
-                      const next = { ...prev };
-                      delete next[`seats-${cat.id}`];
-                      return next;
-                    });
-                  }}
-                  style={{
-                    boxSizing: "border-box",
-                    width: "144px",
-                    height: "24px",
-                    background: formErrors[`seats-${cat.id}`]
-                      ? "#FEF2F2"
-                      : cat.numberOfSeats
-                        ? "#F0FDF4"
-                        : "#FFF7ED",
-                    border: formErrors[`seats-${cat.id}`]
-                      ? "1.5px solid #DC2626"
-                      : cat.numberOfSeats
-                        ? "1.5px solid #10B981"
-                        : "1.5px solid #FCA5A5",
-                    borderRadius: "4px",
-                    textAlign: "center",
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 700,
-                    fontSize: "10px",
-                    color: "#011B2F",
-                    outline: "none",
-                  }}
-                />
-                {formErrors[`seats-${cat.id}`] && (
-                  <span
-                    style={{
-                      display: "block",
-                      marginTop: "4px",
-                      fontSize: "9px",
-                      color: "#DC2626",
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                      fontWeight: 500,
-                    }}
-                  >
-                    {formErrors[`seats-${cat.id}`]}
-                  </span>
-                )}
-              </div>
-
-              {/* Delete button */}
-              <button
-                type="button"
-                onClick={() => handleDeleteCategory(cat.id)}
-                style={{
-                  boxSizing: "border-box",
-                  width: "144px",
-                  height: "31px",
-                  background: "#FFFFFF",
-                  border: "1px solid #DC2626",
-                  borderRadius: "6px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "6px",
-                  cursor: "pointer",
-                  transition: "all 0.18s ease",
-                }}
-              >
-                <Trash2 size={13} color="#DC2626" />
-                <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "12px", color: "#DC2626" }}>
-                  Delete
-                </span>
-              </button>
-            </div>
-          ))}
-
-          {/* + Add Visitor Category dashed card */}
+        {/* Header row with Title and + Add Visitor Category Button */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
+          <h3 style={{ margin: 0, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "18px", color: "#011B2F" }}>
+            Visitor Categories & Pricing
+          </h3>
           <button
             type="button"
             onClick={handleAddCategory}
-
             style={{
-              boxSizing: "border-box",
-              width: "176px",
-              minHeight: "356px",
-              background: "#FFFFFF",
-              border: "1.5px dashed #2372A5",
-              borderRadius: "4px",
+              background: "#011B2F",
+              color: "#FFFFFF",
+              border: "none",
+              borderRadius: "8px",
+              padding: "9px 18px",
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontWeight: 600,
+              fontSize: "13px",
               display: "flex",
-              flexDirection: "column",
               alignItems: "center",
-              justifyContent: "center",
-              gap: "14px",
+              gap: "8px",
               cursor: "pointer",
-              flexShrink: 0,
-              transition: "all 0.18s ease",
+              transition: "all 0.15s ease",
             }}
-            className="btn-add-category-card"
           >
-            <div
-              style={{
-                width: "42px",
-                height: "42px",
-                borderRadius: "50%",
-                border: "2px solid #2372A5",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Plus size={24} color="#2372A5" strokeWidth={2.5} />
-            </div>
-            <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "12px", textAlign: "center", letterSpacing: "0.02em", color: "#173F63" }}>
-              Add Visitor Category
-            </span>
+            <Plus size={16} color="#FFFFFF" strokeWidth={2.5} />
+            Add Visitor Category
           </button>
+        </div>
+
+        {/* Scrollable / Responsive cards track */}
+        <div
+          className="visitor-categories-track"
+          style={{
+            display: "flex",
+            alignItems: "stretch",
+            gap: "20px",
+            overflowX: "auto",
+            paddingBottom: "16px",
+          }}
+        >
+          {categories.map((cat) => {
+            const totalPrice = (Number(cat.basePrice || 0) * 1.18).toFixed(2);
+            return (
+              <div
+                key={cat.id}
+                style={{
+                  boxSizing: "border-box",
+                  width: "330px",
+                  minWidth: "300px",
+                  flexShrink: 0,
+                  background: "#FFFFFF",
+                  border: "1px solid #E5E9F0",
+                  borderRadius: "16px",
+                  padding: "20px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "14px",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+                }}
+              >
+                {/* Top: Avatar, Name & Edit Button */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div
+                      style={{
+                        width: "44px",
+                        height: "44px",
+                        borderRadius: "50%",
+                        overflow: "hidden",
+                        border: "1.5px solid #E2E8F0",
+                        background: "#F8FAFC",
+                        flexShrink: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <VisitorCategoryAvatar src={cat.image} name={cat.name} />
+                    </div>
+                    <span
+                      style={{
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "16px",
+                        color: "#011B2F",
+                      }}
+                    >
+                      {cat.name}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditingCategory(cat)}
+                    style={{
+                      width: "32px",
+                      height: "32px",
+                      borderRadius: "8px",
+                      border: "1px solid #E2E8F0",
+                      background: "#FFFFFF",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                    title="Edit category"
+                  >
+                    <Pencil size={15} color="#64748B" />
+                  </button>
+                </div>
+
+                {/* Row 1: Base Price (₹) & Total Price (i) */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "2px" }}>
+                      Base Price (₹)
+                    </div>
+                    <input
+                      type="text"
+                      value={cat.basePrice}
+                      onChange={(e) => handleCategoryChange(cat.id, "basePrice", e.target.value.replace(/[^0-9.]/g, ""))}
+                      style={{
+                        width: "100%",
+                        border: "none",
+                        outline: "none",
+                        background: "transparent",
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "16px",
+                        color: "#011B2F",
+                        padding: 0,
+                      }}
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "2px" }}>
+                      <span>Total Price</span>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: "12px",
+                          height: "12px",
+                          borderRadius: "50%",
+                          background: "#E2E8F0",
+                          color: "#64748B",
+                          fontSize: "8.5px",
+                          fontWeight: 700,
+                        }}
+                        title="Includes 18% GST"
+                      >
+                        i
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "16px",
+                        color: "#011B2F",
+                      }}
+                    >
+                      {totalPrice}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Row 2: Future Price & Effective Date */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      boxSizing: "border-box",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "2px" }}>
+                        Future Price
+                      </div>
+                      <input
+                        type="text"
+                        value={cat.futurePrice}
+                        onChange={(e) => handleCategoryChange(cat.id, "futurePrice", e.target.value)}
+                        placeholder="00.00"
+                        style={{
+                          width: "100%",
+                          border: "none",
+                          outline: "none",
+                          background: "transparent",
+                          fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          fontWeight: 700,
+                          fontSize: "14px",
+                          color: "#011B2F",
+                          padding: 0,
+                          marginBottom: "4px",
+                        }}
+                      />
+                    </div>
+                    {cat.futurePriceType === "onetime" ? (
+                      <span
+                        style={{
+                          alignSelf: "flex-start",
+                          fontSize: "9.5px",
+                          fontWeight: 600,
+                          color: "#9333EA",
+                          background: "#FAF5FF",
+                          border: "1px solid #F3E8FF",
+                          borderRadius: "4px",
+                          padding: "1px 6px",
+                        }}
+                      >
+                        📅 One Time
+                      </span>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px", flexWrap: "nowrap" }}>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "3px",
+                            fontSize: "9.5px",
+                            fontWeight: 600,
+                            color: "#2563EB",
+                            background: "#EFF6FF",
+                            border: "1px solid #DBEAFE",
+                            borderRadius: "4px",
+                            padding: "1px 6px",
+                          }}
+                        >
+                          <RotateCw size={9} /> Recurring
+                        </span>
+                        <span style={{ fontSize: "9px", color: "#64748B", whiteSpace: "nowrap" }}>(of Base Price)</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      boxSizing: "border-box",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "2px" }}>
+                      Effective From
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Select Date"
+                      value={cat.effectiveFrom}
+                      onFocus={(e) => { e.target.type = "date"; }}
+                      onBlur={(e) => { if (!e.target.value) e.target.type = "text"; }}
+                      onChange={(e) => handleCategoryChange(cat.id, "effectiveFrom", e.target.value)}
+                      style={{
+                        width: "100%",
+                        border: "none",
+                        outline: "none",
+                        background: "transparent",
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 600,
+                        fontSize: "12px",
+                        color: "#011B2F",
+                        padding: 0,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Row 3: HSN CODE & SAC CODE */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    <div style={{ fontSize: "9.5px", fontWeight: 700, color: "#94A3B8", letterSpacing: "0.04em", marginBottom: "2px" }}>
+                      HSN CODE
+                    </div>
+                    <input
+                      type="text"
+                      value={cat.hsnCode || "998551"}
+                      onChange={(e) => handleCategoryChange(cat.id, "hsnCode", e.target.value)}
+                      style={{
+                        width: "100%",
+                        border: "none",
+                        outline: "none",
+                        background: "transparent",
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "13px",
+                        color: "#011B2F",
+                        padding: 0,
+                      }}
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    <div style={{ fontSize: "9.5px", fontWeight: 700, color: "#94A3B8", letterSpacing: "0.04em", marginBottom: "2px" }}>
+                      SAC CODE
+                    </div>
+                    <input
+                      type="text"
+                      value={cat.sacCode || "998554"}
+                      onChange={(e) => handleCategoryChange(cat.id, "sacCode", e.target.value)}
+                      style={{
+                        width: "100%",
+                        border: "none",
+                        outline: "none",
+                        background: "transparent",
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "13px",
+                        color: "#011B2F",
+                        padding: 0,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Row 4: No. of Seats */}
+                <div
+                  id={`field-seats-${cat.id}`}
+                  style={{
+                    background: "#F0FDF4",
+                    border: formErrors[`seats-${cat.id}`] ? "1.5px solid #DC2626" : "1px solid #86EFAC",
+                    borderRadius: "8px",
+                    padding: "8px 14px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "12px", color: "#011B2F" }}>
+                    No. of Seats<span style={{ color: "#DC2626" }}>*</span>
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="1"
+                    value={cat.numberOfSeats}
+                    onChange={(e) => {
+                      handleCategoryChange(cat.id, "numberOfSeats", e.target.value.replace(/\D/g, ""));
+                      setFormErrors((prev) => {
+                        if (!prev[`seats-${cat.id}`]) return prev;
+                        const next = { ...prev };
+                        delete next[`seats-${cat.id}`];
+                        return next;
+                      });
+                    }}
+                    style={{
+                      width: "50px",
+                      textAlign: "center",
+                      border: "none",
+                      outline: "none",
+                      background: "transparent",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 700,
+                      fontSize: "14px",
+                      color: "#011B2F",
+                      padding: 0,
+                    }}
+                  />
+                </div>
+                {formErrors[`seats-${cat.id}`] && (
+                  <span style={{ fontSize: "10px", color: "#DC2626", marginTop: "-8px" }}>
+                    {formErrors[`seats-${cat.id}`]}
+                  </span>
+                )}
+
+                {/* Row 5: Delete button */}
+                <button
+                  type="button"
+                  onClick={() => handleDeleteCategory(cat.id)}
+                  style={{
+                    width: "100%",
+                    height: "36px",
+                    background: "#FFFFFF",
+                    border: "1px solid #FCA5A5",
+                    borderRadius: "8px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#FEF2F2"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "#FFFFFF"; }}
+                >
+                  <Trash2 size={13} color="#EF4444" />
+                  <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "12px", color: "#EF4444" }}>
+                    Delete
+                  </span>
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -2571,6 +3134,28 @@ export default function AddEditAttractionForm({
         .btn-add-category-card:hover { background: #F0F7FF !important; transform: translateY(-2px); }
         .btn-form-cancel:hover { background: #F8FAFC !important; }
         .btn-form-save:hover { background: #E5AC32 !important; transform: translateY(-1px); }
+        .visitor-categories-track::-webkit-scrollbar {
+          height: 6px;
+        }
+        .visitor-categories-track::-webkit-scrollbar-track {
+          background: #E2E8F0;
+          border-radius: 9999px;
+        }
+        .visitor-categories-track::-webkit-scrollbar-thumb {
+          background: #94A3B8;
+          border-radius: 9999px;
+        }
+        .visitor-categories-track::-webkit-scrollbar-thumb:hover {
+          background: #64748B;
+        }
+        @media (max-width: 900px) {
+          .attraction-top-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .card-status-seating {
+            height: auto !important;
+          }
+        }
         @media (max-width: 768px) {
           .card-basic-info, .card-status-seating, .card-categories-pricing {
             padding: 16px !important;
@@ -2589,6 +3174,18 @@ export default function AddEditAttractionForm({
         onClose={() => setIsAddCategoryModalOpen(false)}
         onAdd={handleAddCategoryConfirm}
         existingCategories={categories.map((c) => c.name)}
+      />
+
+      {/* Edit Visitor Category Modal */}
+      <EditVisitorCategoryModal
+        isOpen={Boolean(editingCategory)}
+        category={editingCategory}
+        onClose={() => setEditingCategory(null)}
+        onSave={(updatedCat) => {
+          setCategories((prev) =>
+            prev.map((c) => (c.id === updatedCat.id ? updatedCat : c))
+          );
+        }}
       />
     </form>
   );
