@@ -17,26 +17,33 @@ declare global {
   }
 }
 
-/** Dynamically load the QZ Tray JS client from CDN once */
+/** Dynamically load the QZ Tray JS client */
 async function loadQzScript(): Promise<any> {
   if (typeof window === "undefined") return null;
   if (window.qz) return window.qz;
 
-  return new Promise((resolve) => {
-    if (document.getElementById("qz-tray-script")) {
-      const poll = () => (window.qz ? resolve(window.qz) : setTimeout(poll, 100));
-      poll();
-      return;
-    }
-    const script = document.createElement("script");
-    script.id = "qz-tray-script";
-    // Use the same qz-tray version installed in node_modules
-    script.src = "https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js";
-    script.async = true;
-    script.onload = () => resolve(window.qz || null);
-    script.onerror = () => resolve(null);
-    document.head.appendChild(script);
-  });
+  try {
+    // @ts-expect-error - qz-tray lacks official TypeScript declarations
+    const qzMod = await import("qz-tray");
+    const qz = qzMod.default || qzMod;
+    window.qz = qz;
+    return qz;
+  } catch {
+    return new Promise((resolve) => {
+      if (document.getElementById("qz-tray-script")) {
+        const poll = () => (window.qz ? resolve(window.qz) : setTimeout(poll, 100));
+        poll();
+        return;
+      }
+      const script = document.createElement("script");
+      script.id = "qz-tray-script";
+      script.src = "https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js";
+      script.async = true;
+      script.onload = () => resolve(window.qz || null);
+      script.onerror = () => resolve(null);
+      document.head.appendChild(script);
+    });
+  }
 }
 
 /** Wrap receipt innerHTML in a full HTML doc with 80mm thermal styles */
@@ -115,9 +122,12 @@ export async function printViaQZ(
     const qz = await loadQzScript();
     if (!qz) return false;
 
-    // --- NEW: INJECT CERTIFICATE FOR DEV FLOW ---
-    // This tells QZ Tray who we are so the "Remember this decision" box unlocks.
-    const cert = (import.meta.env.VITE_QZ_TRAY_CERT as string | undefined)?.replace(/\\n/g, "\n");
+    // --- INJECT CERTIFICATE FOR DEV FLOW IF PROVIDED ---
+    const cert = (
+      typeof process !== "undefined" && process.env?.NEXT_PUBLIC_QZ_TRAY_CERT
+        ? process.env.NEXT_PUBLIC_QZ_TRAY_CERT
+        : undefined
+    )?.replace(/\\n/g, "\n");
 
     if (cert) {
       qz.security.setCertificatePromise((resolve: Function) => {
