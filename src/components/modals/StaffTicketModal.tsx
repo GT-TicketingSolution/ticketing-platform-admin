@@ -735,23 +735,20 @@ export default function StaffTicketModal({
                 >
                   <thead>
                     <tr style={{ borderBottom: "1.5px solid #000000", textAlign: "left", fontWeight: 400 }}>
-                      <th style={{ paddingBottom: "4px", width: "12%", fontWeight: 400 }}>S.No.</th>
-                      <th style={{ paddingBottom: "4px", width: "50%", fontWeight: 400 }}>Items/SAC</th>
-                      <th style={{ paddingBottom: "4px", width: "15%", textAlign: "center", fontWeight: 400 }}>Qty</th>
-                      <th style={{ paddingBottom: "4px", width: "23%", textAlign: "right", fontWeight: 400 }}>Amount</th>
+                      <th style={{ paddingBottom: "4px", width: "12%", textAlign: "left", fontWeight: 400, whiteSpace: "nowrap" }}>S.No.</th>
+                      <th style={{ paddingBottom: "4px", width: "38%", textAlign: "left", fontWeight: 400, whiteSpace: "nowrap" }}>Items</th>
+                      <th style={{ paddingBottom: "4px", width: "20%", textAlign: "center", fontWeight: 400, whiteSpace: "nowrap" }}>SAC</th>
+                      <th style={{ paddingBottom: "4px", width: "10%", textAlign: "center", fontWeight: 400, whiteSpace: "nowrap" }}>Qty</th>
+                      <th style={{ paddingBottom: "4px", width: "20%", textAlign: "right", fontWeight: 400, whiteSpace: "nowrap" }}>Amount</th>
                     </tr>
                   </thead>
                   <tbody>
                     {itemsList.length > 0 ? (
                       itemsList.map((item, idx) => (
                         <tr key={idx} style={{ fontWeight: 400 }}>
-                          <td style={{ paddingTop: "5px", verticalAlign: "top" }}>{item.sNo}</td>
-                          <td style={{ paddingTop: "5px", verticalAlign: "top" }}>
-                            <div>{item.name}</div>
-                            <div style={{ fontSize: "10px", color: "#000000", fontWeight: 400, marginTop: "1px" }}>
-                              SAC: 996411
-                            </div>
-                          </td>
+                          <td style={{ paddingTop: "5px", textAlign: "left", verticalAlign: "top" }}>{item.sNo}</td>
+                          <td style={{ paddingTop: "5px", textAlign: "left", verticalAlign: "top" }}>{item.name}</td>
+                          <td style={{ paddingTop: "5px", textAlign: "center", verticalAlign: "top" }}>996411</td>
                           <td style={{ paddingTop: "5px", textAlign: "center", verticalAlign: "top" }}>{item.qty}</td>
                           <td style={{ paddingTop: "5px", textAlign: "right", verticalAlign: "top" }}>
                             ₹{item.amount.toFixed(2)}
@@ -760,13 +757,9 @@ export default function StaffTicketModal({
                       ))
                     ) : (
                       <tr style={{ fontWeight: 400 }}>
-                        <td style={{ paddingTop: "5px", verticalAlign: "top" }}>1</td>
-                        <td style={{ paddingTop: "5px", verticalAlign: "top" }}>
-                          <div>{attractionTitle}</div>
-                          <div style={{ fontSize: "10px", color: "#000000", fontWeight: 400, marginTop: "1px" }}>
-                            SAC: 996411
-                          </div>
-                        </td>
+                        <td style={{ paddingTop: "5px", textAlign: "left", verticalAlign: "top" }}>1</td>
+                        <td style={{ paddingTop: "5px", textAlign: "left", verticalAlign: "top" }}>{attractionTitle}</td>
+                        <td style={{ paddingTop: "5px", textAlign: "center", verticalAlign: "top" }}>996411</td>
                         <td style={{ paddingTop: "5px", textAlign: "center", verticalAlign: "top" }}>1</td>
                         <td style={{ paddingTop: "5px", textAlign: "right", verticalAlign: "top" }}>
                           ₹{calculatedSubtotal.toFixed(2)}
