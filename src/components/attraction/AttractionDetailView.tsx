@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { ArrowLeft, Pencil, Trash2, RotateCw, TrainFront } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, RotateCw, TrainFront, Check } from "lucide-react";
 import { AttractionManagement } from "@/app/(dashboard)/attraction-management/types";
 import { useSeatLayouts } from "@/hooks/useSeatQueries";
 
@@ -79,7 +79,7 @@ export default function AttractionDetailView({
   // Duration display
   const durationVal = attraction.duration || "";
   const durationUnit = (attraction as any).durationUnit || "";
-  const durationDisplay =  durationVal ? `${durationVal} ${durationUnit}` :'-';
+  const durationDisplay = durationVal ? `${durationVal} ${durationUnit}` : '-';
 
 
   // Allocated seats list
@@ -157,8 +157,8 @@ export default function AttractionDetailView({
 
   // Visitor Categories List
   const visitorCategoriesList = useMemo(() => {
-    const defHsn =  "998551";
-    const defSac =  "996411";
+    const defHsn = "998551";
+    const defSac = "996411";
 
     if (Array.isArray(attraction.categories) && attraction.categories.length > 0) {
       return attraction.categories
@@ -289,8 +289,8 @@ export default function AttractionDetailView({
         }}
         className="attraction-top-grid"
       >
-        {/* Left Column: Basic Information + Multi-Station (Route) */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px", minWidth: 0 }}>
+        {/* Left Column: Basic Information */}
+        <div style={{ minWidth: 0, height: "100%" }}>
           {/* 1. Basic Information Card */}
           <div
             style={{
@@ -303,6 +303,7 @@ export default function AttractionDetailView({
               display: "flex",
               flexDirection: "column",
               gap: "20px",
+              height: "100%",
             }}
           >
             <h3
@@ -403,8 +404,8 @@ export default function AttractionDetailView({
                 </div>
                 <div
                   style={{
-                    width: "140px",
-                    height: "185px",
+                    width: "145px",
+                    height: "200px",
                     borderRadius: "14px",
                     overflow: "hidden",
                     border: "1px solid #E2E8F0",
@@ -429,260 +430,9 @@ export default function AttractionDetailView({
               </div>
             </div>
           </div>
-
-          {/* 2. Multi-Station (Route) Card */}
-          <div
-            style={{
-              background: "#FFFFFF",
-              border: "1px solid #E5E9F0",
-              borderRadius: "16px",
-              padding: "24px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "20px",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
-              boxSizing: "border-box",
-              width: "100%",
-            }}
-          >
-            {/* Header */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <h3
-                  style={{
-                    margin: 0,
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 600,
-                    fontSize: "18px",
-                    lineHeight: "28px",
-                    color: "#0D2B43",
-                  }}
-                >
-                  Multi-Station (Route)
-                </h3>
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    padding: "2px 10px",
-                    background: "#DCFCE7",
-                    borderRadius: "9999px",
-                    fontFamily: "'Inter', sans-serif",
-                    fontWeight: 600,
-                    fontSize: "12px",
-                    lineHeight: "16px",
-                    color: "#22C55E",
-                  }}
-                >
-                  Enabled
-                </span>
-              </div>
-              <p
-                style={{
-                  margin: 0,
-                  fontFamily: "'Inter', sans-serif",
-                  fontWeight: 400,
-                  fontSize: "12px",
-                  lineHeight: "16px",
-                  color: "#6B7280",
-                }}
-              >
-                Manage and view the station sequence and route for this attraction.
-              </p>
-            </div>
-
-            {/* Route Track Visualisation Diagram */}
-            <div
-              style={{
-                boxSizing: "border-box",
-                width: "100%",
-                background: "#F8FAFC",
-                border: "2px dashed #2563EB",
-                borderRadius: "16px",
-                padding: "24px 24px 20px 24px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                position: "relative",
-              }}
-            >
-              {/* Stations Track Container */}
-              <div
-                style={{
-                  position: "relative",
-                  width: "100%",
-                  maxWidth: "460px",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  padding: "0 10px",
-                  boxSizing: "border-box",
-                }}
-              >
-                {/* Direct Connecting Line */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "18px",
-                    left: "32px",
-                    right: "32px",
-                    height: "3px",
-                    background: "#2563EB",
-                    zIndex: 1,
-                  }}
-                />
-
-                {/* Station 1 Node */}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    position: "relative",
-                    zIndex: 2,
-                    minWidth: "60px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "38px",
-                      height: "38px",
-                      borderRadius: "50%",
-                      background: "#1E66F5",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    <TrainFront size={18} color="#FFFFFF" strokeWidth={2.2} />
-                  </div>
-                  <span
-                    style={{
-                      marginTop: "8px",
-                      fontFamily: "'Inter', sans-serif",
-                      fontWeight: 700,
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#0D2B43",
-                      textAlign: "center",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Station 1
-                  </span>
-                </div>
-
-                {/* Station 2 Node */}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    position: "relative",
-                    zIndex: 2,
-                    minWidth: "60px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "22px",
-                      height: "22px",
-                      marginTop: "8px",
-                      borderRadius: "50%",
-                      background: "#FFFFFF",
-                      border: "4px solid #1E66F5",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                  <span
-                    style={{
-                      marginTop: "16px",
-                      fontFamily: "'Inter', sans-serif",
-                      fontWeight: 600,
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#0D2B43",
-                      textAlign: "center",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Station 2
-                  </span>
-                </div>
-
-                {/* Station 3 Node */}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    position: "relative",
-                    zIndex: 2,
-                    minWidth: "60px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "22px",
-                      height: "22px",
-                      marginTop: "8px",
-                      borderRadius: "50%",
-                      background: "#FFFFFF",
-                      border: "4px solid #1E66F5",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                  <span
-                    style={{
-                      marginTop: "16px",
-                      fontFamily: "'Inter', sans-serif",
-                      fontWeight: 600,
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#0D2B43",
-                      textAlign: "center",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Station 3
-                  </span>
-                </div>
-              </div>
-
-              {/* Cyclic Return Path Pill Indicator */}
-              <div
-                style={{
-                  marginTop: "20px",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: "#EFF6FF",
-                  border: "1px solid #BFDBFE",
-                  borderRadius: "9999px",
-                  padding: "5px 16px",
-                  boxSizing: "border-box",
-                }}
-              >
-                <RotateCw size={13} color="#1D4ED8" strokeWidth={2.2} />
-                <span
-                  style={{
-                    fontFamily: "'Inter', sans-serif",
-                    fontWeight: 500,
-                    fontSize: "12px",
-                    lineHeight: "16px",
-                    color: "#1D4ED8",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Round Trip (Cyclic Route)
-                </span>
-              </div>
-            </div>
-          </div>
         </div>
 
-        {/* Right Column: Status Card (fits and aligns with left column height) */}
+        {/* Right Column: Status Card (reduced height, aligns with Basic Info) */}
         <div
           className="attraction-status-card"
           style={{
@@ -782,8 +532,8 @@ export default function AttractionDetailView({
                 flexDirection: "column",
                 gap: "8px",
                 flex: 1,
-                minHeight: "140px",
-                maxHeight: "360px",
+                minHeight: "100px",
+                maxHeight: "135px",
                 overflowY: "auto",
                 paddingRight: "2px",
               }}
@@ -887,12 +637,269 @@ export default function AttractionDetailView({
                     color: "#065F46",
                     fontWeight: 700,
                     fontSize: "12px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
                   }}
                 >
-                  {activeSeatsCount} active seat layouts allocated ({totalCapacity} total seats capacity)
+                  <Check size={15} color="#059669" strokeWidth={2.5} />
+                  <span>
+                    {activeSeatsCount} active seat layout{activeSeatsCount > 1 ? "s" : ""} allocated ({totalCapacity} total seats capacity)
+                  </span>
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 2. Full-Width Multi-Station (Route) Card ── */}
+      <div
+        style={{
+          background: "#FFFFFF",
+          border: "1px solid #E5E9F0",
+          borderRadius: "16px",
+          padding: "24px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "20px",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+          boxSizing: "border-box",
+          width: "100%",
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <h3
+              style={{
+                margin: 0,
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                fontWeight: 600,
+                fontSize: "18px",
+                lineHeight: "28px",
+                color: "#0D2B43",
+              }}
+            >
+              Multi-Station (Route)
+            </h3>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "2px 10px",
+                background: "#DCFCE7",
+                borderRadius: "9999px",
+                fontFamily: "'Inter', sans-serif",
+                fontWeight: 600,
+                fontSize: "12px",
+                lineHeight: "16px",
+                color: "#22C55E",
+              }}
+            >
+              Enabled
+            </span>
+          </div>
+          <p
+            style={{
+              margin: 0,
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: 400,
+              fontSize: "12px",
+              lineHeight: "16px",
+              color: "#6B7280",
+            }}
+          >
+            Manage and view the station sequence and route for this attraction.
+          </p>
+        </div>
+
+        {/* Route Track Visualisation Diagram spanning full width */}
+        <div
+          style={{
+            boxSizing: "border-box",
+            width: "100%",
+            background: "#F8FAFC",
+            border: "2px dashed #2563EB",
+            borderRadius: "16px",
+            padding: "24px 24px 20px 24px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            position: "relative",
+          }}
+        >
+          {/* Stations Track Container */}
+          <div
+            style={{
+              position: "relative",
+              width: "100%",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              padding: "0 24px",
+              boxSizing: "border-box",
+            }}
+          >
+            {/* Direct Connecting Line */}
+            <div
+              style={{
+                position: "absolute",
+                top: "18px",
+                left: "44px",
+                right: "44px",
+                height: "3px",
+                background: "#2563EB",
+                zIndex: 1,
+              }}
+            />
+
+            {/* Station 1 Node */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                position: "relative",
+                zIndex: 2,
+                minWidth: "60px",
+              }}
+            >
+              <div
+                style={{
+                  width: "38px",
+                  height: "38px",
+                  borderRadius: "50%",
+                  background: "#1E66F5",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
+                }}
+              >
+                <TrainFront size={18} color="#FFFFFF" strokeWidth={2.2} />
+              </div>
+              <span
+                style={{
+                  marginTop: "8px",
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 700,
+                  fontSize: "12px",
+                  lineHeight: "16px",
+                  color: "#0D2B43",
+                  textAlign: "center",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Station 1
+              </span>
+            </div>
+
+            {/* Station 2 Node */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                position: "relative",
+                zIndex: 2,
+                minWidth: "60px",
+              }}
+            >
+              <div
+                style={{
+                  width: "22px",
+                  height: "22px",
+                  marginTop: "8px",
+                  borderRadius: "50%",
+                  background: "#FFFFFF",
+                  border: "4px solid #1E66F5",
+                  boxSizing: "border-box",
+                }}
+              />
+              <span
+                style={{
+                  marginTop: "16px",
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 600,
+                  fontSize: "12px",
+                  lineHeight: "16px",
+                  color: "#0D2B43",
+                  textAlign: "center",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Station 2
+              </span>
+            </div>
+
+            {/* Station 3 Node */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                position: "relative",
+                zIndex: 2,
+                minWidth: "60px",
+              }}
+            >
+              <div
+                style={{
+                  width: "22px",
+                  height: "22px",
+                  marginTop: "8px",
+                  borderRadius: "50%",
+                  background: "#FFFFFF",
+                  border: "4px solid #1E66F5",
+                  boxSizing: "border-box",
+                }}
+              />
+              <span
+                style={{
+                  marginTop: "16px",
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 600,
+                  fontSize: "12px",
+                  lineHeight: "16px",
+                  color: "#0D2B43",
+                  textAlign: "center",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Station 3
+              </span>
+            </div>
+          </div>
+
+          {/* Cyclic Return Path Pill Indicator */}
+          <div
+            style={{
+              marginTop: "20px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              background: "#EFF6FF",
+              border: "1px solid #BFDBFE",
+              borderRadius: "9999px",
+              padding: "5px 16px",
+              boxSizing: "border-box",
+            }}
+          >
+            <RotateCw size={13} color="#1D4ED8" strokeWidth={2.2} />
+            <span
+              style={{
+                fontFamily: "'Inter', sans-serif",
+                fontWeight: 500,
+                fontSize: "12px",
+                lineHeight: "16px",
+                color: "#1D4ED8",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Round Trip (Cyclic Route)
+            </span>
           </div>
         </div>
       </div>
