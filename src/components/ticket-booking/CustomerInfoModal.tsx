@@ -491,14 +491,11 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
 
   const innerHtml = element.innerHTML;
 
-  // ── Try QZ Tray first (silent, no dialog) with a fast timeout ──
-  // If QZ Tray is not running it used to wait for CDN load + websocket retries
-  // which caused a long delay before falling back to the iframe dialog.
-  // Now we race it against a 500ms timeout so we fail fast.
+  // ── Try QZ Tray first (silent, direct to physical printer) with a reliable timeout ──
   try {
     const qzResult = await Promise.race([
       import("@/lib/qzPrint").then(({ printViaQZ }) => printViaQZ(innerHtml)),
-      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 500)),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2000)),
     ]);
     if (qzResult) {
       onDone?.();
@@ -508,7 +505,7 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
     // QZ Tray not available, fall through to iframe
   }
 
-  // ── Fallback: iframe print (browser dialog will appear) ──
+  // ── Fallback: iframe print (browser dialog to physical printer) ──
   const oldIframe = document.getElementById("print-receipt-iframe");
   if (oldIframe) oldIframe.remove();
 
@@ -517,10 +514,11 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
   iframe.style.position = "fixed";
   iframe.style.right = "0";
   iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
+  iframe.style.width = "1px";
+  iframe.style.height = "1px";
+  iframe.style.opacity = "0.01";
   iframe.style.border = "none";
-  iframe.style.visibility = "hidden";
+  iframe.style.pointerEvents = "none";
   document.body.appendChild(iframe);
 
   const doc = iframe.contentWindow?.document || iframe.contentDocument;
@@ -586,15 +584,17 @@ async function printReceiptViaIframe(elementId: string, onDone?: () => void) {
       iframe.contentWindow?.print();
       setTimeout(finish, 600);
     } catch (err) {
-      console.error("Iframe print error:", err);
+      console.warn("Iframe print error, falling back to window.print():", err);
+      try {
+        window.print();
+      } catch (_) {}
       finish();
     }
   };
 
-  // Use onload on the iframe to ensure all content (including images) is rendered
+  // Wait a short tick for iframe DOM to settle, then trigger print
   iframe.onload = () => triggerPrint();
-  // Safety fallback in case onload doesn't fire
-  fallbackTimer = setTimeout(triggerPrint, 400);
+  fallbackTimer = setTimeout(triggerPrint, 250);
 }
 
 
