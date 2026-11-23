@@ -43,6 +43,7 @@ import { DataTable, Column } from "@/components/ui/DataTable";
 import { META_CONSTANTS } from "@/lib/metaConstant";
 import ExportButtons from "@/components/ui/ExportButtons";
 import { useModalBodyLock } from "@/hooks/useModalBodyLock";
+import AddForm from "@/components/form/AddForm";
 import {
   useManagers,
   fetchManagers,
@@ -721,7 +722,6 @@ function ManagerManagementInner() {
   );
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  useModalBodyLock(isAddModalOpen);
   const [showAddPassword, setShowAddPassword] = useState(false);
   const [selectedManager, setSelectedManager] = useState<ManagerUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -1002,6 +1002,7 @@ function ManagerManagementInner() {
 
       setIsAddModalOpen(false);
       reset();
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
       // Handled via TanStack Query onError and notify
     }
@@ -1334,6 +1335,24 @@ function ManagerManagementInner() {
       ),
     },
   ];
+
+  // Add Manager View (Full Page)
+  if (isAddModalOpen) {
+    return (
+      <AddForm
+        roleTitle="Manager"
+        existingAttractions={attractionsList}
+        systemModules={systemModules}
+        onSave={onAddSubmit}
+        onCancel={() => {
+          setIsAddModalOpen(false);
+          reset();
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+        isSaving={createManagerMutation.isPending}
+      />
+    );
+  }
 
   // Detail / Edit view
   if (selectedManager) {
@@ -1772,164 +1791,6 @@ function ManagerManagementInner() {
           )
         }
       />
-
-      {/* Add Modal */}
-      {isAddModalOpen && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(1,27,47,0.65)", backdropFilter: "blur(4px)", padding: "16px" }}>
-          <div style={{ width: "100%", maxWidth: "580px", background: "#FFFFFF", borderRadius: "16px", boxShadow: "0 20px 40px rgba(0,0,0,0.2)", overflow: "hidden" }}>
-            <div style={{ background: colors.sidebar.bg, color: "#FFFFFF", padding: "18px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <h2 style={{ fontSize: "18px", margin: 0, fontWeight: 700, fontFamily: typography.fontFamily.sans }}>Add New Manager</h2>
-              <button onClick={() => { setIsAddModalOpen(false); reset(); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#FFFFFF" }}>
-                <X size={20} />
-              </button>
-            </div>
-
-            <form
-              onSubmit={handleSubmit(onAddSubmit as Parameters<typeof handleSubmit>[0])}
-              style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "14px", maxHeight: "75vh", overflowY: "auto" }}
-            >
-              <div>
-                <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary, fontFamily: typography.fontFamily.sans }}>Full Name <span style={{ color: "#EF4444" }}>*</span></label>
-                <input type="text" placeholder="Enter manager full name" {...register("name")} style={inputStyle(!!errors.name)} />
-                <FieldError message={errors.name?.message} />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div>
-                  <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary, fontFamily: typography.fontFamily.sans }}>Phone <span style={{ color: "#EF4444" }}>*</span></label>
-                  <input
-                    type="text" maxLength={10} placeholder="Enter phone number"
-                    {...register("phone")}
-                    onKeyDown={(e) => { if (e.key.length === 1 && !/\d/.test(e.key) && !e.ctrlKey && !e.metaKey) e.preventDefault(); }}
-                    onInput={(e) => { const v = e.currentTarget.value.replace(/\D/g, "").slice(0, 10); e.currentTarget.value = v; setValue("phone", v, { shouldValidate: true }); }}
-                    style={inputStyle(!!errors.phone)}
-                  />
-                  <FieldError message={errors.phone?.message} />
-                </div>
-                <div>
-                  <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary, fontFamily: typography.fontFamily.sans }}>Email <span style={{ color: "#EF4444" }}>*</span></label>
-                  <input type="email" placeholder="enter email address" {...register("email")} style={inputStyle(!!errors.email)} />
-                  <FieldError message={errors.email?.message} />
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", alignItems: "flex-start" }}>
-                <div>
-                  <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary, fontFamily: typography.fontFamily.sans }}>Login Password <span style={{ color: "#EF4444" }}>*</span></label>
-                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                    <input
-                      type={showAddPassword ? "text" : "password"}
-                      placeholder="Min. 6 characters"
-                      {...register("password")}
-                      style={{ ...inputStyle(!!errors.password), paddingRight: "40px" }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowAddPassword((prev) => !prev)}
-                      style={{
-                        position: "absolute",
-                        right: "10px",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        color: colors.text.muted,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        padding: "4px",
-                      }}
-                      tabIndex={-1}
-                      aria-label={showAddPassword ? "Hide password" : "Show password"}
-                    >
-                      {showAddPassword ? <Eye size={18} /> : <EyeOff size={18} />}
-                    </button>
-                  </div>
-                  <FieldError message={errors.password?.message} />
-                </div>
-                <div>
-                  <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary, fontFamily: typography.fontFamily.sans, display: "block", marginBottom: "6px" }}>
-                    Account Status
-                  </label>
-                  <StatusToggle
-                    status={watchedStatus}
-                    onChange={(s) => setValue("status", s, { shouldValidate: true })}
-                  />
-                </div>
-              </div>
-
-              {/* Attraction Permission Tree */}
-              <div>
-                <label style={{ fontSize: "13px", fontWeight: 600, color: colors.text.primary, fontFamily: typography.fontFamily.sans, display: "block", marginBottom: "8px" }}>
-                  Attraction Management Permissions
-                </label>
-                <AttractionPermissionTree
-                  enabled={watchedEnabled ?? false}
-                  permissions={(watchedPermissions ?? []) as AttractionPermission[]}
-                  attractions={attractionsList}
-                  systemModules={systemModules}
-                  onEnabledChange={(v) => {
-                    setValue("attractionManagementEnabled", v, { shouldValidate: true });
-                    if (!v) setValue("attractionPermissions", [], { shouldValidate: true });
-                  }}
-                  onPermissionsChange={(p) => setValue("attractionPermissions", p, { shouldValidate: true })}
-                />
-                <FieldError message={errors.attractionPermissions?.message} />
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "12px", marginTop: "12px", paddingTop: "16px", borderTop: `1px solid ${colors.header.border}` }}>
-                <button
-                  type="button"
-                  disabled={createManagerMutation.isPending}
-                  onClick={() => { setIsAddModalOpen(false); reset(); }}
-                  style={{
-                    padding: "10px 18px",
-                    borderRadius: "8px",
-                    border: `1px solid ${colors.login.inputBorder}`,
-                    background: "#FFFFFF",
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    cursor: createManagerMutation.isPending ? "not-allowed" : "pointer",
-                    fontFamily: typography.fontFamily.sans,
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createManagerMutation.isPending}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    padding: "10px 22px",
-                    borderRadius: "8px",
-                    background: createManagerMutation.isPending ? "#E5E7EB" : colors.brand.primary,
-                    color: createManagerMutation.isPending ? "#6B7280" : colors.sidebar.activeText,
-                    border: "none",
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    cursor: createManagerMutation.isPending ? "not-allowed" : "pointer",
-                    fontFamily: typography.fontFamily.sans,
-                    boxShadow: createManagerMutation.isPending ? "none" : "0 4px 12px rgba(244,188,67,0.3)",
-                  }}
-                >
-                  {createManagerMutation.isPending ? (
-                    <>
-                      <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
-                      <span>Creating Manager...</span>
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus size={16} />
-                      <span>Create Manager</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -3,14 +3,15 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Upload, Plus, Trash2, X, Check, Armchair, ChevronDown, ChevronUp, Search, Loader2, GripVertical, Power, User, TrainFront, RotateCw, Pencil } from "lucide-react";
 import { Attraction } from "@/app/(dashboard)/attraction-management/types";
-import { confirmDelete } from "@/lib/notify";
+import { confirmDelete, confirmRemoveRoute } from "@/lib/notify";
 import { validateAttractionForm } from "@/app/(dashboard)/attraction-management/schema";
 import { SeatConfigData } from "@/app/(dashboard)/seat-management/types";
 import { useSeatLayouts } from "@/hooks/useSeatQueries";
 import { useDeleteAttractionSeat } from "@/hooks/useAttractionManagementQueries";
 import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 import AttractionImageCropper from "./AttractionImageCropper";
-import EditVisitorCategoryModal from "./EditVisitorCategoryModal";
+import AddEditVisitorCategoryModal from "./AddEditVisitorCategoryModal";
+import ConfigureStationsModal, { StationItem } from "./ConfigureStationsModal";
 
 // ── Shared required asterisk
 const Req = () => <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>;
@@ -60,7 +61,8 @@ interface AddEditAttractionFormProps {
   isSaving?: boolean;
 }
 
-// ── Add Visitor Category Modal
+// ── Preserved legacy AddVisitorCategoryModal (commented out - do not delete)
+/*
 function AddVisitorCategoryModal({
   isOpen,
   onClose,
@@ -157,7 +159,6 @@ function AddVisitorCategoryModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div style={{ background: "#011B2F", padding: "16px 22px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <Plus size={20} color="#F4BC43" />
@@ -168,9 +169,7 @@ function AddVisitorCategoryModal({
           </button>
         </div>
 
-        {/* Body */}
         <div style={{ padding: "24px 22px", display: "flex", flexDirection: "column", gap: "16px" }}>
-          {/* Category Image Upload */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
             <div
               style={{
@@ -187,7 +186,6 @@ function AddVisitorCategoryModal({
               }}
             >
               {image ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
                 <img src={image} alt="Preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
                 <User size={30} color="#2372A5" />
@@ -275,7 +273,6 @@ function AddVisitorCategoryModal({
             {seatsErrorMsg && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{seatsErrorMsg}</span>}
           </div>
 
-          {/* Footer buttons */}
           <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "4px" }}>
             <button
               type="button" onClick={onClose}
@@ -306,8 +303,9 @@ function AddVisitorCategoryModal({
     </div>
   );
 }
+*/
 
-// ── Visitor Category Avatar with Profile Icon Fallback ─────────────
+// ── Visitor Category Avatar with Profile Icon Fallback 
 function VisitorCategoryAvatar({ src, name, size = 44 }: { src?: string; name: string; size?: number }) {
   const [currentSrc, setCurrentSrc] = useState(src);
   const [imgErr, setImgErr] = useState(false);
@@ -370,11 +368,11 @@ function VisitorCategoryAvatar({ src, name, size = 44 }: { src?: string; name: s
 
 // ── Default categories using local /Assets/Visitors/ images 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
-  { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.png", basePrice: "100.00", futurePrice: "+10%", futurePriceType: "recurring", effectiveFrom: "2027-01-01", numberOfSeats: "1", hsnCode: "998551", sacCode: "998554" },
-  { id: "child", name: "Child", image: "/Assets/Visitors/Child.png", basePrice: "60.00", futurePrice: "75.00", futurePriceType: "onetime", effectiveFrom: "2026-12-15", numberOfSeats: "1", hsnCode: "998551", sacCode: "998554" },
-  { id: "student", name: "Student", image: "/Assets/Visitors/Student.png", basePrice: "90.00", futurePrice: "+5%", futurePriceType: "recurring", effectiveFrom: "2027-01-01", numberOfSeats: "1", hsnCode: "998551", sacCode: "998554" },
-  { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.png", basePrice: "75.00", futurePrice: "00.00", futurePriceType: "recurring", effectiveFrom: "", numberOfSeats: "1", hsnCode: "998551", sacCode: "998554" },
-  { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.png", basePrice: "500.00", futurePrice: "00.00", futurePriceType: "recurring", effectiveFrom: "", numberOfSeats: "1", hsnCode: "998551", sacCode: "998554" },
+  { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.png", basePrice: "100.00", futurePrice: "+10%", futurePriceType: "recurring", effectiveFrom: "2027-01-01", numberOfSeats: "1" },
+  { id: "child", name: "Child", image: "/Assets/Visitors/Child.png", basePrice: "60.00", futurePrice: "75.00", futurePriceType: "onetime", effectiveFrom: "2026-12-15", numberOfSeats: "1" },
+  { id: "student", name: "Student", image: "/Assets/Visitors/Student.png", basePrice: "90.00", futurePrice: "+5%", futurePriceType: "recurring", effectiveFrom: "2027-01-01", numberOfSeats: "1" },
+  { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.png", basePrice: "75.00", futurePrice: "00.00", futurePriceType: "recurring", effectiveFrom: "", numberOfSeats: "1" },
+  { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.png", basePrice: "500.00", futurePrice: "00.00", futurePriceType: "recurring", effectiveFrom: "", numberOfSeats: "1" },
 ];
 
 // ── Default image map per category name key 
@@ -424,8 +422,6 @@ function apiCategoriesToCategoryItems(apiCats: any[]): CategoryItem[] {
         c.noOfSeats != null && Number(c.noOfSeats) >= 1
           ? String(Number(c.noOfSeats))
           : "1",
-      hsnCode: "998551",
-      sacCode: "996411",
     };
   });
 }
@@ -502,7 +498,19 @@ export default function AddEditAttractionForm({
   // ── Operating hours (display-only, no booking enforcement) 
   const [openTime, setOpenTime] = useState("09:00");
   const [closeTime, setCloseTime] = useState("18:00");
-  const [isRoundTrip, setIsRoundTrip] = useState<boolean>(true);
+  const [isRoundTrip, setIsRoundTrip] = useState<boolean>(false);
+  const [isMultiStation, setIsMultiStation] = useState<boolean>(() => {
+    if (attractionToEdit) {
+      return (attractionToEdit as any).isMultiStation === true;
+    }
+    return false;
+  });
+  const [isConfigureStationsModalOpen, setIsConfigureStationsModalOpen] = useState<boolean>(false);
+  const [configuredStations, setConfiguredStations] = useState<StationItem[]>([
+    { id: "st-1", name: "Station 1" },
+    { id: "st-2", name: "Station 2" },
+    { id: "st-3", name: "Station 3" },
+  ]);
 
   // ── Fetch active seat layouts from backend API.
   // The dropdown is populated from /api/admin/seats in BOTH create and edit modes
@@ -790,7 +798,11 @@ export default function AddEditAttractionForm({
         setOpenTime("09:00");
         setCloseTime("18:00");
       }
-      setIsRoundTrip((attractionToEdit as any).isRoundTrip !== false);
+      // setIsRoundTrip((attractionToEdit as any).isRoundTrip !== false);
+      setIsMultiStation((attractionToEdit as any).isMultiStation === true);
+      if (Array.isArray((attractionToEdit as any).stations) && (attractionToEdit as any).stations.length > 0) {
+        setConfiguredStations((attractionToEdit as any).stations);
+      }
     } else {
       // Reset for new attraction
       setName("");
@@ -804,7 +816,13 @@ export default function AddEditAttractionForm({
       setCloseTime("18:00");
       setDurationValue("");
       setDurationUnit("minutes");
-      setIsRoundTrip(true);
+      setIsRoundTrip(false);
+      setIsMultiStation(false);
+      setConfiguredStations([
+        { id: "st-1", name: "Station 1" },
+        { id: "st-2", name: "Station 2" },
+        { id: "st-3", name: "Station 3" },
+      ]);
     }
   }, [attractionToEdit]);
 
@@ -838,8 +856,6 @@ export default function AddEditAttractionForm({
         futurePriceType: "recurring",
         effectiveFrom: "",
         numberOfSeats: numberOfSeats && Number(numberOfSeats) >= 1 ? numberOfSeats : "1",
-        hsnCode: "998551",
-        sacCode: "996411",
       },
     ]);
   };
@@ -1171,6 +1187,9 @@ export default function AddEditAttractionForm({
         duration: durationValue.trim() ? Number(durationValue.trim()) : null,
         durationUnit: durationUnit,
         formattedDuration: effectiveDuration,
+        isRoundTrip,
+        isMultiStation,
+        stations: configuredStations,
       } as any);
     } catch (err: any) {
       // If the API returned a duplicate-name conflict, show the error inline
@@ -1470,14 +1489,14 @@ export default function AddEditAttractionForm({
             </div>
 
             {/* Description + Attraction Image Row */}
-            <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", alignItems: "flex-start" }}>
+            <div className="desc-image-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", alignItems: "flex-start" }}>
               {/* Description */}
-              <div style={{ flex: "1 1 260px" }} id="field-description">
+              <div id="field-description" style={{ minWidth: 0 }}>
                 <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
                   Description
                   <span style={{ marginLeft: "4px", fontWeight: 400, fontSize: "11px", color: "#9CA3AF" }}>(Optional)</span>
                 </label>
-                <div style={{ position: "relative", maxWidth: "313px" }}>
+                <div style={{ position: "relative", width: "100%", maxWidth: "313px" }}>
                   <textarea
                     placeholder="Enter attraction description......"
                     maxLength={500}
@@ -1516,7 +1535,7 @@ export default function AddEditAttractionForm({
               </div>
 
               {/* Attraction Image Dropzone with In-Place Grab & Crop */}
-              <div style={{ flex: "1 1 260px" }} id="field-image">
+              <div id="field-image" style={{ minWidth: 0 }}>
                 <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
                   Attraction image
                   <span style={{ marginLeft: "4px", fontWeight: 400, fontSize: "11px", color: "#9CA3AF" }}>(Optional)</span>
@@ -1764,6 +1783,7 @@ export default function AddEditAttractionForm({
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "space-between",
+
                                   gap: "10px",
                                   padding: "8px 10px",
                                   borderRadius: "6px",
@@ -1849,7 +1869,7 @@ export default function AddEditAttractionForm({
                 {/* Scrollable Allocated Seats Box with vertical scroll */}
                 <div
                   style={{
-                    minHeight: "100px",
+                    minHeight: "230px",
                     maxHeight: "135px",
                     overflowY: "auto",
                     border: "1.5px solid #E2E8F0",
@@ -2153,7 +2173,7 @@ export default function AddEditAttractionForm({
           background: "#FFFFFF",
           border: "1px solid #E5E9F0",
           borderRadius: "16px",
-          padding: "24px",
+          padding: "20px 24px",
           display: "flex",
           flexDirection: "column",
           boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
@@ -2161,515 +2181,491 @@ export default function AddEditAttractionForm({
           width: "100%",
         }}
       >
-        {/* Header */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%", marginBottom: "18px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {!isMultiStation ? (
+          /* Default UI: Disabled / Unconfigured State matching uploaded image */
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              width: "100%",
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
               <h3
                 style={{
                   margin: 0,
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
                   fontWeight: 600,
                   fontSize: "18px",
-                  lineHeight: "28px",
+                  lineHeight: "26px",
                   color: "#0D2B43",
                 }}
               >
                 Multi-Station (Route)
               </h3>
-              <span
+              <p
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  padding: "2px 10px",
-                  background: "#DCFCE7",
-                  borderRadius: "9999px",
+                  margin: 0,
                   fontFamily: "'Inter', sans-serif",
-                  fontWeight: 600,
+                  fontWeight: 400,
                   fontSize: "12px",
                   lineHeight: "16px",
-                  color: "#22C55E",
+                  color: "#6B7280",
                 }}
               >
-                Enabled
-              </span>
+                Enable this option to configure multiple stations and their route sequence.
+              </p>
             </div>
 
-            {/* Action buttons (Edit & Delete) */}
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <button
-                type="button"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "6px 14px",
-                  background: "#FFFFFF",
-                  border: "1px solid #E2E8F0",
-                  borderRadius: "8px",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 600,
-                  fontSize: "12px",
-                  color: "#0F172A",
-                  cursor: "pointer",
-                }}
-              >
-                <Pencil size={13} color="#0F172A" />
-                <span>Edit</span>
-              </button>
-              <button
-                type="button"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: "32px",
-                  height: "32px",
-                  background: "#FFF1F2",
-                  border: "1px solid #FECDD3",
-                  borderRadius: "8px",
-                  color: "#E11D48",
-                  cursor: "pointer",
-                }}
-              >
-                <Trash2 size={14} color="#E11D48" />
-              </button>
-            </div>
-          </div>
-
-          <p
-            style={{
-              margin: 0,
-              fontFamily: "'Inter', sans-serif",
-              fontWeight: 400,
-              fontSize: "12px",
-              lineHeight: "16px",
-              color: "#6B7280",
-            }}
-          >
-            Manage and view the station sequence and route for this attraction.
-          </p>
-        </div>
-
-        {/* Toggle Bar: Round Trip (Cyclic Route) */}
-        <div
-          style={{
-            background: "#EFF6FF",
-            borderRadius: "12px",
-            padding: "10px 16px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            width: "100%",
-            maxWidth: "270px",
-            boxSizing: "border-box",
-            marginBottom: isRoundTrip ? "24px" : "24px",
-          }}
-        >
-          <span
-            style={{
-              fontFamily: "'Inter', sans-serif",
-              fontWeight: 600,
-              fontSize: "13px",
-              color: "#0D2B43",
-            }}
-          >
-            Round Trip (Cyclic Route)
-          </span>
-
-          {/* Toggle switch */}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={isRoundTrip}
-            onClick={() => setIsRoundTrip(!isRoundTrip)}
-            style={{
-              width: "44px",
-              height: "24px",
-              borderRadius: "9999px",
-              background: isRoundTrip ? "#22C55E" : "#D1D5DB",
-              border: "none",
-              cursor: "pointer",
-              position: "relative",
-              padding: "2px",
-              transition: "background-color 0.2s ease",
-              display: "flex",
-              alignItems: "center",
-              outline: "none",
-            }}
-          >
-            <div
-              style={{
-                width: "20px",
-                height: "20px",
-                borderRadius: "50%",
-                background: "#FFFFFF",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                transform: isRoundTrip ? "translateX(20px)" : "translateX(0px)",
-                transition: "transform 0.2s ease",
+            {/* Toggle switch in OFF state */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={false}
+              onClick={() => {
+                setIsConfigureStationsModalOpen(true);
               }}
-            />
-          </button>
-        </div>
-
-        {/* Route Visualisation based on isRoundTrip */}
-        {isRoundTrip ? (
-          /* State 1: Cyclic Route Diagram (Matching Image 1) */
-          <div
-            style={{
-              boxSizing: "border-box",
-              width: "100%",
-              paddingTop: "24px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              position: "relative",
-            }}
-          >
-            {/* Dashed Loop Container */}
-            <div
               style={{
+                width: "44px",
+                height: "24px",
+                borderRadius: "9999px",
+                background: "#D1D5DB",
+                border: "none",
+                cursor: "pointer",
                 position: "relative",
-                width: "100%",
-                minHeight: "130px",
-                border: "2px dashed #2563EB",
-                borderRadius: "16px",
-                background: "#FFFFFF",
-                padding: "0 20px 16px 20px",
-                boxSizing: "border-box",
+                padding: "2px",
+                transition: "background-color 0.2s ease",
                 display: "flex",
-                flexDirection: "column",
                 alignItems: "center",
-                justifyContent: "flex-end",
+                outline: "none",
+                flexShrink: 0,
               }}
             >
-              {/* Station Nodes & Connecting Solid Line on Top Track */}
               <div
                 style={{
-                  position: "absolute",
-                  top: "-19px",
-                  left: "24px",
-                  right: "24px",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  zIndex: 2,
-                }}
-              >
-                {/* Solid Blue Line between Station 1 and Station 3 */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "17.5px",
-                    left: "19px",
-                    right: "19px",
-                    height: "3px",
-                    background: "#2563EB",
-                    zIndex: 1,
-                  }}
-                />
-
-                {/* Station 1 Node */}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    position: "relative",
-                    zIndex: 2,
-                    minWidth: "64px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "38px",
-                      height: "38px",
-                      borderRadius: "50%",
-                      background: "#1E66F5",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
-                    }}
-                  >
-                    <TrainFront size={18} color="#FFFFFF" strokeWidth={2.2} />
-                  </div>
-                  <span
-                    style={{
-                      marginTop: "8px",
-                      fontFamily: "'Inter', sans-serif",
-                      fontWeight: 700,
-                      fontSize: "13px",
-                      lineHeight: "16px",
-                      color: "#0D2B43",
-                      textAlign: "center",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Station 1
-                  </span>
-                </div>
-
-                {/* Station 2 Node */}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    position: "relative",
-                    zIndex: 2,
-                    minWidth: "64px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "22px",
-                      height: "22px",
-                      marginTop: "8px",
-                      borderRadius: "50%",
-                      background: "#FFFFFF",
-                      border: "4px solid #1E66F5",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                  <span
-                    style={{
-                      marginTop: "16px",
-                      fontFamily: "'Inter', sans-serif",
-                      fontWeight: 700,
-                      fontSize: "13px",
-                      lineHeight: "16px",
-                      color: "#0D2B43",
-                      textAlign: "center",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Station 2
-                  </span>
-                </div>
-
-                {/* Station 3 Node */}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    position: "relative",
-                    zIndex: 2,
-                    minWidth: "64px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "22px",
-                      height: "22px",
-                      marginTop: "8px",
-                      borderRadius: "50%",
-                      background: "#FFFFFF",
-                      border: "4px solid #1E66F5",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                  <span
-                    style={{
-                      marginTop: "16px",
-                      fontFamily: "'Inter', sans-serif",
-                      fontWeight: 700,
-                      fontSize: "13px",
-                      lineHeight: "16px",
-                      color: "#0D2B43",
-                      textAlign: "center",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Station 3
-                  </span>
-                </div>
-              </div>
-
-              {/* Cyclic Return Path Pill Indicator */}
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: "#EFF6FF",
-                  border: "1px solid #BFDBFE",
-                  borderRadius: "9999px",
-                  padding: "6px 18px",
-                  boxSizing: "border-box",
-                  marginTop: "60px",
-                }}
-              >
-                <RotateCw size={13} color="#1D4ED8" strokeWidth={2.2} />
-                <span
-                  style={{
-                    fontFamily: "'Inter', sans-serif",
-                    fontWeight: 500,
-                    fontSize: "12px",
-                    lineHeight: "16px",
-                    color: "#1D4ED8",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Round Trip (Cyclic Route)
-                </span>
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* State 2: Linear One-Way Route Diagram (Matching Image 2) */
-          <div
-            style={{
-              boxSizing: "border-box",
-              width: "100%",
-              padding: "16px 10px 10px 10px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              position: "relative",
-            }}
-          >
-            <div
-              style={{
-                position: "relative",
-                width: "100%",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-              }}
-            >
-              {/* Solid Blue Line between Station 1 and Station 3 */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: "17.5px",
-                  left: "19px",
-                  right: "19px",
-                  height: "3px",
-                  background: "#2563EB",
-                  zIndex: 1,
+                  width: "20px",
+                  height: "20px",
+                  borderRadius: "50%",
+                  background: "#FFFFFF",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                  transform: "translateX(0px)",
+                  transition: "transform 0.2s ease",
                 }}
               />
-
-              {/* Station 1 Node */}
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  position: "relative",
-                  zIndex: 2,
-                  minWidth: "64px",
-                }}
-              >
-                <div
-                  style={{
-                    width: "38px",
-                    height: "38px",
-                    borderRadius: "50%",
-                    background: "#1E66F5",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
-                  }}
-                >
-                  <TrainFront size={18} color="#FFFFFF" strokeWidth={2.2} />
-                </div>
-                <span
-                  style={{
-                    marginTop: "8px",
-                    fontFamily: "'Inter', sans-serif",
-                    fontWeight: 700,
-                    fontSize: "13px",
-                    lineHeight: "16px",
-                    color: "#0D2B43",
-                    textAlign: "center",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Station 1
-                </span>
-              </div>
-
-              {/* Station 2 Node */}
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  position: "relative",
-                  zIndex: 2,
-                  minWidth: "64px",
-                }}
-              >
-                <div
-                  style={{
-                    width: "22px",
-                    height: "22px",
-                    marginTop: "8px",
-                    borderRadius: "50%",
-                    background: "#FFFFFF",
-                    border: "4px solid #1E66F5",
-                    boxSizing: "border-box",
-                  }}
-                />
-                <span
-                  style={{
-                    marginTop: "16px",
-                    fontFamily: "'Inter', sans-serif",
-                    fontWeight: 700,
-                    fontSize: "13px",
-                    lineHeight: "16px",
-                    color: "#0D2B43",
-                    textAlign: "center",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Station 2
-                </span>
-              </div>
-
-              {/* Station 3 Node */}
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  position: "relative",
-                  zIndex: 2,
-                  minWidth: "64px",
-                }}
-              >
-                <div
-                  style={{
-                    width: "22px",
-                    height: "22px",
-                    marginTop: "8px",
-                    borderRadius: "50%",
-                    background: "#FFFFFF",
-                    border: "4px solid #1E66F5",
-                    boxSizing: "border-box",
-                  }}
-                />
-                <span
-                  style={{
-                    marginTop: "16px",
-                    fontFamily: "'Inter', sans-serif",
-                    fontWeight: 700,
-                    fontSize: "13px",
-                    lineHeight: "16px",
-                    color: "#0D2B43",
-                    textAlign: "center",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Station 3
-                </span>
-              </div>
-            </div>
+            </button>
           </div>
+        ) : (
+          /* Configured State */
+          <>
+            {/* Header */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%", marginBottom: "18px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 600,
+                      fontSize: "18px",
+                      lineHeight: "28px",
+                      color: "#0D2B43",
+                    }}
+                  >
+                    Multi-Station (Route)
+                  </h3>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "2px 10px",
+                      background: "#DCFCE7",
+                      borderRadius: "9999px",
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 600,
+                      fontSize: "12px",
+                      lineHeight: "16px",
+                      color: "#22C55E",
+                    }}
+                  >
+                    Enabled
+                  </span>
+                </div>
+
+                {/* Action buttons (Edit & Delete) */}
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsConfigureStationsModalOpen(true)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "6px 14px",
+                      background: "#FFFFFF",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 600,
+                      fontSize: "12px",
+                      color: "#0F172A",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <Pencil size={13} color="#0F172A" />
+                    <span>Edit</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const confirmed = await confirmRemoveRoute();
+                      if (confirmed) {
+                        setIsMultiStation(false);
+                      }
+                    }}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: "32px",
+                      height: "32px",
+                      background: "#FFF1F2",
+                      border: "1px solid #FECDD3",
+                      borderRadius: "8px",
+                      color: "#E11D48",
+                      cursor: "pointer",
+                    }}
+                    title="Remove Route Configuration"
+                  >
+                    <Trash2 size={14} color="#E11D48" />
+                  </button>
+                </div>
+              </div>
+
+              <p
+                style={{
+                  margin: 0,
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 400,
+                  fontSize: "12px",
+                  lineHeight: "16px",
+                  color: "#6B7280",
+                }}
+              >
+                Manage and view the station sequence and route for this attraction.
+              </p>
+            </div>
+
+            {/* Toggle Bar: Round Trip (Cyclic Route) */}
+            <div
+              style={{
+                background: "#EFF6FF",
+                borderRadius: "12px",
+                padding: "10px 16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                width: "100%",
+                maxWidth: "270px",
+                boxSizing: "border-box",
+                marginBottom: "24px",
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  color: "#0D2B43",
+                }}
+              >
+                Round Trip (Cyclic Route)
+              </span>
+
+              {/* Toggle switch */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isRoundTrip}
+                onClick={() => setIsRoundTrip(!isRoundTrip)}
+                style={{
+                  width: "44px",
+                  height: "24px",
+                  borderRadius: "9999px",
+                  background: isRoundTrip ? "#22C55E" : "#D1D5DB",
+                  border: "none",
+                  cursor: "pointer",
+                  position: "relative",
+                  padding: "2px",
+                  transition: "background-color 0.2s ease",
+                  display: "flex",
+                  alignItems: "center",
+                  outline: "none",
+                }}
+              >
+                <div
+                  style={{
+                    width: "20px",
+                    height: "20px",
+                    borderRadius: "50%",
+                    background: "#FFFFFF",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                    transform: isRoundTrip ? "translateX(20px)" : "translateX(0px)",
+                    transition: "transform 0.2s ease",
+                  }}
+                />
+              </button>
+            </div>
+
+            {/* Route Visualisation based on isRoundTrip */}
+            {isRoundTrip ? (
+              /* State 1: Cyclic Route Diagram (Matching Image 3) */
+              <div
+                style={{
+                  boxSizing: "border-box",
+                  width: "100%",
+                  paddingTop: "24px",
+                  position: "relative",
+                  overflowX: "auto",
+                }}
+              >
+                {/* Dashed Loop Container */}
+                <div
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    minWidth: configuredStations.length > 6 ? `${configuredStations.length * 110}px` : "100%",
+                    minHeight: "130px",
+                    border: "2px dashed #2563EB",
+                    borderRadius: "16px",
+                    background: "#FFFFFF",
+                    padding: "0 20px 16px 20px",
+                    boxSizing: "border-box",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  {/* Station Nodes & Connecting Solid Line on Top Track */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "-20px",
+                      left: "24px",
+                      right: "24px",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    {/* Solid connecting line behind nodes */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "18px",
+                        left: "20px",
+                        right: "20px",
+                        height: "4px",
+                        background: "#1E66F5",
+                        zIndex: 1,
+                      }}
+                    />
+
+                    {/* Dynamic Stations */}
+                    {configuredStations.map((station, idx) => {
+                      const isFirst = idx === 0;
+                      return (
+                        <div
+                          key={station.id || idx}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            position: "relative",
+                            zIndex: 2,
+                            minWidth: "64px",
+                          }}
+                        >
+                          {isFirst ? (
+                            <div
+                              style={{
+                                width: "38px",
+                                height: "38px",
+                                borderRadius: "50%",
+                                background: "#1E66F5",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
+                              }}
+                            >
+                              <TrainFront size={18} color="#FFFFFF" strokeWidth={2.2} />
+                            </div>
+                          ) : (
+                            <div
+                              style={{
+                                width: "22px",
+                                height: "22px",
+                                marginTop: "8px",
+                                borderRadius: "50%",
+                                background: "#FFFFFF",
+                                border: "4px solid #1E66F5",
+                                boxSizing: "border-box",
+                              }}
+                            />
+                          )}
+                          <span
+                            style={{
+                              marginTop: isFirst ? "8px" : "16px",
+                              fontFamily: "'Inter', sans-serif",
+                              fontWeight: 700,
+                              fontSize: "13px",
+                              lineHeight: "16px",
+                              color: "#0D2B43",
+                              textAlign: "center",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {station.name}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Cyclic Return Path Pill Indicator */}
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      background: "#EFF6FF",
+                      border: "1px solid #BFDBFE",
+                      borderRadius: "9999px",
+                      padding: "6px 18px",
+                      boxSizing: "border-box",
+                      marginTop: "60px",
+                    }}
+                  >
+                    <RotateCw size={13} color="#1D4ED8" strokeWidth={2.2} />
+                    <span
+                      style={{
+                        fontFamily: "'Inter', sans-serif",
+                        fontWeight: 500,
+                        fontSize: "12px",
+                        lineHeight: "16px",
+                        color: "#1D4ED8",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Round Trip (Cyclic Route)
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* State 2: Linear One-Way Route Diagram (Matching Image 4) */
+              <div
+                style={{
+                  boxSizing: "border-box",
+                  width: "100%",
+                  paddingTop: "24px",
+                  paddingBottom: "16px",
+                  position: "relative",
+                  overflowX: "auto",
+                }}
+              >
+                {/* Station Nodes & Connecting Solid Line on Linear Track */}
+                <div
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    minWidth: configuredStations.length > 6 ? `${configuredStations.length * 110}px` : "100%",
+                    padding: "0 24px",
+                    boxSizing: "border-box",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  {/* Solid connecting line behind nodes */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "19px",
+                      left: "44px",
+                      right: "47px",
+                      height: "4px",
+                      background: "#1E66F5",
+                      zIndex: 1,
+                    }}
+                  />
+
+                  {/* Dynamic Stations */}
+                  {configuredStations.map((station, idx) => {
+                    const isFirst = idx === 0;
+                    return (
+                      <div
+                        key={station.id || idx}
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          position: "relative",
+                          zIndex: 2,
+                          minWidth: "64px",
+                        }}
+                      >
+                        {isFirst ? (
+                          <div
+                            style={{
+                              width: "38px",
+                              height: "38px",
+                              borderRadius: "50%",
+                              background: "#1E66F5",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
+                            }}
+                          >
+                            <TrainFront size={18} color="#FFFFFF" strokeWidth={2.2} />
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              width: "22px",
+                              height: "22px",
+                              marginTop: "8px",
+                              borderRadius: "50%",
+                              background: "#FFFFFF",
+                              border: "4px solid #1E66F5",
+                              boxSizing: "border-box",
+                            }}
+                          />
+                        )}
+                        <span
+                          style={{
+                            marginTop: isFirst ? "8px" : "16px",
+                            fontFamily: "'Inter', sans-serif",
+                            fontWeight: 700,
+                            fontSize: "13px",
+                            lineHeight: "16px",
+                            color: "#0D2B43",
+                            textAlign: "center",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {station.name}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -2974,70 +2970,7 @@ export default function AddEditAttractionForm({
                   </div>
                 </div>
 
-                {/* Row 3: HSN CODE & SAC CODE */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                  <div
-                    style={{
-                      background: "#FFFFFF",
-                      border: "1px solid #E2E8F0",
-                      borderRadius: "8px",
-                      padding: "8px 12px",
-                      boxSizing: "border-box",
-                    }}
-                  >
-                    <div style={{ fontSize: "9.5px", fontWeight: 700, color: "#94A3B8", letterSpacing: "0.04em", marginBottom: "2px" }}>
-                      HSN CODE
-                    </div>
-                    <input
-                      type="text"
-                      value={cat.hsnCode || "998551"}
-                      onChange={(e) => handleCategoryChange(cat.id, "hsnCode", e.target.value)}
-                      style={{
-                        width: "100%",
-                        border: "none",
-                        outline: "none",
-                        background: "transparent",
-                        fontFamily: "'Plus Jakarta Sans', sans-serif",
-                        fontWeight: 700,
-                        fontSize: "13px",
-                        color: "#011B2F",
-                        padding: 0,
-                      }}
-                    />
-                  </div>
-
-                  <div
-                    style={{
-                      background: "#FFFFFF",
-                      border: "1px solid #E2E8F0",
-                      borderRadius: "8px",
-                      padding: "8px 12px",
-                      boxSizing: "border-box",
-                    }}
-                  >
-                    <div style={{ fontSize: "9.5px", fontWeight: 700, color: "#94A3B8", letterSpacing: "0.04em", marginBottom: "2px" }}>
-                      SAC CODE
-                    </div>
-                    <input
-                      type="text"
-                      value={cat.sacCode || "998554"}
-                      onChange={(e) => handleCategoryChange(cat.id, "sacCode", e.target.value)}
-                      style={{
-                        width: "100%",
-                        border: "none",
-                        outline: "none",
-                        background: "transparent",
-                        fontFamily: "'Plus Jakarta Sans', sans-serif",
-                        fontWeight: 700,
-                        fontSize: "13px",
-                        color: "#011B2F",
-                        padding: 0,
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Row 4: No. of Seats */}
+                {/* Row 3: No. of Seats */}
                 <div
                   id={`field-seats-${cat.id}`}
                   style={{
@@ -3202,7 +3135,8 @@ export default function AddEditAttractionForm({
           .attraction-top-grid {
             grid-template-columns: 1fr !important;
           }
-          .card-status-seating {
+          .card-status-seating,
+          .card-basic-info {
             height: auto !important;
           }
           .visitor-category-card {
@@ -3211,6 +3145,9 @@ export default function AddEditAttractionForm({
           }
         }
         @media (max-width: 640px) {
+          .desc-image-grid {
+            grid-template-columns: 1fr !important;
+          }
           .visitor-category-card {
             flex: 0 0 100% !important;
             min-width: 220px !important;
@@ -3229,15 +3166,20 @@ export default function AddEditAttractionForm({
       `}</style>
 
       {/* Add Visitor Category Modal */}
-      <AddVisitorCategoryModal
+      <AddEditVisitorCategoryModal
         isOpen={isAddCategoryModalOpen}
+        category={null}
         onClose={() => setIsAddCategoryModalOpen(false)}
-        onAdd={handleAddCategoryConfirm}
+        // onAdd={handleAddCategoryConfirm}
+        onSave={(newCat) => {
+          setCategories((prev) => [...prev, newCat]);
+          setIsAddCategoryModalOpen(false);
+        }}
         existingCategories={categories.map((c) => c.name)}
       />
 
       {/* Edit Visitor Category Modal */}
-      <EditVisitorCategoryModal
+      <AddEditVisitorCategoryModal
         isOpen={Boolean(editingCategory)}
         category={editingCategory}
         onClose={() => setEditingCategory(null)}
@@ -3245,6 +3187,24 @@ export default function AddEditAttractionForm({
           setCategories((prev) =>
             prev.map((c) => (c.id === updatedCat.id ? updatedCat : c))
           );
+          setEditingCategory(null);
+        }}
+        existingCategories={categories
+          .filter((c) => c.id !== editingCategory?.id)
+          .map((c) => c.name)}
+      />
+
+      {/* Configure Stations Modal */}
+      <ConfigureStationsModal
+        isOpen={isConfigureStationsModalOpen}
+        onClose={() => setIsConfigureStationsModalOpen(false)}
+        initialMultiStation={isMultiStation}
+        initialRoundTrip={isRoundTrip}
+        initialStations={configuredStations}
+        onSave={(config) => {
+          setIsMultiStation(config.isMultiStation);
+          setIsRoundTrip(config.isRoundTrip);
+          setConfiguredStations(config.stations);
         }}
       />
     </form>

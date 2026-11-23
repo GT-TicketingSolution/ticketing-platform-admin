@@ -1,88 +1,176 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Pencil, Calendar, ChevronUp, ChevronDown, User, Info } from "lucide-react";
+import { X, Pencil, Calendar, ChevronUp, ChevronDown, User, Info, AlertCircle, Crop } from "lucide-react";
 import { CategoryItem } from "./AddEditAttractionForm";
 import { useModalBodyLock } from "@/hooks/useModalBodyLock";
+import ImageCropModal from "./ImageCropModal";
 
-interface EditVisitorCategoryModalProps {
+export interface EditVisitorCategoryModalProps {
   isOpen: boolean;
   onClose: () => void;
   category: CategoryItem | null;
-  onSave: (updatedCategory: CategoryItem) => void;
+  onSave: (category: CategoryItem) => void;
+  existingCategories?: string[];
 }
+
+export type AddEditVisitorCategoryModalProps = EditVisitorCategoryModalProps;
 
 export default function EditVisitorCategoryModal({
   isOpen,
   onClose,
   category,
   onSave,
+  existingCategories = [],
 }: EditVisitorCategoryModalProps) {
   useModalBodyLock(isOpen);
+
+  const isEdit = Boolean(category && category.id);
 
   // Form states
   const [name, setName] = useState("");
   const [image, setImage] = useState("");
   const [imageLink, setImageLink] = useState<string | null>(null);
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
 
   // Base pricing & GST
-  const [basePrice, setBasePrice] = useState("100.00");
-  const [applyGstOnBase, setApplyGstOnBase] = useState(true);
-  const [cgst, setCgst] = useState("9.00");
-  const [sgst, setSgst] = useState("9.00");
-  const [igst, setIgst] = useState("0.00");
-  const [hsnCode, setHsnCode] = useState("998551");
-  const [sacCode, setSacCode] = useState("998554");
+  const [basePrice, setBasePrice] = useState("");
+  const [applyGstOnBase, setApplyGstOnBase] = useState(false);
+  const [cgst, setCgst] = useState("");
+  const [sgst, setSgst] = useState("");
+  const [igst, setIgst] = useState("");
+  const [hsnCode, setHsnCode] = useState("");
+  const [sacCode, setSacCode] = useState("");
 
   // Seat allocation
   const [numberOfSeats, setNumberOfSeats] = useState("1");
 
   // Future price revision
-  const [hasFuturePrice, setHasFuturePrice] = useState(true);
+  const [hasFuturePrice, setHasFuturePrice] = useState(false);
   const [revisionType, setRevisionType] = useState<"recurring" | "onetime">("recurring");
   const [increaseByType, setIncreaseByType] = useState<"percentage" | "amount">("percentage");
-  const [percentageValue, setPercentageValue] = useState("10.00");
-  const [amountValue, setAmountValue] = useState("20.00");
+  const [percentageValue, setPercentageValue] = useState("");
+  const [amountValue, setAmountValue] = useState("0");
   const [effectiveDate, setEffectiveDate] = useState("2027-01-01");
-  const [repeatCount, setRepeatCount] = useState("3");
+  const [repeatCount, setRepeatCount] = useState("");
   const [repeatUnit, setRepeatUnit] = useState("Months");
 
   // Future price GST
-  const [applyGstOnFuture, setApplyGstOnFuture] = useState(true);
-  const [futureCgst, setFutureCgst] = useState("9.00");
-  const [futureSgst, setFutureSgst] = useState("9.00");
-  const [futureIgst, setFutureIgst] = useState("0.00");
+  const [applyGstOnFuture, setApplyGstOnFuture] = useState(false);
+  const [futureCgst, setFutureCgst] = useState("");
+  const [futureSgst, setFutureSgst] = useState("");
+  const [futureIgst, setFutureIgst] = useState("");
 
-  // Initialize from category prop
+  // Validation errors
+  const [errors, setErrors] = useState<{
+    name?: string;
+    basePrice?: string;
+    numberOfSeats?: string;
+  }>({});
+
+  // Handler for Increase By toggle: disables the other and resets its value to 0
+  const handleIncreaseByTypeChange = (type: "percentage" | "amount") => {
+    setIncreaseByType(type);
+    if (type === "percentage") {
+      setAmountValue("0");
+    } else {
+      setPercentageValue("0");
+    }
+  };
+
+  // Initialize or reset when modal opens or category changes
   useEffect(() => {
-    if (category && isOpen) {
+    if (!isOpen) {
+      setErrors({});
+      return;
+    }
+
+    if (category && category.id) {
+      // Edit Mode - populate from category
       setName(category.name || "");
       setImage(category.image || "");
       setImageLink(category.imageLink || null);
-      setBasePrice(category.basePrice || "100.00");
+      setBasePrice(category.basePrice || "");
       setNumberOfSeats(category.numberOfSeats || "1");
-      setHsnCode(category.hsnCode || "998551");
-      setSacCode(category.sacCode || "998554");
+      const hasHsn = Boolean(category.hsnCode && category.hsnCode !== "-");
+      setApplyGstOnBase(hasHsn);
+      setHsnCode(hasHsn ? category.hsnCode! : "");
+      setSacCode(category.sacCode && category.sacCode !== "-" ? category.sacCode : "");
+      setCgst("9.00");
+      setSgst("9.00");
+      setIgst("0.00");
 
       const isOneTime = category.futurePriceType === "onetime";
       setRevisionType(isOneTime ? "onetime" : "recurring");
       setEffectiveDate(category.effectiveFrom || (isOneTime ? "2026-12-15" : "2027-01-01"));
 
       const fPrice = category.futurePrice || "";
-      if (fPrice.includes("%")) {
-        setIncreaseByType("percentage");
-        setPercentageValue(fPrice.replace(/[^0-9.]/g, "") || "10.00");
-      } else if (Number(fPrice) > 0) {
-        setIncreaseByType("amount");
-        setAmountValue(Number(fPrice).toFixed(2));
+      if (fPrice && fPrice !== "00.00" && fPrice !== "0.00" && fPrice !== "0") {
+        setHasFuturePrice(true);
+        if (fPrice.includes("%")) {
+          setIncreaseByType("percentage");
+          setPercentageValue(fPrice.replace(/[^0-9.]/g, "") || "10.00");
+          setAmountValue("0");
+        } else if (Number(fPrice) > 0) {
+          setIncreaseByType("amount");
+          setAmountValue(Number(fPrice).toFixed(2));
+          setPercentageValue("0");
+        } else {
+          setIncreaseByType("percentage");
+          setPercentageValue("10.00");
+          setAmountValue("0");
+        }
       } else {
+        setHasFuturePrice(false);
         setIncreaseByType("percentage");
-        setPercentageValue("10.00");
+        setPercentageValue("");
+        setAmountValue("0");
       }
+      setRepeatCount("3");
+      setRepeatUnit("Months");
+      setApplyGstOnFuture(false);
+      setFutureCgst("9.00");
+      setFutureSgst("9.00");
+      setFutureIgst("0.00");
+    } else {
+      // Add Mode - all empty values and all toggles OFF initially
+      setName("");
+      setImage("");
+      setImageLink(null);
+      setBasePrice("");
+      setApplyGstOnBase(false); // All toggles OFF initially as requested
+      setCgst("");
+      setSgst("");
+      setIgst("");
+      setHsnCode("");
+      setSacCode("");
+      setNumberOfSeats("1");
+      setHasFuturePrice(false); // OFF initially
+      setRevisionType("recurring");
+      setIncreaseByType("percentage");
+      setPercentageValue("");
+      setAmountValue("0");
+      setEffectiveDate("2027-01-01");
+      setRepeatCount("");
+      setRepeatUnit("Months");
+      setApplyGstOnFuture(false); // OFF initially
+      setFutureCgst("");
+      setFutureSgst("");
+      setFutureIgst("");
     }
+    setErrors({});
   }, [category, isOpen]);
 
-  if (!isOpen || !category) return null;
+  if (!isOpen) return null;
+
+  // Dynamic Category Name Placeholder based on non-added categories
+  const CANDIDATE_NAMES = ["Adult", "Child", "Foreigner", "Student", "Senior Citizen", "VIP", "Infant"];
+  const missingCandidate = CANDIDATE_NAMES.find(
+    (cand) => !existingCategories.some((ex) => ex.toLowerCase() === cand.toLowerCase())
+  );
+  const categoryNamePlaceholder = isEdit
+    ? "e.g. Adult, Child, Foreigner"
+    : `e.g. ${missingCandidate || "Adult"}`;
 
   // Handle avatar upload
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -91,10 +179,12 @@ export default function EditVisitorCategoryModal({
     const reader = new FileReader();
     reader.onload = (ev) => {
       const result = ev.target?.result as string;
+      if (!result) return;
       setImage(result);
       setImageLink(result);
     };
     reader.readAsDataURL(file);
+    e.target.value = "";
   };
 
   // Calculations
@@ -116,30 +206,98 @@ export default function EditVisitorCategoryModal({
     : 0;
   const calculatedFutureTotalPrice = rawFutureBase + (rawFutureBase * totalFutureGstPct) / 100;
 
+  const filterDecimal = (val: string) => {
+    const cleaned = val.replace(/[^0-9.]/g, "");
+    const parts = cleaned.split(".");
+    return parts.length > 2 ? `${parts[0]}.${parts.slice(1).join("")}` : cleaned;
+  };
+
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.replace(/[^a-zA-Z\s]/g, "");
+    setName(val);
+    if (errors.name) {
+      setErrors((prev) => ({ ...prev, name: undefined }));
+    }
+  };
+
+  const handleBasePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = filterDecimal(e.target.value);
+    setBasePrice(val);
+    if (errors.basePrice) {
+      setErrors((prev) => ({ ...prev, basePrice: undefined }));
+    }
+  };
+
+  const handleSeatsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.replace(/\D/g, "");
+    setNumberOfSeats(val);
+    if (errors.numberOfSeats) {
+      setErrors((prev) => ({ ...prev, numberOfSeats: undefined }));
+    }
+  };
+
   // Save handler
   const handleSave = () => {
-    const updated: CategoryItem = {
-      ...category,
-      name: name.trim() || category.name,
-      image: image || category.image,
-      imageLink: imageLink ?? category.imageLink,
+    const newErrors: { name?: string; basePrice?: string; numberOfSeats?: string } = {};
+
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      newErrors.name = "Category name is required";
+    } else if (trimmedName.length < 2) {
+      newErrors.name = "Category name must be at least 2 characters";
+    } else {
+      const isDuplicate = existingCategories.some(
+        (existing) => existing.toLowerCase() === trimmedName.toLowerCase() && existing.toLowerCase() !== (category?.name || "").toLowerCase()
+      );
+      if (isDuplicate) {
+        newErrors.name = "A category with this name already exists";
+      }
+    }
+
+    if (!basePrice || parseFloat(basePrice) <= 0) {
+      newErrors.basePrice = "Base price is required and must be greater than 0";
+    }
+
+    const seatsNum = parseInt(numberOfSeats, 10);
+    if (!numberOfSeats || isNaN(seatsNum) || seatsNum < 1) {
+      newErrors.numberOfSeats = "Seats must be at least 1";
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    let futurePriceVal = "00.00";
+    if (hasFuturePrice) {
+      if (increaseByType === "percentage") {
+        futurePriceVal = percentageValue ? `+${parseFloat(percentageValue) || 0}%` : "00.00";
+      } else {
+        futurePriceVal = amountValue ? Number(amountValue || 0).toFixed(2) : "00.00";
+      }
+    }
+
+    const savedCategory: CategoryItem = {
+      id: isEdit && category ? category.id : `cat_${Date.now()}`,
+      name: trimmedName,
+      image: image || "",
+      imageLink: imageLink ?? (category ? category.imageLink : null),
       basePrice: Number(numBase).toFixed(2),
-      numberOfSeats: String(Math.max(1, parseInt(numberOfSeats, 10) || 1)),
-      hsnCode: "998551",
-      sacCode: "996411",
-      futurePriceType: revisionType,
-      effectiveFrom: effectiveDate,
-      futurePrice:
-        increaseByType === "percentage"
-          ? `+${parseFloat(percentageValue) || 0}%`
-          : Number(amountValue || 0).toFixed(2),
+      numberOfSeats: String(Math.max(1, seatsNum || 1)),
+      hsnCode: applyGstOnBase ? (hsnCode.trim() || "-") : "-",
+      sacCode: applyGstOnBase ? (sacCode.trim() || "-") : "-",
+      futurePriceType: hasFuturePrice ? revisionType : "recurring",
+      effectiveFrom: hasFuturePrice ? effectiveDate : "",
+      futurePrice: futurePriceVal,
     };
-    onSave(updated);
+
+    onSave(savedCategory);
     onClose();
   };
 
   return (
     <div
+      className="add-edit-cat-modal-overlay"
       style={{
         position: "fixed",
         inset: 0,
@@ -151,9 +309,9 @@ export default function EditVisitorCategoryModal({
         zIndex: 1200,
         padding: "16px",
       }}
-      onClick={onClose}
     >
       <div
+        className="add-edit-cat-modal-dialog"
         style={{
           background: "#FFFFFF",
           border: "1px solid #F1F5F9",
@@ -172,6 +330,7 @@ export default function EditVisitorCategoryModal({
       >
         {/* ── Modal Header ── */}
         <div
+          className="add-edit-cat-modal-header"
           style={{
             display: "flex",
             alignItems: "flex-start",
@@ -192,7 +351,7 @@ export default function EditVisitorCategoryModal({
                 color: "#0C233C",
               }}
             >
-              Edit Visitor Category
+              {isEdit ? "Edit Visitor Category" : "Add Visitor Category"}
             </h2>
             <p
               style={{
@@ -203,7 +362,9 @@ export default function EditVisitorCategoryModal({
                 color: "#64748B",
               }}
             >
-              Update the category details, pricing, GST, future price and seat allocation.
+              {isEdit
+                ? "Update the category details, pricing, GST, future price and seat allocation."
+                : "Configure the category details, pricing, GST, future price and seat allocation."}
             </p>
           </div>
 
@@ -231,6 +392,7 @@ export default function EditVisitorCategoryModal({
 
         {/* ── Modal Body Content (Scrollable) ── */}
         <div
+          className="add-edit-cat-modal-body"
           style={{
             padding: "20px 32px",
             overflowY: "auto",
@@ -245,80 +407,138 @@ export default function EditVisitorCategoryModal({
             className="modal-top-row"
             style={{
               display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
+              alignItems: "flex-start",
               gap: "24px",
               flexWrap: "wrap",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "24px", flex: "1 1 500px", flexWrap: "wrap" }}>
-              {/* Avatar with pencil edit badge */}
+            <div
+              className="modal-top-left"
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "20px",
+                flex: "1 1 500px",
+                minHeight: "84px",
+              }}
+            >
+              {/* Avatar with pencil edit badge and crop button below */}
               <div
                 style={{
-                  position: "relative",
-                  width: "80px",
-                  height: "80px",
-                  borderRadius: "9999px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "6px",
                   flexShrink: 0,
+                  marginTop: "4px",
                 }}
               >
+                {/* 80x80 Circle Avatar with pencil badge */}
                 <div
                   style={{
+                    position: "relative",
                     width: "80px",
                     height: "80px",
                     borderRadius: "9999px",
-                    overflow: "hidden",
-                    background: "#F1F5F9",
-                    boxShadow: "0px 0px 0px 2px #F1F5F9, 0px 1px 2px rgba(0, 0, 0, 0.05)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
+                    flexShrink: 0,
                   }}
                 >
-                  {image ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={image}
-                      alt={name}
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                  ) : (
-                    <User size={38} color="#64748B" />
-                  )}
+                  <div
+                    onClick={() => {
+                      document.getElementById("add-edit-cat-avatar-file")?.click();
+                    }}
+                    style={{
+                      width: "80px",
+                      height: "80px",
+                      borderRadius: "9999px",
+                      overflow: "hidden",
+                      background: "#F1F5F9",
+                      boxShadow: "0px 0px 0px 2px #F1F5F9, 0px 1px 2px rgba(0, 0, 0, 0.05)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                    }}
+                    title="Click to select image"
+                  >
+                    {image ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={image}
+                        alt={name || "Visitor Category"}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <User size={38} color="#64748B" />
+                    )}
+                  </div>
+
+                  {/* Initial & always badge: Pencil icon to upload/change photo */}
+                  <label
+                    htmlFor="add-edit-cat-avatar-file"
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      bottom: 0,
+                      width: "28px",
+                      height: "28px",
+                      background: "#FFFFFF",
+                      border: "1px solid #CBD5E1",
+                      boxShadow: "0px 2px 4px rgba(0, 0, 0, 0.1)",
+                      borderRadius: "9999px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      zIndex: 2,
+                    }}
+                    title="Upload / Change photo"
+                  >
+                    <Pencil size={13} color="#334155" />
+                  </label>
+                  <input
+                    id="add-edit-cat-avatar-file"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    style={{ display: "none" }}
+                  />
                 </div>
 
-                <label
-                  htmlFor="edit-cat-avatar-file"
-                  style={{
-                    position: "absolute",
-                    right: 0,
-                    bottom: 0,
-                    width: "28px",
-                    height: "28px",
-                    background: "#FFFFFF",
-                    border: "1px solid #E2E8F0",
-                    boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
-                    borderRadius: "9999px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                  }}
-                  title="Crop & Adjust photo"
-                >
-                  <Pencil size={13} color="#334155" />
-                </label>
-                <input
-                  id="edit-cat-avatar-file"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  style={{ display: "none" }}
-                />
+                {/* Below circle image: Crop Button (Shown ONLY when image is uploaded/selected) */}
+                {image && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsCropModalOpen(true);
+                    }}
+                    style={{
+                      background: "#2563EB",
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "4px 10px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                      lineHeight: "14px",
+                    }}
+                    title="Crop photo"
+                  >
+                    <Crop size={12} strokeWidth={2.2} />
+                    <span>Crop</span>
+                  </button>
+                )}
               </div>
 
-              {/* Category Name Input */}
-              <div style={{ flex: "1 1 300px", maxWidth: "384px" }}>
+              {/* Category Name Input (Letters only) */}
+              <div className="modal-cat-name-field" style={{ flex: "1 1 300px", maxWidth: "384px" }}>
                 <label
                   style={{
                     display: "block",
@@ -336,13 +556,14 @@ export default function EditVisitorCategoryModal({
                 <input
                   type="text"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  placeholder={categoryNamePlaceholder}
+                  onChange={handleNameChange}
                   style={{
                     boxSizing: "border-box",
                     width: "100%",
                     height: "46px",
                     background: "#FFFFFF",
-                    border: "1px solid #CBD5E1",
+                    border: errors.name ? "1.5px solid #DC2626" : "1px solid #CBD5E1",
                     boxShadow: "0px 1px 2px rgba(0, 0, 0, 0.05)",
                     borderRadius: "8px",
                     padding: "10px 14px",
@@ -352,11 +573,28 @@ export default function EditVisitorCategoryModal({
                     outline: "none",
                   }}
                 />
+                {errors.name && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      marginTop: "5px",
+                      color: "#DC2626",
+                      fontSize: "12px",
+                      fontWeight: 500,
+                    }}
+                  >
+                    <AlertCircle size={13} />
+                    <span>{errors.name}</span>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Visitor Category Live Preview Badge */}
             <div
+              className="modal-preview-badge"
               style={{
                 boxSizing: "border-box",
                 display: "flex",
@@ -389,13 +627,13 @@ export default function EditVisitorCategoryModal({
                   Visitor Category Preview
                 </div>
                 <div style={{ fontWeight: 400, fontSize: "12px", color: "#334155", lineHeight: "18px", marginTop: "2px" }}>
-                  {name || "Category"} • Base: ₹{numBase.toFixed(2)} • Total: ₹{calculatedTotalPrice.toFixed(2)}
+                  {name || "New Category"} • Base: ₹{numBase.toFixed(2)} • Total: ₹{calculatedTotalPrice.toFixed(2)}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* 2. Middle Section: Pricing & GST Left Card (8 cols) + Seat Allocation Right Card (4 cols) */}
+          {/* 2. Middle Section: Pricing & GST Left Card + Seat Allocation Right Card */}
           <div
             className="modal-middle-grid"
             style={{
@@ -467,7 +705,7 @@ export default function EditVisitorCategoryModal({
               </div>
 
               {/* Price Inputs Row */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
+              <div className="pricing-gst-inputs-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
                     Base Price (₹) <span style={{ color: "#DC2626" }}>*</span>
@@ -475,11 +713,12 @@ export default function EditVisitorCategoryModal({
                   <input
                     type="text"
                     value={basePrice}
-                    onChange={(e) => setBasePrice(e.target.value.replace(/[^0-9.]/g, ""))}
+                    placeholder="0.00"
+                    onChange={handleBasePriceChange}
                     style={{
                       width: "100%",
                       height: "38px",
-                      border: "1px solid #CBD5E1",
+                      border: errors.basePrice ? "1.5px solid #DC2626" : "1px solid #CBD5E1",
                       borderRadius: "8px",
                       padding: "0 8px",
                       fontWeight: 700,
@@ -490,6 +729,9 @@ export default function EditVisitorCategoryModal({
                       outline: "none",
                     }}
                   />
+                  {errors.basePrice && (
+                    <div style={{ color: "#DC2626", fontSize: "11px", marginTop: "3px" }}>{errors.basePrice}</div>
+                  )}
                 </div>
 
                 <div>
@@ -499,8 +741,9 @@ export default function EditVisitorCategoryModal({
                   <input
                     type="text"
                     value={cgst}
+                    placeholder="9.00"
                     disabled={!applyGstOnBase}
-                    onChange={(e) => setCgst(e.target.value.replace(/[^0-9.]/g, ""))}
+                    onChange={(e) => setCgst(filterDecimal(e.target.value))}
                     style={{
                       width: "100%",
                       height: "38px",
@@ -525,8 +768,9 @@ export default function EditVisitorCategoryModal({
                   <input
                     type="text"
                     value={sgst}
+                    placeholder="9.00"
                     disabled={!applyGstOnBase}
-                    onChange={(e) => setSgst(e.target.value.replace(/[^0-9.]/g, ""))}
+                    onChange={(e) => setSgst(filterDecimal(e.target.value))}
                     style={{
                       width: "100%",
                       height: "38px",
@@ -551,8 +795,9 @@ export default function EditVisitorCategoryModal({
                   <input
                     type="text"
                     value={igst}
+                    placeholder="0.00"
                     disabled={!applyGstOnBase}
-                    onChange={(e) => setIgst(e.target.value.replace(/[^0-9.]/g, ""))}
+                    onChange={(e) => setIgst(filterDecimal(e.target.value))}
                     style={{
                       width: "100%",
                       height: "38px",
@@ -586,42 +831,46 @@ export default function EditVisitorCategoryModal({
               >
                 <div>
                   <div style={{ fontSize: "11px", fontWeight: 500, color: "#1E293B", marginBottom: "2px" }}>
-                    HSN Code <span style={{ color: "#DC2626" }}>*</span>
+                    HSN Code
                   </div>
                   <input
                     type="text"
-                    value={hsnCode}
+                    value={applyGstOnBase ? hsnCode : "-"}
+                    disabled={!applyGstOnBase}
                     onChange={(e) => setHsnCode(e.target.value)}
                     style={{
                       width: "100%",
                       fontWeight: 700,
                       fontSize: "13px",
-                      color: "#1E293B",
+                      color: applyGstOnBase ? "#1E293B" : "#94A3B8",
                       border: "none",
                       outline: "none",
                       background: "transparent",
                       padding: 0,
+                      cursor: applyGstOnBase ? "text" : "not-allowed",
                     }}
                   />
                 </div>
 
                 <div style={{ borderLeft: "1px solid rgba(191, 219, 254, 0.8)", paddingLeft: "14px" }}>
                   <div style={{ fontSize: "11px", fontWeight: 500, color: "#1E293B", marginBottom: "2px" }}>
-                    SAC Code <span style={{ color: "#DC2626" }}>*</span>
+                    SAC Code
                   </div>
                   <input
                     type="text"
-                    value={sacCode}
+                    value={applyGstOnBase ? sacCode : "-"}
+                    disabled={!applyGstOnBase}
                     onChange={(e) => setSacCode(e.target.value)}
                     style={{
                       width: "100%",
                       fontWeight: 700,
                       fontSize: "13px",
-                      color: "#1E293B",
+                      color: applyGstOnBase ? "#1E293B" : "#94A3B8",
                       border: "none",
                       outline: "none",
                       background: "transparent",
                       padding: 0,
+                      cursor: applyGstOnBase ? "text" : "not-allowed",
                     }}
                   />
                 </div>
@@ -694,7 +943,7 @@ export default function EditVisitorCategoryModal({
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    border: "1px solid #CBD5E1",
+                    border: errors.numberOfSeats ? "1.5px solid #DC2626" : "1px solid #CBD5E1",
                     borderRadius: "8px",
                     boxShadow: "0px 1px 2px rgba(0, 0, 0, 0.05)",
                     overflow: "hidden",
@@ -704,7 +953,7 @@ export default function EditVisitorCategoryModal({
                   <input
                     type="text"
                     value={numberOfSeats}
-                    onChange={(e) => setNumberOfSeats(e.target.value.replace(/\D/g, ""))}
+                    onChange={handleSeatsChange}
                     style={{
                       flex: 1,
                       border: "none",
@@ -759,6 +1008,9 @@ export default function EditVisitorCategoryModal({
                     </button>
                   </div>
                 </div>
+                {errors.numberOfSeats && (
+                  <div style={{ color: "#DC2626", fontSize: "11px", marginTop: "3px" }}>{errors.numberOfSeats}</div>
+                )}
               </div>
 
               <p
@@ -946,62 +1198,158 @@ export default function EditVisitorCategoryModal({
                     }}
                   >
                     {/* Column 1: Increase By */}
-                    <div style={{ flex: "1 1 300px" }}>
+                    <div className="future-inc-by-col" style={{ flex: "1 1 300px" }}>
                       <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "8px" }}>
                         Increase By <span style={{ color: "#DC2626" }}>*</span>
                       </label>
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         {/* Option 1: Percentage */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "nowrap", gap: "10px" }}>
                           <label
-                            onClick={() => setIncreaseByType("percentage")}
-                            style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "12px", color: "#1E293B", fontWeight: 500 }}
+                            onClick={() => handleIncreaseByTypeChange("percentage")}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              color: increaseByType === "percentage" ? "#1E293B" : "#64748B",
+                              fontWeight: 500,
+                              whiteSpace: "nowrap",
+                            }}
                           >
                             <input
                               type="radio"
                               name="inc-type"
                               checked={increaseByType === "percentage"}
-                              onChange={() => setIncreaseByType("percentage")}
-                              style={{ accentColor: "#2563EB" }}
+                              onChange={() => handleIncreaseByTypeChange("percentage")}
+                              style={{ accentColor: "#2563EB", cursor: "pointer" }}
                             />
                             Percentage (of Base Price)
                           </label>
-                          <div style={{ display: "flex", alignItems: "center", background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: "6px", overflow: "hidden", width: "140px", height: "30px" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              background: increaseByType === "percentage" ? "#FFFFFF" : "#F8FAFC",
+                              border: increaseByType === "percentage" ? "1px solid #CBD5E1" : "1px solid #E2E8F0",
+                              borderRadius: "6px",
+                              overflow: "hidden",
+                              width: "140px",
+                              height: "30px",
+                              flexShrink: 0,
+                            }}
+                          >
                             <input
                               type="text"
-                              value={percentageValue}
+                              value={increaseByType === "percentage" ? percentageValue : (percentageValue || "0")}
+                              placeholder="10.00"
                               disabled={increaseByType !== "percentage"}
-                              onChange={(e) => setPercentageValue(e.target.value.replace(/[^0-9.]/g, ""))}
-                              style={{ width: "100%", border: "none", outline: "none", padding: "0 8px", fontSize: "12px", fontWeight: 700, color: "#1E293B", textAlign: "center" }}
+                              onFocus={(e) => {
+                                if (e.target.value === "0") setPercentageValue("");
+                              }}
+                              onChange={(e) => setPercentageValue(filterDecimal(e.target.value))}
+                              style={{
+                                width: "100%",
+                                border: "none",
+                                outline: "none",
+                                padding: "0 8px",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                color: increaseByType === "percentage" ? "#1E293B" : "#94A3B8",
+                                background: "transparent",
+                                textAlign: "center",
+                                cursor: increaseByType === "percentage" ? "text" : "not-allowed",
+                              }}
                             />
-                            <div style={{ background: "#F1F5F9", borderLeft: "1px solid #E2E8F0", padding: "0 10px", fontSize: "12px", fontWeight: 700, color: "#475569", lineHeight: "30px" }}>%</div>
+                            <div
+                              style={{
+                                background: increaseByType === "percentage" ? "#F1F5F9" : "#F8FAFC",
+                                borderLeft: "1px solid #E2E8F0",
+                                padding: "0 10px",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                color: increaseByType === "percentage" ? "#475569" : "#94A3B8",
+                                lineHeight: "30px",
+                              }}
+                            >
+                              %
+                            </div>
                           </div>
                         </div>
 
                         {/* Option 2: Amount */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "nowrap", gap: "10px" }}>
                           <label
-                            onClick={() => setIncreaseByType("amount")}
-                            style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "12px", color: "#334155", fontWeight: 500 }}
+                            onClick={() => handleIncreaseByTypeChange("amount")}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              color: increaseByType === "amount" ? "#1E293B" : "#64748B",
+                              fontWeight: 500,
+                              whiteSpace: "nowrap",
+                            }}
                           >
                             <input
                               type="radio"
                               name="inc-type"
                               checked={increaseByType === "amount"}
-                              onChange={() => setIncreaseByType("amount")}
-                              style={{ accentColor: "#2563EB" }}
+                              onChange={() => handleIncreaseByTypeChange("amount")}
+                              style={{ accentColor: "#2563EB", cursor: "pointer" }}
                             />
                             Amount (₹)
                           </label>
-                          <div style={{ display: "flex", alignItems: "center", background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: "6px", overflow: "hidden", width: "140px", height: "30px" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              background: increaseByType === "amount" ? "#FFFFFF" : "#F8FAFC",
+                              border: increaseByType === "amount" ? "1px solid #CBD5E1" : "1px solid #E2E8F0",
+                              borderRadius: "6px",
+                              overflow: "hidden",
+                              width: "140px",
+                              height: "30px",
+                              flexShrink: 0,
+                            }}
+                          >
                             <input
                               type="text"
-                              value={amountValue}
+                              value={increaseByType === "amount" ? amountValue : (amountValue || "0")}
+                              placeholder="20.00"
                               disabled={increaseByType !== "amount"}
-                              onChange={(e) => setAmountValue(e.target.value.replace(/[^0-9.]/g, ""))}
-                              style={{ width: "100%", border: "none", outline: "none", padding: "0 8px", fontSize: "12px", fontWeight: 700, color: "#1E293B", textAlign: "center" }}
+                              onFocus={(e) => {
+                                if (e.target.value === "0") setAmountValue("");
+                              }}
+                              onChange={(e) => setAmountValue(filterDecimal(e.target.value))}
+                              style={{
+                                width: "100%",
+                                border: "none",
+                                outline: "none",
+                                padding: "0 8px",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                color: increaseByType === "amount" ? "#1E293B" : "#94A3B8",
+                                background: "transparent",
+                                textAlign: "center",
+                                cursor: increaseByType === "amount" ? "text" : "not-allowed",
+                              }}
                             />
-                            <div style={{ background: "#F1F5F9", borderLeft: "1px solid #E2E8F0", padding: "0 10px", fontSize: "12px", fontWeight: 700, color: "#475569", lineHeight: "30px" }}>₹</div>
+                            <div
+                              style={{
+                                background: increaseByType === "amount" ? "#F1F5F9" : "#F8FAFC",
+                                borderLeft: "1px solid #E2E8F0",
+                                padding: "0 10px",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                color: increaseByType === "amount" ? "#475569" : "#94A3B8",
+                                lineHeight: "30px",
+                              }}
+                            >
+                              ₹
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1010,7 +1358,7 @@ export default function EditVisitorCategoryModal({
                     <div className="divider-vert" style={{ width: "1px", height: "64px", background: "#E2E8F0" }} />
 
                     {/* Column 2: Start From */}
-                    <div style={{ flex: "1 1 180px" }}>
+                    <div className="future-start-from-col" style={{ flex: "1 1 180px" }}>
                       <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "8px" }}>
                         Start From <span style={{ color: "#DC2626" }}>*</span>
                       </label>
@@ -1047,34 +1395,31 @@ export default function EditVisitorCategoryModal({
 
                     <div className="divider-vert" style={{ width: "1px", height: "64px", background: "#E2E8F0" }} />
 
-                    {/* Column 3: Repeat Every */}
-                    <div style={{ flex: "1 1 200px" }}>
+                    {/* Column 3: Repeat Every (user can type number) */}
+                    <div className="future-repeat-col" style={{ flex: "1 1 200px" }}>
                       <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "8px" }}>
                         Repeat Every <span style={{ color: "#DC2626" }}>*</span>
                       </label>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <select
+                        <input
+                          type="text"
                           value={repeatCount}
-                          onChange={(e) => setRepeatCount(e.target.value)}
+                          placeholder="3"
+                          onChange={(e) => setRepeatCount(e.target.value.replace(/\D/g, ""))}
                           style={{
-                            flex: 1,
+                            width: "56px",
                             height: "34px",
                             background: "#FFFFFF",
                             border: "1px solid #CBD5E1",
                             borderRadius: "8px",
-                            padding: "0 10px",
+                            padding: "0 8px",
                             fontSize: "12px",
                             fontWeight: 700,
                             color: "#1E293B",
+                            textAlign: "center",
                             outline: "none",
                           }}
-                        >
-                          {[1, 2, 3, 4, 6, 12].map((num) => (
-                            <option key={num} value={num}>
-                              {num}
-                            </option>
-                          ))}
-                        </select>
+                        />
                         <select
                           value={repeatUnit}
                           onChange={(e) => setRepeatUnit(e.target.value)}
@@ -1115,62 +1460,158 @@ export default function EditVisitorCategoryModal({
                     }}
                   >
                     {/* Column 1: Increase By */}
-                    <div style={{ flex: "1 1 440px" }}>
+                    <div className="future-inc-by-onetime-col" style={{ flex: "1 1 440px" }}>
                       <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#334155", marginBottom: "8px" }}>
                         Increase By <span style={{ color: "#DC2626" }}>*</span>
                       </label>
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         {/* Option 1: Percentage */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "nowrap", gap: "10px" }}>
                           <label
-                            onClick={() => setIncreaseByType("percentage")}
-                            style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "12px", color: "#334155", fontWeight: 500 }}
+                            onClick={() => handleIncreaseByTypeChange("percentage")}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              color: increaseByType === "percentage" ? "#1E293B" : "#64748B",
+                              fontWeight: 500,
+                              whiteSpace: "nowrap",
+                            }}
                           >
                             <input
                               type="radio"
                               name="inc-type-onetime"
                               checked={increaseByType === "percentage"}
-                              onChange={() => setIncreaseByType("percentage")}
-                              style={{ accentColor: "#2563EB" }}
+                              onChange={() => handleIncreaseByTypeChange("percentage")}
+                              style={{ accentColor: "#2563EB", cursor: "pointer" }}
                             />
                             Percentage (of Base Price)
                           </label>
-                          <div style={{ display: "flex", alignItems: "center", background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: "6px", overflow: "hidden", width: "176px", height: "30px" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              background: increaseByType === "percentage" ? "#FFFFFF" : "#F8FAFC",
+                              border: increaseByType === "percentage" ? "1px solid #CBD5E1" : "1px solid #E2E8F0",
+                              borderRadius: "6px",
+                              overflow: "hidden",
+                              width: "176px",
+                              height: "30px",
+                              flexShrink: 0,
+                            }}
+                          >
                             <input
                               type="text"
-                              value={percentageValue}
+                              value={increaseByType === "percentage" ? percentageValue : (percentageValue || "0")}
+                              placeholder="10.00"
                               disabled={increaseByType !== "percentage"}
-                              onChange={(e) => setPercentageValue(e.target.value.replace(/[^0-9.]/g, ""))}
-                              style={{ width: "100%", border: "none", outline: "none", padding: "0 8px", fontSize: "12px", fontWeight: 700, color: "#1E293B", textAlign: "center" }}
+                              onFocus={(e) => {
+                                if (e.target.value === "0") setPercentageValue("");
+                              }}
+                              onChange={(e) => setPercentageValue(filterDecimal(e.target.value))}
+                              style={{
+                                width: "100%",
+                                border: "none",
+                                outline: "none",
+                                padding: "0 8px",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                color: increaseByType === "percentage" ? "#1E293B" : "#94A3B8",
+                                background: "transparent",
+                                textAlign: "center",
+                                cursor: increaseByType === "percentage" ? "text" : "not-allowed",
+                              }}
                             />
-                            <div style={{ background: "#F1F5F9", borderLeft: "1px solid #E2E8F0", padding: "0 10px", fontSize: "12px", fontWeight: 700, color: "#94A3B8", lineHeight: "30px" }}>%</div>
+                            <div
+                              style={{
+                                background: increaseByType === "percentage" ? "#F1F5F9" : "#F8FAFC",
+                                borderLeft: "1px solid #E2E8F0",
+                                padding: "0 10px",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                color: increaseByType === "percentage" ? "#475569" : "#94A3B8",
+                                lineHeight: "30px",
+                              }}
+                            >
+                              %
+                            </div>
                           </div>
                         </div>
 
                         {/* Option 2: Amount */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "nowrap", gap: "10px" }}>
                           <label
-                            onClick={() => setIncreaseByType("amount")}
-                            style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "12px", color: "#0F172A", fontWeight: 500 }}
+                            onClick={() => handleIncreaseByTypeChange("amount")}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              color: increaseByType === "amount" ? "#1E293B" : "#64748B",
+                              fontWeight: 500,
+                              whiteSpace: "nowrap",
+                            }}
                           >
                             <input
                               type="radio"
                               name="inc-type-onetime"
                               checked={increaseByType === "amount"}
-                              onChange={() => setIncreaseByType("amount")}
-                              style={{ accentColor: "#2563EB" }}
+                              onChange={() => handleIncreaseByTypeChange("amount")}
+                              style={{ accentColor: "#2563EB", cursor: "pointer" }}
                             />
                             Amount (₹)
                           </label>
-                          <div style={{ display: "flex", alignItems: "center", background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: "6px", overflow: "hidden", width: "176px", height: "30px" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              background: increaseByType === "amount" ? "#FFFFFF" : "#F8FAFC",
+                              border: increaseByType === "amount" ? "1px solid #CBD5E1" : "1px solid #E2E8F0",
+                              borderRadius: "6px",
+                              overflow: "hidden",
+                              width: "176px",
+                              height: "30px",
+                              flexShrink: 0,
+                            }}
+                          >
                             <input
                               type="text"
-                              value={amountValue}
+                              value={increaseByType === "amount" ? amountValue : (amountValue || "0")}
+                              placeholder="20.00"
                               disabled={increaseByType !== "amount"}
-                              onChange={(e) => setAmountValue(e.target.value.replace(/[^0-9.]/g, ""))}
-                              style={{ width: "100%", border: "none", outline: "none", padding: "0 8px", fontSize: "12px", fontWeight: 700, color: "#1E293B", textAlign: "center" }}
+                              onFocus={(e) => {
+                                if (e.target.value === "0") setAmountValue("");
+                              }}
+                              onChange={(e) => setAmountValue(filterDecimal(e.target.value))}
+                              style={{
+                                width: "100%",
+                                border: "none",
+                                outline: "none",
+                                padding: "0 8px",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                color: increaseByType === "amount" ? "#1E293B" : "#94A3B8",
+                                background: "transparent",
+                                textAlign: "center",
+                                cursor: increaseByType === "amount" ? "text" : "not-allowed",
+                              }}
                             />
-                            <div style={{ background: "#F1F5F9", borderLeft: "1px solid #E2E8F0", padding: "0 10px", fontSize: "12px", fontWeight: 600, color: "#475569", lineHeight: "30px" }}>₹</div>
+                            <div
+                              style={{
+                                background: increaseByType === "amount" ? "#F1F5F9" : "#F8FAFC",
+                                borderLeft: "1px solid #E2E8F0",
+                                padding: "0 10px",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                color: increaseByType === "amount" ? "#475569" : "#94A3B8",
+                                lineHeight: "30px",
+                              }}
+                            >
+                              ₹
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1179,7 +1620,7 @@ export default function EditVisitorCategoryModal({
                     <div className="divider-vert" style={{ width: "1px", height: "80px", background: "#E2E8F0" }} />
 
                     {/* Column 2: Effective On */}
-                    <div style={{ flex: "1 1 240px" }}>
+                    <div className="future-effective-onetime-col" style={{ flex: "1 1 240px" }}>
                       <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#1E293B", marginBottom: "8px" }}>
                         Effective On <span style={{ color: "#DC2626" }}>*</span>
                       </label>
@@ -1278,8 +1719,9 @@ export default function EditVisitorCategoryModal({
                       <input
                         type="text"
                         value={futureCgst}
+                        placeholder="0.00"
                         disabled={!applyGstOnFuture}
-                        onChange={(e) => setFutureCgst(e.target.value.replace(/[^0-9.]/g, ""))}
+                        onChange={(e) => setFutureCgst(filterDecimal(e.target.value))}
                         style={{
                           width: "100%",
                           height: "30px",
@@ -1303,8 +1745,9 @@ export default function EditVisitorCategoryModal({
                       <input
                         type="text"
                         value={futureSgst}
+                        placeholder="0.00"
                         disabled={!applyGstOnFuture}
-                        onChange={(e) => setFutureSgst(e.target.value.replace(/[^0-9.]/g, ""))}
+                        onChange={(e) => setFutureSgst(filterDecimal(e.target.value))}
                         style={{
                           width: "100%",
                           height: "30px",
@@ -1328,8 +1771,9 @@ export default function EditVisitorCategoryModal({
                       <input
                         type="text"
                         value={futureIgst}
+                        placeholder="0.00"
                         disabled={!applyGstOnFuture}
-                        onChange={(e) => setFutureIgst(e.target.value.replace(/[^0-9.]/g, ""))}
+                        onChange={(e) => setFutureIgst(filterDecimal(e.target.value))}
                         style={{
                           width: "100%",
                           height: "30px",
@@ -1377,6 +1821,7 @@ export default function EditVisitorCategoryModal({
 
         {/* ── Modal Footer ── */}
         <div
+          className="add-edit-cat-modal-footer"
           style={{
             padding: "16px 32px",
             borderTop: "1px solid #F1F5F9",
@@ -1389,6 +1834,7 @@ export default function EditVisitorCategoryModal({
         >
           <button
             type="button"
+            className="add-edit-cat-cancel-btn"
             onClick={onClose}
             style={{
               height: "40px",
@@ -1408,6 +1854,7 @@ export default function EditVisitorCategoryModal({
 
           <button
             type="button"
+            className="add-edit-cat-save-btn"
             onClick={handleSave}
             style={{
               height: "40px",
@@ -1423,7 +1870,7 @@ export default function EditVisitorCategoryModal({
               transition: "transform 0.1s ease, filter 0.15s ease",
             }}
           >
-            Save Changes
+            {isEdit ? "Save Changes" : "Add Category"}
           </button>
         </div>
       </div>
@@ -1433,6 +1880,19 @@ export default function EditVisitorCategoryModal({
           .modal-top-row {
             flex-direction: column !important;
             align-items: stretch !important;
+            gap: 14px !important;
+          }
+          .modal-top-left {
+            flex: none !important;
+            width: 100% !important;
+            min-height: 0 !important;
+          }
+          .modal-cat-name-field {
+            max-width: none !important;
+          }
+          .modal-preview-badge {
+            width: 100% !important;
+            min-width: 0 !important;
           }
           .modal-middle-grid {
             grid-template-columns: 1fr !important;
@@ -1444,6 +1904,15 @@ export default function EditVisitorCategoryModal({
             flex-direction: column !important;
             align-items: stretch !important;
           }
+          .future-inc-by-col,
+          .future-start-from-col,
+          .future-repeat-col,
+          .future-inc-by-onetime-col,
+          .future-effective-onetime-col {
+            flex: none !important;
+            width: 100% !important;
+            min-height: 0 !important;
+          }
           .future-gst-row {
             flex-direction: column !important;
             align-items: stretch !important;
@@ -1452,7 +1921,77 @@ export default function EditVisitorCategoryModal({
             display: none !important;
           }
         }
+
+        @media (max-width: 640px) {
+          .add-edit-cat-modal-overlay {
+            padding: 8px !important;
+          }
+          .add-edit-cat-modal-dialog {
+            max-height: 95vh !important;
+            border-radius: 12px !important;
+            width: 100% !important;
+          }
+          .add-edit-cat-modal-header {
+            padding: 16px 16px 12px !important;
+          }
+          .add-edit-cat-modal-header h2 {
+            font-size: 17px !important;
+            line-height: 24px !important;
+          }
+          .add-edit-cat-modal-body {
+            padding: 14px 16px !important;
+            gap: 14px !important;
+          }
+          .add-edit-cat-modal-footer {
+            padding: 12px 16px !important;
+          }
+          .add-edit-cat-cancel-btn {
+            height: 38px !important;
+            padding: 0 16px !important;
+            font-size: 13px !important;
+          }
+          .add-edit-cat-save-btn {
+            height: 38px !important;
+            padding: 0 20px !important;
+            font-size: 13px !important;
+          }
+          .modal-top-left {
+            gap: 14px !important;
+            flex-wrap: nowrap !important;
+            align-items: flex-start !important;
+          }
+          .pricing-gst-inputs-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 10px !important;
+          }
+          .future-inputs-row {
+            padding: 12px !important;
+            gap: 12px !important;
+          }
+          .future-gst-row {
+            padding: 12px !important;
+            gap: 12px !important;
+          }
+        }
       `}</style>
+
+      {/* Global Image Crop Modal in CIRCLE shape for Visitor Category */}
+      <ImageCropModal
+        isOpen={isCropModalOpen}
+        imageSrc={image}
+        cropShape="round"
+        aspect={1}
+        title="Crop Visitor Category Picture"
+        subtitle="Adjust position and zoom within the circular frame."
+        onClose={() => setIsCropModalOpen(false)}
+        onCropComplete={(croppedUrl) => {
+          setImage(croppedUrl);
+          setImageLink(croppedUrl);
+          setIsCropModalOpen(false);
+        }}
+      />
     </div>
   );
 }
+
+export { EditVisitorCategoryModal as AddEditVisitorCategoryModal };

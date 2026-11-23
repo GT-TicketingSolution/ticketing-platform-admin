@@ -37,6 +37,7 @@ import { RoleGuard } from "@/components/auth/RoleGuard";
 import ExportButtons from "@/components/ui/ExportButtons";
 import ReportTimingModal from "@/components/modals/ReportTimingModal";
 import { useModalBodyLock } from "@/hooks/useModalBodyLock";
+import AddForm from "@/components/form/AddForm";
 import {
   useStaffList,
   fetchStaffList,
@@ -339,7 +340,6 @@ function StaffManagementInner() {
 
   // Modal & Selection States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  useModalBodyLock(isAddModalOpen);
   const [showAddPassword, setShowAddPassword] = useState(false);
   const [showEditPassword, setShowEditPassword] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
@@ -614,6 +614,47 @@ function StaffManagementInner() {
         status: formData.status === "Active" ? "ACTIVE" : "INACTIVE",
         canViewReports: isReportsAccess,
         reportAccessTiming: reportHours,
+        reportAccessUnit: isReportsAccess ? "HOURS" : undefined,
+      });
+      setIsAddModalOpen(false);
+      resetForm();
+    } catch {
+      // Handled by onError in mutation
+    }
+  };
+
+  const handleAddStaffSave = async (data: any) => {
+    const confirmed = await confirmAdd(`staff member "${data.name}"`);
+    if (!confirmed) {
+      return;
+    }
+
+    const isReportsAccess = Boolean(data.canViewReports);
+    let reportHours = 24;
+    if (data.reportDays) {
+      reportHours = Number(data.reportDays) * 24;
+    } else if (data.reportAccessTiming) {
+      reportHours = Number(data.reportAccessTiming);
+    }
+
+    const finalRoles = isReportsAccess ? ["STAFF", "Reports Access"] : ["STAFF"];
+    const staffSystemModuleAllowedIds = getStaffSystemModuleAllowedIds(
+      finalRoles,
+      isReportsAccess
+    );
+
+    try {
+      await createStaffMutation.mutateAsync({
+        name: data.name.trim(),
+        email: data.email.trim(),
+        phone: data.phone.trim(),
+        password: data.password,
+        roles: finalRoles,
+        attractionIds: data.selectedAttractionIds || [],
+        staffSystemModuleAllowedIds,
+        status: data.status === "Active" ? "ACTIVE" : "INACTIVE",
+        canViewReports: isReportsAccess,
+        reportAccessTiming: isReportsAccess ? reportHours : undefined,
         reportAccessUnit: isReportsAccess ? "HOURS" : undefined,
       });
       setIsAddModalOpen(false);
@@ -1806,9 +1847,25 @@ function StaffManagementInner() {
     );
   }
 
-  // ─── Main Staff List View ─────────────────────────────────────────────────
+  // ─── Main Staff List View
   if (!isHydrated) {
     return null;
+  }
+
+  if (isAddModalOpen) {
+    return (
+      <AddForm
+        roleTitle="Staff"
+        existingAttractions={attractionsList || []}
+        systemModules={systemModulesList || []}
+        isSaving={createStaffMutation.isPending}
+        onSave={handleAddStaffSave}
+        onCancel={() => {
+          setIsAddModalOpen(false);
+          resetForm();
+        }}
+      />
+    );
   }
 
   return (
@@ -2024,8 +2081,8 @@ function StaffManagementInner() {
         }
       />
 
-      {/* Add Staff Modal */}
-      {isAddModalOpen && (
+      {/* Legacy Add Staff Modal replaced by full-page AddForm */}
+      {false && (
         <div
           style={{
             position: "fixed",

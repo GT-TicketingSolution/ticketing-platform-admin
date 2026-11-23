@@ -81,6 +81,18 @@ export default function AttractionDetailView({
   const durationUnit = (attraction as any).durationUnit || "";
   const durationDisplay = durationVal ? `${durationVal} ${durationUnit}` : '-';
 
+  // Multi-Station Route config
+  const isMultiStation = (attraction as any).isMultiStation === true;
+  const isRoundTrip = (attraction as any).isRoundTrip === true;
+  const stations: Array<{ id: string; name: string }> =
+    Array.isArray((attraction as any).stations) && (attraction as any).stations.length > 0
+      ? (attraction as any).stations
+      : [
+        { id: "st-1", name: "Station 1" },
+        { id: "st-2", name: "Station 2" },
+        { id: "st-3", name: "Station 3" },
+      ];
+
 
   // Allocated seats list
   const allocatedSeatsList = useMemo(() => {
@@ -198,6 +210,7 @@ export default function AttractionDetailView({
     >
       {/* ── Top Header Bar (Back button on left, Edit & Delete on right) ── */}
       <div
+        className="attraction-detail-header"
         style={{
           display: "flex",
           alignItems: "center",
@@ -210,6 +223,7 @@ export default function AttractionDetailView({
         <button
           type="button"
           onClick={onBack}
+          className="btn-detail-back"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -228,7 +242,7 @@ export default function AttractionDetailView({
           <span>Back to Attractions</span>
         </button>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div className="attraction-detail-header-actions" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <button
             type="button"
             onClick={() => onEdit(attraction)}
@@ -290,9 +304,10 @@ export default function AttractionDetailView({
         className="attraction-top-grid"
       >
         {/* Left Column: Basic Information */}
-        <div style={{ minWidth: 0, height: "100%" }}>
+        <div className="attraction-basic-info-wrapper" style={{ minWidth: 0, height: "100%" }}>
           {/* 1. Basic Information Card */}
           <div
+            className="attraction-basic-info-card"
             style={{
               background: "#FFFFFF",
               borderRadius: "20px",
@@ -320,15 +335,17 @@ export default function AttractionDetailView({
             <div
               style={{
                 display: "flex",
-                justifyContent: "space-between",
-                gap: "20px",
+                justifyContent: "flex-start",
+                gap: "28px",
                 flexWrap: "wrap",
+                alignItems: "flex-start",
               }}
             >
               {/* Left Fields */}
               <div
                 style={{
-                  flex: 1,
+                  flex: "1 1 260px",
+                  maxWidth: "320px",
                   minWidth: "220px",
                   display: "flex",
                   flexDirection: "column",
@@ -398,14 +415,15 @@ export default function AttractionDetailView({
               </div>
 
               {/* Right Thumbnail Image */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignSelf: "flex-start" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignSelf: "flex-start", flex: "1 1 240px", maxWidth: "260px" }}>
                 <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 500 }}>
                   Attraction image
                 </div>
                 <div
                   style={{
-                    width: "145px",
-                    height: "200px",
+                    width: "100%",
+                    maxWidth: "260px",
+                    height: "176px",
                     borderRadius: "14px",
                     overflow: "hidden",
                     border: "1px solid #E2E8F0",
@@ -660,252 +678,368 @@ export default function AttractionDetailView({
           background: "#FFFFFF",
           border: "1px solid #E5E9F0",
           borderRadius: "16px",
-          padding: "24px",
+          padding: isMultiStation ? "24px" : "20px 24px",
           display: "flex",
           flexDirection: "column",
-          gap: "20px",
+          gap: isMultiStation ? "20px" : "0px",
           boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
           boxSizing: "border-box",
           width: "100%",
         }}
       >
-        {/* Header */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <h3
-              style={{
-                margin: 0,
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: 600,
-                fontSize: "18px",
-                lineHeight: "28px",
-                color: "#0D2B43",
-              }}
-            >
-              Multi-Station (Route)
-            </h3>
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                padding: "2px 10px",
-                background: "#DCFCE7",
-                borderRadius: "9999px",
-                fontFamily: "'Inter', sans-serif",
-                fontWeight: 600,
-                fontSize: "12px",
-                lineHeight: "16px",
-                color: "#22C55E",
-              }}
-            >
-              Enabled
-            </span>
-          </div>
-          <p
-            style={{
-              margin: 0,
-              fontFamily: "'Inter', sans-serif",
-              fontWeight: 400,
-              fontSize: "12px",
-              lineHeight: "16px",
-              color: "#6B7280",
-            }}
-          >
-            Manage and view the station sequence and route for this attraction.
-          </p>
-        </div>
-
-        {/* Route Track Visualisation Diagram spanning full width */}
-        <div
-          style={{
-            boxSizing: "border-box",
-            width: "100%",
-            background: "#F8FAFC",
-            border: "2px dashed #2563EB",
-            borderRadius: "16px",
-            padding: "24px 24px 20px 24px",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            position: "relative",
-          }}
-        >
-          {/* Stations Track Container */}
+        {!isMultiStation ? (
+          /* Default UI: Disabled State matching uploaded image */
           <div
             style={{
-              position: "relative",
-              width: "100%",
               display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              padding: "0 24px",
-              boxSizing: "border-box",
-            }}
-          >
-            {/* Direct Connecting Line */}
-            <div
-              style={{
-                position: "absolute",
-                top: "18px",
-                left: "44px",
-                right: "44px",
-                height: "3px",
-                background: "#2563EB",
-                zIndex: 1,
-              }}
-            />
-
-            {/* Station 1 Node */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                position: "relative",
-                zIndex: 2,
-                minWidth: "60px",
-              }}
-            >
-              <div
-                style={{
-                  width: "38px",
-                  height: "38px",
-                  borderRadius: "50%",
-                  background: "#1E66F5",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
-                }}
-              >
-                <TrainFront size={18} color="#FFFFFF" strokeWidth={2.2} />
-              </div>
-              <span
-                style={{
-                  marginTop: "8px",
-                  fontFamily: "'Inter', sans-serif",
-                  fontWeight: 700,
-                  fontSize: "12px",
-                  lineHeight: "16px",
-                  color: "#0D2B43",
-                  textAlign: "center",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Station 1
-              </span>
-            </div>
-
-            {/* Station 2 Node */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                position: "relative",
-                zIndex: 2,
-                minWidth: "60px",
-              }}
-            >
-              <div
-                style={{
-                  width: "22px",
-                  height: "22px",
-                  marginTop: "8px",
-                  borderRadius: "50%",
-                  background: "#FFFFFF",
-                  border: "4px solid #1E66F5",
-                  boxSizing: "border-box",
-                }}
-              />
-              <span
-                style={{
-                  marginTop: "16px",
-                  fontFamily: "'Inter', sans-serif",
-                  fontWeight: 600,
-                  fontSize: "12px",
-                  lineHeight: "16px",
-                  color: "#0D2B43",
-                  textAlign: "center",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Station 2
-              </span>
-            </div>
-
-            {/* Station 3 Node */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                position: "relative",
-                zIndex: 2,
-                minWidth: "60px",
-              }}
-            >
-              <div
-                style={{
-                  width: "22px",
-                  height: "22px",
-                  marginTop: "8px",
-                  borderRadius: "50%",
-                  background: "#FFFFFF",
-                  border: "4px solid #1E66F5",
-                  boxSizing: "border-box",
-                }}
-              />
-              <span
-                style={{
-                  marginTop: "16px",
-                  fontFamily: "'Inter', sans-serif",
-                  fontWeight: 600,
-                  fontSize: "12px",
-                  lineHeight: "16px",
-                  color: "#0D2B43",
-                  textAlign: "center",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Station 3
-              </span>
-            </div>
-          </div>
-
-          {/* Cyclic Return Path Pill Indicator */}
-          <div
-            style={{
-              marginTop: "20px",
-              display: "inline-flex",
               alignItems: "center",
-              gap: "6px",
-              background: "#EFF6FF",
-              border: "1px solid #BFDBFE",
-              borderRadius: "9999px",
-              padding: "5px 16px",
-              boxSizing: "border-box",
+              justifyContent: "space-between",
+              width: "100%",
             }}
           >
-            <RotateCw size={13} color="#1D4ED8" strokeWidth={2.2} />
-            <span
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <h3
+                style={{
+                  margin: 0,
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 600,
+                  fontSize: "18px",
+                  lineHeight: "26px",
+                  color: "#0D2B43",
+                }}
+              >
+                Multi-Station (Route)
+              </h3>
+              <p
+                style={{
+                  margin: 0,
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 400,
+                  fontSize: "12px",
+                  lineHeight: "16px",
+                  color: "#6B7280",
+                }}
+              >
+                Enable this option to configure multiple stations and their route sequence.
+              </p>
+            </div>
+
+            {/* Toggle switch in OFF state */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={false}
+              title="Click to configure Multi-Station Route"
               style={{
-                fontFamily: "'Inter', sans-serif",
-                fontWeight: 500,
-                fontSize: "12px",
-                lineHeight: "16px",
-                color: "#1D4ED8",
-                whiteSpace: "nowrap",
+                width: "44px",
+                height: "24px",
+                borderRadius: "9999px",
+                background: "#D1D5DB",
+                border: "none",
+                cursor: "pointer",
+                position: "relative",
+                padding: "2px",
+                display: "flex",
+                alignItems: "center",
+                outline: "none",
+                flexShrink: 0,
               }}
             >
-              Round Trip (Cyclic Route)
-            </span>
+              <div
+                style={{
+                  width: "20px",
+                  height: "20px",
+                  borderRadius: "50%",
+                  background: "#FFFFFF",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                  transform: "translateX(0px)",
+                }}
+              />
+            </button>
           </div>
-        </div>
-      </div>
+        ) : (
+          /* Configured / Enabled State in View Mode */
+          <>
+            {/* Header */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 600,
+                    fontSize: "18px",
+                    lineHeight: "28px",
+                    color: "#0D2B43",
+                  }}
+                >
+                  Multi-Station (Route)
+                </h3>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    padding: "2px 10px",
+                    background: "#DCFCE7",
+                    borderRadius: "9999px",
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: 600,
+                    fontSize: "12px",
+                    lineHeight: "16px",
+                    color: "#22C55E",
+                  }}
+                >
+                  Enabled
+                </span>
+              </div>
+              <p
+                style={{
+                  margin: 0,
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 400,
+                  fontSize: "12px",
+                  lineHeight: "16px",
+                  color: "#6B7280",
+                }}
+              >
+                Manage and view the station sequence and route for this attraction.
+              </p>
+            </div>
+
+            {/* Route Track Visualisation Diagram */}
+            {isRoundTrip ? (
+              /* Cyclic Route Diagram */
+              <div
+                style={{
+                  boxSizing: "border-box",
+                  width: "100%",
+                  background: "#F8FAFC",
+                  border: "2px dashed #2563EB",
+                  borderRadius: "16px",
+                  padding: "24px 24px 20px 24px",
+                  position: "relative",
+                  overflowX: "auto",
+                }}
+              >
+                <div
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    minWidth: stations.length > 6 ? `${stations.length * 110}px` : "100%",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    padding: "0 24px",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "18px",
+                      left: "44px",
+                      right: "44px",
+                      height: "3px",
+                      background: "#2563EB",
+                      zIndex: 1,
+                    }}
+                  />
+
+                  {stations.map((st, idx) => {
+                    const isFirst = idx === 0;
+                    return (
+                      <div
+                        key={st.id || idx}
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          position: "relative",
+                          zIndex: 2,
+                          minWidth: "60px",
+                        }}
+                      >
+                        {isFirst ? (
+                          <div
+                            style={{
+                              width: "38px",
+                              height: "38px",
+                              borderRadius: "50%",
+                              background: "#1E66F5",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
+                            }}
+                          >
+                            <TrainFront size={18} color="#FFFFFF" strokeWidth={2.2} />
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              width: "22px",
+                              height: "22px",
+                              marginTop: "8px",
+                              borderRadius: "50%",
+                              background: "#FFFFFF",
+                              border: "4px solid #1E66F5",
+                              boxSizing: "border-box",
+                            }}
+                          />
+                        )}
+                        <span
+                          style={{
+                            marginTop: isFirst ? "8px" : "16px",
+                            fontFamily: "'Inter', sans-serif",
+                            fontWeight: isFirst ? 700 : 600,
+                            fontSize: "12px",
+                            lineHeight: "16px",
+                            color: "#0D2B43",
+                            textAlign: "center",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {st.name}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: "20px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "#EFF6FF",
+                    border: "1px solid #BFDBFE",
+                    borderRadius: "9999px",
+                    padding: "5px 16px",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <RotateCw size={13} color="#1D4ED8" strokeWidth={2.2} />
+                  <span
+                    style={{
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 500,
+                      fontSize: "12px",
+                      lineHeight: "16px",
+                      color: "#1D4ED8",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Round Trip (Cyclic Route)
+                  </span>
+                </div>
+              </div>
+            ) : (
+              /* Linear Route Diagram */
+              <div
+                style={{
+                  boxSizing: "border-box",
+                  width: "100%",
+                  padding: "16px 10px 10px 10px",
+                  position: "relative",
+                  overflowX: "auto",
+                }}
+              >
+                <div
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    minWidth: stations.length > 6 ? `${stations.length * 110}px` : "100%",
+                    padding: "0 24px",
+                    boxSizing: "border-box",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "18px",
+                      left: "44px",
+                      right: "44px",
+                      height: "3px",
+                      background: "#2563EB",
+                      zIndex: 1,
+                    }}
+                  />
+
+                  {
+                    stations.map((st, idx) => {
+                      const isFirst = idx === 0;
+                      return (
+                        <div
+                          key={st.id || idx}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            position: "relative",
+                            zIndex: 2,
+                            minWidth: "60px",
+                          }}
+                        >
+                          {isFirst ? (
+                            <div
+                              style={{
+                                width: "38px",
+                                height: "38px",
+                                borderRadius: "50%",
+                                background: "#1E66F5",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
+                              }}
+                            >
+                              <TrainFront size={18} color="#FFFFFF" strokeWidth={2.2} />
+                            </div>
+                          ) : (
+                            <div
+                              style={{
+                                width: "22px",
+                                height: "22px",
+                                marginTop: "8px",
+                                borderRadius: "50%",
+                                background: "#FFFFFF",
+                                border: "4px solid #1E66F5",
+                                boxSizing: "border-box",
+                              }}
+                            />
+                          )}
+                          <span
+                            style={{
+                              marginTop: isFirst ? "8px" : "16px",
+                              fontFamily: "'Inter', sans-serif",
+                              fontWeight: isFirst ? 700 : 600,
+                              fontSize: "12px",
+                              lineHeight: "16px",
+                              color: "#0D2B43",
+                              textAlign: "center",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {st.name}
+                          </span>
+                        </div>
+                      );
+                    })
+                  }
+                </div >
+              </div >
+            )
+            }
+          </>
+        )}
+      </div >
 
       {/* ── Bottom Full-Width Card: Visitor Categories & Pricing ── */}
-      <div
+      < div
         style={{
           background: "#FFFFFF",
           borderRadius: "20px",
@@ -935,7 +1069,7 @@ export default function AttractionDetailView({
           style={{
             display: "flex",
             overflowX: "auto",
-            gap: "20px",
+            gap: "22px",
             width: "100%",
             paddingBottom: "14px",
             boxSizing: "border-box",
@@ -946,35 +1080,40 @@ export default function AttractionDetailView({
               key={idx}
               className="visitor-category-card"
               style={{
-                flex: "0 0 calc((100% - 40px) / 3)",
-                minWidth: "260px",
+                flex: "0 0 168px",
+                minWidth: "195px",
                 background: "#FFFFFF",
                 border: "1px solid #E5E9F0",
                 borderRadius: "16px",
-                padding: "24px 20px",
+                padding: "20px 16px",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: "16px",
+                gap: "14px",
                 boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
                 boxSizing: "border-box",
+                flexShrink: 0,
               }}
             >
+              {/* Category Name */}
               <div
                 style={{
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
                   fontWeight: 700,
-                  fontSize: "16px",
-                  color: "#0D2B43",
+                  fontSize: "15px",
+                  lineHeight: "20px",
+                  color: "#0C2A42",
                   textAlign: "center",
                 }}
               >
                 {cat.name}
               </div>
 
+              {/* Circular Avatar */}
               <div
                 style={{
-                  width: "80px",
-                  height: "80px",
+                  width: "68px",
+                  height: "68px",
                   borderRadius: "50%",
                   overflow: "hidden",
                   border: "2px solid #F1F5F9",
@@ -989,104 +1128,60 @@ export default function AttractionDetailView({
                 <img
                   src={getVisitorCategoryAvatar(cat.name, cat.imageLink)}
                   alt={cat.name}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
-                    if (target.src.includes(".png")) {
-                      target.src = target.src.replace(".png", ".jpg").replace("Senior.jpg", "senior.jpg");
+                    if (target.src.endsWith(".jpg")) {
+                      target.src = target.src.replace(/\.jpg$/i, ".png");
                     } else {
                       target.src = "/Assets/Visitors/Adult.png";
                     }
-                  }}
+                  }
+                  }
                 />
               </div>
 
-              {/* 2x2 Metric Grid (Base Price, HSN Code, SAC Code, No. of Seats) */}
+              {/* Base Price Box */}
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "10px",
+                  background: "#F0F7FF",
+                  borderRadius: "10px",
+                  padding: "10px 8px",
+                  textAlign: "center",
+                  boxSizing: "border-box",
                   width: "100%",
                 }}
               >
-                {/* Base Price Box */}
-                <div
-                  style={{
-                    background: "#EFF6FF",
-                    borderRadius: "8px",
-                    padding: "10px 8px",
-                    textAlign: "center",
-                    boxSizing: "border-box",
-                  }}
-                >
-                  <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "4px" }}>
-                    Base Price
-                  </div>
-                  <div style={{ fontSize: "15px", fontWeight: 700, color: "#0C2A42", whiteSpace: "nowrap" }}>
-                    ₹{Number(cat.basePrice).toFixed(2)}
-                  </div>
+                <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "3px" }}>
+                  Base Price
                 </div>
-
-                {/* HSN Code Box */}
-                <div
-                  style={{
-                    background: "#EFF6FF",
-                    borderRadius: "8px",
-                    padding: "10px 8px",
-                    textAlign: "center",
-                    boxSizing: "border-box",
-                  }}
-                >
-                  <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "4px" }}>
-                    HSN Code
-                  </div>
-                  <div style={{ fontSize: "15px", fontWeight: 700, color: "#0C2A42", whiteSpace: "nowrap" }}>
-                    {cat.hsnCode || "998551"}
-                  </div>
+                <div style={{ fontSize: "15px", fontWeight: 700, color: "#0C2A42", whiteSpace: "nowrap" }}>
+                  ₹{Number(cat.basePrice).toFixed(2)}
                 </div>
+              </div>
 
-                {/* SAC Code Box */}
-                <div
-                  style={{
-                    background: "#EFF6FF",
-                    borderRadius: "8px",
-                    padding: "10px 8px",
-                    textAlign: "center",
-                    boxSizing: "border-box",
-                  }}
-                >
-                  <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "4px" }}>
-                    SAC Code
-                  </div>
-                  <div style={{ fontSize: "15px", fontWeight: 700, color: "#0C2A42", whiteSpace: "nowrap" }}>
-                    996411
-                  </div>
+              {/* No. of Seats Box */}
+              <div
+                style={{
+                  background: "#F0FDF4",
+                  borderRadius: "10px",
+                  padding: "10px 8px",
+                  textAlign: "center",
+                  boxSizing: "border-box",
+                  width: "100%",
+                }}
+              >
+                <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "3px" }}>
+                  No. of Seats
                 </div>
-
-                {/* No. of Seats Box */}
-                <div
-                  style={{
-                    background: "#F0FDF4",
-                    border: "1px solid #DCFCE7",
-                    borderRadius: "8px",
-                    padding: "10px 8px",
-                    textAlign: "center",
-                    boxSizing: "border-box",
-                  }}
-                >
-                  <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "4px" }}>
-                    No. of Seats
-                  </div>
-                  <div style={{ fontSize: "15px", fontWeight: 700, color: "#0C2A42", whiteSpace: "nowrap" }}>
-                    {cat.noOfSeats}
-                  </div>
+                <div style={{ fontSize: "15px", fontWeight: 700, color: "#0C2A42", whiteSpace: "nowrap" }}>
+                  {cat.noOfSeats}
                 </div>
               </div>
             </div>
           ))}
         </div>
-      </div>
+      </div >
 
       <style jsx>{`
         .btn-detail-edit:hover {
@@ -1115,18 +1210,46 @@ export default function AttractionDetailView({
           .attraction-top-grid {
             grid-template-columns: 1fr !important;
           }
-          .visitor-category-card {
-            flex: 0 0 calc((100% - 20px) / 2) !important;
-            min-width: 240px !important;
+          .attraction-basic-info-wrapper,
+          .attraction-basic-info-card,
+          .attraction-status-card {
+            height: auto !important;
           }
         }
         @media (max-width: 640px) {
+          .attraction-detail-header {
+            flex-wrap: nowrap !important;
+            gap: 8px !important;
+          }
+          .btn-detail-back {
+            font-size: 13px !important;
+            padding: 4px 0 !important;
+            min-width: 0 !important;
+          }
+          .btn-detail-back span {
+            white-space: nowrap !important;
+          }
+          .attraction-detail-header-actions {
+            gap: 8px !important;
+            flex-shrink: 0 !important;
+          }
+          .btn-detail-edit,
+          .btn-detail-delete {
+            padding: 6px 12px !important;
+            font-size: 12px !important;
+          }
+          .attraction-basic-info-card,
+          .attraction-status-card {
+            padding: 16px !important;
+            border-radius: 14px !important;
+          }
           .visitor-category-card {
-            flex: 0 0 100% !important;
-            min-width: 220px !important;
+            flex: 0 0 150px !important;
+            min-width: 140px !important;
+            padding: 16px 12px !important;
           }
         }
       `}</style>
-    </div>
+    </div >
   );
 }

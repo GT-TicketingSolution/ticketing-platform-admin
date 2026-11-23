@@ -170,6 +170,37 @@ export async function confirmDelete(itemLabel: string): Promise<boolean> {
 }
 
 /**
+ * Confirm before removing multi-station route sequence.
+ */
+export async function confirmRemoveRoute(): Promise<boolean> {
+  const prevOverflow = typeof document !== "undefined" ? document.body.style.overflow : "";
+  if (typeof document !== "undefined") document.body.style.overflow = "hidden";
+  try {
+    const result = await showNotify({
+      title: "Remove Multi-Station Route?",
+      message: "This will disable the station route configuration for this attraction and reset it to default.",
+      variant: "classic",
+      status: "warning",
+      allowOutsideClick: false,
+      animation: "slide-up",
+      size: "sm",
+      showCloseIcon: true,
+      showConfirmButton: true,
+      showCancelButton: true,
+      confirmButtonText: "Yes",
+      cancelButtonText: "No",
+      focusConfirm: true,
+      celebrate: false,
+    });
+    return result === "confirm";
+  } catch {
+    return false;
+  } finally {
+    if (typeof document !== "undefined") document.body.style.overflow = prevOverflow;
+  }
+}
+
+/**
  * Confirm before adding a new record — uses sentence case messaging.
  */
 export async function confirmAdd(itemLabel: string): Promise<boolean> {

@@ -95,7 +95,7 @@ function CastleIllustration({ width = 105, height = 64 }: { width?: number | str
   );
 }
 
-// ── Attraction Card ───────────────────────────────────────────────────────────
+// ── Attraction Card 
 interface AttractionCardProps {
   attraction: AttractionManagement;
   onView: (a: AttractionManagement) => void;
@@ -205,18 +205,6 @@ function AttractionCard({ attraction, onView }: AttractionCardProps) {
           </div>
 
           <div style={{ display: "flex", alignItems: "flex-start", gap: "5px", marginTop: "10px" }}>
-            <span
-              style={{
-                fontWeight: 600,
-                fontSize: "10px",
-                lineHeight: "14px",
-                color: "rgba(33, 36, 36, 0.84)",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              Description :
-            </span>
             <span
               style={{
                 margin: 0,
@@ -582,7 +570,15 @@ export default function AttractionManagementPage() {
       {(viewMode === "add" || viewMode === "edit") && (
         <div style={{ width: "100%", maxWidth: "1124px", display: "flex", flexDirection: "column", gap: "16px" }}>
           <button
-            onClick={() => { setViewMode("list"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+            onClick={() => {
+              if (viewMode === "add" || !viewingAttraction) {
+                setViewMode("list");
+                setAttractionToEdit(null);
+              } else {
+                setViewMode("view");
+              }
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
             style={{
               display: "flex",
               alignItems: "center",
@@ -598,7 +594,7 @@ export default function AttractionManagementPage() {
             }}
           >
             <ArrowLeft size={18} color="#0C2A42" />
-            Back to Attractions
+            Back 
           </button>
 
           <AddEditAttractionForm
@@ -704,189 +700,190 @@ export default function AttractionManagementPage() {
           className="attraction-main-container"
         >
           {/* Top controls */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "20px" }}>
-            {/* Search */}
-            <div
-              style={{
-                boxSizing: "border-box",
-                width: "100%",
-                maxWidth: "413px",
-                height: "40px",
-                background: "#FFFFFF",
-                border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                borderRadius: "4px",
-                display: "flex",
-                alignItems: "center",
-                padding: "0 14px",
-                gap: "10px",
-              }}
-            >
-              <Search size={18} color="#B3AFAF" strokeWidth={2} />
-              <input
-                type="text"
-                placeholder="Search Attraction........."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: "100%",
-                  border: "none",
-                  outline: "none",
-                  background: "transparent",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 700,
-                  fontSize: "12px",
-                  color: colors.text.primary,
-                }}
-              />
-            </div>
-
-            {/* Action buttons */}
-            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-              {canCreate && (
-                <button
-                  onClick={handleOpenAdd}
-                  style={{
-                    boxSizing: "border-box",
-                    minWidth: "186px",
-                    height: "51px",
-                    background: "#0C2A42",
-                    borderRadius: "10px",
-                    border: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "10px",
-                    cursor: "pointer",
-                    padding: "0 18px",
-                    boxShadow: "0 4px 12px rgba(12, 42, 66, 0.2)",
-                    transition: "background 0.18s ease, transform 0.18s ease",
-                  }}
-                  className="btn-add-attraction"
-                >
-                  <Plus size={24} color="#FFFFFF" strokeWidth={2.8} />
-                  <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "16px", color: "#FFFFFF", whiteSpace: "nowrap" }}>
-                    Add Attraction
-                  </span>
-                </button>
-              )}
-
-              {canBulkUpload && (
-                <button
-                  onClick={() => setIsBulkOpen(true)}
-                  style={{
-                    boxSizing: "border-box",
-                    minWidth: "186px",
-                    height: "51px",
-                    background: "#FFFFFF",
-                    border: "2px solid #0C2A42",
-                    borderRadius: "10px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "10px",
-                    cursor: "pointer",
-                    padding: "0 18px",
-                    transition: "background 0.18s ease, transform 0.18s ease",
-                  }}
-                  className="btn-bulk-upload"
-                >
-                  <Upload size={20} color="#011B2F" strokeWidth={2} />
-                  <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "16px", color: "#011B2F", whiteSpace: "nowrap" }}>
-                    Bulk Upload
-                  </span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Cards Grid or No-search-results */}
-          {sortedAttractions.length > 0 ? (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(237px, 1fr))",
-                gap: "24px",
-                width: "100%",
-                opacity: isFetching ? 0.65 : 1,
-                transition: "opacity 0.2s ease",
-              }}
-            >
-              {sortedAttractions.map((attraction) => (
-                <AttractionCard
-                  key={attraction.id}
-                  attraction={attraction}
-                  onView={handleOpenView}
-                />
-              ))}
-            </div>
-          ) : (
-            <div
-              style={{
-                background: "#F8FAFC",
-                borderRadius: "16px",
-                padding: "60px 20px",
-                textAlign: "center",
-                border: "1.5px dashed rgba(179,175,175,0.51)",
-                margin: "20px 0",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "12px",
-              }}
-            >
+            <div className="attraction-top-controls" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "20px" }}>
+              {/* Search */}
               <div
+                className="attraction-search-container"
                 style={{
-                  width: "52px",
-                  height: "52px",
-                  borderRadius: "14px",
-                  background: "rgba(35,114,165,0.08)",
+                  boxSizing: "border-box",
+                  width: "100%",
+                  maxWidth: "413px",
+                  height: "40px",
+                  background: "#FFFFFF",
+                  border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                  borderRadius: "4px",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  marginBottom: "4px",
+                  padding: "0 14px",
+                  gap: "10px",
                 }}
               >
-                <SearchX size={26} color="#2372A5" />
+                <Search size={18} color="#B3AFAF" strokeWidth={2} />
+                <input
+                  type="text"
+                  placeholder="Search Attraction........."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: "100%",
+                    border: "none",
+                    outline: "none",
+                    background: "transparent",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 700,
+                    fontSize: "12px",
+                    color: colors.text.primary,
+                  }}
+                />
               </div>
-              <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: "15px", fontWeight: 700, color: "#0C2A42", margin: 0 }}>
-                No Matching Attractions Found
-              </p>
-              <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: "13px", fontWeight: 400, color: colors.text.muted, margin: 0, maxWidth: "380px" }}>
-                No attractions match <strong>&ldquo;{debouncedSearch}&rdquo;</strong>. Try a different name or category keyword.
-              </p>
-              <button
-                type="button"
-                onClick={() => { setSearchQuery(""); setDebouncedSearch(""); }}
-                style={{
-                  marginTop: "4px",
-                  padding: "8px 18px",
-                  borderRadius: "8px",
-                  border: "1px solid rgba(35,114,165,0.3)",
-                  background: "#FFFFFF",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  color: "#2372A5",
-                  cursor: "pointer",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                }}
-              >
-                Clear Search
-              </button>
+
+              {/* Action buttons */}
+                <div className="attraction-action-buttons-group" style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+                  {canCreate && (
+                    <button
+                      onClick={handleOpenAdd}
+                      style={{
+                        boxSizing: "border-box",
+                        minWidth: "186px",
+                        height: "51px",
+                        background: "#0C2A42",
+                        borderRadius: "10px",
+                        border: "none",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "10px",
+                        cursor: "pointer",
+                        padding: "0 18px",
+                        boxShadow: "0 4px 12px rgba(12, 42, 66, 0.2)",
+                        transition: "background 0.18s ease, transform 0.18s ease",
+                      }}
+                      className="btn-add-attraction"
+                    >
+                      <Plus size={24} color="#FFFFFF" strokeWidth={2.8} />
+                      <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "16px", color: "#FFFFFF", whiteSpace: "nowrap" }}>
+                        Add Attraction
+                      </span>
+                    </button>
+                  )}
+
+                  {canBulkUpload && (
+                    <button
+                      onClick={() => setIsBulkOpen(true)}
+                      style={{
+                        boxSizing: "border-box",
+                        minWidth: "186px",
+                        height: "51px",
+                        background: "#FFFFFF",
+                        border: "2px solid #0C2A42",
+                        borderRadius: "10px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "10px",
+                        cursor: "pointer",
+                        padding: "0 18px",
+                        transition: "background 0.18s ease, transform 0.18s ease",
+                      }}
+                      className="btn-bulk-upload"
+                    >
+                      <Upload size={20} color="#011B2F" strokeWidth={2} />
+                      <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "16px", color: "#011B2F", whiteSpace: "nowrap" }}>
+                        Bulk Upload
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Cards Grid or No-search-results */}
+              {sortedAttractions.length > 0 ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(237px, 1fr))",
+                    gap: "24px",
+                    width: "100%",
+                    opacity: isFetching ? 0.65 : 1,
+                    transition: "opacity 0.2s ease",
+                  }}
+                >
+                  {sortedAttractions.map((attraction) => (
+                    <AttractionCard
+                      key={attraction.id}
+                      attraction={attraction}
+                      onView={handleOpenView}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    background: "#F8FAFC",
+                    borderRadius: "16px",
+                    padding: "60px 20px",
+                    textAlign: "center",
+                    border: "1.5px dashed rgba(179,175,175,0.51)",
+                    margin: "20px 0",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "12px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "52px",
+                      height: "52px",
+                      borderRadius: "14px",
+                      background: "rgba(35,114,165,0.08)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    <SearchX size={26} color="#2372A5" />
+                  </div>
+                  <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: "15px", fontWeight: 700, color: "#0C2A42", margin: 0 }}>
+                    No Matching Attractions Found
+                  </p>
+                  <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: "13px", fontWeight: 400, color: colors.text.muted, margin: 0, maxWidth: "380px" }}>
+                    No attractions match <strong>&ldquo;{debouncedSearch}&rdquo;</strong>. Try a different name or category keyword.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => { setSearchQuery(""); setDebouncedSearch(""); }}
+                    style={{
+                      marginTop: "4px",
+                      padding: "8px 18px",
+                      borderRadius: "8px",
+                      border: "1px solid rgba(35,114,165,0.3)",
+                      background: "#FFFFFF",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      color: "#2372A5",
+                      cursor: "pointer",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    }}
+                  >
+                    Clear Search
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
       )}
 
-      {/* ── Saving overlay ───────────────────────────────────────────── */}
-      {isSaving && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.15)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
-          <Loader2 size={40} color="#2372A5" style={{ animation: "spin 1s linear infinite" }} />
-        </div>
-      )}
+            {/* ── Saving overlay ───────────────────────────────────────────── */}
+            {isSaving && (
+              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.15)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+                <Loader2 size={40} color="#2372A5" style={{ animation: "spin 1s linear infinite" }} />
+              </div>
+            )}
 
-      {/* ── Hover styles ─────────────────────────────────────────────── */}
-      <style>{`
+            {/* ── Hover styles ─────────────────────────────────────────────── */}
+            <style>{`
         @keyframes attrShimmer {
           0%   { background-position: -600px 0; }
           100% { background-position: 600px 0; }
@@ -905,14 +902,50 @@ export default function AttractionManagementPage() {
         @media (max-width: 768px) {
           .attraction-main-container { padding: 20px 16px !important; border-radius: 20px !important; }
         }
+        @media (max-width: 640px) {
+          .attraction-top-controls {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 12px !important;
+          }
+          .attraction-search-container {
+            max-width: 100% !important;
+            width: 100% !important;
+          }
+          .attraction-action-buttons-group {
+            width: 100% !important;
+            display: flex !important;
+            gap: 10px !important;
+          }
+          .btn-add-attraction, .btn-bulk-upload {
+            flex: 1 1 0 !important;
+            min-width: 0 !important;
+            width: 100% !important;
+            height: 44px !important;
+            padding: 0 10px !important;
+            justify-content: center !important;
+          }
+          .btn-add-attraction span, .btn-bulk-upload span {
+            font-size: 13px !important;
+            white-space: nowrap !important;
+          }
+          .btn-add-attraction svg {
+            width: 18px !important;
+            height: 18px !important;
+          }
+          .btn-bulk-upload svg {
+            width: 16px !important;
+            height: 16px !important;
+          }
+        }
       `}</style>
 
-      {/* ── Modals ───────────────────────────────────────────────────── */}
-      <BulkUploadModal
-        isOpen={isBulkOpen}
-        onClose={() => setIsBulkOpen(false)}
-        onUploadSuccess={handleBulkUploadSuccess}
-      />
-    </div>
-  );
+            {/* ── Modals ───────────────────────────────────────────────────── */}
+            <BulkUploadModal
+              isOpen={isBulkOpen}
+              onClose={() => setIsBulkOpen(false)}
+              onUploadSuccess={handleBulkUploadSuccess}
+            />
+          </div>
+          );
 }
