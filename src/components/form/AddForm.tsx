@@ -73,7 +73,7 @@ export default function AddForm({
   const [canGrantCrowdAccess, setCanGrantCrowdAccess] = useState(false);
   const [canGrantReportAccess, setCanGrantReportAccess] = useState(false);
   const [reportAccessType, setReportAccessType] = useState<"same" | "custom">("same");
-  const [reportAccessDays, setReportAccessDays] = useState("24");
+  const [reportAccessDays, setReportAccessDays] = useState("0");
 
   // Staff-specific Report Access Timing Modal State
   const [isAssignReportModalOpen, setIsAssignReportModalOpen] = useState(false);
@@ -110,13 +110,6 @@ export default function AddForm({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Default initial submodules for new attraction based on role
-  const initialSubmodulesForRole = useMemo(() => {
-    return roleTitle === "Staff"
-      ? ["Ticket Scanning", "Inventory Management"]
-      : ["Staff Management", "Inventory Management"];
-  }, [roleTitle]);
-
   // Handle Photo selection with JPG/PNG and 5 MB validation
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -146,18 +139,24 @@ export default function AddForm({
     setPhotoUrl(url);
   };
 
-  // Build available module list combined from defaults + system modules
+  // Build available module list directly from system modules in API response order
   const allAvailableModules = useMemo(() => {
-    const baseChips = roleTitle === "Staff" ? STAFF_DEFAULT_MODULE_CHIPS : MANAGER_DEFAULT_MODULE_CHIPS;
-    const set = new Set<string>(baseChips);
-    systemModules.forEach((sm) => {
-      const name = sm.name?.trim();
-      const isActive = String(sm.isActive).toUpperCase() === "ACTIVE" || (sm.isActive as unknown) === true;
-      if (name && isActive && !name.toLowerCase().includes("ticket booking") && !name.toLowerCase().includes("scanner")) {
-        set.add(name);
+    if (systemModules && systemModules.length > 0) {
+      const seen = new Set<string>();
+      const list: string[] = [];
+      systemModules.forEach((sm) => {
+        const isActive = String(sm.isActive).toUpperCase() === "ACTIVE" || (sm.isActive as unknown) === true;
+        const name = sm.name?.trim();
+        if (isActive && name && !seen.has(name)) {
+          seen.add(name);
+          list.push(name);
+        }
+      });
+      if (list.length > 0) {
+        return list;
       }
-    });
-    return Array.from(set);
+    }
+    return roleTitle === "Staff" ? STAFF_DEFAULT_MODULE_CHIPS : MANAGER_DEFAULT_MODULE_CHIPS;
   }, [systemModules, roleTitle]);
 
   // Filtered available modules for the chips row
@@ -182,6 +181,7 @@ export default function AddForm({
 
   // Check if a module chip is currently active in either View or View+Edit
   const isModuleActive = (modName: string) => {
+    if (selectedAttractionIds.length === 0) return false;
     return currentViewModules.includes(modName) || currentEditModules.includes(modName);
   };
 
@@ -194,12 +194,12 @@ export default function AddForm({
         updated = prev.filter((aId) => aId !== id);
       } else {
         updated = [...prev, id];
-        // Initialize with default submodules if empty
+        // Initialize with empty submodules (no prefilled modules)
         if (!attractionModuleMap[id]) {
           setAttractionModuleMap((m) => ({
             ...m,
             [id]: {
-              view: [...initialSubmodulesForRole],
+              view: [],
               edit: [],
             },
           }));
@@ -223,13 +223,13 @@ export default function AddForm({
     } else {
       const allIds = existingAttractions.map((a) => a.id);
       setSelectedAttractionIds(allIds);
-      // Ensure all have entries
+      // Ensure all have entries without prefilling any modules
       setAttractionModuleMap((prev) => {
         const next = { ...prev };
         allIds.forEach((id) => {
           if (!next[id]) {
             next[id] = {
-              view: [...initialSubmodulesForRole],
+              view: [],
               edit: [],
             };
           }
@@ -335,6 +335,32 @@ export default function AddForm({
     });
   };
 
+  // Email validation helper
+  const validateEmailValue = (val: string): string => {
+    const trimmed = val.trim();
+    if (!trimmed) {
+      return "Email address is required";
+    }
+    if (!trimmed.includes("@")) {
+      return "Please include an '@' in the email address";
+    }
+    const [localPart, domainPart] = trimmed.split("@");
+    if (!localPart) {
+      return "Please enter a username before '@'";
+    }
+    if (!domainPart) {
+      return "Please enter a domain after '@'";
+    }
+    if (!domainPart.includes(".")) {
+      return "Please include a domain extension like .com";
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!emailRegex.test(trimmed)) {
+      return "Please enter a valid email address";
+    }
+    return "";
+  };
+
   // Validate and Submit Form
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -349,9 +375,9 @@ export default function AddForm({
       newErrors.phone = "Phone number must be exactly 10 digits";
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email.trim() || !emailRegex.test(email.trim())) {
-      newErrors.email = "Invalid email address";
+    const emailErr = validateEmailValue(email);
+    if (emailErr) {
+      newErrors.email = emailErr;
     }
 
     if (!password || password.length < 6) {
@@ -424,7 +450,7 @@ export default function AddForm({
         <span>Back to {roleTitle === "Staff" ? "Staff list" : "Managers"}</span>
       </button>
 
-      <form onSubmit={handleSubmit} style={{ width: "100%", display: "flex", flexDirection: "column", gap: "24px" }}>
+      <form noValidate onSubmit={handleSubmit} style={{ width: "100%", display: "flex", flexDirection: "column", gap: "24px" }}>
         {/* ── Top Two Cards Section (Side by Side) */}
         <div className="top-two-cards-grid">
           {/* ── CARD 1: Manager / Staff Account Details */}
@@ -458,21 +484,22 @@ export default function AddForm({
                       type="button"
                       onClick={() => setIsCropModalOpen(true)}
                       style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "5px",
-                        padding: "3px 10px",
+                        background: "#2563EB",
+                        color: "#FFFFFF",
+                        border: "none",
                         borderRadius: "6px",
-                        border: "1px solid #E2E8F0",
-                        background: "#F8FAFC",
-                        color: "#475569",
+                        padding: "5px 10px",
                         fontSize: "11px",
                         fontWeight: 600,
                         cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
                       }}
-                      title="Crop Avatar Image"
+                      title="Crop Image"
                     >
-                      <Crop size={12} color="#475569" />
+                      <Crop size={12} strokeWidth={2.2} />
                       <span>Crop</span>
                     </button>
                   )}
@@ -551,8 +578,18 @@ export default function AddForm({
                     placeholder="Enter email address"
                     value={email}
                     onChange={(e) => {
-                      setEmail(e.target.value);
-                      if (errors.email) setErrors((prev) => ({ ...prev, email: "" }));
+                      const val = e.target.value;
+                      setEmail(val);
+                      if (errors.email) {
+                        const err = validateEmailValue(val);
+                        setErrors((prev) => ({ ...prev, email: err }));
+                      }
+                    }}
+                    onBlur={() => {
+                      if (email.trim()) {
+                        const err = validateEmailValue(email);
+                        if (err) setErrors((prev) => ({ ...prev, email: err }));
+                      }
                     }}
                     className={`field-input ${errors.email ? "field-input-error" : ""}`}
                   />
@@ -582,7 +619,7 @@ export default function AddForm({
                     onClick={() => setShowPassword(!showPassword)}
                     className="password-toggle-btn"
                   >
-                    {showPassword ? <EyeOff size={16} color="#94A3B8" /> : <Eye size={16} color="#94A3B8" />}
+                    {showPassword ? <Eye size={16} color="#94A3B8" /> : <EyeOff size={16} color="#94A3B8" />}
                   </button>
                 </div>
                 <span className="field-helper-text">Minimum 6 characters</span>
@@ -625,7 +662,7 @@ export default function AddForm({
                         {/* Option 1: Same as My Access */}
                         <label
                           onClick={() => setReportAccessType("same")}
-                          className={`radio-card ${reportAccessType === "same" ? "radio-card-active" : ""}`}
+                          className={`radio-card ${reportAccessType === "same" ? "radio-card-active" : "radio-card-disabled"}`}
                         >
                           <div className={`radio-indicator ${reportAccessType === "same" ? "radio-checked" : ""}`}>
                             {reportAccessType === "same" && <div className="radio-dot" />}
@@ -639,7 +676,7 @@ export default function AddForm({
                         {/* Option 2: Custom Access */}
                         <label
                           onClick={() => setReportAccessType("custom")}
-                          className={`radio-card ${reportAccessType === "custom" ? "radio-card-active" : ""}`}
+                          className={`radio-card ${reportAccessType === "custom" ? "radio-card-active" : "radio-card-disabled"}`}
                         >
                           <div className={`radio-indicator ${reportAccessType === "custom" ? "radio-checked" : ""}`}>
                             {reportAccessType === "custom" && <div className="radio-dot" />}
@@ -755,6 +792,11 @@ export default function AddForm({
                       onBlur={(e) => {
                         if (!e.target.value) e.target.type = "text";
                       }}
+                      onClick={(e) => {
+                        try {
+                          (e.currentTarget as any).showPicker?.();
+                        } catch { }
+                      }}
                       onChange={(e) => setJoiningDate(e.target.value)}
                       className="field-input"
                       style={{ paddingRight: "36px" }}
@@ -783,6 +825,11 @@ export default function AddForm({
                       onFocus={(e) => (e.target.type = "date")}
                       onBlur={(e) => {
                         if (!e.target.value) e.target.type = "text";
+                      }}
+                      onClick={(e) => {
+                        try {
+                          (e.currentTarget as any).showPicker?.();
+                        } catch { }
                       }}
                       onChange={(e) => setDob(e.target.value)}
                       className="field-input"
@@ -822,7 +869,7 @@ export default function AddForm({
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                       <label
                         onClick={() => setPfType("percentage")}
-                        className={`radio-card ${pfType === "percentage" ? "radio-card-active" : ""}`}
+                        className={`radio-card ${pfType === "percentage" ? "radio-card-active" : "radio-card-disabled"}`}
                         style={{ padding: "8px 12px" }}
                       >
                         <div className={`radio-indicator ${pfType === "percentage" ? "radio-checked" : ""}`}>
@@ -833,7 +880,7 @@ export default function AddForm({
 
                       <label
                         onClick={() => setPfType("fixed")}
-                        className={`radio-card ${pfType === "fixed" ? "radio-card-active" : ""}`}
+                        className={`radio-card ${pfType === "fixed" ? "radio-card-active" : "radio-card-disabled"}`}
                         style={{ padding: "8px 12px" }}
                       >
                         <div className={`radio-indicator ${pfType === "fixed" ? "radio-checked" : ""}`}>
@@ -888,7 +935,7 @@ export default function AddForm({
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
                       <label
                         onClick={() => setIncentiveType("fixed")}
-                        className={`radio-card ${incentiveType === "fixed" ? "radio-card-active" : ""}`}
+                        className={`radio-card ${incentiveType === "fixed" ? "radio-card-active" : "radio-card-disabled"}`}
                         style={{ padding: "8px 8px" }}
                       >
                         <div className={`radio-indicator ${incentiveType === "fixed" ? "radio-checked" : ""}`}>
@@ -899,7 +946,7 @@ export default function AddForm({
 
                       <label
                         onClick={() => setIncentiveType("percentage")}
-                        className={`radio-card ${incentiveType === "percentage" ? "radio-card-active" : ""}`}
+                        className={`radio-card ${incentiveType === "percentage" ? "radio-card-active" : "radio-card-disabled"}`}
                         style={{ padding: "8px 8px" }}
                       >
                         <div className={`radio-indicator ${incentiveType === "percentage" ? "radio-checked" : ""}`}>
@@ -910,7 +957,7 @@ export default function AddForm({
 
                       <label
                         onClick={() => setIncentiveType("target")}
-                        className={`radio-card ${incentiveType === "target" ? "radio-card-active" : ""}`}
+                        className={`radio-card ${incentiveType === "target" ? "radio-card-active" : "radio-card-disabled"}`}
                         style={{ padding: "8px 8px" }}
                       >
                         <div className={`radio-indicator ${incentiveType === "target" ? "radio-checked" : ""}`}>
@@ -965,20 +1012,14 @@ export default function AddForm({
               <div className="controls-bar-left">
                 <span className="controls-bar-label">Available Modules for:</span>
                 <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
-                  {selectedAttractionIds.length === 0 ? (
-                    <span style={{ fontSize: "12px", color: "#94A3B8", fontStyle: "italic" }}>
-                      Select an attraction below to configure modules
-                    </span>
-                  ) : (
-                    selectedAttractionIds.slice(0, 3).map((aId) => {
-                      const attr = existingAttractions.find((a) => a.id === aId);
-                      return (
-                        <span key={aId} className="attraction-pill-tag">
-                          {attr?.name || aId}
-                        </span>
-                      );
-                    })
-                  )}
+                  {selectedAttractionIds.slice(0, 3).map((aId) => {
+                    const attr = existingAttractions.find((a) => a.id === aId);
+                    return (
+                      <span key={aId} className="attraction-pill-tag">
+                        {attr?.name || aId}
+                      </span>
+                    );
+                  })}
                   {selectedAttractionIds.length > 3 && (
                     <span className="attraction-pill-tag" style={{ background: "#E2E8F0", color: "#475569" }}>
                       +{selectedAttractionIds.length - 3} more
@@ -1003,15 +1044,31 @@ export default function AddForm({
             {/* Available Module Chips Row */}
             <div className="module-chips-row">
               {filteredModules.map((modName) => {
-                const active = isModuleActive(modName);
+                const isChipsDisabled = selectedAttractionIds.length === 0;
+                const active = !isChipsDisabled && isModuleActive(modName);
                 return (
                   <button
                     key={modName}
                     type="button"
+                    disabled={isChipsDisabled}
                     onClick={() => toggleModuleChip(modName)}
-                    className={`module-chip ${active ? "module-chip-active" : "module-chip-inactive"}`}
+                    className={`module-chip ${
+                      isChipsDisabled
+                        ? "module-chip-disabled"
+                        : active
+                        ? "module-chip-active"
+                        : "module-chip-inactive"
+                    }`}
                   >
-                    <div className={`chip-checkbox ${active ? "chip-checkbox-active" : ""}`}>
+                    <div
+                      className={`chip-checkbox ${
+                        isChipsDisabled
+                          ? "chip-checkbox-disabled"
+                          : active
+                          ? "chip-checkbox-active"
+                          : ""
+                      }`}
+                    >
                       {active && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
                     </div>
                     <span>{modName}</span>
@@ -1069,7 +1126,7 @@ export default function AddForm({
                           <input
                             type="checkbox"
                             checked={isChecked}
-                            onChange={() => {}} // handled by parent div
+                            onChange={() => { }} // handled by parent div
                             style={{ width: "16px", height: "16px", accentColor: "#2563EB", cursor: "pointer", flexShrink: 0 }}
                           />
                           <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
@@ -1437,6 +1494,7 @@ export default function AddForm({
         }
 
         .field-input {
+          position: relative;
           box-sizing: border-box;
           width: 100%;
           height: 44px;
@@ -1449,6 +1507,17 @@ export default function AddForm({
           color: #1E293B;
           outline: none;
           transition: all 0.15s ease;
+        }
+        .field-input::-webkit-calendar-picker-indicator {
+          opacity: 0;
+          cursor: pointer;
+          position: absolute;
+          right: 0;
+          top: 0;
+          width: 36px;
+          height: 100%;
+          margin: 0;
+          padding: 0;
         }
         .field-input:focus {
           border-color: #3B82F6;
@@ -1593,6 +1662,23 @@ export default function AddForm({
         .radio-card-active {
           border-color: #3B82F6;
           background: #EFF6FF;
+        }
+        .radio-card-disabled {
+          background: #F8FAFC;
+          border-color: #E2E8F0;
+          opacity: 0.55;
+          cursor: pointer;
+        }
+        .radio-card-disabled:hover {
+          opacity: 0.85;
+          border-color: #CBD5E1;
+          background: #F1F5F9;
+        }
+        .radio-card-disabled .radio-card-title {
+          color: #64748B;
+        }
+        .radio-card-disabled .radio-card-desc {
+          color: #94A3B8;
         }
 
         .radio-indicator {
@@ -1755,6 +1841,13 @@ export default function AddForm({
           border: 1.5px solid #2563EB;
           color: #1D4ED8;
         }
+        .module-chip-disabled {
+          background: #F8FAFC !important;
+          border: 1px solid #E2E8F0 !important;
+          color: #94A3B8 !important;
+          opacity: 0.55 !important;
+          cursor: not-allowed !important;
+        }
 
         .chip-checkbox {
           width: 16px;
@@ -1770,6 +1863,10 @@ export default function AddForm({
         .chip-checkbox-active {
           background: #2563EB;
           border-color: #2563EB;
+        }
+        .chip-checkbox-disabled {
+          border-color: #CBD5E1 !important;
+          background: #F1F5F9 !important;
         }
 
         .permissions-columns-grid {

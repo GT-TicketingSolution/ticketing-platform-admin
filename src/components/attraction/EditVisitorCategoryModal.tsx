@@ -32,6 +32,7 @@ export default function EditVisitorCategoryModal({
   const [image, setImage] = useState("");
   const [imageLink, setImageLink] = useState<string | null>(null);
   const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+  const [photoError, setPhotoError] = useState("");
 
   // Base pricing & GST
   const [basePrice, setBasePrice] = useState("");
@@ -82,6 +83,7 @@ export default function EditVisitorCategoryModal({
   useEffect(() => {
     if (!isOpen) {
       setErrors({});
+      setPhotoError("");
       return;
     }
 
@@ -90,6 +92,7 @@ export default function EditVisitorCategoryModal({
       setName(category.name || "");
       setImage(category.image || "");
       setImageLink(category.imageLink || null);
+      setPhotoError("");
       setBasePrice(category.basePrice || "");
       setNumberOfSeats(category.numberOfSeats || "1");
       const hasHsn = Boolean(category.hsnCode && category.hsnCode !== "-");
@@ -137,6 +140,7 @@ export default function EditVisitorCategoryModal({
       setName("");
       setImage("");
       setImageLink(null);
+      setPhotoError("");
       setBasePrice("");
       setApplyGstOnBase(false); // All toggles OFF initially as requested
       setCgst("");
@@ -172,16 +176,38 @@ export default function EditVisitorCategoryModal({
     ? "e.g. Adult, Child, Foreigner"
     : `e.g. ${missingCandidate || "Adult"}`;
 
-  // Handle avatar upload
+  // Handle avatar upload with JPG/PNG, max 5 MB validation and open crop modal
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Format validation: JPG or PNG only
+    const validExtensions = ["jpg", "jpeg", "png"];
+    const fileExtension = file.name.split(".").pop()?.toLowerCase() || "";
+    const validMimeTypes = ["image/jpeg", "image/png", "image/jpg"];
+
+    if (!validMimeTypes.includes(file.type) && !validExtensions.includes(fileExtension)) {
+      setPhotoError("Only JPG or PNG images are allowed.");
+      e.target.value = "";
+      return;
+    }
+
+    // Size validation: max 5 MB
+    const MAX_SIZE = 5 * 1024 * 1024; // 5 MB in bytes
+    if (file.size > MAX_SIZE) {
+      setPhotoError("Image size exceeds 5 MB limit. Please upload a smaller image.");
+      e.target.value = "";
+      return;
+    }
+
+    setPhotoError("");
     const reader = new FileReader();
     reader.onload = (ev) => {
       const result = ev.target?.result as string;
       if (!result) return;
       setImage(result);
       setImageLink(result);
+      setIsCropModalOpen(true);
     };
     reader.readAsDataURL(file);
     e.target.value = "";
@@ -499,7 +525,7 @@ export default function EditVisitorCategoryModal({
                   <input
                     id="add-edit-cat-avatar-file"
                     type="file"
-                    accept="image/*"
+                    accept="image/png,image/jpeg,image/jpg"
                     onChange={handleImageUpload}
                     style={{ display: "none" }}
                   />
@@ -534,6 +560,12 @@ export default function EditVisitorCategoryModal({
                     <Crop size={12} strokeWidth={2.2} />
                     <span>Crop</span>
                   </button>
+                )}
+
+                {photoError && (
+                  <span style={{ fontSize: "11px", color: "#EF4444", fontWeight: 600, textAlign: "center", maxWidth: "120px", lineHeight: "14px" }}>
+                    ⚠ {photoError}
+                  </span>
                 )}
               </div>
 
@@ -1979,9 +2011,9 @@ export default function EditVisitorCategoryModal({
       <ImageCropModal
         isOpen={isCropModalOpen}
         imageSrc={image}
-        cropShape="round"
+        cropShape="circle"
         aspect={1}
-        title="Crop Visitor Category Picture"
+        title="Crop Visitor Picture"
         subtitle="Adjust position and zoom within the circular frame."
         onClose={() => setIsCropModalOpen(false)}
         onCropComplete={(croppedUrl) => {

@@ -24,13 +24,13 @@ export default function AssignReportAccessModal({
   onConfirm,
   initialType = "custom_timing",
   initialStartDate = "",
-  initialDays = 24,
+  initialDays = 0,
 }: AssignReportAccessModalProps) {
   useModalBodyLock(isOpen);
   const [mounted, setMounted] = useState(false);
   const [accessType, setAccessType] = useState<"date_range" | "custom_timing">(initialType);
   const [startDate, setStartDate] = useState(initialStartDate);
-  const [days, setDays] = useState<string>(String(initialDays || 24));
+  const [days, setDays] = useState<string>(String(initialDays));
 
   useEffect(() => {
     setMounted(true);
@@ -40,7 +40,7 @@ export default function AssignReportAccessModal({
     if (isOpen) {
       setAccessType(initialType);
       setStartDate(initialStartDate);
-      setDays(String(initialDays || 24));
+      setDays(String(initialDays));
     }
   }, [isOpen, initialType, initialStartDate, initialDays]);
 
@@ -93,15 +93,15 @@ export default function AssignReportAccessModal({
             {/* Amber bar chart icon box */}
             <div
               style={{
-                width: "44px",
-                height: "44px",
-                borderRadius: "12px",
-                background: "#F59E0B",
+                width: "48px",
+                height: "48px",
+                borderRadius: "16px",
+                background: "#F4BC43",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 flexShrink: 0,
-                boxShadow: "0 4px 10px rgba(245, 158, 11, 0.3)",
+                boxShadow: "0px 1px 2px rgba(0, 0, 0, 0.05)",
               }}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1E293B" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -186,7 +186,7 @@ export default function AssignReportAccessModal({
               fontFamily: "'Plus Jakarta Sans', sans-serif",
             }}
           >
-            Set a specific start and end date, or give access for a custom number of days.
+            Set a specific start date to still now, or give access for a custom number of days.
           </p>
         </div>
 
@@ -221,10 +221,10 @@ export default function AssignReportAccessModal({
             />
             <div>
               <div style={{ fontSize: "14px", fontWeight: 700, color: "#1E293B" }}>
-                Set a Date Range
+                Set a Start Date
               </div>
               <div style={{ fontSize: "12px", color: "#64748B", marginTop: "2px" }}>
-                Give access between a specific start and end date.
+                Give access between a specific start date to still now.
               </div>
             </div>
           </div>
@@ -250,6 +250,11 @@ export default function AssignReportAccessModal({
                 onBlur={(e) => {
                   if (!e.target.value) e.target.type = "text";
                 }}
+                onClick={(e) => {
+                  try {
+                    (e.currentTarget as any).showPicker?.();
+                  } catch { }
+                }}
                 onChange={(e) => setStartDate(e.target.value)}
                 style={{
                   width: "100%",
@@ -261,6 +266,7 @@ export default function AssignReportAccessModal({
                   color: "#1E293B",
                   background: "#FFFFFF",
                   outline: "none",
+                  position: "relative",
                 }}
               />
               <Calendar
@@ -424,18 +430,32 @@ export default function AssignReportAccessModal({
               padding: "10px 24px",
               borderRadius: "8px",
               border: "none",
-              background: "#F59E0B",
-              color: "#1E293B",
+              background: "#F4BC43",
+              color: "#0F172A",
               fontSize: "14px",
-              fontWeight: 700,
+              fontWeight: 600,
               cursor: "pointer",
-              boxShadow: "0 4px 12px rgba(245, 158, 11, 0.25)",
+              boxShadow: "0px 1px 2px rgba(0, 0, 0, 0.05)",
             }}
           >
             Assign &amp; Confirm Access
           </button>
         </div>
       </div>
+
+      <style>{`
+        input[type="date"]::-webkit-calendar-picker-indicator {
+          opacity: 0;
+          cursor: pointer;
+          position: absolute;
+          right: 0;
+          top: 0;
+          width: 36px;
+          height: 100%;
+          margin: 0;
+          padding: 0;
+        }
+      `}</style>
     </div>,
     document.body
   );

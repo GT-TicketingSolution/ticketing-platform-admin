@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusToggle from "@/components/ui/StatusToggle";
@@ -29,7 +29,10 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
+  Clock,
+  Pencil,
 } from "lucide-react";
+import AssignReportAccessModal from "@/components/modals/AssignReportAccessModal";
 import { colors, typography } from "@/lib/theme";
 import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import {
@@ -362,28 +365,23 @@ function AttractionPermissionTree({
 }) {
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
 
-  // Build the effective sub-modules list: always fixed ones + conditional ones if admin has access
-  const getEffectiveSubModules = (): string[] => {
-    const conditionalEnabled = CONDITIONAL_SUB_MODULES.filter((mod) =>
-      systemModules.some((sm) => {
-        const smName = (sm.name || "").toLowerCase().trim();
-        const smKey = (sm.key || "").toLowerCase().replace(/[\s_-]/g, "");
-        const modLower = mod.toLowerCase().trim();
-        const modKey = mod.toLowerCase().replace(/[\s_-]/g, "");
+  // List all modules from systemModules in the exact order returned by the API
+  const effectiveSubModules = useMemo(() => {
+    if (systemModules && systemModules.length > 0) {
+      const seen = new Set<string>();
+      const list: string[] = [];
+      systemModules.forEach((sm) => {
         const isActive = String(sm.isActive).toUpperCase() === "ACTIVE" || (sm.isActive as unknown) === true;
-        return (
-          isActive &&
-          (smName === modLower ||
-            smKey === modKey ||
-            isSameSubModule(smName, mod) ||
-            isSameSubModule(smKey, mod))
-        );
-      })
-    );
-    return [...FIXED_SUB_MODULES, ...conditionalEnabled];
-  };
-
-  const effectiveSubModules = getEffectiveSubModules();
+        const name = sm.name?.trim();
+        if (isActive && name && !seen.has(name)) {
+          seen.add(name);
+          list.push(name);
+        }
+      });
+      if (list.length > 0) return list;
+    }
+    return FIXED_SUB_MODULES;
+  }, [systemModules]);
 
   const getPermission = (attractionId: string) =>
     permissions.find((p) => p.attractionId === attractionId);
@@ -609,12 +607,13 @@ function AttractionPermissionTree({
                       style={{
                         background: "rgba(35,114,165,0.03)",
                         borderTop: `1px dashed rgba(35,114,165,0.2)`,
-                        padding: "10px 16px 10px 44px",
+                        padding: "10px 16px 12px 44px",
                         display: "flex",
                         flexDirection: "column",
-                        gap: "6px",
+                        gap: "8px",
                       }}
                     >
+                      {/* Row 1: Select All Modules */}
                       <label
                         style={{
                           display: "flex",
@@ -622,16 +621,15 @@ function AttractionPermissionTree({
                           gap: "8px",
                           cursor: "pointer",
                           userSelect: "none",
-                          paddingBottom: "6px",
+                          paddingBottom: "8px",
                           borderBottom: `1px solid rgba(35,114,165,0.15)`,
-                          marginBottom: "4px",
                         }}
                       >
                         <input
                           type="checkbox"
                           checked={Boolean(allSubsChecked)}
                           onChange={(e) => toggleAllSubModules(attraction.id, e.target.checked)}
-                          style={{ accentColor: colors.brand.accent, width: "13px", height: "13px" }}
+                          style={{ accentColor: colors.brand.accent, width: "13px", height: "13px", cursor: "pointer" }}
                         />
                         <span
                           style={{
@@ -644,41 +642,54 @@ function AttractionPermissionTree({
                         </span>
                       </label>
 
-                      {effectiveSubModules.map((mod) => {
-                        const modEnabled = isSubModuleSelected(perm?.modules, mod);
-                        return (
-                          <label
-                            key={mod}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "8px",
-                              cursor: "pointer",
-                              userSelect: "none",
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={modEnabled}
-                              onChange={() => toggleSubModule(attraction.id, mod)}
+                      {/* Row 2: All modules from systemModules API listed side by side */}
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                          gap: "12px 24px",
+                          paddingTop: "4px",
+                        }}
+                      >
+                        {effectiveSubModules.map((mod) => {
+                          const modEnabled = isSubModuleSelected(perm?.modules, mod);
+                          return (
+                            <label
+                              key={mod}
                               style={{
-                                accentColor: colors.brand.accent,
-                                width: "13px",
-                                height: "13px",
-                              }}
-                            />
-                            <span
-                              style={{
-                                fontSize: "13px",
-                                fontWeight: modEnabled ? 600 : 400,
-                                color: modEnabled ? colors.text.primary : colors.text.muted,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                cursor: "pointer",
+                                userSelect: "none",
                               }}
                             >
-                              {mod}
-                            </span>
-                          </label>
-                        );
-                      })}
+                              <input
+                                type="checkbox"
+                                checked={modEnabled}
+                                onChange={() => toggleSubModule(attraction.id, mod)}
+                                style={{
+                                  accentColor: colors.brand.accent,
+                                  width: "13px",
+                                  height: "13px",
+                                  cursor: "pointer",
+                                }}
+                              />
+                              <span
+                                style={{
+                                  fontSize: "13px",
+                                  fontWeight: modEnabled ? 600 : 400,
+                                  color: modEnabled ? colors.text.primary : colors.text.muted,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {mod}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -722,9 +733,203 @@ function ManagerManagementInner() {
   );
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [showAddPassword, setShowAddPassword] = useState(false);
   const [selectedManager, setSelectedManager] = useState<ManagerUser | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [canGrantCrowdAccess, setCanGrantCrowdAccess] = useState(true);
+
+  useEffect(() => {
+    if (selectedManager) {
+      setCanGrantCrowdAccess(
+        (selectedManager as any).canGrantCrowdAccess !== undefined
+          ? Boolean((selectedManager as any).canGrantCrowdAccess)
+          : true
+      );
+    }
+  }, [selectedManager]);
+
+  const [isReportTimingModalOpen, setIsReportTimingModalOpen] = useState(false);
+  const [reportTimingType, setReportTimingType] = useState<"date_range" | "custom_timing">("custom_timing");
+  const [reportStartDate, setReportStartDate] = useState<string>("");
+  const [reportDays, setReportDays] = useState<number>(0);
+  const [showReportNotice, setShowReportNotice] = useState<boolean>(true);
+
+  const reportTimingLabel = useMemo(() => {
+    if (reportTimingType === "date_range" && reportStartDate) {
+      return `Reports Access: From ${new Date(reportStartDate).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })}`;
+    }
+    const days = reportDays;
+    const hours = days * 24;
+    return `Reports Access: Past ${hours} Hours (${days} ${days === 1 ? "Day" : "Days"})`;
+  }, [reportTimingType, reportStartDate, reportDays]);
+
+  const handleConfirmReportTiming = (timing: {
+    type: "date_range" | "custom_timing";
+    startDate?: string;
+    days?: number;
+  }) => {
+    setReportTimingType(timing.type);
+    if (timing.startDate) setReportStartDate(timing.startDate);
+    if (timing.days) setReportDays(timing.days);
+    setShowReportNotice(true);
+  };
+
+  const renderGrantCrowdAccessBox = (isEditMode: boolean = false) => (
+    <div
+      style={{
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "0px 16px",
+        height: "50px",
+        background: "#EFF6FF",
+        border: "1px solid #DBEAFE",
+        borderRadius: "12px",
+        width: "100%",
+      }}
+    >
+      <span
+        style={{
+          fontFamily: typography.fontFamily.sans,
+          fontWeight: 600,
+          fontSize: "14px",
+          lineHeight: "20px",
+          color: "#172B3A",
+          letterSpacing: "-0.325px",
+        }}
+      >
+        Grant Crowd Access
+      </span>
+      <button
+        type="button"
+        disabled={!isEditMode}
+        onClick={() => {
+          if (isEditMode) setCanGrantCrowdAccess(!canGrantCrowdAccess);
+        }}
+        style={{
+          boxSizing: "border-box",
+          width: "36px",
+          height: "20px",
+          borderRadius: "9999px",
+          border: "none",
+          background: !isEditMode
+            ? (canGrantCrowdAccess ? "#86EFAC" : "#E2E8F0")
+            : (canGrantCrowdAccess ? "#22C55E" : "#CBD5E1"),
+          opacity: !isEditMode ? 0.75 : 1,
+          position: "relative",
+          cursor: isEditMode ? "pointer" : "not-allowed",
+          padding: "2px",
+          transition: "all 0.2s ease",
+          display: "flex",
+          alignItems: "center",
+          flexShrink: 0,
+        }}
+      >
+        <span
+          style={{
+            width: "16px",
+            height: "16px",
+            borderRadius: "9999px",
+            background: "#FFFFFF",
+            boxShadow: "0px 1px 3px rgba(0, 0, 0, 0.1), 0px 1px 2px -1px rgba(0, 0, 0, 0.1)",
+            transform: canGrantCrowdAccess ? "translateX(16px)" : "translateX(0px)",
+            transition: "transform 0.2s ease",
+            display: "block",
+          }}
+        />
+      </button>
+    </div>
+  );
+
+  const renderReportTimingNoticeBox = (isEditMode: boolean = false) => (
+    <div
+      style={{
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "0px 16px",
+        height: "50px",
+        background: "#FDF5E7",
+        border: "1px solid #FAE2B8",
+        borderRadius: "12px",
+        width: "100%",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+        <Clock size={16} color="#D97706" style={{ flexShrink: 0 }} />
+        <span
+          style={{
+            fontFamily: typography.fontFamily.sans,
+            fontWeight: 500,
+            fontSize: "12px",
+            lineHeight: "16px",
+            color: "#0F172A",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {reportTimingLabel}
+        </span>
+      </div>
+
+      {isEditMode && (
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => setIsReportTimingModalOpen(true)}
+            style={{
+              height: "28px",
+              padding: "0 12px",
+              background: "#FBB03B",
+              borderRadius: "8px",
+              border: "none",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              color: "#0F172A",
+              fontFamily: typography.fontFamily.sans,
+              fontWeight: 700,
+              fontSize: "12px",
+              lineHeight: "16px",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <Pencil size={12} color="#0F172A" />
+            <span>Edit Timing</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowReportNotice(false)}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              color: "#94A3B8",
+              fontSize: "16px",
+              fontWeight: 700,
+              lineHeight: "24px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "0 4px",
+            }}
+            title="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
+    </div>
+  );
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -1368,7 +1573,13 @@ function ManagerManagementInner() {
         >
           <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
             <button
-              onClick={() => { setSelectedManager(null); setIsEditing(false); }}
+              onClick={() => {
+                if (isEditing) {
+                  setIsEditing(false);
+                } else {
+                  setSelectedManager(null);
+                }
+              }}
               style={{
                 display: "inline-flex", alignItems: "center", gap: "6px",
                 background: colors.bg.page, color: colors.text.primary,
@@ -1378,7 +1589,7 @@ function ManagerManagementInner() {
               }}
             >
               <ArrowLeft size={16} />
-              <span>Back to Managers</span>
+              <span>{isEditing ? "Back to Manager" : "Back to Managers"}</span>
             </button>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -1460,7 +1671,7 @@ function ManagerManagementInner() {
           <div style={{ background: "#FFFFFF", borderRadius: "16px", padding: "24px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", display: "flex", flexDirection: "column", gap: "20px" }}>
             <h2 style={{ fontSize: "16px", margin: 0, fontWeight: 700, fontFamily: typography.fontFamily.sans, color: colors.text.primary }}>Edit Manager Information</h2>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+            <div className="edit-manager-fields-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
               <div>
                 <label style={{ fontSize: "13px", fontWeight: 600 }}>Full Name</label>
                 <input type="text" value={selectedManager.name} onChange={(e) => setSelectedManager({ ...selectedManager, name: e.target.value })} style={inputStyle(false)} />
@@ -1470,7 +1681,7 @@ function ManagerManagementInner() {
                 <input type="email" value={selectedManager.email} onChange={(e) => setSelectedManager({ ...selectedManager, email: e.target.value })} style={inputStyle(false)} />
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+            <div className="edit-manager-fields-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
               <div>
                 <label style={{ fontSize: "13px", fontWeight: 600 }}>Phone Number</label>
                 <input type="text" maxLength={10} value={selectedManager.phone || ""} onChange={(e) => setSelectedManager({ ...selectedManager, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })} style={inputStyle(false)} />
@@ -1482,6 +1693,10 @@ function ManagerManagementInner() {
                   onChange={(s) => setSelectedManager({ ...selectedManager, status: s === "Active" ? "ACTIVE" : "INACTIVE" })}
                 />
               </div>
+            </div>
+            <div className="manager-access-notices-grid" style={{ display: "grid", gridTemplateColumns: showReportNotice ? "1fr 1fr" : "1fr", gap: "16px", width: "100%" }}>
+              {renderGrantCrowdAccessBox(true)}
+              {showReportNotice && renderReportTimingNoticeBox(true)}
             </div>
 
             {/* Attraction Permission tree in edit mode */}
@@ -1574,6 +1789,20 @@ function ManagerManagementInner() {
               </div>
             </div>
 
+            {/* View Mode: Grant Crowd Access & Report Access Notice Boxes (above Attraction & Module Permissions) */}
+            <div
+              className="manager-access-notices-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns: showReportNotice ? "1fr 1fr" : "1fr",
+                gap: "20px",
+                width: "100%",
+              }}
+            >
+              {renderGrantCrowdAccessBox(false)}
+              {showReportNotice && renderReportTimingNoticeBox(false)}
+            </div>
+
             {/* Permission summary */}
             <div style={{ background: "#FFFFFF", borderRadius: "16px", padding: "20px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", paddingBottom: "14px", marginBottom: "14px", borderBottom: `1px solid ${colors.header.border}` }}>
@@ -1659,6 +1888,27 @@ function ManagerManagementInner() {
             </div>
           </div>
         )}
+
+        {/* Assign Report Access Timing Modal */}
+        <AssignReportAccessModal
+          isOpen={isReportTimingModalOpen}
+          onClose={() => setIsReportTimingModalOpen(false)}
+          onConfirm={handleConfirmReportTiming}
+          initialType={reportTimingType}
+          initialStartDate={reportStartDate}
+          initialDays={reportDays}
+        />
+
+        <style jsx global>{`
+          @media (max-width: 640px) {
+            .edit-manager-fields-grid {
+              grid-template-columns: 1fr !important;
+            }
+            .manager-access-notices-grid {
+              grid-template-columns: 1fr !important;
+            }
+          }
+        `}</style>
       </div>
     );
   }
@@ -1791,6 +2041,17 @@ function ManagerManagementInner() {
           )
         }
       />
+
+      <style jsx global>{`
+        @media (max-width: 640px) {
+          .edit-manager-fields-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .manager-access-notices-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

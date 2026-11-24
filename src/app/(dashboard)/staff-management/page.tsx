@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense, useRef } from "react";
+import React, { useState, useEffect, Suspense, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Search,
@@ -20,6 +20,7 @@ import {
   Loader2,
   BarChart2,
   Clock,
+  Pencil,
 } from "lucide-react";
 import { colors, typography } from "@/lib/theme";
 import { StaffUser } from "./types";
@@ -35,7 +36,8 @@ import StatusFilterSelect from "@/components/ui/StatusFilterSelect";
 import MultiSelectDropdown from "@/components/ui/MultiSelectDropdown";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import ExportButtons from "@/components/ui/ExportButtons";
-import ReportTimingModal from "@/components/modals/ReportTimingModal";
+// import ReportTimingModal from "@/components/modals/ReportTimingModal";
+import AssignReportAccessModal from "@/components/modals/AssignReportAccessModal";
 import { useModalBodyLock } from "@/hooks/useModalBodyLock";
 import AddForm from "@/components/form/AddForm";
 import {
@@ -366,6 +368,28 @@ function StaffManagementInner() {
   const [timingModalTarget, setTimingModalTarget] = useState<"add" | "edit">("add");
   const [pendingRoleSelection, setPendingRoleSelection] = useState<string[] | null>(null);
 
+  // Grant Crowd Access & Report Timing Notice State
+  const [canGrantCrowdAccess, setCanGrantCrowdAccess] = useState<boolean>(true);
+  const [showReportNotice, setShowReportNotice] = useState<boolean>(true);
+  const [reportTimingType, setReportTimingType] = useState<"date_range" | "custom_timing">("custom_timing");
+  const [reportStartDate, setReportStartDate] = useState<string>("");
+  const [reportDays, setReportDays] = useState<number>(1);
+
+  useEffect(() => {
+    if (selectedStaff) {
+      setCanGrantCrowdAccess(
+        (selectedStaff as any).canGrantCrowdAccess !== undefined
+          ? Boolean((selectedStaff as any).canGrantCrowdAccess)
+          : (selectedStaff as any).grantCrowdAccess !== undefined
+          ? Boolean((selectedStaff as any).grantCrowdAccess)
+          : true
+      );
+      const hours = Number(selectedStaff.reportAccessTiming);
+      setReportDays(Math.round(hours / 24) || 1);
+      setShowReportNotice(true);
+    }
+  }, [selectedStaff]);
+
   // Form State for Add / Edit
   const [formData, setFormData] = useState({
     name: "",
@@ -540,6 +564,198 @@ function StaffManagementInner() {
     setPendingRoleSelection(null);
     setIsReportTimingModalOpen(false);
   };
+
+  const reportTimingLabel = useMemo(() => {
+    if (reportTimingType === "date_range" && reportStartDate) {
+      return `Reports Access: From ${new Date(reportStartDate).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })}`;
+    }
+    const rawHours = isEditing ? formData.reportAccessTiming : selectedStaff?.reportAccessTiming;
+    const hours = Number(rawHours ?? (reportDays * 24)) || (reportDays * 24);
+    const days = Math.round(hours / 24) || 1;
+    return `Reports Access: Past ${hours} Hours (${days} ${days === 1 ? "Day" : "Days"})`;
+  }, [reportTimingType, reportStartDate, isEditing, formData.reportAccessTiming, selectedStaff?.reportAccessTiming, reportDays]);
+
+  const handleConfirmReportTiming = (timing: {
+    type: "date_range" | "custom_timing";
+    startDate?: string;
+    days?: number;
+  }) => {
+    setReportTimingType(timing.type);
+    if (timing.startDate) setReportStartDate(timing.startDate);
+    const days = timing.days || 1;
+    setReportDays(days);
+    handleApplyReportTiming(days * 24);
+    setShowReportNotice(true);
+  };
+
+  const renderGrantCrowdAccessBox = (isEditMode: boolean) => (
+    <div
+      style={{
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "0px 16px",
+        height: "50px",
+        background: "#EFF6FF",
+        border: "1px solid #DBEAFE",
+        borderRadius: "12px",
+        width: "100%",
+      }}
+    >
+      <span
+        style={{
+          fontFamily: typography.fontFamily.sans,
+          fontWeight: 600,
+          fontSize: "14px",
+          lineHeight: "20px",
+          color: "#172B3A",
+          letterSpacing: "-0.325px",
+        }}
+      >
+        Grant Crowd Access
+      </span>
+      <button
+        type="button"
+        disabled={!isEditMode}
+        onClick={() => {
+          if (isEditMode) setCanGrantCrowdAccess(!canGrantCrowdAccess);
+        }}
+        style={{
+          boxSizing: "border-box",
+          width: "36px",
+          height: "20px",
+          borderRadius: "9999px",
+          border: "none",
+          background: !isEditMode
+            ? (canGrantCrowdAccess ? "#86EFAC" : "#E2E8F0")
+            : (canGrantCrowdAccess ? "#22C55E" : "#CBD5E1"),
+          opacity: !isEditMode ? 0.75 : 1,
+          position: "relative",
+          cursor: isEditMode ? "pointer" : "not-allowed",
+          padding: "2px",
+          transition: "all 0.2s ease",
+          display: "flex",
+          alignItems: "center",
+          flexShrink: 0,
+        }}
+      >
+        <span
+          style={{
+            width: "16px",
+            height: "16px",
+            borderRadius: "9999px",
+            background: "#FFFFFF",
+            boxShadow: "0px 1px 3px rgba(0, 0, 0, 0.1), 0px 1px 2px -1px rgba(0, 0, 0, 0.1)",
+            transform: canGrantCrowdAccess ? "translateX(16px)" : "translateX(0px)",
+            transition: "transform 0.2s ease",
+            display: "block",
+          }}
+        />
+      </button>
+    </div>
+  );
+
+  const renderReportTimingNoticeBox = (isEditMode: boolean) => (
+    <div
+      style={{
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "0px 16px",
+        height: "50px",
+        background: "#FDF5E7",
+        border: "1px solid #FAE2B8",
+        borderRadius: "12px",
+        width: "100%",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+        <Clock size={16} color="#D97706" style={{ flexShrink: 0 }} />
+        <span
+          style={{
+            fontFamily: typography.fontFamily.sans,
+            fontWeight: 500,
+            fontSize: "12px",
+            lineHeight: "16px",
+            color: "#0F172A",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {reportTimingLabel}
+        </span>
+      </div>
+
+      {isEditMode && (
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => {
+              setTimingModalTarget("edit");
+              setIsReportTimingModalOpen(true);
+            }}
+            style={{
+              height: "28px",
+              padding: "0 12px",
+              background: "#FBB03B",
+              borderRadius: "8px",
+              border: "none",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              color: "#0F172A",
+              fontFamily: typography.fontFamily.sans,
+              fontWeight: 700,
+              fontSize: "12px",
+              lineHeight: "16px",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <Pencil size={12} color="#0F172A" />
+            <span>Edit Timing</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowReportNotice(false);
+              setFormData((prev) => ({
+                ...prev,
+                role: prev.role.filter((r) => r !== "Reports Access"),
+                canViewReports: false,
+                reportAccessTiming: null,
+              }));
+            }}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              color: "#94A3B8",
+              fontSize: "16px",
+              fontWeight: 700,
+              lineHeight: "24px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "0 4px",
+            }}
+            title="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
+    </div>
+  );
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1097,8 +1313,11 @@ function StaffManagementInner() {
           <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
             <button
               onClick={() => {
-                setSelectedStaff(null);
-                setIsEditing(false);
+                if (isEditing) {
+                  setIsEditing(false);
+                } else {
+                  setSelectedStaff(null);
+                }
               }}
               style={{
                 display: "inline-flex",
@@ -1116,7 +1335,7 @@ function StaffManagementInner() {
               }}
             >
               <ArrowLeft size={16} />
-              <span>Back to Staff List</span>
+              <span>{isEditing ? "Back to Staff" : "Back to Staff List"}</span>
             </button>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -1412,85 +1631,22 @@ function StaffManagementInner() {
                   forceClose={isReportTimingModalOpen}
                   error={formErrors.role}
                 />
-                {formData.role.includes("Reports Access") && (
-                  <div
-                    style={{
-                      marginTop: "8px",
-                      padding: "10px 14px",
-                      borderRadius: "8px",
-                      background: "rgba(244, 188, 67, 0.12)",
-                      border: "1px solid rgba(244, 188, 67, 0.45)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "10px",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <Clock size={16} color="#B45309" />
-                      <span style={{ fontSize: "13px", fontWeight: 600, color: "#0C2A42" }}>
-                        Reports Access:{" "}
-                        <span style={{ fontWeight: 700 }}>
-                          Past {formData.reportAccessTiming !== null && formData.reportAccessTiming !== undefined
-                            ? Number(formData.reportAccessTiming)
-                            : 24} Hours ({((formData.reportAccessTiming !== null && formData.reportAccessTiming !== undefined
-                              ? Number(formData.reportAccessTiming)
-                              : 24) / 24).toFixed(1).replace(/\.0$/, "")} Days)
-                        </span>
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTimingModalTarget("edit");
-                          setIsReportTimingModalOpen(true);
-                        }}
-                        style={{
-                          background: colors.brand.primary,
-                          border: "none",
-                          color: colors.sidebar.activeText,
-                          padding: "4px 10px",
-                          borderRadius: "6px",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          boxShadow: "0 1px 4px rgba(244,188,67,0.3)",
-                        }}
-                      >
-                        <Edit2 size={12} /> Edit Timing
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFormData({
-                            ...formData,
-                            role: formData.role.filter((r) => r !== "Reports Access"),
-                            canViewReports: false,
-                            reportAccessTiming: null,
-                          });
-                        }}
-                        style={{
-                          background: "transparent",
-                          border: "none",
-                          color: "#64748B",
-                          padding: "4px",
-                          borderRadius: "4px",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                        }}
-                        title="Remove Reports Access"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
+            </div>
+
+            {/* Grant Crowd Access and Reports Access Notice (Edit Mode) */}
+            <div
+              className="staff-access-notices-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns: showReportNotice ? "1fr 1fr" : "1fr",
+                gap: "16px",
+                width: "100%",
+                marginTop: "16px",
+              }}
+            >
+              {renderGrantCrowdAccessBox(true)}
+              {showReportNotice && renderReportTimingNoticeBox(true)}
             </div>
 
             {/* Status Toggle — Edit Form */}
@@ -1645,61 +1801,6 @@ function StaffManagementInner() {
                   Performance &amp; Account Status
                 </h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  {/* Reports Access Privilege Card */}
-                  {(selectedStaff.canViewReports || selectedRoles.some((r) => r.toLowerCase().startsWith("reports access"))) && (
-                    <div
-                      style={{
-                        background: "rgba(244, 188, 67, 0.12)",
-                        borderRadius: "12px",
-                        padding: "16px 20px",
-                        border: "1.5px solid rgba(244, 188, 67, 0.45)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "12px",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <div
-                          style={{
-                            width: "38px",
-                            height: "38px",
-                            borderRadius: "10px",
-                            background: "#F4BC43",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                            boxShadow: "0 2px 6px rgba(244,188,67,0.3)",
-                          }}
-                        >
-                          <BarChart2 size={20} color="#0C2A42" strokeWidth={2.2} />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: "14px", fontWeight: 700, color: "#0C2A42" }}>
-                            Reports Access: Past {selectedStaff.reportAccessTiming || 24} Hours ({((Number(selectedStaff.reportAccessTiming) || 24) / 24).toFixed(1).replace(/\.0$/, "")} Days)
-                          </div>
-                          <div style={{ fontSize: "12px", color: "#64748B", marginTop: "2px" }}>
-                            Staff member can view historical reports and analytics within this assigned past time window.
-                          </div>
-                        </div>
-                      </div>
-                      <span
-                        style={{
-                          background: "#0C2A42",
-                          color: "#F4BC43",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          padding: "4px 10px",
-                          borderRadius: "6px",
-                          letterSpacing: "0.5px",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Active
-                      </span>
-                    </div>
-                  )}
                   <div
                     style={{
                       background: "rgba(35,114,165,0.05)",
@@ -1778,6 +1879,20 @@ function StaffManagementInner() {
               </div>
             </div>
 
+            {/* Grant Crowd Access and Reports Access Notice (View Mode) */}
+            <div
+              className="staff-access-notices-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns: showReportNotice ? "1fr 1fr" : "1fr",
+                gap: "20px",
+                width: "100%",
+              }}
+            >
+              {renderGrantCrowdAccessBox(false)}
+              {showReportNotice && renderReportTimingNoticeBox(false)}
+            </div>
+
             {/* Attraction Assignment */}
             <div
               style={{
@@ -1834,6 +1949,8 @@ function StaffManagementInner() {
             </div>
           </div>
         )}
+        {/* Reports Access Timing Modal */}
+        {/*
         <ReportTimingModal
           isOpen={isReportTimingModalOpen}
           onClose={handleCloseReportTimingModal}
@@ -1843,6 +1960,23 @@ function StaffManagementInner() {
             : 24}
           targetLabel={timingModalTarget === "add" ? "New Staff Member" : (formData.name || "Staff Member")}
         />
+        */}
+        <AssignReportAccessModal
+          isOpen={isReportTimingModalOpen}
+          onClose={handleCloseReportTimingModal}
+          onConfirm={handleConfirmReportTiming}
+          initialType={reportTimingType}
+          initialStartDate={reportStartDate}
+          initialDays={reportDays}
+        />
+
+        <style jsx global>{`
+          @media (max-width: 640px) {
+            .staff-access-notices-grid {
+              grid-template-columns: 1fr !important;
+            }
+          }
+        `}</style>
       </div>
     );
   }
@@ -2393,6 +2527,7 @@ function StaffManagementInner() {
       )}
 
       {/* Reports Access Timing Modal */}
+      {/*
       <ReportTimingModal
         isOpen={isReportTimingModalOpen}
         onClose={handleCloseReportTimingModal}
@@ -2402,6 +2537,23 @@ function StaffManagementInner() {
           : 24}
         targetLabel={timingModalTarget === "add" ? "New Staff Member" : (formData.name || "Staff Member")}
       />
+      */}
+      <AssignReportAccessModal
+        isOpen={isReportTimingModalOpen}
+        onClose={handleCloseReportTimingModal}
+        onConfirm={handleConfirmReportTiming}
+        initialType={reportTimingType}
+        initialStartDate={reportStartDate}
+        initialDays={reportDays}
+      />
+
+      <style jsx global>{`
+        @media (max-width: 640px) {
+          .staff-access-notices-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
