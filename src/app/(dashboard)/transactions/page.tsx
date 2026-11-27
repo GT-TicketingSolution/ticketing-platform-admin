@@ -33,6 +33,7 @@ import {
   renderStatusBadgeHTML,
   fetchAllPages,
 } from "@/lib/exportUtils";
+import { AttractionFilterDropdown } from "@/components/ui/AttractionFilterDropdown";
 
 
 // ── Status badge renderer ─────────────────────────────────────────────────────
@@ -67,7 +68,7 @@ export default function TransactionsPage() {
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedAttractionId, setSelectedAttractionId] = useState("All");
+  const [selectedAttractionIds, setSelectedAttractionIds] = useState<string[]>([]);
   const [selectedPaymentMode, setSelectedPaymentMode] = useState("All");
   const [selectedStatus, setSelectedStatus] = useState("All");
   const [fromDate, setFromDate] = useState("");
@@ -89,7 +90,7 @@ export default function TransactionsPage() {
     page: (v) => { const n = Number(v); if (n > 0) setCurrentPage(n); },
     limit: (v) => { const n = Number(v); if (n > 0) setPageSize(n); },
     search: (v) => { setSearchQuery(v); setDebouncedSearch(v); },
-    attractionId: (v) => setSelectedAttractionId(v),
+    attractionId: (v) => setSelectedAttractionIds(v && v !== "All" && v !== "ALL" ? v.split(",").filter(Boolean) : []),
     paymentMode: (v) => setSelectedPaymentMode(v),
     status: (v) => setSelectedStatus(v),
     fromDate: (v) => setFromDate(v),
@@ -104,7 +105,7 @@ export default function TransactionsPage() {
       return;
     }
     setCurrentPage(1);
-  }, [debouncedSearch, selectedAttractionId, selectedPaymentMode, selectedStatus, fromDate, toDate]);
+  }, [debouncedSearch, selectedAttractionIds, selectedPaymentMode, selectedStatus, fromDate, toDate]);
 
   // Modal state
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionListItem | null>(null);
@@ -136,7 +137,7 @@ export default function TransactionsPage() {
     page: currentPage,
     limit: pageSize,
     search: debouncedSearch || undefined,
-    attractionId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
+    attractionId: selectedAttractionIds.length > 0 ? selectedAttractionIds.join(",") : undefined,
     paymentMode: selectedPaymentMode !== "All" ? selectedPaymentMode : undefined,
     status: selectedStatus !== "All" ? selectedStatus : undefined,
     fromDate: fromDate || undefined,
@@ -150,6 +151,27 @@ export default function TransactionsPage() {
 
   const transactions = data?.items ?? [];
   const pagination = data?.pagination ?? { page: 1, limit: pageSize, total: 0, totalPages: 0 };
+
+  // Client-side filtering when multiple attractions are selected
+  const displayedTransactions = useMemo(() => {
+    if (selectedAttractionIds.length === 0) return transactions;
+    return transactions.filter((t: any) => {
+      if (Array.isArray(t.attractions) && t.attractions.length > 0) {
+        return t.attractions.some(
+          (a: any) =>
+            selectedAttractionIds.includes(a.id) ||
+            selectedAttractionIds.includes(a.name)
+        );
+      }
+      if (t.attractionId) {
+        return (
+          selectedAttractionIds.includes(t.attractionId) ||
+          selectedAttractionIds.includes(t.attractionName)
+        );
+      }
+      return true;
+    });
+  }, [transactions, selectedAttractionIds]);
 
   // Accumulate unique attractions from transaction list responses so dropdown options remain stable
   const [allAttractions, setAllAttractions] = useState<Array<{ id: string; name: string }>>([]);
@@ -177,12 +199,12 @@ export default function TransactionsPage() {
     return [{ id: "All", name: "All Attractions" }, ...unique];
   }, [allAttractions, data?.attractions]);
 
-  const isFiltered = !!debouncedSearch || selectedAttractionId !== "All" || selectedPaymentMode !== "All" || selectedStatus !== "All" || !!fromDate || !!toDate;
+  const isFiltered = !!debouncedSearch || selectedAttractionIds.length > 0 || selectedPaymentMode !== "All" || selectedStatus !== "All" || !!fromDate || !!toDate;
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleResetFilters = () => {
     setSearchQuery("");
-    setSelectedAttractionId("All");
+    setSelectedAttractionIds([]);
     setSelectedPaymentMode("All");
     setSelectedStatus("All");
     setFromDate("");
@@ -226,9 +248,11 @@ export default function TransactionsPage() {
   // ── Export handlers ───────────────────────────────────────────────────────
   const getFilterInfo = () => {
     const parts: string[] = [];
-    if (selectedAttractionId !== "All") {
-      const found = attractionOptions.find((a) => a.id === selectedAttractionId);
-      if (found) parts.push(`Attraction: ${found.name}`);
+    if (selectedAttractionIds.length > 0) {
+      const names = selectedAttractionIds.map(
+        (id) => attractionOptions.find((a) => a.id === id)?.name || id
+      );
+      parts.push(`Attraction: ${names.join(", ")}`);
     }
     if (fromDate || toDate) parts.push(`Date: ${fromDate || "Start"} → ${toDate || "End"}`);
     if (selectedPaymentMode !== "All") parts.push(`Mode: ${selectedPaymentMode}`);
@@ -240,7 +264,7 @@ export default function TransactionsPage() {
   const getExportData = async (scope: ExportScope): Promise<TransactionListItem[]> => {
     const base: TransactionListParams = {
       search: debouncedSearch || undefined,
-      attractionId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
+      attractionId: selectedAttractionIds.length > 0 ? selectedAttractionIds.join(",") : undefined,
       paymentMode: selectedPaymentMode !== "All" ? selectedPaymentMode : undefined,
       status: selectedStatus !== "All" ? selectedStatus : undefined,
       fromDate: fromDate || undefined,
@@ -394,28 +418,13 @@ export default function TransactionsPage() {
         {/* Right Filters */}
         <div style={{ display: "flex", alignItems: "flex-end", gap: "14px", flexWrap: "wrap" }}>
           {/* Attraction Selector */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <label style={{ fontFamily: typography.fontFamily.sans, fontWeight: 600, fontSize: "10px", color: "rgba(81,82,82,0.65)" }}>
-              Attraction
-            </label>
-            <select
-              value={selectedAttractionId}
-              onChange={(e) => setSelectedAttractionId(e.target.value)}
-              style={{
-                height: "40px", padding: "0 12px", background: "#FFFFFF",
-                border: "0.5px solid rgba(179,175,175,0.66)", borderRadius: "4px",
-                fontFamily: typography.fontFamily.sans, fontWeight: 700,
-                fontSize: "12px", color: "#173F63", outline: "none",
-                cursor: "pointer", minWidth: "130px",
-              }}
-            >
-              {attractionOptions.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <AttractionFilterDropdown
+            label="Attraction"
+            options={attractionOptions}
+            selectedIds={selectedAttractionIds}
+            onChange={(ids) => setSelectedAttractionIds(ids)}
+            width={184}
+          />
 
           {/* Payment Mode */}
           <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
@@ -584,7 +593,7 @@ export default function TransactionsPage() {
             ),
           },
         ]}
-        data={transactions}
+        data={displayedTransactions}
         keyExtractor={(item) => item.id}
         pageSize={pageSize}
         currentPage={currentPage}

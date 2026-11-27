@@ -28,6 +28,7 @@ import BookingDetailsModal from "@/components/modals/BookingDetailsModal";
 import EditBookingModal from "@/components/modals/EditBookingModal";
 import { exportToCSV, exportTableToPDF, renderStatusBadgeHTML, fetchAllPages } from "@/lib/exportUtils";
 import { ExportScope } from "@/components/ui/ExportButtons";
+import { AttractionFilterDropdown } from "@/components/ui/AttractionFilterDropdown";
 
 
 // ── Skeleton shimmer ─────────────────────────────────────────────────────────
@@ -117,7 +118,7 @@ export default function BookingsPage() {
   // ── Filter State ─────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [selectedAttractionId, setSelectedAttractionId] = useState("All");
+  const [selectedAttractionIds, setSelectedAttractionIds] = useState<string[]>([]);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("All");
@@ -150,8 +151,8 @@ export default function BookingsPage() {
     page: (v) => { const n = Number(v); if (n > 0) setCurrentPage(n); },
     limit: (v) => { const n = Number(v); if (n > 0) setPageSize(n); },
     search: (v) => { setSearch(v); setDebouncedSearch(v); },
-    attractionId: (v) => setSelectedAttractionId(v),
-    attractionManagementId: (v) => setSelectedAttractionId(v),
+    attractionId: (v) => setSelectedAttractionIds(v && v !== "All" && v !== "ALL" ? v.split(",").filter(Boolean) : []),
+    attractionManagementId: (v) => setSelectedAttractionIds(v && v !== "All" && v !== "ALL" ? v.split(",").filter(Boolean) : []),
     status: (v) => setSelectedStatus(v),
     fromDate: (v) => setFromDate(v),
     toDate: (v) => setToDate(v),
@@ -165,7 +166,7 @@ export default function BookingsPage() {
       return;
     }
     setCurrentPage(1);
-  }, [debouncedSearch, selectedAttractionId, fromDate, toDate, selectedStatus]);
+  }, [debouncedSearch, selectedAttractionIds, fromDate, toDate, selectedStatus]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -184,7 +185,7 @@ export default function BookingsPage() {
     page: currentPage,
     limit: pageSize,
     search: debouncedSearch || undefined,
-    attractionManagementId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
+    attractionManagementId: selectedAttractionIds.length > 0 ? selectedAttractionIds.join(",") : undefined,
     status: selectedStatus !== "All" ? selectedStatus : undefined,
     fromDate: fromDate || undefined,
     toDate: toDate || undefined,
@@ -200,6 +201,27 @@ export default function BookingsPage() {
   const bookings = bookingsData?.items ?? [];
   const pagination = bookingsData?.pagination;
   const totalPages = pagination?.totalPages ?? 1;
+
+  // Client-side filtering when multiple attractions are selected
+  const displayedBookings = useMemo(() => {
+    if (selectedAttractionIds.length === 0) return bookings;
+    return bookings.filter((b) => {
+      if (Array.isArray(b.attractions) && b.attractions.length > 0) {
+        return b.attractions.some(
+          (a) =>
+            selectedAttractionIds.includes(a.id) ||
+            selectedAttractionIds.includes(a.name)
+        );
+      }
+      if (b.attraction?.id) {
+        return (
+          selectedAttractionIds.includes(b.attraction.id) ||
+          selectedAttractionIds.includes(b.attraction.name)
+        );
+      }
+      return true;
+    });
+  }, [bookings, selectedAttractionIds]);
 
   // Accumulate unique attractions discovered from booking items and list response so dropdown options remain stable
   const [allAttractions, setAllAttractions] = useState<Array<{ id: string; name: string }>>([]);
@@ -291,21 +313,23 @@ export default function BookingsPage() {
   const emptyMessage = useMemo(() => {
     const parts: string[] = [];
     if (debouncedSearch) parts.push(`"${debouncedSearch}"`);
-    if (selectedAttractionId !== "All") {
-      const found = attractionOptions.find((o) => o.id === selectedAttractionId);
-      if (found) parts.push(found.name);
+    if (selectedAttractionIds.length > 0) {
+      const names = selectedAttractionIds.map(
+        (id) => attractionOptions.find((o) => o.id === id)?.name || id
+      );
+      parts.push(names.join(", "));
     }
     if (selectedStatus !== "All") parts.push(selectedStatus.charAt(0) + selectedStatus.slice(1).toLowerCase());
     if (fromDate || toDate) parts.push("the selected date range");
     if (parts.length === 0) return "No bookings found.";
     return `No bookings found matching ${parts.join(" · ")}.`;
-  }, [debouncedSearch, selectedAttractionId, selectedStatus, fromDate, toDate, attractionOptions]);
+  }, [debouncedSearch, selectedAttractionIds, selectedStatus, fromDate, toDate, attractionOptions]);
 
   // ── Handlers 
   const handleResetFilters = () => {
     setSearch("");
     setDebouncedSearch("");
-    setSelectedAttractionId("All");
+    setSelectedAttractionIds([]);
     setFromDate("");
     setToDate("");
     setSelectedStatus("All");
@@ -362,7 +386,7 @@ export default function BookingsPage() {
   const getExportData = async (scope: ExportScope): Promise<BookingListItem[]> => {
     const params = {
       search: debouncedSearch || undefined,
-      attractionManagementId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
+      attractionManagementId: selectedAttractionIds.length > 0 ? selectedAttractionIds.join(",") : undefined,
       status: selectedStatus !== "All" ? selectedStatus : undefined,
       fromDate: fromDate || undefined,
       toDate: toDate || undefined,
@@ -387,13 +411,15 @@ export default function BookingsPage() {
     }
   };
 
-  const isFiltered = !!debouncedSearch || selectedAttractionId !== "All" || selectedStatus !== "All" || !!fromDate || !!toDate;
+  const isFiltered = !!debouncedSearch || selectedAttractionIds.length > 0 || selectedStatus !== "All" || !!fromDate || !!toDate;
 
   const getFilterInfo = () => {
     const parts: string[] = [];
-    if (selectedAttractionId !== "All") {
-      const found = attractionOptions.find((a) => a.id === selectedAttractionId);
-      parts.push(`Attraction: ${found?.name || selectedAttractionId}`);
+    if (selectedAttractionIds.length > 0) {
+      const names = selectedAttractionIds.map(
+        (id) => attractionOptions.find((a) => a.id === id)?.name || id
+      );
+      parts.push(`Attraction: ${names.join(", ")}`);
     }
     if (selectedStatus !== "All") parts.push(`Status: ${selectedStatus}`);
     if (fromDate || toDate) parts.push(`Date: ${fromDate || "Start"} → ${toDate || "End"}`);
@@ -592,45 +618,13 @@ export default function BookingsPage() {
         <div style={{ display: "flex", alignItems: "flex-end", gap: "14px", flexWrap: "wrap" }}>
 
           {/* Attraction Dropdown */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            <label
-              style={{
-                fontFamily: typography.fontFamily.sans,
-                fontWeight: 600,
-                fontSize: "11px",
-                color: "rgba(81, 82, 82, 0.75)",
-                lineHeight: "14px",
-                display: "block",
-              }}
-            >
-              Attraction
-            </label>
-            <select
-              value={selectedAttractionId}
-              onChange={(e) => setSelectedAttractionId(e.target.value)}
-              style={{
-                height: "40px",
-                width: "184px",
-                borderRadius: "4px",
-                border: "0.5px solid #B3AFAF",
-                padding: "0 12px",
-                fontFamily: typography.fontFamily.sans,
-                fontWeight: 500,
-                fontSize: "12px",
-                color: "#173F63",
-                outline: "none",
-                background: "#FFFFFF",
-                cursor: "pointer",
-                boxSizing: "border-box",
-              }}
-            >
-              {attractionOptions.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <AttractionFilterDropdown
+            label="Attraction"
+            options={attractionOptions}
+            selectedIds={selectedAttractionIds}
+            onChange={(ids) => setSelectedAttractionIds(ids)}
+            width={184}
+          />
 
           {/* Date Range Picker */}
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -889,7 +883,7 @@ export default function BookingsPage() {
             },
           },
         ]}
-        data={bookings}
+        data={displayedBookings}
         keyExtractor={(item: BookingListItem) => item.id}
         pageSize={pageSize}
         currentPage={currentPage}

@@ -44,6 +44,7 @@ import {
   renderStatusBadgeHTML,
   fetchAllPages,
 } from "@/lib/exportUtils";
+import { AttractionFilterDropdown } from "@/components/ui/AttractionFilterDropdown";
 import type {
   ComplimentaryPass,
   Reference,
@@ -139,7 +140,7 @@ export default function ComplimentaryPassesPage() {
   // ── Complimentary Passes Filters ───────────────────────────────────────────
   const [passSearch, setPassSearch] = useState("");
   const [debouncedPassSearch, setDebouncedPassSearch] = useState("");
-  const [selectedAttraction, setSelectedAttraction] = useState("ALL");
+  const [selectedAttractions, setSelectedAttractions] = useState<string[]>([]);
   const [selectedPassStatus, setSelectedPassStatus] = useState("ALL");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -171,7 +172,7 @@ export default function ComplimentaryPassesPage() {
       if (activeTab === "references") { setRefSearch(v); setDebouncedRefSearch(v); }
       else { setPassSearch(v); setDebouncedPassSearch(v); }
     },
-    attractionId: (v) => setSelectedAttraction(v),
+    attractionId: (v) => setSelectedAttractions(v && v !== "ALL" && v !== "All" ? v.split(",").filter(Boolean) : []),
     status: (v) => setSelectedPassStatus(v),
     fromDate: (v) => setFromDate(v),
     toDate: (v) => setToDate(v),
@@ -184,7 +185,7 @@ export default function ComplimentaryPassesPage() {
       return;
     }
     setPassPage(1);
-  }, [debouncedPassSearch, selectedAttraction, selectedPassStatus, fromDate, toDate]);
+  }, [debouncedPassSearch, selectedAttractions, selectedPassStatus, fromDate, toDate]);
 
   // ── References Filters ─────────────────────────────────────────────────────
   const [refSearch, setRefSearch] = useState("");
@@ -217,7 +218,7 @@ export default function ComplimentaryPassesPage() {
     page: passPage,
     limit: passPageSize,
     search: debouncedPassSearch || undefined,
-    attractionId: selectedAttraction !== "ALL" ? selectedAttraction : undefined,
+    attractionId: selectedAttractions.length > 0 ? selectedAttractions.join(",") : undefined,
     fromDate: fromDate || undefined,
     toDate: toDate || undefined,
     status: selectedPassStatus !== "ALL" ? selectedPassStatus : undefined,
@@ -229,6 +230,19 @@ export default function ComplimentaryPassesPage() {
 
   const passes = passesResponse?.items ?? [];
   const passPagination = passesResponse?.pagination ?? { page: 1, limit: passPageSize, total: 0, totalPages: 0 };
+
+  // Client-side filtering when multiple attractions are selected
+  const displayedPasses = useMemo(() => {
+    if (selectedAttractions.length === 0) return passes;
+    return passes.filter((p: any) => {
+      const aId = p.attractionId || p.attraction?.id;
+      const aName = p.attractionName || p.attraction?.name;
+      return (
+        (aId && selectedAttractions.includes(aId)) ||
+        (aName && selectedAttractions.includes(aName))
+      );
+    });
+  }, [passes, selectedAttractions]);
 
   // References query
   const refQueryParams = {
@@ -280,7 +294,7 @@ export default function ComplimentaryPassesPage() {
 
   const handleResetPassFilters = () => {
     setPassSearch("");
-    setSelectedAttraction("ALL");
+    setSelectedAttractions([]);
     setSelectedPassStatus("ALL");
     setFromDate("");
     setToDate("");
@@ -289,7 +303,7 @@ export default function ComplimentaryPassesPage() {
 
   const isPassFiltered =
     !!debouncedPassSearch ||
-    selectedAttraction !== "ALL" ||
+    selectedAttractions.length > 0 ||
     selectedPassStatus !== "ALL" ||
     !!fromDate ||
     !!toDate;
@@ -327,9 +341,15 @@ export default function ComplimentaryPassesPage() {
 
   // ── Export Handlers: Complimentary Passes ─────────────────────────────────
   const getPassesFilterInfo = () => {
+    const attractionNames =
+      selectedAttractions.length > 0
+        ? selectedAttractions
+            .map((id) => attractionOptions.find((a) => a.id === id)?.name || id)
+            .join(", ")
+        : null;
     const parts = [
       debouncedPassSearch ? `Search: "${debouncedPassSearch}"` : null,
-      selectedAttraction !== "ALL" ? `Attraction: ${selectedAttraction}` : null,
+      attractionNames ? `Attraction: ${attractionNames}` : null,
       selectedPassStatus !== "ALL" ? `Status: ${selectedPassStatus}` : null,
       fromDate ? `Date: ${fromDate} → ${toDate || "Now"}` : null,
     ].filter(Boolean);
@@ -339,7 +359,7 @@ export default function ComplimentaryPassesPage() {
   const getPassesExportData = async (scope: ExportScope): Promise<ComplimentaryPass[]> => {
     const base: ComplimentaryPassListParams = {
       search: debouncedPassSearch || undefined,
-      attractionId: selectedAttraction !== "ALL" ? selectedAttraction : undefined,
+      attractionId: selectedAttractions.length > 0 ? selectedAttractions.join(",") : undefined,
       fromDate: fromDate || undefined,
       toDate: toDate || undefined,
       status: selectedPassStatus !== "ALL" ? selectedPassStatus : undefined,
@@ -1054,30 +1074,12 @@ export default function ComplimentaryPassesPage() {
             </div>
 
             {/* Attraction Dropdown */}
-            <select
-              value={selectedAttraction}
-              onChange={(e) => setSelectedAttraction(e.target.value)}
-              style={{
-                height: "38px",
-                padding: "0 14px",
-                borderRadius: "8px",
-                border: "1.5px solid rgba(179, 175, 175, 0.4)",
-                fontSize: "13px",
-                fontFamily: typography.fontFamily.sans,
-                color: "#011B2F",
-                background: "#FFFFFF",
-                cursor: "pointer",
-                outline: "none",
-                minWidth: "160px",
-              }}
-            >
-              <option value="ALL">All Attractions</option>
-              {attractionOptions.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
+            <AttractionFilterDropdown
+              options={attractionOptions}
+              selectedIds={selectedAttractions}
+              onChange={(ids) => setSelectedAttractions(ids)}
+              width={160}
+            />
 
             {/* Date Range Picker */}
             <DateRangePicker
@@ -1205,7 +1207,7 @@ export default function ComplimentaryPassesPage() {
       {activeTab === "passes" ? (
         <GlobalDataTable<ComplimentaryPass>
           columns={passColumns}
-          data={passes}
+          data={displayedPasses}
           keyExtractor={(item, index) => item.id || `pass-row-${index}`}
           pageSize={passPageSize}
           currentPage={passPage}

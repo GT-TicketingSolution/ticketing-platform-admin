@@ -21,13 +21,14 @@ import {
 } from "@/hooks/useInventoryQueries";
 import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import { useAttractionManagementList } from "@/hooks/useAttractionManagementQueries";
+import { AttractionFilterDropdown } from "@/components/ui/AttractionFilterDropdown";
 
 
 export default function InventoryPage() {
   // ── Search & Filter State ──────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
-  const [selectedAttractionId, setSelectedAttractionId] = useState<string>("All");
+  const [selectedAttractionIds, setSelectedAttractionIds] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
@@ -52,7 +53,7 @@ export default function InventoryPage() {
     page: (v) => { const n = Number(v); if (n > 0) setCurrentPage(n); },
     limit: (v) => { const n = Number(v); if (n > 0) setPageSize(n); },
     search: (v) => { setSearchQuery(v); setDebouncedSearch(v); },
-    attractionId: (v) => setSelectedAttractionId(v),
+    attractionId: (v) => setSelectedAttractionIds(v && v !== "All" && v !== "ALL" ? v.split(",").filter(Boolean) : []),
     dateFrom: (v) => setDateFrom(v),
     dateTo: (v) => setDateTo(v),
   });
@@ -65,14 +66,14 @@ export default function InventoryPage() {
       return;
     }
     setCurrentPage(1);
-  }, [debouncedSearch, selectedAttractionId, statusFilter, dateFrom, dateTo]);
+  }, [debouncedSearch, selectedAttractionIds, statusFilter, dateFrom, dateTo]);
 
   // ── Live API Queries ───────────────────────────────────────────────────────
   const queryParams: InventoryListParams = {
     page: currentPage,
     limit: pageSize,
     search: debouncedSearch || undefined,
-    attractionId: selectedAttractionId !== "All" ? selectedAttractionId : undefined,
+    attractionId: selectedAttractionIds.length > 0 ? selectedAttractionIds.join(",") : undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
   };
@@ -95,8 +96,19 @@ export default function InventoryPage() {
 
   // Client-side status filter applied if statusFilter !== "ALL"
   const filteredItems = useMemo(() => {
-    if (statusFilter === "ALL") return inventoryItems;
-    return inventoryItems.filter((item) => {
+    let list = inventoryItems;
+    if (selectedAttractionIds.length > 0) {
+      list = list.filter((it: any) => {
+        const attrId = it.attractionId || it.attraction?.id;
+        const attrName = it.name || it.attraction?.name;
+        return (
+          (attrId && selectedAttractionIds.includes(attrId)) ||
+          (attrName && selectedAttractionIds.includes(attrName))
+        );
+      });
+    }
+    if (statusFilter === "ALL") return list;
+    return list.filter((item) => {
       const avail = item.availableCapacity ?? 0;
       const isFull = avail <= 0;
       const isNearFull = !isFull && avail <= 20;
@@ -107,7 +119,7 @@ export default function InventoryPage() {
       if (statusFilter === "AVAILABLE") return isAvailable;
       return true;
     });
-  }, [inventoryItems, statusFilter]);
+  }, [inventoryItems, statusFilter, selectedAttractionIds]);
 
   // ── Dynamic Summary Statistics ─────────────────────────────────────────────
   const totalCapacity = useMemo(
@@ -152,7 +164,7 @@ export default function InventoryPage() {
 
   const isFiltered =
     !!debouncedSearch ||
-    selectedAttractionId !== "All" ||
+    selectedAttractionIds.length > 0 ||
     statusFilter !== "ALL" ||
     !!dateFrom ||
     !!dateTo;
@@ -160,7 +172,7 @@ export default function InventoryPage() {
   const handleResetFilters = () => {
     setSearchQuery("");
     setDebouncedSearch("");
-    setSelectedAttractionId("All");
+    setSelectedAttractionIds([]);
     setStatusFilter("ALL");
     setDateFrom("");
     setDateTo("");
@@ -716,33 +728,13 @@ export default function InventoryPage() {
           </div>
 
           {/* Attraction Dropdown */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            <label style={{ fontSize: "11px", fontWeight: 700, color: "#475569", textTransform: "uppercase" }}>
-              Attraction Filter
-            </label>
-            <select
-              value={selectedAttractionId}
-              onChange={(e) => setSelectedAttractionId(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                borderRadius: "8px",
-                border: "1px solid #CBD5E1",
-                fontSize: "13px",
-                color: "#0F172A",
-                background: "#FFFFFF",
-                outline: "none",
-                cursor: "pointer",
-                height: "37px",
-              }}
-            >
-              {attractionOptions.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <AttractionFilterDropdown
+            label="Attraction Filter"
+            options={attractionOptions}
+            selectedIds={selectedAttractionIds}
+            onChange={(ids) => setSelectedAttractionIds(ids)}
+            width="100%"
+          />
 
           {/* Date From */}
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>

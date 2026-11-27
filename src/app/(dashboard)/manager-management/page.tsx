@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusToggle from "@/components/ui/StatusToggle";
 import StatusFilterSelect from "@/components/ui/StatusFilterSelect";
+import { AttractionFilterDropdown } from "@/components/ui/AttractionFilterDropdown";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -727,7 +728,7 @@ function ManagerManagementInner() {
   const [managers, setManagers] = useState<ManagerUser[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [selectedAttractionFilter, setSelectedAttractionFilter] = useState<string>("All");
+  const [selectedAttractionFilters, setSelectedAttractionFilters] = useState<string[]>([]);
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>(
     searchParams.get("status") ?? "All"
   );
@@ -947,7 +948,7 @@ function ManagerManagementInner() {
     page: (v) => { const n = Number(v); if (n > 0) setCurrentPage(n); },
     limit: (v) => { const n = Number(v); if (n > 0) setPageSize(n); },
     search: (v) => { setSearchQuery(v); setDebouncedSearch(v); },
-    attractionId: (v) => setSelectedAttractionFilter(v),
+    attractionId: (v) => setSelectedAttractionFilters(v && v !== "All" && v !== "ALL" ? v.split(",").filter(Boolean) : []),
     status: (v) => setSelectedStatusFilter(v),
   });
 
@@ -959,7 +960,7 @@ function ManagerManagementInner() {
       return;
     }
     setCurrentPage(1);
-  }, [debouncedSearch, selectedAttractionFilter, selectedStatusFilter]);
+  }, [debouncedSearch, selectedAttractionFilters, selectedStatusFilter]);
 
   // Status mapping for API ("ACTIVE" | "INACTIVE")
   const apiStatus =
@@ -974,7 +975,7 @@ function ManagerManagementInner() {
     limit: pageSize,
     search: debouncedSearch.trim() || undefined,
     status: apiStatus,
-    attractionId: selectedAttractionFilter !== "All" ? selectedAttractionFilter : undefined,
+    attractionId: selectedAttractionFilters.length > 0 ? selectedAttractionFilters.join(",") : undefined,
   };
 
   useSyncParamsToUrl(managerQueryParams);
@@ -1110,10 +1111,19 @@ function ManagerManagementInner() {
       (selectedStatusFilter === "Active" && (m.status === "ACTIVE" || m.status === "Active")) ||
       (selectedStatusFilter === "Inactive" && (m.status === "INACTIVE" || m.status === "Inactive"));
 
+    const attractionText = m.attraction?.toLowerCase() || "";
     const attractionMatches =
-      selectedAttractionFilter === "All" ||
-      (m.attractions && m.attractions.some((a) => a.id === selectedAttractionFilter || a.name === selectedAttractionFilter)) ||
-      (m.attraction && m.attraction.toLowerCase().includes(selectedAttractionFilter.toLowerCase()));
+      selectedAttractionFilters.length === 0 ||
+      (m.attractions &&
+        m.attractions.some(
+          (a) =>
+            selectedAttractionFilters.includes(a.id) ||
+            selectedAttractionFilters.includes(a.name)
+        )) ||
+      (attractionText !== "" &&
+        selectedAttractionFilters.some((f) =>
+          attractionText.includes(f.toLowerCase())
+        ));
 
     const searchLower = searchQuery.toLowerCase();
     const searchMatches =
@@ -1128,13 +1138,13 @@ function ManagerManagementInner() {
 
   const isFiltered =
     searchQuery.trim() !== "" ||
-    selectedAttractionFilter !== "All" ||
+    selectedAttractionFilters.length > 0 ||
     selectedStatusFilter !== "All";
 
   const handleResetFilters = () => {
     setSearchQuery("");
     setDebouncedSearch("");
-    setSelectedAttractionFilter("All");
+    setSelectedAttractionFilters([]);
     setSelectedStatusFilter("All");
   };
 
@@ -1283,7 +1293,7 @@ function ManagerManagementInner() {
     const base: ManagerQueryParams = {
       search: searchQuery.trim() || undefined,
       status: statusParam,
-      attractionId: selectedAttractionFilter !== "All" ? selectedAttractionFilter : undefined,
+      attractionId: selectedAttractionFilters.length > 0 ? selectedAttractionFilters.join(",") : undefined,
     };
 
     if (scope === "current") {
@@ -1938,12 +1948,12 @@ function ManagerManagementInner() {
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <Filter size={16} color={colors.brand.accent} />
           <span style={{ fontSize: "13px", fontWeight: 600, color: colors.text.muted, fontFamily: typography.fontFamily.sans }}>Filter:</span>
-          <select value={selectedAttractionFilter} onChange={(e) => setSelectedAttractionFilter(e.target.value)} style={{ height: "38px", borderRadius: "8px", border: `1px solid ${colors.header.border}`, padding: "0 12px", fontFamily: typography.fontFamily.sans, fontSize: "13px", fontWeight: 600, color: colors.brand.accent, outline: "none", cursor: "pointer", background: "#FFFFFF" }}>
-            <option value="All">All Attractions</option>
-            {attractionsList.map((loc) => (
-              <option key={loc.id} value={loc.id}>{loc.name}</option>
-            ))}
-          </select>
+          <AttractionFilterDropdown
+            options={attractionsList}
+            selectedIds={selectedAttractionFilters}
+            onChange={(ids) => setSelectedAttractionFilters(ids)}
+            width="170px"
+          />
 
           {/* Status Filter */}
           <StatusFilterSelect

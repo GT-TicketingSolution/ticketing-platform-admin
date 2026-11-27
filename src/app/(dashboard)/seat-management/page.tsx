@@ -8,8 +8,8 @@ import { canPerformRoleAction } from "@/lib/auth/role-actions";
 import { useProfileQuery } from "@/hooks/useAuthQueries";
 import SeatEmptyState from "@/components/seat/SeatEmptyState";
 import SeatCard from "@/components/seat/SeatCard";
-import CreateSeatModal from "@/components/modals/CreateSeatModal";
-import ViewSeatModal from "@/components/modals/ViewSeatModal";
+import SeatDetailView from "@/components/seat/SeatDetailView";
+import AddEditSeatForm from "@/components/seat/AddEditSeatForm";
 import {
   useSeatLayouts,
   useCreateSeatLayout,
@@ -31,9 +31,8 @@ export default function SeatManagementPage() {
     status: (v) => setStatusFilter(v === "ACTIVE" ? "Active" : v === "INACTIVE" ? "Inactive" : v),
   });
 
-  // Modals State
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
-  const [isViewModalOpen, setIsViewModalOpen] = useState<boolean>(false);
+  // Page View Mode State ("list" | "create" | "edit" | "view")
+  const [viewMode, setViewMode] = useState<"list" | "create" | "edit" | "view">("list");
   const [selectedSeat, setSelectedSeat] = useState<SeatConfigData | null>(null);
 
   // Debounce search
@@ -200,7 +199,8 @@ export default function SeatManagementPage() {
       }
 
       setSelectedSeat(null);
-      setIsCreateModalOpen(false);
+      setViewMode("list");
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
       // Error is handled inside the mutation.
     }
@@ -212,7 +212,8 @@ export default function SeatManagementPage() {
 
   const handleOpenCreate = () => {
     setSelectedSeat(null);
-    setIsCreateModalOpen(true);
+    setViewMode("create");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // ============================================================
@@ -221,7 +222,8 @@ export default function SeatManagementPage() {
 
   const handleView = (seat: SeatConfigData) => {
     setSelectedSeat(seat);
-    setIsViewModalOpen(true);
+    setViewMode("view");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // ============================================================
@@ -230,7 +232,8 @@ export default function SeatManagementPage() {
 
   const handleEdit = (seat: SeatConfigData) => {
     setSelectedSeat(seat);
-    setIsCreateModalOpen(true);
+    setViewMode("edit");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // ============================================================
@@ -246,6 +249,10 @@ export default function SeatManagementPage() {
 
     try {
       await deleteMutation.mutateAsync(seat.id);
+      if (viewMode === "view" || (selectedSeat && selectedSeat.id === seat.id)) {
+        setSelectedSeat(null);
+        setViewMode("list");
+      }
     } catch {
       // Error is handled inside the mutation.
     }
@@ -268,19 +275,65 @@ export default function SeatManagementPage() {
   return (
     <div style={{ width: "100%" }}>
       {/* ======================================================
-          INITIAL EMPTY STATE
+          VIEW MODE (FULL PAGE)
       ====================================================== */}
-
-      {!isLoading && items.length === 0 && !isFiltering ? (
-        <SeatEmptyState onCreateSeat={canManageSeats ? handleOpenCreate : undefined} />
-      ) : (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "20px",
+      {viewMode === "view" && selectedSeat && (
+        <SeatDetailView
+          seat={seatConfigItems.find((s) => s.id === selectedSeat.id) || selectedSeat}
+          onBack={() => {
+            setViewMode("list");
+            setSelectedSeat(null);
+            window.scrollTo({ top: 0, behavior: "smooth" });
           }}
-        >
+          onEdit={(seat) => {
+            handleEdit(seat);
+          }}
+          onDelete={async (seat) => {
+            await handleDelete(seat);
+          }}
+          canManage={canManageSeats}
+        />
+      )}
+
+      {/* ======================================================
+          CREATE / EDIT MODE (FULL PAGE)
+      ====================================================== */}
+      {(viewMode === "create" || viewMode === "edit") && (
+        <AddEditSeatForm
+          initialData={viewMode === "edit" ? selectedSeat : null}
+          onSave={handleSaveSeat}
+          onCancel={() => {
+            if (viewMode === "create" || !selectedSeat) {
+              setViewMode("list");
+              setSelectedSeat(null);
+            } else {
+              setViewMode("view");
+            }
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          isLoading={isSaving}
+        />
+      )}
+
+      {/* ======================================================
+          LISTING MODE
+      ====================================================== */}
+      {viewMode === "list" && (
+        <>
+          {/* ======================================================
+              INITIAL EMPTY STATE
+          ====================================================== */}
+
+          {!isLoading && items.length === 0 && !isFiltering ? (
+            <SeatEmptyState onCreateSeat={canManageSeats ? handleOpenCreate : undefined} />
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "20px",
+              }}
+            >
           {/* ==================================================
               HEADER
           ================================================== */}
@@ -573,43 +626,8 @@ export default function SeatManagementPage() {
           )}
         </div>
       )}
-
-      {/* ========================================================
-          CREATE / EDIT MODAL
-      ======================================================== */}
-
-      <CreateSeatModal
-        isOpen={isCreateModalOpen}
-        onClose={() => {
-          setIsCreateModalOpen(false);
-          setSelectedSeat(null);
-        }}
-        initialData={selectedSeat}
-        onSave={handleSaveSeat}
-        isLoading={isSaving}
-      />
-
-      {/* ========================================================
-          VIEW MODAL
-      ======================================================== */}
-
-      <ViewSeatModal
-        isOpen={isViewModalOpen}
-        onClose={() => {
-          setIsViewModalOpen(false);
-          setSelectedSeat(null);
-        }}
-        seat={selectedSeat}
-        onEdit={
-          canManageSeats
-            ? (seatToEdit) => {
-                setIsViewModalOpen(false);
-                setSelectedSeat(seatToEdit || selectedSeat);
-                setIsCreateModalOpen(true);
-              }
-            : undefined
-        }
-      />
-    </div>
-  );
+    </>
+  )}
+</div>
+);
 }

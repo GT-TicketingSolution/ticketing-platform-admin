@@ -52,7 +52,6 @@ export default function SeatCard({
         boxSizing: "border-box",
         width: "100%",
         maxWidth: "237px",
-        minHeight: "355px",
         background: "#FFFFFF",
         border: "1.5px solid rgba(179, 175, 175, 0.51)",
         borderRadius: "8px",
@@ -371,127 +370,42 @@ export default function SeatCard({
 
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "4px",
-          marginTop: "12px",
+          marginTop: "8px",
           padding: "0 4px 4px 4px",
         }}
       >
-        {/* ======================================================
-            VIEW
-        ====================================================== */}
-
         <button
           type="button"
           onClick={() => onView(seat)}
           style={{
             boxSizing: "border-box",
-            flex: 1,
-            height: "30px",
+            width: "100%",
+            height: "34px",
             background: "#FFFFFF",
-            border: "1px solid #0C2A42",
-            borderRadius: "5px",
+            border: "1px solid #2372A5",
+            borderRadius: "6px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: "3px",
+            gap: "6px",
             cursor: "pointer",
-            transition: "all 0.15s ease",
+            transition: "all 0.18s ease",
           }}
           className="btn-view"
           title="View Seat Layout"
         >
-          <Eye size={12} color="#0C2A42" strokeWidth={2} />
+          <Eye size={16} color="#2372A5" strokeWidth={2} />
 
           <span
             style={{
-              fontWeight: 600,
-              fontSize: "11px",
-              color: "#0C2A42",
+              fontWeight: 800,
+              fontSize: "14px",
+              color: "#2372A5",
             }}
           >
             View
           </span>
         </button>
-
-        {/* ======================================================
-            EDIT
-        ====================================================== */}
-
-        {onEdit && (
-          <button
-            type="button"
-            onClick={() => onEdit(seat)}
-            style={{
-              boxSizing: "border-box",
-              flex: 1,
-              height: "30px",
-              background: "#FFFFFF",
-              border: "1px solid #2372A5",
-              borderRadius: "5px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "3px",
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-            }}
-            className="btn-edit"
-            title="Edit Seat Layout"
-          >
-            <Pencil size={12} color="#2372A5" strokeWidth={2} />
-  
-            <span
-              style={{
-                fontWeight: 600,
-                fontSize: "11px",
-                color: "#2372A5",
-              }}
-            >
-              Edit
-            </span>
-          </button>
-        )}
-
-        {/* ======================================================
-            DELETE
-        ====================================================== */}
-
-        {onDelete && (
-          <button
-            type="button"
-            onClick={() => onDelete(seat)}
-            style={{
-              boxSizing: "border-box",
-              flex: 1,
-              height: "30px",
-              background: "#FFFFFF",
-              border: "1px solid #DC2626",
-              borderRadius: "5px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "3px",
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-            }}
-            className="btn-delete"
-            title="Delete Seat Layout"
-          >
-            <Trash2 size={12} color="#DC2626" strokeWidth={2} />
-  
-            <span
-              style={{
-                fontWeight: 600,
-                fontSize: "11px",
-                color: "#DC2626",
-              }}
-            >
-              Delete
-            </span>
-          </button>
-        )}
       </div>
 
       {/* ========================================================
@@ -505,13 +419,18 @@ export default function SeatCard({
         }
 
         .btn-view:hover {
-          background: #0C2A42 !important;
+          background: #FFFFFF !important;
+          border-color: #2372A5 !important;
+          box-shadow: 0 2px 6px rgba(35, 114, 165, 0.15);
         }
 
-        .btn-view:hover span,
+        .btn-view:hover span {
+          color: #2372A5 !important;
+        }
+
         .btn-view:hover svg {
-          color: #FFFFFF !important;
-          stroke: #FFFFFF !important;
+          color: #2372A5 !important;
+          stroke: #2372A5 !important;
         }
 
         .btn-edit:hover {

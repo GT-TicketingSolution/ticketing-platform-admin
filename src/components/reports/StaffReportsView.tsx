@@ -28,6 +28,7 @@ import { useStaffReportAccess } from "@/hooks/useStaffReportAccess";
 import { useStaffReportQuery } from "@/hooks/useStaffReportQuery";
 import { transformStaffReportResponse, getEmptyOverallSummary } from "@/lib/transformStaffReport";
 import { AttractionReportData } from "@/lib/reportsData";
+import { AttractionFilterDropdown } from "@/components/ui/AttractionFilterDropdown";
 
 const getTodayStr = () => {
   const d = new Date();
@@ -334,6 +335,10 @@ export default function StaffReportsView() {
       .filter((a) => !a.status || a.status.toUpperCase() !== "INACTIVE")
       .map((a) => a.name);
   }, [reportData]);
+
+  const staffAttractionOptions = useMemo(() => {
+    return activeAttractionNames.map((name) => ({ id: name, name }));
+  }, [activeAttractionNames]);
 
   const isAllAttractionsSelected = useMemo(() => {
     if (
@@ -938,164 +943,24 @@ export default function StaffReportsView() {
 
           {/* Attraction Dropdown Selector */}
           <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ height: "18px", marginBottom: "6px" }}>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  color: "#475569",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.03em",
-                }}
-              >
-                Select Attraction
-              </label>
-            </div>
-            <div ref={attractionDropdownRef} style={{ position: "relative", height: "42px" }}>
-              <button
-                type="button"
-                onClick={() => setIsAttractionDropdownOpen((prev) => !prev)}
-                style={{
-                  width: "100%",
-                  height: "42px",
-                  padding: "0 14px",
-                  borderRadius: "8px",
-                  border: isAttractionDropdownOpen ? "1.5px solid #0C2A42" : "1px solid #CBD5E1",
-                  backgroundColor: "#FFFFFF",
-                  color: selectedAttractions.length === 0 ? "#94A3B8" : colors.text.primary,
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  outline: "none",
-                  cursor: "pointer",
-                  boxSizing: "border-box",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  textAlign: "left",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <span
-                  style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    paddingRight: "8px",
-                  }}
-                >
-                  {dropdownButtonLabel}
-                </span>
-                <ChevronDown
-                  size={18}
-                  color="#64748B"
-                  style={{
-                    transform: isAttractionDropdownOpen ? "rotate(180deg)" : "rotate(0deg)",
-                    transition: "transform 0.15s ease",
-                    flexShrink: 0,
-                  }}
-                />
-              </button>
-
-              {isAttractionDropdownOpen && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "46px",
-                    left: 0,
-                    right: 0,
-                    backgroundColor: "#FFFFFF",
-                    borderRadius: "8px",
-                    border: "1px solid #CBD5E1",
-                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
-                    maxHeight: "260px",
-                    overflowY: "auto",
-                    zIndex: 50,
-                    padding: "4px 0",
-                  }}
-                >
-                  {/* "All Attractions" Option */}
-                  <div
-                    onClick={handleToggleAllAttractions}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px",
-                      padding: "9px 14px",
-                      cursor: "pointer",
-                      backgroundColor: isAllAttractionsSelected ? "#F1F5F9" : "transparent",
-                      borderBottom: "1px solid #E2E8F0",
-                      fontWeight: 700,
-                      fontSize: "13px",
-                      color: colors.text.primary,
-                      userSelect: "none",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isAllAttractionsSelected}
-                      onChange={() => {}}
-                      style={{
-                        cursor: "pointer",
-                        width: "16px",
-                        height: "16px",
-                        accentColor: "#0C2A42",
-                      }}
-                    />
-                    <span>All Attractions</span>
-                  </div>
-
-                  {/* Individual Attractions */}
-                  {activeAttractionNames.map((name) => {
-                    const isChecked =
-                      isAllAttractionsSelected ||
-                      selectedAttractions.some(
-                        (s) => s.toLowerCase() === name.toLowerCase()
-                      );
-                    return (
-                      <div
-                        key={name}
-                        onClick={() => handleToggleAttraction(name)}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "10px",
-                          padding: "8px 14px",
-                          cursor: "pointer",
-                          backgroundColor: isChecked ? "#F8FAFC" : "transparent",
-                          fontSize: "13px",
-                          fontWeight: isChecked ? 600 : 500,
-                          color: isChecked ? "#0C2A42" : colors.text.primary,
-                          userSelect: "none",
-                          transition: "background-color 0.1s ease",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => {}}
-                          style={{
-                            cursor: "pointer",
-                            width: "16px",
-                            height: "16px",
-                            accentColor: "#0C2A42",
-                          }}
-                        />
-                        <span
-                          style={{
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {name}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <AttractionFilterDropdown
+              label="Select Attraction"
+              options={staffAttractionOptions}
+              selectedIds={
+                isAllAttractionsSelected ||
+                selectedAttractions.includes("All Attractions") ||
+                selectedAttractions.includes("All")
+                  ? []
+                  : selectedAttractions
+              }
+              onChange={(ids) => {
+                setSelectedAttractions(
+                  ids.length === 0 ? ["All Attractions"] : ids
+                );
+              }}
+              disabled={!staffReportAccess.hasAccess}
+              width="100%"
+            />
           </div>
 
           {/* Start Date & End Date Picker (Authorized Window: Past 24 Hours / 1 Day) */}

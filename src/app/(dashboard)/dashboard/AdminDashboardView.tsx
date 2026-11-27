@@ -23,10 +23,11 @@ import { useDashboard } from "@/hooks/useDashboard";
 import { useSyncParamsToUrl, useInitFromUrl } from "@/hooks/useUrlSync";
 import { DashboardPeriod } from "./types";
 import DateRangePicker from "@/components/ui/DateRangePicker";
+import { AttractionFilterDropdown } from "@/components/ui/AttractionFilterDropdown";
 
 export default function AdminDashboardView() {
   // Filters State
-  const [selectedAttraction, setSelectedAttraction] = useState<string>("All");
+  const [selectedAttractions, setSelectedAttractions] = useState<string[]>([]);
   const [selectedDateRange, setSelectedDateRange] =
     useState<DashboardPeriod>("all");
   const [fromDate, setFromDate] = useState<string>("");
@@ -37,7 +38,7 @@ export default function AdminDashboardView() {
 
   useInitFromUrl({
     period: (v) => setSelectedDateRange(v as DashboardPeriod),
-    attractionId: (v) => setSelectedAttraction(v),
+    attractionId: (v) => setSelectedAttractions(v && v !== "All" && v !== "ALL" ? v.split(",").filter(Boolean) : []),
     search: (v) => { setSearchQuery(v); setDebouncedSearch(v); },
     fromDate: (v) => {
       setFromDate(v);
@@ -67,7 +68,7 @@ export default function AdminDashboardView() {
 
   const dashboardQueryParams = {
     period: selectedDateRange !== "all" ? selectedDateRange : undefined,
-    attractionId: selectedAttraction === "All" ? undefined : selectedAttraction,
+    attractionId: selectedAttractions.length > 0 ? selectedAttractions.join(",") : undefined,
     search: debouncedSearch || undefined,
     dateFrom: selectedDateRange === "custom" && fromDate ? fromDate : undefined,
     dateTo: selectedDateRange === "custom" && toDate ? toDate : undefined,
@@ -78,7 +79,7 @@ export default function AdminDashboardView() {
   // Fetch live dashboard data from API
   const { data, isLoading, isFetching, error } = useDashboard({
     period: selectedDateRange,
-    attractionId: selectedAttraction === "All" ? undefined : selectedAttraction,
+    attractionId: selectedAttractions.length > 0 ? selectedAttractions.join(",") : undefined,
     search: debouncedSearch || undefined,
     dateFrom: selectedDateRange === "custom" && fromDate ? fromDate : undefined,
     dateTo: selectedDateRange === "custom" && toDate ? toDate : undefined,
@@ -117,10 +118,11 @@ export default function AdminDashboardView() {
 
   const handleExportXLS = () => {
     const selectedAttractionLabel =
-      selectedAttraction === "All"
-        ? "All Attractions"
-        : attractionFilters.find((a) => a.id === selectedAttraction)?.name ||
-          selectedAttraction;
+      selectedAttractions.length > 0
+        ? selectedAttractions
+            .map((id) => attractionFilters.find((a) => a.id === id)?.name || id)
+            .join(", ")
+        : "All Attractions";
 
     const sections: XLSSection[] = [
       {
@@ -361,30 +363,12 @@ export default function AdminDashboardView() {
         {/* Attraction Filter (API Driven) */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <Building2 size={16} color={colors.text.muted} />
-          <select
-            value={selectedAttraction}
-            onChange={(e) => setSelectedAttraction(e.target.value)}
-            style={{
-              height: "38px",
-              borderRadius: "8px",
-              border: `1px solid ${colors.header.border}`,
-              padding: "0 12px",
-              fontFamily: typography.fontFamily.sans,
-              fontSize: "13px",
-              color: colors.text.primary,
-              outline: "none",
-              cursor: "pointer",
-              background: "#FFFFFF",
-              maxWidth: "240px",
-            }}
-          >
-            <option value="All">All Attractions</option>
-            {attractionFilters.map((attr) => (
-              <option key={attr.id} value={attr.id}>
-                {attr.name}
-              </option>
-            ))}
-          </select>
+          <AttractionFilterDropdown
+            options={attractionFilters}
+            selectedIds={selectedAttractions}
+            onChange={(ids) => setSelectedAttractions(ids)}
+            width="200px"
+          />
         </div>
 
         {/* Search Input */}

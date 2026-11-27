@@ -34,6 +34,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import StatusToggle from "@/components/ui/StatusToggle";
 import StatusFilterSelect from "@/components/ui/StatusFilterSelect";
 import MultiSelectDropdown from "@/components/ui/MultiSelectDropdown";
+import { AttractionFilterDropdown } from "@/components/ui/AttractionFilterDropdown";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import ExportButtons from "@/components/ui/ExportButtons";
 // import ReportTimingModal from "@/components/modals/ReportTimingModal";
@@ -95,7 +96,7 @@ function StaffManagementInner() {
   // Filters State
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [selectedAttractionFilter, setSelectedAttractionFilter] = useState("All");
+  const [selectedAttractionFilters, setSelectedAttractionFilters] = useState<string[]>([]);
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("All");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -121,7 +122,7 @@ function StaffManagementInner() {
     page: (v) => { const n = Number(v); if (n > 0) setCurrentPage(n); },
     limit: (v) => { const n = Number(v); if (n > 0) setPageSize(n); },
     search: (v) => { setSearch(v); setDebouncedSearch(v); },
-    attractionId: (v) => setSelectedAttractionFilter(v),
+    attractionId: (v) => setSelectedAttractionFilters(v && v !== "All" && v !== "ALL" ? v.split(",").filter(Boolean) : []),
     status: (v) => setSelectedStatusFilter(v),
   });
 
@@ -133,7 +134,7 @@ function StaffManagementInner() {
       return;
     }
     setCurrentPage(1);
-  }, [debouncedSearch, selectedAttractionFilter, selectedStatusFilter]);
+  }, [debouncedSearch, selectedAttractionFilters, selectedStatusFilter]);
 
   useEffect(() => {
     document.title = META_CONSTANTS.staffManagement.fullTitle;
@@ -156,7 +157,7 @@ function StaffManagementInner() {
     limit: pageSize,
     search: debouncedSearch || undefined,
     status: apiStatus,
-    attractionId: selectedAttractionFilter !== "All" ? selectedAttractionFilter : undefined,
+    attractionId: selectedAttractionFilters.length > 0 ? selectedAttractionFilters.join(",") : undefined,
   };
 
   useSyncParamsToUrl(staffQueryParams);
@@ -340,6 +341,27 @@ function StaffManagementInner() {
     };
   });
 
+  // Client-side filtering when multiple attractions are selected
+  const displayedStaffList = useMemo(() => {
+    if (selectedAttractionFilters.length === 0) return staffList;
+    return staffList.filter((s) => {
+      const assigned = s.assignedAttraction || [];
+      const attractions = s.attractions || [];
+      const attrIds = s.attractionIds || [];
+      const hasMatch =
+        assigned.some((nameOrId) =>
+          selectedAttractionFilters.includes(nameOrId)
+        ) ||
+        attrIds.some((id) => selectedAttractionFilters.includes(id)) ||
+        attractions.some(
+          (a) =>
+            selectedAttractionFilters.includes(a.id) ||
+            selectedAttractionFilters.includes(a.name)
+        );
+      return hasMatch;
+    });
+  }, [staffList, selectedAttractionFilters]);
+
   // Modal & Selection States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [showAddPassword, setShowAddPassword] = useState(false);
@@ -424,13 +446,13 @@ function StaffManagementInner() {
 
   const isStaffFiltered =
     search.trim() !== "" ||
-    selectedAttractionFilter !== "All" ||
+    selectedAttractionFilters.length > 0 ||
     selectedStatusFilter !== "All";
 
   const handleResetStaffFilters = () => {
     setSearch("");
     setDebouncedSearch("");
-    setSelectedAttractionFilter("All");
+    setSelectedAttractionFilters([]);
     setSelectedStatusFilter("All");
   };
 
@@ -1004,9 +1026,11 @@ function StaffManagementInner() {
   // ── Export Handlers (Scoped Export) ───────────────────────────────────────
   const getFilterInfo = () => {
     const parts: string[] = [];
-    if (selectedAttractionFilter !== "All") {
-      const found = attractionsList.find((a) => a.id === selectedAttractionFilter);
-      parts.push(`Attraction: ${found?.name || selectedAttractionFilter}`);
+    if (selectedAttractionFilters.length > 0) {
+      const names = selectedAttractionFilters.map(
+        (id) => attractionsList.find((a) => a.id === id)?.name || id
+      );
+      parts.push(`Attraction: ${names.join(", ")}`);
     }
     if (selectedStatusFilter !== "All") parts.push(`Status: ${selectedStatusFilter}`);
     if (search) parts.push(`Search: "${search}"`);
@@ -1017,7 +1041,7 @@ function StaffManagementInner() {
     const base: StaffQueryParams = {
       search: search.trim() || undefined,
       status: apiStatus,
-      attractionId: selectedAttractionFilter !== "All" ? selectedAttractionFilter : undefined,
+      attractionId: selectedAttractionFilters.length > 0 ? selectedAttractionFilters.join(",") : undefined,
     };
 
     if (scope === "current") {
@@ -2074,31 +2098,12 @@ function StaffManagementInner() {
           >
             Filter:
           </span>
-          <select
-            value={selectedAttractionFilter}
-            onChange={(e) => setSelectedAttractionFilter(e.target.value)}
-            style={{
-              height: "38px",
-              borderRadius: "8px",
-              border: `1px solid ${colors.header.border}`,
-              padding: "0 12px",
-              fontFamily: typography.fontFamily.sans,
-              fontSize: "13px",
-              fontWeight: 600,
-              color: colors.brand.accent,
-              outline: "none",
-              cursor: "pointer",
-              background: "#FFFFFF",
-              maxWidth: "220px",
-            }}
-          >
-            <option value="All">All Attractions</option>
-            {attractionsList.map((att) => (
-              <option key={att.id} value={att.id}>
-                {att.name}
-              </option>
-            ))}
-          </select>
+          <AttractionFilterDropdown
+            options={attractionsList}
+            selectedIds={selectedAttractionFilters}
+            onChange={(ids) => setSelectedAttractionFilters(ids)}
+            width="170px"
+          />
 
           {/* Status Filter */}
           <StatusFilterSelect
@@ -2143,7 +2148,7 @@ function StaffManagementInner() {
       {/* DataTable */}
       <DataTable
         columns={columns}
-        data={staffList}
+        data={displayedStaffList}
         keyExtractor={(s) => s.id}
         pageSize={pageSize}
         currentPage={currentPage}

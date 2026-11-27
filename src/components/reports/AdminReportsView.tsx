@@ -32,6 +32,7 @@ import {
   transformStaffReportResponse,
   getEmptyOverallSummary,
 } from "@/lib/transformStaffReport";
+import { AttractionFilterDropdown } from "@/components/ui/AttractionFilterDropdown";
 
 export default function AdminReportsView() {
   const router = useRouter();
@@ -39,12 +40,12 @@ export default function AdminReportsView() {
   // Filters State
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
-  const [selectedAttraction, setSelectedAttraction] = useState<string>("All");
+  const [selectedAttractions, setSelectedAttractions] = useState<string[]>([]);
 
   useInitFromUrl({
     fromDate: (v) => setFromDate(v),
     toDate: (v) => setToDate(v),
-    attractionId: (v) => setSelectedAttraction(v),
+    attractionId: (v) => setSelectedAttractions(v && v !== "All" && v !== "ALL" ? v.split(",").filter(Boolean) : []),
   });
 
   // Accordion State for "All Attractions" view (IDs of expanded cards)
@@ -60,7 +61,7 @@ export default function AdminReportsView() {
   const reportQueryParams = {
     fromDate: fromDate || undefined,
     toDate: toDate || undefined,
-    attractionId: selectedAttraction !== "All" ? selectedAttraction : undefined,
+    attractionId: selectedAttractions.length > 0 ? selectedAttractions.join(",") : undefined,
   };
 
   useSyncParamsToUrl(reportQueryParams);
@@ -126,19 +127,19 @@ export default function AdminReportsView() {
   // Compose Overall Report Summary from live /admin/reports API
   const overallSummary = useMemo(() => {
     if (!reportData) return getEmptyOverallSummary();
-    return transformStaffReportResponse(reportData, selectedAttraction);
-  }, [reportData, selectedAttraction]);
+    const singleName = selectedAttractions.length === 1 ? selectedAttractions[0] : "All";
+    return transformStaffReportResponse(reportData, singleName);
+  }, [reportData, selectedAttractions]);
 
   // Attraction options dropdown
-  const attractionDropdownOptions = useMemo(() => {
+  const attractionOptions = useMemo(() => {
     if (!reportData?.attractions || reportData.attractions.length === 0) {
-      return ["All Attractions"];
+      return [];
     }
     const activeList = reportData.attractions.filter(
       (a) => !a.status || a.status.toUpperCase() !== "INACTIVE"
     );
-    if (activeList.length === 0) return ["All Attractions"];
-    return ["All Attractions", ...activeList.map((a) => a.name)];
+    return activeList.map((a) => ({ id: a.name, name: a.name }));
   }, [reportData]);
 
   // Accordion Toggle Handlers
@@ -175,7 +176,7 @@ export default function AdminReportsView() {
         rows: [
           ["Date Range From", fromDate || "All Time"],
           ["Date Range To", toDate || "All Time"],
-          ["Selected Attraction", selectedAttraction],
+          ["Selected Attraction", selectedAttractions.length > 0 ? selectedAttractions.join(", ") : "All Attractions"],
           [
             "Total Revenue",
             `₹${overallSummary.totalRevenue.toLocaleString("en-IN")}`,
@@ -219,18 +220,24 @@ export default function AdminReportsView() {
 
   // Find single attraction report if single attraction selected
   const singleAttractionReport = useMemo(() => {
-    if (
-      selectedAttraction === "All" ||
-      selectedAttraction === "All Attractions" ||
-      selectedAttraction === "No Attractions Available"
-    ) {
+    if (selectedAttractions.length !== 1) {
       return null;
     }
+    const targetName = selectedAttractions[0].toLowerCase();
     const found = overallSummary.attractionReports.find(
-      (r) => r.attraction.name.toLowerCase() === selectedAttraction.toLowerCase()
+      (r) => r.attraction.name.toLowerCase() === targetName
     );
     return found || null;
-  }, [selectedAttraction, overallSummary]);
+  }, [selectedAttractions, overallSummary]);
+
+  // Filter attraction report cards when multiple attractions are selected
+  const displayedAttractionReports = useMemo(() => {
+    if (selectedAttractions.length <= 1) return overallSummary.attractionReports;
+    const lowerSelected = selectedAttractions.map((s) => s.toLowerCase());
+    return overallSummary.attractionReports.filter((r) =>
+      lowerSelected.includes(r.attraction.name.toLowerCase())
+    );
+  }, [overallSummary.attractionReports, selectedAttractions]);
 
   const hasNoAttractions =
     !isLoading && (!reportData?.attractions || reportData.attractions.length === 0);
@@ -330,50 +337,14 @@ export default function AdminReportsView() {
         >
           {/* Attraction Dropdown Selector */}
           <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: "12px",
-                fontWeight: 700,
-                color: "#475569",
-                marginBottom: "6px",
-                textTransform: "uppercase",
-                letterSpacing: "0.03em",
-              }}
-            >
-              Select Attraction
-            </label>
-            <div style={{ position: "relative" }}>
-              <select
-                value={selectedAttraction}
-                onChange={(e) => setSelectedAttraction(e.target.value)}
-                disabled={hasNoAttractions}
-                style={{
-                  width: "100%",
-                  padding: "10px 36px 10px 14px",
-                  borderRadius: "8px",
-                  border: "1px solid #CBD5E1",
-                  backgroundColor: hasNoAttractions ? "#F1F5F9" : "#FFFFFF",
-                  color: hasNoAttractions ? "#94A3B8" : colors.text.primary,
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  outline: "none",
-                  appearance: "none",
-                  cursor: hasNoAttractions ? "not-allowed" : "pointer",
-                }}
-              >
-                {attractionDropdownOptions.map((opt: string) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={18}
-                color={hasNoAttractions ? "#94A3B8" : "#64748B"}
-                style={{ position: "absolute", right: 12, top: 12, pointerEvents: "none" }}
-              />
-            </div>
+            <AttractionFilterDropdown
+              label="Select Attraction"
+              options={attractionOptions}
+              selectedIds={selectedAttractions}
+              onChange={(ids) => setSelectedAttractions(ids)}
+              disabled={hasNoAttractions}
+              width="100%"
+            />
           </div>
 
           {/* Start Date & End Date Picker */}
@@ -650,7 +621,7 @@ export default function AdminReportsView() {
         /* RENDER VIEW: Single Attraction Report Drill-Down */
         <SingleAttractionReportView
           reportData={singleAttractionReport}
-          onBackToAll={() => setSelectedAttraction("All")}
+          onBackToAll={() => setSelectedAttractions([])}
           fromDate={fromDate}
           toDate={toDate}
         />
@@ -868,13 +839,13 @@ export default function AdminReportsView() {
                 </p>
               </div>
             ) : (
-              overallSummary.attractionReports.map((report) => (
+              displayedAttractionReports.map((report) => (
                 <AttractionReportCard
                   key={report.attraction.id}
                   report={report}
                   isExpanded={expandedAttractionIds.has(report.attraction.id)}
                   onToggleExpand={() => handleToggleCardExpand(report.attraction.id)}
-                  onSelectSingle={(name) => setSelectedAttraction(name)}
+                  onSelectSingle={(name) => setSelectedAttractions([name])}
                   fromDate={fromDate}
                   toDate={toDate}
                 />

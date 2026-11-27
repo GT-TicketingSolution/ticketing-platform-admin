@@ -206,24 +206,27 @@ function AttractionCard({ attraction, onView }: AttractionCardProps) {
 
           <div style={{ display: "flex", alignItems: "flex-start", gap: "5px", marginTop: "10px" }}>
             <span
+              className="attraction-card-desc"
+              title={attraction.description && attraction.description.trim() ? attraction.description : "No description added yet...."}
               style={{
                 margin: 0,
                 fontWeight: 500,
                 fontSize: "10px",
                 lineHeight: "14px",
-                color: "#64748B",
+                color: attraction.description && attraction.description.trim() ? "#64748B" : "#94A3B8",
                 display: "-webkit-box",
                 WebkitLineClamp: 2,
                 WebkitBoxOrient: "vertical",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 minHeight: "28px",
+                maxHeight: "28px",
                 flex: 1,
                 minWidth: 0,
                 wordBreak: "break-word",
               }}
             >
-              {attraction.description && attraction.description.trim() ? attraction.description : "—"}
+              {attraction.description && attraction.description.trim() ? attraction.description : "No description added yet...."}
             </span>
           </div>
         </div>
@@ -894,6 +897,15 @@ export default function AttractionManagementPage() {
           animation: attrShimmer 1.4s infinite linear;
         }
         .attraction-card-item:hover { transform: translateY(-3px); box-shadow: 0 10px 25px rgba(12,42,66,0.12); }
+        .attraction-card-desc {
+          display: -webkit-box !important;
+          -webkit-line-clamp: 2 !important;
+          line-clamp: 2 !important;
+          -webkit-box-orient: vertical !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          word-break: break-word !important;
+        }
         .btn-view:hover { background: #F0F7FF !important; }
         .btn-edit:hover { background: #F0F7FF !important; }
         .btn-delete:hover { background: #FEF2F2 !important; }

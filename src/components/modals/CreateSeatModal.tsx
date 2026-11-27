@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { X, Armchair, Loader2, Columns, Rows } from "lucide-react";
+import { X, Armchair, Loader2 } from "lucide-react";
 
 import {
   SeatConfigData,
@@ -1292,8 +1292,8 @@ export default function CreateSeatModal({
                                 flexShrink: 0,
                                 marginRight:
                                   slotIdx === displayCols ||
-                                  isAisleHere ||
-                                  isDropTarget
+                                    isAisleHere ||
+                                    isDropTarget
                                     ? "0px"
                                     : "8px",
                               }}
@@ -2155,11 +2155,10 @@ export default function CreateSeatModal({
                                         setAislePosition(slotAfterThis);
                                         setIsDraggingAisle(false);
                                       }}
-                                      title={`Click or drag to place Horizontal Aisle ${
-                                        slotAfterThis === displayRows
+                                      title={`Click or drag to place Horizontal Aisle ${slotAfterThis === displayRows
                                           ? "at Bottom (after all rows)"
                                           : `after Row R${slotAfterThis}`
-                                      }`}
+                                        }`}
                                       style={{
                                         width: `${totalRowWidth}px`,
                                         height: isDropTargetAfterThis

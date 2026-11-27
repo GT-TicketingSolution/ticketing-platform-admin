@@ -47,7 +47,7 @@ export default function AssignReportAccessModal({
   if (!isOpen || !mounted) return null;
 
   const handleConfirm = () => {
-    const parsedDays = Number(days) || 24;
+    const parsedDays = isNaN(Number(days)) ? 0 : Number(days);
     onConfirm({
       type: accessType,
       startDate: accessType === "date_range" ? startDate : undefined,
@@ -451,7 +451,7 @@ export default function AssignReportAccessModal({
               }}
             >
               <Info size={15} color={isCustomTiming ? "#64748B" : "#CBD5E1"} style={{ flexShrink: 0 }} />
-              <span>Give access to reports from the last {days || 24} days.</span>
+              <span>Give access to reports from the last {days !== "" ? days : "0"} days.</span>
             </div>
           </div>
         </div>

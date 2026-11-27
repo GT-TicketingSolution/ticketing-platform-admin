@@ -75,11 +75,11 @@ export default function AddForm({
   const [reportAccessType, setReportAccessType] = useState<"same" | "custom">("same");
   const [reportAccessDays, setReportAccessDays] = useState("0");
 
-  // Staff-specific Report Access Timing Modal State
+  // Report Access Timing Modal State
   const [isAssignReportModalOpen, setIsAssignReportModalOpen] = useState(false);
-  const [staffReportTimingType, setStaffReportTimingType] = useState<"date_range" | "custom_timing">("custom_timing");
+  const [staffReportTimingType, setStaffReportTimingType] = useState<"date_range" | "custom_timing">("date_range");
   const [staffReportStartDate, setStaffReportStartDate] = useState("");
-  const [staffReportDays, setStaffReportDays] = useState(24);
+  const [staffReportDays, setStaffReportDays] = useState(0);
 
   const [status, setStatus] = useState<"Active" | "Inactive">("Active");
 
@@ -239,15 +239,15 @@ export default function AddForm({
     }
   };
 
-  // Confirm Report Access Timing from Modal (for Staff)
+  // Confirm Report Access Timing from Modal (for Manager & Staff)
   const handleConfirmReportTiming = (timing: {
     type: "date_range" | "custom_timing";
     startDate?: string;
     days?: number;
   }) => {
     setStaffReportTimingType(timing.type);
-    if (timing.startDate) setStaffReportStartDate(timing.startDate);
-    if (timing.days) setStaffReportDays(timing.days);
+    if (timing.startDate !== undefined) setStaffReportStartDate(timing.startDate);
+    if (timing.days !== undefined) setStaffReportDays(timing.days);
 
     // Ensure Reports is in view for all selected attractions
     if (selectedAttractionIds.length > 0) {
@@ -271,8 +271,8 @@ export default function AddForm({
   const toggleModuleChip = (modName: string) => {
     if (selectedAttractionIds.length === 0) return;
 
-    // For Staff, clicking Reports when inactive opens the Report Access Timing modal
-    if (roleTitle === "Staff" && modName === "Reports") {
+    // Clicking Reports when inactive opens the Report Access Timing modal (for Manager & Staff)
+    if (modName === "Reports") {
       const isActive = currentViewModules.includes("Reports") || currentEditModules.includes("Reports");
       if (!isActive) {
         setIsAssignReportModalOpen(true);
@@ -1174,7 +1174,7 @@ export default function AddForm({
                           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                             <GripVertical size={16} color="#94A3B8" style={{ cursor: "grab" }} />
                             <span className="module-item-title">{modName}</span>
-                            {modName === "Reports" && roleTitle === "Staff" ? (
+                            {modName === "Reports" ? (
                               <button
                                 type="button"
                                 onClick={() => setIsAssignReportModalOpen(true)}
@@ -1240,7 +1240,26 @@ export default function AddForm({
                           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                             <GripVertical size={16} color="#94A3B8" style={{ cursor: "grab" }} />
                             <span className="module-item-title">{modName}</span>
-                            <Info size={14} color="#94A3B8" />
+                            {modName === "Reports" ? (
+                              <button
+                                type="button"
+                                onClick={() => setIsAssignReportModalOpen(true)}
+                                title="Edit Report Access Timing"
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  padding: "2px",
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  color: "#64748B",
+                                }}
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                            ) : (
+                              <Info size={14} color="#94A3B8" />
+                            )}
                           </div>
                           <button
                             type="button"

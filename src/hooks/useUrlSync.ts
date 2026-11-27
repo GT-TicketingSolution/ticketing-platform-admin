@@ -16,6 +16,11 @@ export function useSyncParamsToUrl(params: Record<string, any>) {
 
     Object.entries(params).forEach(([key, value]) => {
       if (value === undefined || value === null) return;
+      if (Array.isArray(value)) {
+        if (value.length === 0) return;
+        sp.set(key, value.join(","));
+        return;
+      }
       const str = String(value).trim();
       if (str === "") return;
       // Do not include 'All' / 'ALL' as they represent no filter in the API
