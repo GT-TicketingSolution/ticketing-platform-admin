@@ -748,7 +748,7 @@ function ManagerManagementInner() {
   }, [selectedManager]);
 
   const [isReportTimingModalOpen, setIsReportTimingModalOpen] = useState(false);
-  const [reportTimingType, setReportTimingType] = useState<"date_range" | "custom_timing">("custom_timing");
+  const [reportTimingType, setReportTimingType] = useState<"date_range" | "custom_timing">("date_range");
   const [reportStartDate, setReportStartDate] = useState<string>("");
   const [reportDays, setReportDays] = useState<number>(0);
   const [showReportNotice, setShowReportNotice] = useState<boolean>(true);

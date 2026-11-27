@@ -22,7 +22,7 @@ export default function AssignReportAccessModal({
   isOpen,
   onClose,
   onConfirm,
-  initialType = "custom_timing",
+  initialType = "date_range",
   initialStartDate = "",
   initialDays = 0,
 }: AssignReportAccessModalProps) {
@@ -55,6 +55,9 @@ export default function AssignReportAccessModal({
     });
     onClose();
   };
+
+  const isDateRange = accessType === "date_range";
+  const isCustomTiming = accessType === "custom_timing";
 
   return createPortal(
     <div
@@ -190,19 +193,20 @@ export default function AssignReportAccessModal({
           </p>
         </div>
 
-        {/* Option 1: Set a Date Range */}
+        {/* Option 1: Set a Start Date */}
         <div
           onClick={() => setAccessType("date_range")}
           style={{
-            border: accessType === "date_range" ? "1.5px solid #F59E0B" : "1px solid #E2E8F0",
+            border: isDateRange ? "1.5px solid #F59E0B" : "1px solid #E2E8F0",
             borderRadius: "12px",
             padding: "16px",
-            background: accessType === "date_range" ? "#FFFDF5" : "#FFFFFF",
+            background: isDateRange ? "#FFFDF5" : "#F8FAFC",
+            opacity: isDateRange ? 1 : 0.97,
             cursor: "pointer",
             display: "flex",
             flexDirection: "column",
             gap: "12px",
-            transition: "all 0.15s ease",
+            transition: "all 0.2s ease",
           }}
         >
           <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
@@ -212,31 +216,53 @@ export default function AssignReportAccessModal({
                 width: "18px",
                 height: "18px",
                 borderRadius: "50%",
-                border: accessType === "date_range" ? "5px solid #1E293B" : "2px solid #CBD5E1",
-                background: "#FFFFFF",
+                border: isDateRange ? "5px solid #1E293B" : "2px solid #CBD5E1",
+                background: isDateRange ? "#FFFFFF" : "#F1F5F9",
                 flexShrink: 0,
                 marginTop: "2px",
                 transition: "all 0.15s ease",
               }}
             />
             <div>
-              <div style={{ fontSize: "14px", fontWeight: 700, color: "#1E293B" }}>
+              <div
+                style={{
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  color: isDateRange ? "#1E293B" : "#64748B",
+                  transition: "color 0.2s ease",
+                }}
+              >
                 Set a Start Date
               </div>
-              <div style={{ fontSize: "12px", color: "#64748B", marginTop: "2px" }}>
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: isDateRange ? "#64748B" : "#94A3B8",
+                  marginTop: "2px",
+                  transition: "color 0.2s ease",
+                }}
+              >
                 Give access between a specific start date to still now.
               </div>
             </div>
           </div>
 
-          <div style={{ paddingLeft: "28px" }} onClick={(e) => e.stopPropagation()}>
+          <div
+            style={{ paddingLeft: "28px" }}
+            onClick={(e) => {
+              if (isDateRange) {
+                e.stopPropagation();
+              }
+            }}
+          >
             <label
               style={{
                 display: "block",
                 fontSize: "12px",
                 fontWeight: 600,
-                color: "#1E293B",
+                color: isDateRange ? "#1E293B" : "#94A3B8",
                 marginBottom: "6px",
+                transition: "color 0.2s ease",
               }}
             >
               Start Date
@@ -246,32 +272,40 @@ export default function AssignReportAccessModal({
                 type={startDate ? "date" : "text"}
                 placeholder="Select date"
                 value={startDate}
-                onFocus={(e) => (e.target.type = "date")}
+                disabled={!isDateRange}
+                onFocus={(e) => {
+                  if (isDateRange) e.target.type = "date";
+                }}
                 onBlur={(e) => {
                   if (!e.target.value) e.target.type = "text";
                 }}
                 onClick={(e) => {
+                  if (!isDateRange) return;
                   try {
                     (e.currentTarget as any).showPicker?.();
                   } catch { }
                 }}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => {
+                  if (isDateRange) setStartDate(e.target.value);
+                }}
                 style={{
                   width: "100%",
                   height: "40px",
                   borderRadius: "8px",
-                  border: "1px solid #E2E8F0",
+                  border: isDateRange ? "1px solid #CBD5E1" : "1px solid #E2E8F0",
                   padding: "0 36px 0 12px",
                   fontSize: "13px",
-                  color: "#1E293B",
-                  background: "#FFFFFF",
+                  color: isDateRange ? "#1E293B" : "#94A3B8",
+                  background: isDateRange ? "#FFFFFF" : "#F1F5F9",
                   outline: "none",
                   position: "relative",
+                  cursor: isDateRange ? "pointer" : "not-allowed",
+                  transition: "all 0.2s ease",
                 }}
               />
               <Calendar
                 size={16}
-                color="#94A3B8"
+                color={isDateRange ? "#94A3B8" : "#CBD5E1"}
                 style={{
                   position: "absolute",
                   right: "12px",
@@ -288,15 +322,16 @@ export default function AssignReportAccessModal({
         <div
           onClick={() => setAccessType("custom_timing")}
           style={{
-            border: accessType === "custom_timing" ? "1.5px solid #F59E0B" : "1px solid #E2E8F0",
+            border: isCustomTiming ? "1.5px solid #F59E0B" : "1px solid #E2E8F0",
             borderRadius: "12px",
             padding: "16px",
-            background: accessType === "custom_timing" ? "#FFFDF5" : "#FFFFFF",
+            background: isCustomTiming ? "#FFFDF5" : "#F8FAFC",
+            opacity: isCustomTiming ? 1 : 0.97,
             cursor: "pointer",
             display: "flex",
             flexDirection: "column",
             gap: "12px",
-            transition: "all 0.15s ease",
+            transition: "all 0.2s ease",
           }}
         >
           <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
@@ -306,18 +341,32 @@ export default function AssignReportAccessModal({
                 width: "18px",
                 height: "18px",
                 borderRadius: "50%",
-                border: accessType === "custom_timing" ? "5px solid #1E293B" : "2px solid #CBD5E1",
-                background: "#FFFFFF",
+                border: isCustomTiming ? "5px solid #1E293B" : "2px solid #CBD5E1",
+                background: isCustomTiming ? "#FFFFFF" : "#F1F5F9",
                 flexShrink: 0,
                 marginTop: "2px",
                 transition: "all 0.15s ease",
               }}
             />
             <div>
-              <div style={{ fontSize: "14px", fontWeight: 700, color: "#1E293B" }}>
+              <div
+                style={{
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  color: isCustomTiming ? "#1E293B" : "#64748B",
+                  transition: "color 0.2s ease",
+                }}
+              >
                 Custom Access Timing
               </div>
-              <div style={{ fontSize: "12px", color: "#64748B", marginTop: "2px" }}>
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: isCustomTiming ? "#64748B" : "#94A3B8",
+                  marginTop: "2px",
+                  transition: "color 0.2s ease",
+                }}
+              >
                 Keep a continuous window that moves forward automatically each day.
               </div>
             </div>
@@ -331,7 +380,11 @@ export default function AssignReportAccessModal({
               gap: "12px",
               flexWrap: "wrap",
             }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              if (isCustomTiming) {
+                e.stopPropagation();
+              }
+            }}
           >
             {/* Number input with Days badge */}
             <div
@@ -339,35 +392,42 @@ export default function AssignReportAccessModal({
                 display: "inline-flex",
                 alignItems: "center",
                 height: "40px",
-                border: "1px solid #E2E8F0",
+                border: isCustomTiming ? "1px solid #CBD5E1" : "1px solid #E2E8F0",
                 borderRadius: "8px",
                 padding: "0 8px 0 12px",
-                background: "#FFFFFF",
+                background: isCustomTiming ? "#FFFFFF" : "#F1F5F9",
                 gap: "8px",
+                cursor: isCustomTiming ? "default" : "not-allowed",
+                transition: "all 0.2s ease",
               }}
             >
               <input
                 type="text"
                 value={days}
-                onChange={(e) => setDays(e.target.value.replace(/\D/g, ""))}
+                disabled={!isCustomTiming}
+                onChange={(e) => {
+                  if (isCustomTiming) setDays(e.target.value.replace(/\D/g, ""));
+                }}
                 style={{
                   width: "45px",
                   border: "none",
                   outline: "none",
                   fontSize: "14px",
                   fontWeight: 600,
-                  color: "#1E293B",
+                  color: isCustomTiming ? "#1E293B" : "#94A3B8",
                   background: "transparent",
+                  cursor: isCustomTiming ? "text" : "not-allowed",
                 }}
               />
               <span
                 style={{
-                  background: "#FEF3C7",
-                  color: "#D97706",
+                  background: isCustomTiming ? "#FEF3C7" : "#E2E8F0",
+                  color: isCustomTiming ? "#D97706" : "#94A3B8",
                   fontSize: "12px",
                   fontWeight: 600,
                   padding: "3px 8px",
                   borderRadius: "6px",
+                  transition: "all 0.2s ease",
                 }}
               >
                 Days
@@ -381,15 +441,16 @@ export default function AssignReportAccessModal({
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
-                background: "#F8FAFC",
+                background: isCustomTiming ? "#F8FAFC" : "#F1F5F9",
                 border: "1px solid #E2E8F0",
                 borderRadius: "8px",
                 padding: "10px 14px",
                 fontSize: "12px",
-                color: "#475569",
+                color: isCustomTiming ? "#475569" : "#94A3B8",
+                transition: "all 0.2s ease",
               }}
             >
-              <Info size={15} color="#64748B" style={{ flexShrink: 0 }} />
+              <Info size={15} color={isCustomTiming ? "#64748B" : "#CBD5E1"} style={{ flexShrink: 0 }} />
               <span>Give access to reports from the last {days || 24} days.</span>
             </div>
           </div>

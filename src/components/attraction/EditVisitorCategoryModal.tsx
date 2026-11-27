@@ -1130,14 +1130,15 @@ export default function EditVisitorCategoryModal({
                     style={{
                       boxSizing: "border-box",
                       border: revisionType === "recurring" ? "2px solid #3B82F6" : "1px solid #E2E8F0",
-                      background: revisionType === "recurring" ? "rgba(239, 246, 255, 0.4)" : "#FFFFFF",
+                      background: revisionType === "recurring" ? "rgba(239, 246, 255, 0.4)" : "#F8FAFC",
+                      opacity: revisionType === "recurring" ? 1 : 0.60,
                       borderRadius: "12px",
                       padding: "14px 16px",
                       display: "flex",
                       alignItems: "flex-start",
                       gap: "12px",
                       cursor: "pointer",
-                      transition: "all 0.15s ease",
+                      transition: "all 0.2s ease",
                     }}
                   >
                     <div
@@ -1146,12 +1147,13 @@ export default function EditVisitorCategoryModal({
                         height: "16px",
                         borderRadius: "9999px",
                         border: revisionType === "recurring" ? "2px solid #2563EB" : "2px solid #CBD5E1",
-                        background: "#FFFFFF",
+                        background: revisionType === "recurring" ? "#FFFFFF" : "#F1F5F9",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         marginTop: "2px",
                         flexShrink: 0,
+                        transition: "all 0.2s ease",
                       }}
                     >
                       {revisionType === "recurring" && (
@@ -1159,10 +1161,27 @@ export default function EditVisitorCategoryModal({
                       )}
                     </div>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: "12px", color: "#0F172A", lineHeight: "15px" }}>
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: "12px",
+                          color: revisionType === "recurring" ? "#0F172A" : "#64748B",
+                          lineHeight: "15px",
+                          transition: "color 0.2s ease",
+                        }}
+                      >
                         Recurring
                       </div>
-                      <div style={{ fontWeight: 400, fontSize: "11px", color: "#64748B", lineHeight: "16px", marginTop: "2px" }}>
+                      <div
+                        style={{
+                          fontWeight: 400,
+                          fontSize: "11px",
+                          color: revisionType === "recurring" ? "#64748B" : "#94A3B8",
+                          lineHeight: "16px",
+                          marginTop: "2px",
+                          transition: "color 0.2s ease",
+                        }}
+                      >
                         Price increases automatically at a fixed interval
                       </div>
                     </div>
@@ -1174,14 +1193,15 @@ export default function EditVisitorCategoryModal({
                     style={{
                       boxSizing: "border-box",
                       border: revisionType === "onetime" ? "2px solid #3B82F6" : "1px solid #E2E8F0",
-                      background: revisionType === "onetime" ? "rgba(239, 246, 255, 0.4)" : "#FFFFFF",
+                      background: revisionType === "onetime" ? "rgba(239, 246, 255, 0.4)" : "#F8FAFC",
+                      opacity: revisionType === "onetime" ? 1 : 0.60,
                       borderRadius: "12px",
                       padding: "14px 16px",
                       display: "flex",
                       alignItems: "flex-start",
                       gap: "12px",
                       cursor: "pointer",
-                      transition: "all 0.15s ease",
+                      transition: "all 0.2s ease",
                     }}
                   >
                     <div
@@ -1190,12 +1210,13 @@ export default function EditVisitorCategoryModal({
                         height: "16px",
                         borderRadius: "9999px",
                         border: revisionType === "onetime" ? "2px solid #2563EB" : "2px solid #CBD5E1",
-                        background: "#FFFFFF",
+                        background: revisionType === "onetime" ? "#FFFFFF" : "#F1F5F9",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         marginTop: "2px",
                         flexShrink: 0,
+                        transition: "all 0.2s ease",
                       }}
                     >
                       {revisionType === "onetime" && (
@@ -1203,10 +1224,27 @@ export default function EditVisitorCategoryModal({
                       )}
                     </div>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: "12px", color: "#0F172A", lineHeight: "15px" }}>
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: "12px",
+                          color: revisionType === "onetime" ? "#0F172A" : "#64748B",
+                          lineHeight: "15px",
+                          transition: "color 0.2s ease",
+                        }}
+                      >
                         One Time
                       </div>
-                      <div style={{ fontWeight: 400, fontSize: "11px", color: "#64748B", lineHeight: "16px", marginTop: "2px" }}>
+                      <div
+                        style={{
+                          fontWeight: 400,
+                          fontSize: "11px",
+                          color: revisionType === "onetime" ? "#64748B" : "#94A3B8",
+                          lineHeight: "16px",
+                          marginTop: "2px",
+                          transition: "color 0.2s ease",
+                        }}
+                      >
                         Increase price once on a selected date.
                       </div>
                     </div>

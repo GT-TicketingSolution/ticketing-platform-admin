@@ -371,7 +371,7 @@ function StaffManagementInner() {
   // Grant Crowd Access & Report Timing Notice State
   const [canGrantCrowdAccess, setCanGrantCrowdAccess] = useState<boolean>(true);
   const [showReportNotice, setShowReportNotice] = useState<boolean>(true);
-  const [reportTimingType, setReportTimingType] = useState<"date_range" | "custom_timing">("custom_timing");
+  const [reportTimingType, setReportTimingType] = useState<"date_range" | "custom_timing">("date_range");
   const [reportStartDate, setReportStartDate] = useState<string>("");
   const [reportDays, setReportDays] = useState<number>(1);
 
