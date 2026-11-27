@@ -1,14 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { Upload, Plus, Trash2, X, Check, Armchair, ChevronDown, ChevronUp, Search, Loader2, GripVertical, Power, User } from "lucide-react";
+import { Upload, Plus, Trash2, X, Check, Armchair, ChevronDown, ChevronUp, Search, Loader2, GripVertical, Power, User, TrainFront, RotateCw, Pencil } from "lucide-react";
 import { Attraction } from "@/app/(dashboard)/attraction-management/types";
-import { confirmDelete } from "@/lib/notify";
+import { confirmDelete, confirmRemoveRoute } from "@/lib/notify";
 import { validateAttractionForm } from "@/app/(dashboard)/attraction-management/schema";
 import { SeatConfigData } from "@/app/(dashboard)/seat-management/types";
 import { useSeatLayouts } from "@/hooks/useSeatQueries";
 import { useDeleteAttractionSeat } from "@/hooks/useAttractionManagementQueries";
 import { useModalBodyLock } from "@/hooks/useModalBodyLock";
+import AttractionImageCropper from "./AttractionImageCropper";
+import AddEditVisitorCategoryModal from "./AddEditVisitorCategoryModal";
+import ConfigureStationsModal, { StationItem } from "./ConfigureStationsModal";
 
 // ── Shared required asterisk
 const Req = () => <span style={{ color: "#DC2626", marginLeft: "2px" }}>*</span>;
@@ -41,8 +44,11 @@ export interface CategoryItem {
   imageLink?: string | null;
   basePrice: string;
   futurePrice: string;
+  futurePriceType?: "recurring" | "onetime";
   effectiveFrom: string;
   numberOfSeats: string;
+  hsnCode?: string;
+  sacCode?: string;
 }
 
 interface AddEditAttractionFormProps {
@@ -55,7 +61,8 @@ interface AddEditAttractionFormProps {
   isSaving?: boolean;
 }
 
-// ── Add Visitor Category Modal
+// ── Preserved legacy AddVisitorCategoryModal (commented out - do not delete)
+/*
 function AddVisitorCategoryModal({
   isOpen,
   onClose,
@@ -152,7 +159,6 @@ function AddVisitorCategoryModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div style={{ background: "#011B2F", padding: "16px 22px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <Plus size={20} color="#F4BC43" />
@@ -163,9 +169,7 @@ function AddVisitorCategoryModal({
           </button>
         </div>
 
-        {/* Body */}
         <div style={{ padding: "24px 22px", display: "flex", flexDirection: "column", gap: "16px" }}>
-          {/* Category Image Upload */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
             <div
               style={{
@@ -182,7 +186,6 @@ function AddVisitorCategoryModal({
               }}
             >
               {image ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
                 <img src={image} alt="Preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
                 <User size={30} color="#2372A5" />
@@ -270,7 +273,6 @@ function AddVisitorCategoryModal({
             {seatsErrorMsg && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{seatsErrorMsg}</span>}
           </div>
 
-          {/* Footer buttons */}
           <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "4px" }}>
             <button
               type="button" onClick={onClose}
@@ -301,20 +303,23 @@ function AddVisitorCategoryModal({
     </div>
   );
 }
+*/
 
-// ── Visitor Category Avatar with Profile Icon Fallback ─────────────
-function VisitorCategoryAvatar({ src, name }: { src?: string; name: string }) {
+// ── Visitor Category Avatar with Profile Icon Fallback 
+function VisitorCategoryAvatar({ src, name, size = 44 }: { src?: string; name: string; size?: number }) {
+  const [currentSrc, setCurrentSrc] = useState(src);
   const [imgErr, setImgErr] = useState(false);
 
   useEffect(() => {
+    setCurrentSrc(src);
     setImgErr(false);
   }, [src]);
 
   return (
     <div
       style={{
-        width: "69px",
-        height: "69px",
+        width: `${size}px`,
+        height: `${size}px`,
         borderRadius: "50%",
         overflow: "hidden",
         border: "1.5px solid #E2E8F0",
@@ -326,13 +331,21 @@ function VisitorCategoryAvatar({ src, name }: { src?: string; name: string }) {
         justifyContent: "center",
       }}
     >
-      {src && !imgErr ? (
+      {currentSrc && !imgErr ? (
         /* eslint-disable-next-line @next/next/no-img-element */
         <img
-          src={src}
+          src={currentSrc}
           alt={name}
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          onError={() => setImgErr(true)}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          onError={() => {
+            if (currentSrc.includes("Student.jpg")) {
+              setCurrentSrc("/Assets/Visitors/Student.png");
+            } else if (currentSrc.endsWith(".jpg")) {
+              setCurrentSrc(currentSrc.replace(/\.jpg$/i, ".png"));
+            } else {
+              setImgErr(true);
+            }
+          }}
         />
       ) : (
         <div
@@ -346,7 +359,7 @@ function VisitorCategoryAvatar({ src, name }: { src?: string; name: string }) {
             justifyContent: "center",
           }}
         >
-          <User size={32} color="#64748B" />
+          <User size={Math.round(size * 0.55)} color="#64748B" />
         </div>
       )}
     </div>
@@ -355,20 +368,20 @@ function VisitorCategoryAvatar({ src, name }: { src?: string; name: string }) {
 
 // ── Default categories using local /Assets/Visitors/ images 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
-  { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.jpg", basePrice: "100.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
-  { id: "child", name: "Child", image: "/Assets/Visitors/Child.jpg", basePrice: "50.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
-  { id: "student", name: "Student", image: "/Assets/Visitors/Student.jpg", basePrice: "60.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
-  { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.jpg", basePrice: "75.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
-  { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.jpg", basePrice: "500.00", futurePrice: "00.00", effectiveFrom: "", numberOfSeats: "1" },
+  { id: "adult", name: "Adult", image: "/Assets/Visitors/Adult.png", basePrice: "100.00", futurePrice: "+10%", futurePriceType: "recurring", effectiveFrom: "2027-01-01", numberOfSeats: "1" },
+  { id: "child", name: "Child", image: "/Assets/Visitors/Child.png", basePrice: "60.00", futurePrice: "75.00", futurePriceType: "onetime", effectiveFrom: "2026-12-15", numberOfSeats: "1" },
+  { id: "student", name: "Student", image: "/Assets/Visitors/Student.png", basePrice: "90.00", futurePrice: "+5%", futurePriceType: "recurring", effectiveFrom: "2027-01-01", numberOfSeats: "1" },
+  { id: "senior", name: "Senior", image: "/Assets/Visitors/Senior.png", basePrice: "75.00", futurePrice: "00.00", futurePriceType: "recurring", effectiveFrom: "", numberOfSeats: "1" },
+  { id: "foreigner", name: "Foreigner", image: "/Assets/Visitors/Foreigner.png", basePrice: "500.00", futurePrice: "00.00", futurePriceType: "recurring", effectiveFrom: "", numberOfSeats: "1" },
 ];
 
-// ── Default image map per category name key ────────────────────────────────
+// ── Default image map per category name key 
 const DEFAULT_CATEGORY_IMAGES: Record<string, string> = {
-  adult: "/Assets/Visitors/Adult.jpg",
-  child: "/Assets/Visitors/Child.jpg",
-  student: "/Assets/Visitors/Student.jpg",
-  senior: "/Assets/Visitors/Senior.jpg",
-  foreigner: "/Assets/Visitors/Foreigner.jpg",
+  adult: "/Assets/Visitors/Adult.png",
+  child: "/Assets/Visitors/Child.png",
+  student: "/Assets/Visitors/Student.png",
+  senior: "/Assets/Visitors/Senior.png",
+  foreigner: "/Assets/Visitors/Foreigner.png",
 };
 
 // ── Helper: build CategoryItem list from attraction.categories API array ────
@@ -377,12 +390,15 @@ function apiCategoriesToCategoryItems(apiCats: any[]): CategoryItem[] {
   return apiCats.map((c) => {
     const key = (c.name || "").toLowerCase().trim();
     const defaultImg = DEFAULT_CATEGORY_IMAGES[key] || "";
-    const rawImage =
+    let rawImage =
       c.imageLink && typeof c.imageLink === "string" && c.imageLink.trim()
         ? c.imageLink.trim()
         : c.image && typeof c.image === "string" && c.image.trim()
           ? c.image.trim()
           : defaultImg;
+    if (rawImage && rawImage.includes("Student.jpg")) {
+      rawImage = "/Assets/Visitors/Student.png";
+    }
     const imageUrl = rawImage ? rawImage.replace(/\/Assests\//gi, "/Assets/") : defaultImg;
     return {
       id: c.id || key,
@@ -399,7 +415,8 @@ function apiCategoriesToCategoryItems(apiCats: any[]): CategoryItem[] {
       futurePrice:
         c.futurePrice != null && !isNaN(Number(c.futurePrice))
           ? Number(c.futurePrice).toFixed(2)
-          : "00.00",
+          : (c.futurePrice || "00.00"),
+      futurePriceType: c.futurePriceType || "recurring",
       effectiveFrom: c.effectiveFrom || "",
       numberOfSeats:
         c.noOfSeats != null && Number(c.noOfSeats) >= 1
@@ -474,12 +491,26 @@ export default function AddEditAttractionForm({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const seatDropdownRef = useRef<HTMLDivElement>(null);
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<CategoryItem | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   // ── Operating hours (display-only, no booking enforcement) 
   const [openTime, setOpenTime] = useState("09:00");
   const [closeTime, setCloseTime] = useState("18:00");
+  const [isRoundTrip, setIsRoundTrip] = useState<boolean>(false);
+  const [isMultiStation, setIsMultiStation] = useState<boolean>(() => {
+    if (attractionToEdit) {
+      return (attractionToEdit as any).isMultiStation === true;
+    }
+    return false;
+  });
+  const [isConfigureStationsModalOpen, setIsConfigureStationsModalOpen] = useState<boolean>(false);
+  const [configuredStations, setConfiguredStations] = useState<StationItem[]>([
+    { id: "st-1", name: "Station 1" },
+    { id: "st-2", name: "Station 2" },
+    { id: "st-3", name: "Station 3" },
+  ]);
 
   // ── Fetch active seat layouts from backend API.
   // The dropdown is populated from /api/admin/seats in BOTH create and edit modes
@@ -767,6 +798,11 @@ export default function AddEditAttractionForm({
         setOpenTime("09:00");
         setCloseTime("18:00");
       }
+      // setIsRoundTrip((attractionToEdit as any).isRoundTrip !== false);
+      setIsMultiStation((attractionToEdit as any).isMultiStation === true);
+      if (Array.isArray((attractionToEdit as any).stations) && (attractionToEdit as any).stations.length > 0) {
+        setConfiguredStations((attractionToEdit as any).stations);
+      }
     } else {
       // Reset for new attraction
       setName("");
@@ -780,18 +816,17 @@ export default function AddEditAttractionForm({
       setCloseTime("18:00");
       setDurationValue("");
       setDurationUnit("minutes");
+      setIsRoundTrip(false);
+      setIsMultiStation(false);
+      setConfiguredStations([
+        { id: "st-1", name: "Station 1" },
+        { id: "st-2", name: "Station 2" },
+        { id: "st-3", name: "Station 3" },
+      ]);
     }
   }, [attractionToEdit]);
 
   // ── Handlers ───────────────────────────────────────────────────────────
-  const handleAttractionImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setImagePreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
-  };
-
   const handleCategoryImageUpload = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -818,6 +853,7 @@ export default function AddEditAttractionForm({
         image: image || "",
         basePrice: basePrice || "00.00",
         futurePrice: "00.00",
+        futurePriceType: "recurring",
         effectiveFrom: "",
         numberOfSeats: numberOfSeats && Number(numberOfSeats) >= 1 ? numberOfSeats : "1",
       },
@@ -1151,6 +1187,9 @@ export default function AddEditAttractionForm({
         duration: durationValue.trim() ? Number(durationValue.trim()) : null,
         durationUnit: durationUnit,
         formattedDuration: effectiveDuration,
+        isRoundTrip,
+        isMultiStation,
+        stations: configuredStations,
       } as any);
     } catch (err: any) {
       // If the API returned a duplicate-name conflict, show the error inline
@@ -1202,1012 +1241,1432 @@ export default function AddEditAttractionForm({
         fontFamily: "'Plus Jakarta Sans', sans-serif",
       }}
     >
-      {/* ── Top Row: Basic Info + Status ─────────────────────────────── */}
-      <div style={{ display: "flex", gap: "32px", width: "100%", flexWrap: "wrap" }}>
-        {/* Rectangle 171: Basic Information Box */}
-        <div
-          style={{
-            boxSizing: "border-box",
-            flex: "1 1 600px",
-            minHeight: "373px",
-            background: "#FFFFFF",
-            border: "0.5px solid rgba(0, 0, 0, 0.43)",
-            boxShadow: "0px 4px 11.9px -6px rgba(0, 0, 0, 0.32)",
-            borderRadius: "15px",
-            padding: "24px 31px",
-            display: "flex",
-            flexDirection: "column",
-          }}
-          className="card-basic-info"
-        >
-          <h3 style={{ margin: "0 0 20px 0", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "18px", color: "#0C2A42" }}>
-            Basic Information
-          </h3>
+      {/* ── Top Row: Basic Info (Left) + Status (Right) ─────────────────────────────── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.15fr 0.85fr",
+          gap: "24px",
+          width: "100%",
+        }}
+        className="attraction-top-grid"
+      >
+        {/* Left Column: Basic Information Box */}
+        <div style={{ minWidth: 0, height: "100%" }}>
+          {/* Rectangle 171: Basic Information Box */}
+          <div
+            style={{
+              boxSizing: "border-box",
+              width: "100%",
+              height: "100%",
+              minHeight: "373px",
+              background: "#FFFFFF",
+              border: "0.5px solid rgba(0, 0, 0, 0.43)",
+              boxShadow: "0px 4px 11.9px -6px rgba(0, 0, 0, 0.32)",
+              borderRadius: "15px",
+              padding: "24px 31px",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            className="card-basic-info"
+          >
+            <h3 style={{ margin: "0 0 20px 0", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "18px", color: "#0C2A42" }}>
+              Basic Information
+            </h3>
 
-          {/* Attraction Name + Category — side by side row */}
-          <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", marginBottom: "20px", alignItems: "flex-start" }}>
-            {/* Attraction Name */}
-            <div style={{ flex: "1 1 200px" }} id="field-name">
-              <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
-                Attraction Name<Req />
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. toy train"
-                value={name}
-                onChange={(e) => { setName(e.target.value); setFormErrors((p) => ({ ...p, name: "" })); }}
-                style={{
-                  boxSizing: "border-box",
-                  width: "100%",
-                  height: "38px",
-                  background: "#FFFFFF",
-                  border: formErrors.name ? "1.5px solid #DC2626" : "1.5px solid rgba(179, 175, 175, 0.51)",
-                  borderRadius: "8px",
-                  padding: "0 15px",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 500,
-                  fontSize: "12px",
-                  color: "rgba(55, 65, 81, 0.89)",
-                  outline: "none",
-                }}
-              />
-              {formErrors.name && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{formErrors.name}</span>}
-            </div>
-
-            {/* Attraction Category - Type Only Field */}
-            <div style={{ flex: "1 1 160px" }} id="field-category">
-              <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
-                Category<Req />
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Ride, Water Park, 3D Show"
-                value={category}
-                onChange={(e) => {
-                  setCategory(e.target.value);
-                  setFormErrors((p) => ({ ...p, category: "" }));
-                }}
-                style={{
-                  boxSizing: "border-box",
-                  width: "100%",
-                  height: "38px",
-                  background: "#FFFFFF",
-                  border: formErrors.category ? "1.5px solid #DC2626" : "1.5px solid rgba(179, 175, 175, 0.51)",
-                  borderRadius: "8px",
-                  padding: "0 15px",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 500,
-                  fontSize: "12px",
-                  color: "rgba(55, 65, 81, 0.89)",
-                  outline: "none",
-                }}
-              />
-              {formErrors.category && (
-                <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>
-                  {formErrors.category}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* ── Operating Hours (Display only) ── */}
-          <div style={{ marginBottom: "20px" }}>
-            <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
-              Operating Hours (Display only)
-            </label>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-              {/* Open time */}
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <span style={{ fontSize: "11px", fontFamily: "'Plus Jakarta Sans', sans-serif", color: "#6B7280", fontWeight: 500 }}>
-                  Open:
-                </span>
+            {/* Attraction Name + Category — side by side row */}
+            <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", marginBottom: "20px", alignItems: "flex-start" }}>
+              {/* Attraction Name */}
+              <div style={{ flex: "1 1 200px" }} id="field-name">
+                <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
+                  Attraction Name<Req />
+                </label>
                 <input
-                  type="time"
-                  value={openTime}
-                  onChange={(e) => setOpenTime(e.target.value)}
-                  style={{
-                    boxSizing: "border-box",
-                    height: "38px",
-                    background: "#FFFFFF",
-                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                    borderRadius: "8px",
-                    padding: "0 10px",
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 500,
-                    fontSize: "12px",
-                    color: "rgba(55, 65, 81, 0.89)",
-                    outline: "none",
-                  }}
-                />
-              </div>
-
-              <span style={{ color: "#9CA3AF", fontSize: "14px" }}>—</span>
-
-              {/* Close time */}
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <span style={{ fontSize: "11px", fontFamily: "'Plus Jakarta Sans', sans-serif", color: "#6B7280", fontWeight: 500 }}>
-                  Close:
-                </span>
-                <input
-                  type="time"
-                  value={closeTime}
-                  onChange={(e) => setCloseTime(e.target.value)}
-                  style={{
-                    boxSizing: "border-box",
-                    height: "38px",
-                    background: "#FFFFFF",
-                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                    borderRadius: "8px",
-                    padding: "0 10px",
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 500,
-                    fontSize: "12px",
-                    color: "rgba(55, 65, 81, 0.89)",
-                    outline: "none",
-                  }}
-                />
-              </div>
-
-              {/* Formatted preview pill */}
-              {openTime && closeTime && (
-                <div
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    padding: "4px 10px",
-                    background: "#EFF6FF",
-                    border: "1px solid #BFDBFE",
-                    borderRadius: "20px",
-                    marginLeft: "4px",
-                  }}
-                >
-                  <span style={{ fontSize: "11px", fontWeight: 600, color: "#1D4ED8", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                    {(() => {
-                      const to12 = (t: string) => {
-                        const [hStr, mStr] = t.split(":");
-                        let h = parseInt(hStr, 10);
-                        const m = mStr ?? "00";
-                        const meridiem = h >= 12 ? "PM" : "AM";
-                        if (h > 12) h -= 12;
-                        if (h === 0) h = 12;
-                        return `${h}:${m} ${meridiem}`;
-                      };
-                      return `${to12(openTime)} – ${to12(closeTime)}`;
-                    })()}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ── Average Trip Duration ── */}
-          <div style={{ marginBottom: "20px" }} id="field-duration">
-            <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "4px" }}>
-              Average Trip Duration
-            </label>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <input
-                type="number"
-                min="1"
-                placeholder="e.g. 20"
-                value={durationValue}
-                onChange={(e) => setDurationValue(e.target.value)}
-                style={{
-                  boxSizing: "border-box",
-                  flex: 0.3,
-                  height: "38px",
-                  background: "#FFFFFF",
-                  border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                  borderRadius: "8px",
-                  padding: "0 15px",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 500,
-                  fontSize: "12px",
-                  color: "rgba(55, 65, 81, 0.89)",
-                  outline: "none",
-                }}
-              />
-              <select
-                value={durationUnit}
-                onChange={(e) => setDurationUnit(e.target.value as "minutes" | "hours")}
-                style={{
-                  boxSizing: "border-box",
-                  width: "110px",
-                  height: "38px",
-                  background: "#FFFFFF",
-                  border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                  borderRadius: "8px",
-                  padding: "0 10px",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 600,
-                  fontSize: "12px",
-                  color: "#374151",
-                  cursor: "pointer",
-                  outline: "none",
-                  appearance: "auto",
-                }}
-              >
-                <option value="minutes">Minutes</option>
-                <option value="hours">Hours</option>
-              </select>
-            </div>
-            {durationValue.trim() && (
-              <p style={{ margin: "5px 0 0 0", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "10.5px", color: "#6B7280" }}>
-                Preview: <strong style={{ color: "#173F63" }}>{effectiveDuration}</strong>
-              </p>
-            )}
-          </div>
-
-          {/* Description + Attraction Image Row */}
-          <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", alignItems: "flex-start" }}>
-            {/* Description */}
-            <div style={{ flex: "1 1 260px" }} id="field-description">
-              <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
-                Description
-                <span style={{ marginLeft: "4px", fontWeight: 400, fontSize: "11px", color: "#9CA3AF" }}>(Optional)</span>
-              </label>
-              <div style={{ position: "relative", maxWidth: "313px" }}>
-                <textarea
-                  placeholder="Enter attraction description......"
-                  maxLength={500}
-                  value={description}
-                  onChange={(e) => { setDescription(e.target.value); setFormErrors((p) => ({ ...p, description: "" })); }}
+                  type="text"
+                  placeholder="e.g. toy train"
+                  value={name}
+                  onChange={(e) => { setName(e.target.value); setFormErrors((p) => ({ ...p, name: "" })); }}
                   style={{
                     boxSizing: "border-box",
                     width: "100%",
-                    height: "176px",
+                    height: "38px",
                     background: "#FFFFFF",
-                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                    border: formErrors.name ? "1.5px solid #DC2626" : "1.5px solid rgba(179, 175, 175, 0.51)",
                     borderRadius: "8px",
-                    padding: "12px 15px 28px 15px",
+                    padding: "0 15px",
                     fontFamily: "'Plus Jakarta Sans', sans-serif",
                     fontWeight: 500,
                     fontSize: "12px",
                     color: "rgba(55, 65, 81, 0.89)",
                     outline: "none",
-                    resize: "none",
                   }}
                 />
-                <span
+                {formErrors.name && <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>{formErrors.name}</span>}
+              </div>
+
+              {/* Attraction Category - Type Only Field */}
+              <div style={{ flex: "1 1 160px" }} id="field-category">
+                <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
+                  Category<Req />
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Ride, Water Park, 3D Show"
+                  value={category}
+                  onChange={(e) => {
+                    setCategory(e.target.value);
+                    setFormErrors((p) => ({ ...p, category: "" }));
+                  }}
                   style={{
-                    position: "absolute",
-                    right: "12px",
-                    bottom: "10px",
+                    boxSizing: "border-box",
+                    width: "100%",
+                    height: "38px",
+                    background: "#FFFFFF",
+                    border: formErrors.category ? "1.5px solid #DC2626" : "1.5px solid rgba(179, 175, 175, 0.51)",
+                    borderRadius: "8px",
+                    padding: "0 15px",
                     fontFamily: "'Plus Jakarta Sans', sans-serif",
                     fontWeight: 500,
-                    fontSize: "10px",
-                    color: "rgba(107, 114, 128, 0.68)",
+                    fontSize: "12px",
+                    color: "rgba(55, 65, 81, 0.89)",
+                    outline: "none",
                   }}
-                >
-                  {description.length}/500
-                </span>
-              </div>
-            </div>
-
-            {/* Attraction Image Dropzone */}
-            <div style={{ flex: "1 1 260px" }} id="field-image">
-              <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
-                Attraction image
-                <span style={{ marginLeft: "4px", fontWeight: 400, fontSize: "11px", color: "#9CA3AF" }}>(Optional)</span>
-              </label>
-              <div
-                style={{
-                  boxSizing: "border-box",
-                  width: "100%",
-                  maxWidth: "313px",
-                  height: "176px",
-                  background: "#FFFFFF",
-                  border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                  borderRadius: "8px",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: "12px",
-                  position: "relative",
-                  overflow: "hidden",
-                }}
-              >
-                {imagePreview ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={imagePreview}
-                      alt="Preview"
-                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                    <div style={{ position: "absolute", bottom: "8px", right: "8px", display: "flex", gap: "6px", zIndex: 2 }}>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setImagePreview(null);
-                        }}
-                        style={{
-                          background: "rgba(220, 38, 38, 0.85)",
-                          color: "#FFFFFF",
-                          fontSize: "10px",
-                          fontWeight: 600,
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          border: "none",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Remove
-                      </button>
-                      <label
-                        htmlFor="attraction-image-upload"
-                        style={{
-                          background: "rgba(12,42,66,0.85)",
-                          color: "#FFFFFF",
-                          fontSize: "10px",
-                          fontWeight: 600,
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Change
-                      </label>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <Upload size={24} color="#2372A5" strokeWidth={1.8} />
-                    <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "10px", color: "#011B2F", marginTop: "8px" }}>
-                      Drag & Drop Image here
-                    </span>
-                    <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "10px", color: "#011B2F", margin: "2px 0 6px 0" }}>
-                      or
-                    </span>
-                    <label
-                      htmlFor="attraction-image-upload"
-                      style={{
-                        boxSizing: "border-box",
-                        width: "88px",
-                        height: "28px",
-                        border: "2px solid #2372A5",
-                        borderRadius: "8px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "pointer",
-                        fontFamily: "'Plus Jakarta Sans', sans-serif",
-                        fontWeight: 500,
-                        fontSize: "10px",
-                        color: "#2372A5",
-                        background: "transparent",
-                      }}
-                    >
-                      Browse File
-                    </label>
-                    <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "10px", color: "rgba(107,114,128,0.68)", marginTop: "8px" }}>
-                      JPG, PNG or WEBP (Max. 5MB)
-                    </span>
-                  </>
+                />
+                {formErrors.category && (
+                  <span style={{ display: "block", marginTop: "4px", fontSize: "11px", color: "#DC2626" }}>
+                    {formErrors.category}
+                  </span>
                 )}
-                <input
-                  id="attraction-image-upload"
-                  type="file"
-                  accept="image/png, image/jpeg, image/webp"
-                  onChange={handleAttractionImageUpload}
-                  style={{ display: "none" }}
-                />
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Rectangle 172: Status & Seat Allocation Box */}
-        <div
-          style={{
-            boxSizing: "border-box",
-            flex: "1 1 340px",
-            minHeight: "373px",
-            background: "#FFFFFF",
-            border: "0.5px solid rgba(0, 0, 0, 0.43)",
-            boxShadow: "0px 4px 11.9px -6px rgba(0, 0, 0, 0.32)",
-            borderRadius: "15px",
-            padding: "24px 28px",
-            display: "flex",
-            flexDirection: "column",
-          }}
-          className="card-status-seating"
-        >
-          {/* Status Section */}
-          <h3 style={{ margin: "0 0 16px 0", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "18px", color: "#0C2A42" }}>
-            Status
-          </h3>
-          <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "10px" }}>
-            Attraction Status<Req />
-          </label>
-
-          {/* Active / Inactive toggle */}
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "22px" }}>
-            {(["Active", "Inactive"] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatus(s)}
-                style={{
-                  boxSizing: "border-box",
-                  width: "120px",
-                  height: "38px",
-                  background: "#FFFFFF",
-                  border: status === s ? "1.5px solid #011B2F" : "1.5px solid rgba(179, 175, 175, 0.51)",
-                  borderRadius: "8px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                  cursor: "pointer",
-                  transition: "all 0.18s ease",
-                }}
-              >
-                <div
-                  style={{
-                    width: "12px",
-                    height: "12px",
-                    borderRadius: "50%",
-                    background: status === s ? "#173F63" : "transparent",
-                    border: status === s ? "1px solid #173F63" : "1px solid #A0A0A0",
-                  }}
-                />
-                <span
-                  style={{
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 700,
-                    fontSize: "14px",
-                    color: status === s ? "#0C2A42" : "#A0A0A0",
-                  }}
-                >
-                  {s}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          {/* ── Seat Allocation Section ── */}
-          <div style={{ marginTop: "0px", display: "flex", flexDirection: "column", flex: 1 }} id="field-seatAllocation">
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Armchair size={18} color="#0C2A42" />
-                <h3 style={{ margin: 0, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "16px", color: "#0C2A42" }}>
-                  Seat Allocation<Req />
-                </h3>
-              </div>
-              {allocatedSeats.length > 0 && (
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: "#059669",
-                      background: "#ECFDF5",
-                      border: "1px solid #A7F3D0",
-                      borderRadius: "12px",
-                      padding: "2px 8px",
-                    }}
-                  >
-                    {decoratedAllocatedSeats.filter((s) => !s.isDisabled).length} Active
-                  </span>
-                  {decoratedAllocatedSeats.some((s) => s.isDisabled) && (
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        color: "#6B7280",
-                        background: "#F3F4F6",
-                        border: "1px solid #E5E7EB",
-                        borderRadius: "12px",
-                        padding: "2px 8px",
-                      }}
-                    >
-                      {decoratedAllocatedSeats.filter((s) => s.isDisabled).length} Disabled
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* 1. First Dropdown: Select Seat Layouts */}
-            <div style={{ marginBottom: "12px" }} ref={seatDropdownRef}>
-              <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "6px" }}>
-                Select Seat Layout (Dropdown)<Req />
+            {/* ── Operating Hours (Display only) ── */}
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
+                Operating Hours (Display only)
               </label>
-
-              <div style={{ position: "relative", width: "100%" }}>
-                {/* Trigger */}
-                <div
-                  onClick={() => setIsSeatDropdownOpen((prev) => !prev)}
-                  style={{
-                    minHeight: "38px",
-                    boxSizing: "border-box",
-                    width: "100%",
-                    background: "#FFFFFF",
-                    border: formErrors.seatAllocation
-                      ? "1.5px solid #DC2626"
-                      : isSeatDropdownOpen
-                        ? "1.5px solid #0C2A42"
-                        : "1.5px solid rgba(179, 175, 175, 0.51)",
-                    borderRadius: "8px",
-                    padding: "6px 12px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "8px",
-                    cursor: "pointer",
-                    boxShadow: isSeatDropdownOpen ? "0 0 0 3px rgba(12, 42, 66, 0.12)" : "none",
-                    transition: "all 0.18s ease",
-                    userSelect: "none",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#4B5563" }}>
-                    <Armchair size={15} color="#2372A5" />
-                    <span style={{ fontSize: "12px", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500 }}>
-                      {availableSeats.length === 0 ? "No seat layouts available" : "Click to select seat layout..."}
-                    </span>
-                  </div>
-                  <ChevronDown
-                    size={16}
-                    color="#6B7280"
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                {/* Open time */}
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontSize: "11px", fontFamily: "'Plus Jakarta Sans', sans-serif", color: "#6B7280", fontWeight: 500 }}>
+                    Open:
+                  </span>
+                  <input
+                    type="time"
+                    value={openTime}
+                    onChange={(e) => setOpenTime(e.target.value)}
                     style={{
-                      transform: isSeatDropdownOpen ? "rotate(180deg)" : "rotate(0deg)",
-                      transition: "transform 0.2s ease",
+                      boxSizing: "border-box",
+                      height: "38px",
+                      background: "#FFFFFF",
+                      border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                      borderRadius: "8px",
+                      padding: "0 10px",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 500,
+                      fontSize: "12px",
+                      color: "rgba(55, 65, 81, 0.89)",
+                      outline: "none",
                     }}
                   />
                 </div>
 
-                {/* Dropdown Menu with Vertical Scroll */}
-                {isSeatDropdownOpen && (
+                <span style={{ color: "#9CA3AF", fontSize: "14px" }}>—</span>
+
+                {/* Close time */}
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontSize: "11px", fontFamily: "'Plus Jakarta Sans', sans-serif", color: "#6B7280", fontWeight: 500 }}>
+                    Close:
+                  </span>
+                  <input
+                    type="time"
+                    value={closeTime}
+                    onChange={(e) => setCloseTime(e.target.value)}
+                    style={{
+                      boxSizing: "border-box",
+                      height: "38px",
+                      background: "#FFFFFF",
+                      border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                      borderRadius: "8px",
+                      padding: "0 10px",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 500,
+                      fontSize: "12px",
+                      color: "rgba(55, 65, 81, 0.89)",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+
+                {/* Formatted preview pill */}
+                {openTime && closeTime && (
                   <div
                     style={{
-                      position: "absolute",
-                      top: "calc(100% + 6px)",
-                      left: 0,
-                      right: 0,
-                      zIndex: 300,
-                      background: "#FFFFFF",
-                      borderRadius: "10px",
-                      border: "1.5px solid #E2E8F0",
-                      boxShadow: "0 14px 35px rgba(12, 42, 66, 0.18)",
-                      overflow: "hidden",
-                      display: "flex",
-                      flexDirection: "column",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "4px 10px",
+                      background: "#EFF6FF",
+                      border: "1px solid #BFDBFE",
+                      borderRadius: "20px",
+                      marginLeft: "4px",
                     }}
-                    onClick={(e) => e.stopPropagation()}
                   >
-                    {/* Search box inside dropdown */}
-                    <div style={{ padding: "8px", borderBottom: "1px solid #F1F5F9" }}>
-                      <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                        <Search size={14} color="#9CA3AF" style={{ position: "absolute", left: "10px" }} />
-                        <input
-                          type="text"
-                          placeholder="Search seat layouts..."
-                          value={seatSearchQuery}
-                          onChange={(e) => setSeatSearchQuery(e.target.value)}
-                          style={{
-                            width: "100%",
-                            height: "32px",
-                            padding: "0 10px 0 30px",
-                            borderRadius: "6px",
-                            border: "1px solid #E2E8F0",
-                            fontSize: "12px",
-                            fontFamily: "'Plus Jakarta Sans', sans-serif",
-                            outline: "none",
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Scrollable Layouts List */}
-                    <div style={{ maxHeight: "200px", overflowY: "auto", padding: "6px" }} className="seat-scroll-container">
-                      {isSeatsLoading ? (
-                        <div style={{ padding: "20px 14px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-                          <Loader2 size={20} color="#2372A5" style={{ animation: "spin 1s linear infinite" }} />
-                          <span style={{ fontSize: "12px", fontFamily: "'Plus Jakarta Sans', sans-serif", color: "#64748B" }}>
-                            Loading seat layouts...
-                          </span>
-                        </div>
-                      ) : filteredAvailableSeats.length === 0 ? (
-                        <div style={{ padding: "16px 12px", textAlign: "center" }}>
-                          <p style={{ margin: "0 0 2px 0", fontSize: "12px", fontWeight: 600, color: "#374151" }}>
-                            No matching layouts found
-                          </p>
-                        </div>
-                      ) : (
-                        filteredAvailableSeats.map((seat) => {
-                          const currentCount = allocatedSeats.filter((s) => s.layoutId === seat.id).length;
-                          return (
-                            <div
-                              key={seat.id}
-                              onClick={() => {
-                                addSeatLayout(seat.id!);
-                                setIsSeatDropdownOpen(false);
-                              }}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: "10px",
-                                padding: "8px 10px",
-                                borderRadius: "6px",
-                                cursor: "pointer",
-                                transition: "all 0.15s ease",
-                                background: currentCount > 0 ? "#F0F7FF" : "transparent",
-                                marginBottom: "3px",
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background = "#E0EDFF";
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = currentCount > 0 ? "#F0F7FF" : "transparent";
-                              }}
-                            >
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-                                <Armchair size={15} color="#2372A5" style={{ flexShrink: 0 }} />
-                                <div style={{ minWidth: 0 }}>
-                                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                    <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "12px", color: "#0C2A42" }}>
-                                      {seat.name}
-                                    </span>
-                                    {seat.hasAisle && (
-                                      <span style={{ fontSize: "9px", fontWeight: 700, color: "#059669", background: "#ECFDF5", padding: "1px 5px", borderRadius: "4px" }}>
-                                        Aisle
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p style={{ margin: "1px 0 0 0", fontSize: "10px", color: "#64748B" }}>
-                                    {seat.rows}R × {seat.cols}C • {seat.rows * seat.cols} seats
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
-                                {currentCount > 0 && (
-                                  <span style={{ fontSize: "10px", fontWeight: 700, color: "#2563EB", background: "#DBEAFE", padding: "1px 6px", borderRadius: "10px" }}>
-                                    {currentCount} selected
-                                  </span>
-                                )}
-                                <span style={{ fontSize: "11px", fontWeight: 700, color: "#0E4E7A", background: "#E0F2FE", padding: "2px 6px", borderRadius: "4px" }}>
-                                  + Select
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
+                    <span style={{ fontSize: "11px", fontWeight: 600, color: "#1D4ED8", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                      {(() => {
+                        const to12 = (t: string) => {
+                          const [hStr, mStr] = t.split(":");
+                          let h = parseInt(hStr, 10);
+                          const m = mStr ?? "00";
+                          const meridiem = h >= 12 ? "PM" : "AM";
+                          if (h > 12) h -= 12;
+                          if (h === 0) h = 12;
+                          return `${h}:${m} ${meridiem}`;
+                        };
+                        return `${to12(openTime)} – ${to12(closeTime)}`;
+                      })()}
+                    </span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* 2. Second Dropdown / List: Allocated Seats & Sequence (with Grab / Drag & Drop & Disable) */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                <label style={{ fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151" }}>
-                  Allocated Seats ({decoratedAllocatedSeats.length}) — Grab to Reorder
+            {/* ── Average Trip Duration ── */}
+            <div style={{ marginBottom: "20px" }} id="field-duration">
+              <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "4px" }}>
+                Average Trip Duration
+              </label>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="e.g. 20"
+                  value={durationValue}
+                  onChange={(e) => setDurationValue(e.target.value)}
+                  style={{
+                    boxSizing: "border-box",
+                    flex: 0.3,
+                    height: "38px",
+                    background: "#FFFFFF",
+                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                    borderRadius: "8px",
+                    padding: "0 15px",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 500,
+                    fontSize: "12px",
+                    color: "rgba(55, 65, 81, 0.89)",
+                    outline: "none",
+                  }}
+                />
+                <select
+                  value={durationUnit}
+                  onChange={(e) => setDurationUnit(e.target.value as "minutes" | "hours")}
+                  style={{
+                    boxSizing: "border-box",
+                    width: "110px",
+                    height: "38px",
+                    background: "#FFFFFF",
+                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                    borderRadius: "8px",
+                    padding: "0 10px",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 600,
+                    fontSize: "12px",
+                    color: "#374151",
+                    cursor: "pointer",
+                    outline: "none",
+                    appearance: "auto",
+                  }}
+                >
+                  <option value="minutes">Minutes</option>
+                  <option value="hours">Hours</option>
+                </select>
+              </div>
+              {durationValue.trim() && (
+                <p style={{ margin: "5px 0 0 0", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "10.5px", color: "#6B7280" }}>
+                  Preview: <strong style={{ color: "#173F63" }}>{effectiveDuration}</strong>
+                </p>
+              )}
+            </div>
+
+            {/* Description + Attraction Image Row */}
+            <div className="desc-image-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", alignItems: "flex-start" }}>
+              {/* Description */}
+              <div id="field-description" style={{ minWidth: 0 }}>
+                <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
+                  Description
+                  <span style={{ marginLeft: "4px", fontWeight: 400, fontSize: "11px", color: "#9CA3AF" }}>(Optional)</span>
                 </label>
-                {allocatedSeats.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={clearAllSeats}
+                <div style={{ position: "relative", width: "100%", maxWidth: "313px" }}>
+                  <textarea
+                    placeholder="Enter attraction description......"
+                    maxLength={500}
+                    value={description}
+                    onChange={(e) => { setDescription(e.target.value); setFormErrors((p) => ({ ...p, description: "" })); }}
                     style={{
-                      background: "transparent",
-                      border: "none",
-                      cursor: "pointer",
-                      color: "#9CA3AF",
-                      fontSize: "11px",
+                      boxSizing: "border-box",
+                      width: "100%",
+                      height: "176px",
+                      background: "#FFFFFF",
+                      border: "1.5px solid rgba(179, 175, 175, 0.51)",
+                      borderRadius: "8px",
+                      padding: "12px 15px 28px 15px",
                       fontFamily: "'Plus Jakarta Sans', sans-serif",
-                      fontWeight: 600,
-                      padding: 0,
+                      fontWeight: 500,
+                      fontSize: "12px",
+                      color: "rgba(55, 65, 81, 0.89)",
+                      outline: "none",
+                      resize: "none",
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = "#DC2626")}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = "#9CA3AF")}
-                  >
-                    Clear All
-                  </button>
-                )}
-              </div>
-
-              {/* Scrollable Allocated Seats Box with vertical scroll */}
-              <div
-                style={{
-                  minHeight: "130px",
-                  maxHeight: "220px",
-                  overflowY: "auto",
-                  border: "1.5px solid #E2E8F0",
-                  borderRadius: "8px",
-                  padding: "6px",
-                  background: allocatedSeats.length === 0 ? "#F8FAFC" : "#FFFFFF",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "6px",
-                }}
-                className="seat-scroll-container"
-              >
-                {allocatedSeats.length === 0 ? (
-                  <div style={{ margin: "auto", textAlign: "center", padding: "16px" }}>
-                    <Armchair size={24} color="#94A3B8" style={{ margin: "0 auto 6px auto", display: "block" }} />
-                    <p style={{ margin: "0 0 2px 0", fontSize: "12px", fontWeight: 600, color: "#64748B" }}>
-                      No seat layouts selected yet
-                    </p>
-                    <p style={{ margin: 0, fontSize: "11px", color: "#94A3B8" }}>
-                      Select seat layouts from the dropdown above to allocate.
-                    </p>
-                  </div>
-                ) : (
-                  decoratedAllocatedSeats.map((item, index) => {
-                    const isDragging = draggedIndex === index;
-                    const isOver = dragOverIndex === index;
-                    const isFirst = index === 0;
-                    const isLast = index === decoratedAllocatedSeats.length - 1;
-
-                    return (
-                      <div
-                        key={item.instanceId}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, index)}
-                        onDragOver={(e) => handleDragOver(e, index)}
-                        onDragEnd={handleDragEnd}
-                        onDrop={(e) => handleDrop(e, index)}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: "8px",
-                          padding: "8px 10px",
-                          borderRadius: "6px",
-                          background: item.isDisabled
-                            ? "#F3F4F6"
-                            : isOver
-                              ? "#DBEAFE"
-                              : "#F8FAFC",
-                          border: isOver
-                            ? "1.5px dashed #2563EB"
-                            : item.isDisabled
-                              ? "1px solid #E5E7EB"
-                              : "1px solid #E2E8F0",
-                          opacity: isDragging ? 0.4 : item.isDisabled ? 0.65 : 1,
-                          transition: "background 0.15s ease, border 0.15s ease",
-                          cursor: "grab",
-                        }}
-                        title="Grab and drag to reorder sequence"
-                      >
-                        {/* Left: Sequence Badge + Grab Handle + Up/Down arrows + Icon + Name & Details */}
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0, flex: 1 }}>
-                          {/* Order index badge */}
-                          <span
-                            style={{
-                              fontSize: "10px",
-                              fontWeight: 800,
-                              color: "#0E4E7A",
-                              background: "#E0F2FE",
-                              border: "1px solid #BAE6FD",
-                              borderRadius: "4px",
-                              padding: "2px 5px",
-                              minWidth: "20px",
-                              textAlign: "center",
-                              flexShrink: 0,
-                            }}
-                            title={`Position #${index + 1}`}
-                          >
-                            #{index + 1}
-                          </span>
-
-                          {/* Grab handle */}
-                          <span
-                            style={{
-                              color: item.isDisabled ? "#9CA3AF" : "#64748B",
-                              display: "flex",
-                              alignItems: "center",
-                              cursor: "grab",
-                              flexShrink: 0,
-                            }}
-                            title="Grab to drag & reorder"
-                          >
-                            <GripVertical size={16} />
-                          </span>
-
-                          {/* Move Up / Down Buttons */}
-                          <div style={{ display: "flex", flexDirection: "column", gap: "1px", flexShrink: 0 }}>
-                            <button
-                              type="button"
-                              disabled={isFirst}
-                              onClick={(e) => moveSeatUp(index, e)}
-                              title="Move seat up"
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                padding: 0,
-                                cursor: isFirst ? "default" : "pointer",
-                                opacity: isFirst ? 0.25 : 0.8,
-                                color: "#0C2A42",
-                                display: "flex",
-                                alignItems: "center",
-                              }}
-                            >
-                              <ChevronUp size={12} strokeWidth={2.5} />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isLast}
-                              onClick={(e) => moveSeatDown(index, e)}
-                              title="Move seat down"
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                padding: 0,
-                                cursor: isLast ? "default" : "pointer",
-                                opacity: isLast ? 0.25 : 0.8,
-                                color: "#0C2A42",
-                                display: "flex",
-                                alignItems: "center",
-                              }}
-                            >
-                              <ChevronDown size={12} strokeWidth={2.5} />
-                            </button>
-                          </div>
-
-                          <Armchair
-                            size={16}
-                            color={item.isDisabled ? "#9CA3AF" : "#0E4E7A"}
-                            style={{ flexShrink: 0, marginLeft: "2px" }}
-                          />
-
-                          <div style={{ minWidth: 0, marginLeft: "2px" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                              <span
-                                style={{
-                                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                                  fontWeight: 700,
-                                  fontSize: "12px",
-                                  color: item.isDisabled ? "#6B7280" : "#0C2A42",
-                                  textDecoration: item.isDisabled ? "line-through" : "none",
-                                }}
-                              >
-                                {item.displayName}
-                              </span>
-
-                              {item.isDisabled ? (
-                                <span
-                                  style={{
-                                    fontSize: "9px",
-                                    fontWeight: 700,
-                                    color: "#6B7280",
-                                    background: "#E5E7EB",
-                                    padding: "1px 5px",
-                                    borderRadius: "4px",
-                                  }}
-                                >
-                                  Disabled
-                                </span>
-                              ) : (
-                                <span
-                                  style={{
-                                    fontSize: "9px",
-                                    fontWeight: 700,
-                                    color: "#059669",
-                                    background: "#ECFDF5",
-                                    padding: "1px 5px",
-                                    borderRadius: "4px",
-                                  }}
-                                >
-                                  Active
-                                </span>
-                              )}
-                            </div>
-                            <p style={{ margin: "2px 0 0 0", fontSize: "10px", color: "#64748B" }}>
-                              {item.rows}R × {item.cols}C • {item.capacity} seats capacity
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Right: Toggle Disable/Enable & Remove */}
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
-                          {/* Disable / Enable Toggle Button */}
-                          <button
-                            type="button"
-                            onClick={(e) => toggleSeatDisabled(item.instanceId, e)}
-                            title={item.isDisabled ? "Enable this seat layout" : "Disable this seat layout"}
-                            style={{
-                              border: "none",
-                              background: item.isDisabled ? "#E5E7EB" : "#DCFCE7",
-                              color: item.isDisabled ? "#6B7280" : "#15803D",
-                              borderRadius: "4px",
-                              padding: "3px 7px",
-                              fontSize: "10px",
-                              fontWeight: 700,
-                              fontFamily: "'Plus Jakarta Sans', sans-serif",
-                              cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "4px",
-                              transition: "all 0.15s ease",
-                            }}
-                          >
-                            <Power size={11} strokeWidth={2.5} />
-                            <span>{item.isDisabled ? "Enable" : "Disable"}</span>
-                          </button>
-
-                          {/* Delete / Remove Button */}
-                          <button
-                            type="button"
-                            onClick={(e) => removeAllocatedSeat(item.instanceId, item.displayName, e)}
-                            title="Remove layout"
-                            style={{
-                              background: "transparent",
-                              border: "none",
-                              cursor: "pointer",
-                              color: "#9CA3AF",
-                              padding: "3px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              borderRadius: "4px",
-                              transition: "color 0.15s ease",
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.color = "#DC2626")}
-                            onMouseLeave={(e) => (e.currentTarget.style.color = "#9CA3AF")}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* Selected Layouts Summary */}
-            {allocatedSeats.length > 0 && (
-              <div
-                style={{
-                  marginTop: "10px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "6px 10px",
-                  background: "#F0FDF4",
-                  border: "1px solid #BBF7D0",
-                  borderRadius: "6px",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <Check size={14} color="#16A34A" strokeWidth={2.5} />
+                  />
                   <span
                     style={{
+                      position: "absolute",
+                      right: "12px",
+                      bottom: "10px",
                       fontFamily: "'Plus Jakarta Sans', sans-serif",
-                      fontWeight: 600,
-                      fontSize: "11px",
-                      color: "#15803D",
+                      fontWeight: 500,
+                      fontSize: "10px",
+                      color: "rgba(107, 114, 128, 0.68)",
                     }}
                   >
-                    {decoratedAllocatedSeats.filter((s) => !s.isDisabled).length} active seat layout{decoratedAllocatedSeats.filter((s) => !s.isDisabled).length > 1 ? "s" : ""} allocated ({decoratedAllocatedSeats.filter((s) => !s.isDisabled).reduce((sum, s) => sum + s.capacity, 0)} total seats capacity)
+                    {description.length}/500
                   </span>
                 </div>
               </div>
-            )}
 
-            {formErrors.seatAllocation && (
-              <span
-                style={{
-                  display: "block",
-                  marginTop: "6px",
-                  fontSize: "11px",
-                  color: "#DC2626",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 500,
-                }}
-              >
-                {formErrors.seatAllocation}
-              </span>
-            )}
+              {/* Attraction Image Dropzone with In-Place Grab & Crop */}
+              <div id="field-image" style={{ minWidth: 0 }}>
+                <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "7px" }}>
+                  Attraction image
+                  <span style={{ marginLeft: "4px", fontWeight: 400, fontSize: "11px", color: "#9CA3AF" }}>(Optional)</span>
+                </label>
+                <AttractionImageCropper
+                  value={imagePreview}
+                  onChange={(newImg) => setImagePreview(newImg)}
+                  disabled={isSaving}
+                />
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Right Column: Status & Seat Allocation Card */}
+        <div style={{ minWidth: 0, height: "100%" }}>
+          <div
+            style={{
+              boxSizing: "border-box",
+              width: "100%",
+              height: "100%",
+              background: "#FFFFFF",
+              border: "0.5px solid rgba(0, 0, 0, 0.43)",
+              boxShadow: "0px 4px 11.9px -6px rgba(0, 0, 0, 0.32)",
+              borderRadius: "15px",
+              padding: "24px 28px",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            className="card-status-seating"
+          >
+            {/* Status Section */}
+            <h3 style={{ margin: "0 0 16px 0", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "18px", color: "#0C2A42" }}>
+              Status
+            </h3>
+            <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "10px" }}>
+              Attraction Status<Req />
+            </label>
+
+            {/* Active / Inactive toggle */}
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "22px" }}>
+              {(["Active", "Inactive"] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatus(s)}
+                  style={{
+                    boxSizing: "border-box",
+                    width: "120px",
+                    height: "38px",
+                    background: "#FFFFFF",
+                    border: status === s ? "1.5px solid #011B2F" : "1.5px solid rgba(179, 175, 175, 0.51)",
+                    borderRadius: "8px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                    cursor: "pointer",
+                    transition: "all 0.18s ease",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "12px",
+                      height: "12px",
+                      borderRadius: "50%",
+                      background: status === s ? "#173F63" : "transparent",
+                      border: status === s ? "1px solid #173F63" : "1px solid #A0A0A0",
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 700,
+                      fontSize: "14px",
+                      color: status === s ? "#0C2A42" : "#A0A0A0",
+                    }}
+                  >
+                    {s}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* ── Seat Allocation Section ── */}
+            <div style={{ marginTop: "0px", display: "flex", flexDirection: "column", flex: 1 }} id="field-seatAllocation">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Armchair size={18} color="#0C2A42" />
+                  <h3 style={{ margin: 0, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "16px", color: "#0C2A42" }}>
+                    Seat Allocation<Req />
+                  </h3>
+                </div>
+                {allocatedSeats.length > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "#059669",
+                        background: "#ECFDF5",
+                        border: "1px solid #A7F3D0",
+                        borderRadius: "12px",
+                        padding: "2px 8px",
+                      }}
+                    >
+                      {decoratedAllocatedSeats.filter((s) => !s.isDisabled).length} Active
+                    </span>
+                    {decoratedAllocatedSeats.some((s) => s.isDisabled) && (
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#6B7280",
+                          background: "#F3F4F6",
+                          border: "1px solid #E5E7EB",
+                          borderRadius: "12px",
+                          padding: "2px 8px",
+                        }}
+                      >
+                        {decoratedAllocatedSeats.filter((s) => s.isDisabled).length} Disabled
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 1. First Dropdown: Select Seat Layouts */}
+              <div style={{ marginBottom: "12px" }} ref={seatDropdownRef}>
+                <label style={{ display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151", marginBottom: "6px" }}>
+                  Select Seat Layout (Dropdown)<Req />
+                </label>
+
+                <div style={{ position: "relative", width: "100%" }}>
+                  {/* Trigger */}
+                  <div
+                    onClick={() => setIsSeatDropdownOpen((prev) => !prev)}
+                    style={{
+                      minHeight: "38px",
+                      boxSizing: "border-box",
+                      width: "100%",
+                      background: "#FFFFFF",
+                      border: formErrors.seatAllocation
+                        ? "1.5px solid #DC2626"
+                        : isSeatDropdownOpen
+                          ? "1.5px solid #0C2A42"
+                          : "1.5px solid rgba(179, 175, 175, 0.51)",
+                      borderRadius: "8px",
+                      padding: "6px 12px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "8px",
+                      cursor: "pointer",
+                      boxShadow: isSeatDropdownOpen ? "0 0 0 3px rgba(12, 42, 66, 0.12)" : "none",
+                      transition: "all 0.18s ease",
+                      userSelect: "none",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#4B5563" }}>
+                      <Armchair size={15} color="#2372A5" />
+                      <span style={{ fontSize: "12px", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500 }}>
+                        {availableSeats.length === 0 ? "No seat layouts available" : "Click to select seat layout..."}
+                      </span>
+                    </div>
+                    <ChevronDown
+                      size={16}
+                      color="#6B7280"
+                      style={{
+                        transform: isSeatDropdownOpen ? "rotate(180deg)" : "rotate(0deg)",
+                        transition: "transform 0.2s ease",
+                      }}
+                    />
+                  </div>
+
+                  {/* Dropdown Menu with Vertical Scroll */}
+                  {isSeatDropdownOpen && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "calc(100% + 6px)",
+                        left: 0,
+                        right: 0,
+                        zIndex: 300,
+                        background: "#FFFFFF",
+                        borderRadius: "10px",
+                        border: "1.5px solid #E2E8F0",
+                        boxShadow: "0 14px 35px rgba(12, 42, 66, 0.18)",
+                        overflow: "hidden",
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {/* Search box inside dropdown */}
+                      <div style={{ padding: "8px", borderBottom: "1px solid #F1F5F9" }}>
+                        <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                          <Search size={14} color="#9CA3AF" style={{ position: "absolute", left: "10px" }} />
+                          <input
+                            type="text"
+                            placeholder="Search seat layouts..."
+                            value={seatSearchQuery}
+                            onChange={(e) => setSeatSearchQuery(e.target.value)}
+                            style={{
+                              width: "100%",
+                              height: "32px",
+                              padding: "0 10px 0 30px",
+                              borderRadius: "6px",
+                              border: "1px solid #E2E8F0",
+                              fontSize: "12px",
+                              fontFamily: "'Plus Jakarta Sans', sans-serif",
+                              outline: "none",
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Scrollable Layouts List */}
+                      <div style={{ maxHeight: "200px", overflowY: "auto", padding: "6px" }} className="seat-scroll-container">
+                        {isSeatsLoading ? (
+                          <div style={{ padding: "20px 14px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                            <Loader2 size={20} color="#2372A5" style={{ animation: "spin 1s linear infinite" }} />
+                            <span style={{ fontSize: "12px", fontFamily: "'Plus Jakarta Sans', sans-serif", color: "#64748B" }}>
+                              Loading seat layouts...
+                            </span>
+                          </div>
+                        ) : filteredAvailableSeats.length === 0 ? (
+                          <div style={{ padding: "16px 12px", textAlign: "center" }}>
+                            <p style={{ margin: "0 0 2px 0", fontSize: "12px", fontWeight: 600, color: "#374151" }}>
+                              No matching layouts found
+                            </p>
+                          </div>
+                        ) : (
+                          filteredAvailableSeats.map((seat) => {
+                            const currentCount = allocatedSeats.filter((s) => s.layoutId === seat.id).length;
+                            return (
+                              <div
+                                key={seat.id}
+                                onClick={() => {
+                                  addSeatLayout(seat.id!);
+                                  setIsSeatDropdownOpen(false);
+                                }}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+
+                                  gap: "10px",
+                                  padding: "8px 10px",
+                                  borderRadius: "6px",
+                                  cursor: "pointer",
+                                  transition: "all 0.15s ease",
+                                  background: currentCount > 0 ? "#F0F7FF" : "transparent",
+                                  marginBottom: "3px",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = "#E0EDFF";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = currentCount > 0 ? "#F0F7FF" : "transparent";
+                                }}
+                              >
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                                  <Armchair size={15} color="#2372A5" style={{ flexShrink: 0 }} />
+                                  <div style={{ minWidth: 0 }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                      <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "12px", color: "#0C2A42" }}>
+                                        {seat.name}
+                                      </span>
+                                      {seat.hasAisle && (
+                                        <span style={{ fontSize: "9px", fontWeight: 700, color: "#059669", background: "#ECFDF5", padding: "1px 5px", borderRadius: "4px" }}>
+                                          Aisle
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p style={{ margin: "1px 0 0 0", fontSize: "10px", color: "#64748B" }}>
+                                      {seat.rows}R × {seat.cols}C • {seat.rows * seat.cols} seats
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                                  {currentCount > 0 && (
+                                    <span style={{ fontSize: "10px", fontWeight: 700, color: "#2563EB", background: "#DBEAFE", padding: "1px 6px", borderRadius: "10px" }}>
+                                      {currentCount} selected
+                                    </span>
+                                  )}
+                                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#0E4E7A", background: "#E0F2FE", padding: "2px 6px", borderRadius: "4px" }}>
+                                    + Select
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 2. Second Dropdown / List: Allocated Seats & Sequence (with Grab / Drag & Drop & Disable) */}
+              <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+                  <label style={{ fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "12px", color: "#374151" }}>
+                    Allocated Seats ({decoratedAllocatedSeats.length}) — Grab to Reorder
+                  </label>
+                  {allocatedSeats.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={clearAllSeats}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "#9CA3AF",
+                        fontSize: "11px",
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 600,
+                        padding: 0,
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = "#DC2626")}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = "#9CA3AF")}
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
+
+                {/* Scrollable Allocated Seats Box with vertical scroll */}
+                <div
+                  style={{
+                    minHeight: "230px",
+                    maxHeight: "135px",
+                    overflowY: "auto",
+                    border: "1.5px solid #E2E8F0",
+                    borderRadius: "8px",
+                    padding: "6px",
+                    background: allocatedSeats.length === 0 ? "#F8FAFC" : "#FFFFFF",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                  }}
+                  className="seat-scroll-container"
+                >
+                  {allocatedSeats.length === 0 ? (
+                    <div style={{ margin: "auto", textAlign: "center", padding: "16px" }}>
+                      <Armchair size={24} color="#94A3B8" style={{ margin: "0 auto 6px auto", display: "block" }} />
+                      <p style={{ margin: "0 0 2px 0", fontSize: "12px", fontWeight: 600, color: "#64748B" }}>
+                        No seat layouts selected yet
+                      </p>
+                      <p style={{ margin: 0, fontSize: "11px", color: "#94A3B8" }}>
+                        Select seat layouts from the dropdown above to allocate.
+                      </p>
+                    </div>
+                  ) : (
+                    decoratedAllocatedSeats.map((item, index) => {
+                      const isDragging = draggedIndex === index;
+                      const isOver = dragOverIndex === index;
+                      const isFirst = index === 0;
+                      const isLast = index === decoratedAllocatedSeats.length - 1;
+
+                      return (
+                        <div
+                          key={item.instanceId}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, index)}
+                          onDragOver={(e) => handleDragOver(e, index)}
+                          onDragEnd={handleDragEnd}
+                          onDrop={(e) => handleDrop(e, index)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "8px",
+                            padding: "8px 10px",
+                            borderRadius: "6px",
+                            background: item.isDisabled
+                              ? "#F3F4F6"
+                              : isOver
+                                ? "#DBEAFE"
+                                : "#F8FAFC",
+                            border: isOver
+                              ? "1.5px dashed #2563EB"
+                              : item.isDisabled
+                                ? "1px solid #E5E7EB"
+                                : "1px solid #E2E8F0",
+                            opacity: isDragging ? 0.4 : item.isDisabled ? 0.65 : 1,
+                            transition: "background 0.15s ease, border 0.15s ease",
+                            cursor: "grab",
+                          }}
+                          title="Grab and drag to reorder sequence"
+                        >
+                          {/* Left: Sequence Badge + Grab Handle + Up/Down arrows + Icon + Name & Details */}
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0, flex: 1 }}>
+                            {/* Order index badge */}
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                fontWeight: 800,
+                                color: "#0E4E7A",
+                                background: "#E0F2FE",
+                                border: "1px solid #BAE6FD",
+                                borderRadius: "4px",
+                                padding: "2px 5px",
+                                minWidth: "20px",
+                                textAlign: "center",
+                                flexShrink: 0,
+                              }}
+                              title={`Position #${index + 1}`}
+                            >
+                              #{index + 1}
+                            </span>
+
+                            {/* Grab handle */}
+                            <span
+                              style={{
+                                color: item.isDisabled ? "#9CA3AF" : "#64748B",
+                                display: "flex",
+                                alignItems: "center",
+                                cursor: "grab",
+                                flexShrink: 0,
+                              }}
+                              title="Grab to drag & reorder"
+                            >
+                              <GripVertical size={16} />
+                            </span>
+
+                            {/* Move Up / Down Buttons */}
+                            <div style={{ display: "flex", flexDirection: "column", gap: "1px", flexShrink: 0 }}>
+                              <button
+                                type="button"
+                                disabled={isFirst}
+                                onClick={(e) => moveSeatUp(index, e)}
+                                title="Move seat up"
+                                style={{
+                                  background: "transparent",
+                                  border: "none",
+                                  padding: 0,
+                                  cursor: isFirst ? "default" : "pointer",
+                                  opacity: isFirst ? 0.25 : 0.8,
+                                  color: "#0C2A42",
+                                  display: "flex",
+                                  alignItems: "center",
+                                }}
+                              >
+                                <ChevronUp size={12} strokeWidth={2.5} />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isLast}
+                                onClick={(e) => moveSeatDown(index, e)}
+                                title="Move seat down"
+                                style={{
+                                  background: "transparent",
+                                  border: "none",
+                                  padding: 0,
+                                  cursor: isLast ? "default" : "pointer",
+                                  opacity: isLast ? 0.25 : 0.8,
+                                  color: "#0C2A42",
+                                  display: "flex",
+                                  alignItems: "center",
+                                }}
+                              >
+                                <ChevronDown size={12} strokeWidth={2.5} />
+                              </button>
+                            </div>
+
+                            <Armchair
+                              size={16}
+                              color={item.isDisabled ? "#9CA3AF" : "#0E4E7A"}
+                              style={{ flexShrink: 0, marginLeft: "2px" }}
+                            />
+
+                            <div style={{ minWidth: 0, marginLeft: "2px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                                <span
+                                  style={{
+                                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                                    fontWeight: 700,
+                                    fontSize: "12px",
+                                    color: item.isDisabled ? "#6B7280" : "#0C2A42",
+                                    textDecoration: item.isDisabled ? "line-through" : "none",
+                                  }}
+                                >
+                                  {item.displayName}
+                                </span>
+
+                                {item.isDisabled ? (
+                                  <span
+                                    style={{
+                                      fontSize: "9px",
+                                      fontWeight: 700,
+                                      color: "#6B7280",
+                                      background: "#E5E7EB",
+                                      padding: "1px 5px",
+                                      borderRadius: "4px",
+                                    }}
+                                  >
+                                    Disabled
+                                  </span>
+                                ) : (
+                                  <span
+                                    style={{
+                                      fontSize: "9px",
+                                      fontWeight: 700,
+                                      color: "#059669",
+                                      background: "#ECFDF5",
+                                      padding: "1px 5px",
+                                      borderRadius: "4px",
+                                    }}
+                                  >
+                                    Active
+                                  </span>
+                                )}
+                              </div>
+                              <p style={{ margin: "2px 0 0 0", fontSize: "10px", color: "#64748B" }}>
+                                {item.rows}R × {item.cols}C • {item.capacity} seats capacity
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Right: Toggle Disable/Enable & Remove */}
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                            {/* Disable / Enable Toggle Button */}
+                            <button
+                              type="button"
+                              onClick={(e) => toggleSeatDisabled(item.instanceId, e)}
+                              title={item.isDisabled ? "Enable this seat layout" : "Disable this seat layout"}
+                              style={{
+                                border: "none",
+                                background: item.isDisabled ? "#E5E7EB" : "#DCFCE7",
+                                color: item.isDisabled ? "#6B7280" : "#15803D",
+                                borderRadius: "4px",
+                                padding: "3px 7px",
+                                fontSize: "10px",
+                                fontWeight: 700,
+                                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                transition: "all 0.15s ease",
+                              }}
+                            >
+                              <Power size={11} strokeWidth={2.5} />
+                              <span>{item.isDisabled ? "Enable" : "Disable"}</span>
+                            </button>
+
+                            {/* Delete / Remove Button */}
+                            <button
+                              type="button"
+                              onClick={(e) => removeAllocatedSeat(item.instanceId, item.displayName, e)}
+                              title="Remove layout"
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                cursor: "pointer",
+                                color: "#9CA3AF",
+                                padding: "3px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                borderRadius: "4px",
+                                transition: "color 0.15s ease",
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.color = "#DC2626")}
+                              onMouseLeave={(e) => (e.currentTarget.style.color = "#9CA3AF")}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Selected Layouts Summary */}
+              {allocatedSeats.length > 0 && (
+                <div
+                  style={{
+                    marginTop: "auto",
+                    paddingTop: "14px",
+                  }}
+                >
+                  <div
+                    style={{
+                      background: "#ECFDF5",
+                      border: "1px solid #A7F3D0",
+                      borderRadius: "8px",
+                      padding: "10px 14px",
+                      textAlign: "center",
+                      color: "#065F46",
+                      fontWeight: 700,
+                      fontSize: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <Check size={15} color="#059669" strokeWidth={2.5} />
+                    <span>
+                      {decoratedAllocatedSeats.filter((s) => !s.isDisabled).length} active seat layout{decoratedAllocatedSeats.filter((s) => !s.isDisabled).length > 1 ? "s" : ""} allocated ({decoratedAllocatedSeats.filter((s) => !s.isDisabled).reduce((sum, s) => sum + s.capacity, 0)} total seats capacity)
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {formErrors.seatAllocation && (
+                <span
+                  style={{
+                    display: "block",
+                    marginTop: "6px",
+                    fontSize: "11px",
+                    color: "#DC2626",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 500,
+                  }}
+                >
+                  {formErrors.seatAllocation}
+                </span>
+              )}
+            </div>
           </div>
         </div>
+      </div>
+
+      {/* ── 2. Full-Width Multi-Station (Route) Card ── */}
+      <div
+        style={{
+          background: "#FFFFFF",
+          border: "1px solid #E5E9F0",
+          borderRadius: "16px",
+          padding: "20px 24px",
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+          boxSizing: "border-box",
+          width: "100%",
+        }}
+      >
+        {!isMultiStation ? (
+          /* Default UI: Disabled / Unconfigured State matching uploaded image */
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              width: "100%",
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <h3
+                style={{
+                  margin: 0,
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 600,
+                  fontSize: "18px",
+                  lineHeight: "26px",
+                  color: "#0D2B43",
+                }}
+              >
+                Multi-Station (Route)
+              </h3>
+              <p
+                style={{
+                  margin: 0,
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 400,
+                  fontSize: "12px",
+                  lineHeight: "16px",
+                  color: "#6B7280",
+                }}
+              >
+                Enable this option to configure multiple stations and their route sequence.
+              </p>
+            </div>
+
+            {/* Toggle switch in OFF state */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={false}
+              onClick={() => {
+                setIsConfigureStationsModalOpen(true);
+              }}
+              style={{
+                width: "44px",
+                height: "24px",
+                borderRadius: "9999px",
+                background: "#D1D5DB",
+                border: "none",
+                cursor: "pointer",
+                position: "relative",
+                padding: "2px",
+                transition: "background-color 0.2s ease",
+                display: "flex",
+                alignItems: "center",
+                outline: "none",
+                flexShrink: 0,
+              }}
+            >
+              <div
+                style={{
+                  width: "20px",
+                  height: "20px",
+                  borderRadius: "50%",
+                  background: "#FFFFFF",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                  transform: "translateX(0px)",
+                  transition: "transform 0.2s ease",
+                }}
+              />
+            </button>
+          </div>
+        ) : (
+          /* Configured State */
+          <>
+            {/* Header */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%", marginBottom: "18px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 600,
+                      fontSize: "18px",
+                      lineHeight: "28px",
+                      color: "#0D2B43",
+                    }}
+                  >
+                    Multi-Station (Route)
+                  </h3>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "2px 10px",
+                      background: "#DCFCE7",
+                      borderRadius: "9999px",
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 600,
+                      fontSize: "12px",
+                      lineHeight: "16px",
+                      color: "#22C55E",
+                    }}
+                  >
+                    Enabled
+                  </span>
+                </div>
+
+                {/* Action buttons (Edit & Delete) */}
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsConfigureStationsModalOpen(true)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "6px 14px",
+                      background: "#FFFFFF",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 600,
+                      fontSize: "12px",
+                      color: "#0F172A",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <Pencil size={13} color="#0F172A" />
+                    <span>Edit</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const confirmed = await confirmRemoveRoute();
+                      if (confirmed) {
+                        setIsMultiStation(false);
+                      }
+                    }}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: "32px",
+                      height: "32px",
+                      background: "#FFF1F2",
+                      border: "1px solid #FECDD3",
+                      borderRadius: "8px",
+                      color: "#E11D48",
+                      cursor: "pointer",
+                    }}
+                    title="Remove Route Configuration"
+                  >
+                    <Trash2 size={14} color="#E11D48" />
+                  </button>
+                </div>
+              </div>
+
+              <p
+                style={{
+                  margin: 0,
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 400,
+                  fontSize: "12px",
+                  lineHeight: "16px",
+                  color: "#6B7280",
+                }}
+              >
+                Manage and view the station sequence and route for this attraction.
+              </p>
+            </div>
+
+            {/* Toggle Bar: Round Trip (Cyclic Route) */}
+            <div
+              style={{
+                background: "#EFF6FF",
+                borderRadius: "12px",
+                padding: "10px 16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                width: "100%",
+                maxWidth: "270px",
+                boxSizing: "border-box",
+                marginBottom: "24px",
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  color: "#0D2B43",
+                }}
+              >
+                Round Trip (Cyclic Route)
+              </span>
+
+              {/* Toggle switch */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isRoundTrip}
+                onClick={() => setIsRoundTrip(!isRoundTrip)}
+                style={{
+                  width: "44px",
+                  height: "24px",
+                  borderRadius: "9999px",
+                  background: isRoundTrip ? "#22C55E" : "#D1D5DB",
+                  border: "none",
+                  cursor: "pointer",
+                  position: "relative",
+                  padding: "2px",
+                  transition: "background-color 0.2s ease",
+                  display: "flex",
+                  alignItems: "center",
+                  outline: "none",
+                }}
+              >
+                <div
+                  style={{
+                    width: "20px",
+                    height: "20px",
+                    borderRadius: "50%",
+                    background: "#FFFFFF",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                    transform: isRoundTrip ? "translateX(20px)" : "translateX(0px)",
+                    transition: "transform 0.2s ease",
+                  }}
+                />
+              </button>
+            </div>
+
+            {/* Route Visualisation based on isRoundTrip */}
+            {isRoundTrip ? (
+              /* State 1: Cyclic Route Diagram (Matching Image 3) */
+              <div
+                style={{
+                  boxSizing: "border-box",
+                  width: "100%",
+                  paddingTop: "24px",
+                  position: "relative",
+                  overflowX: "auto",
+                }}
+              >
+                {/* Dashed Loop Container */}
+                <div
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    minWidth: configuredStations.length > 6 ? `${configuredStations.length * 110}px` : "100%",
+                    minHeight: "130px",
+                    border: "2px dashed #2563EB",
+                    borderRadius: "16px",
+                    background: "#FFFFFF",
+                    padding: "0 20px 16px 20px",
+                    boxSizing: "border-box",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  {/* Station Nodes & Connecting Solid Line on Top Track */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "-20px",
+                      left: "24px",
+                      right: "24px",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    {/* Solid connecting line behind nodes */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "18px",
+                        left: "20px",
+                        right: "20px",
+                        height: "4px",
+                        background: "#1E66F5",
+                        zIndex: 1,
+                      }}
+                    />
+
+                    {/* Dynamic Stations */}
+                    {configuredStations.map((station, idx) => {
+                      const isFirst = idx === 0;
+                      return (
+                        <div
+                          key={station.id || idx}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            position: "relative",
+                            zIndex: 2,
+                            minWidth: "64px",
+                          }}
+                        >
+                          {isFirst ? (
+                            <div
+                              style={{
+                                width: "38px",
+                                height: "38px",
+                                borderRadius: "50%",
+                                background: "#1E66F5",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
+                              }}
+                            >
+                              <TrainFront size={18} color="#FFFFFF" strokeWidth={2.2} />
+                            </div>
+                          ) : (
+                            <div
+                              style={{
+                                width: "22px",
+                                height: "22px",
+                                marginTop: "8px",
+                                borderRadius: "50%",
+                                background: "#FFFFFF",
+                                border: "4px solid #1E66F5",
+                                boxSizing: "border-box",
+                              }}
+                            />
+                          )}
+                          <span
+                            style={{
+                              marginTop: isFirst ? "8px" : "16px",
+                              fontFamily: "'Inter', sans-serif",
+                              fontWeight: 700,
+                              fontSize: "13px",
+                              lineHeight: "16px",
+                              color: "#0D2B43",
+                              textAlign: "center",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {station.name}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Cyclic Return Path Pill Indicator */}
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      background: "#EFF6FF",
+                      border: "1px solid #BFDBFE",
+                      borderRadius: "9999px",
+                      padding: "6px 18px",
+                      boxSizing: "border-box",
+                      marginTop: "60px",
+                    }}
+                  >
+                    <RotateCw size={13} color="#1D4ED8" strokeWidth={2.2} />
+                    <span
+                      style={{
+                        fontFamily: "'Inter', sans-serif",
+                        fontWeight: 500,
+                        fontSize: "12px",
+                        lineHeight: "16px",
+                        color: "#1D4ED8",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Round Trip (Cyclic Route)
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* State 2: Linear One-Way Route Diagram (Matching Image 4) */
+              <div
+                style={{
+                  boxSizing: "border-box",
+                  width: "100%",
+                  paddingTop: "24px",
+                  paddingBottom: "16px",
+                  position: "relative",
+                  overflowX: "auto",
+                }}
+              >
+                {/* Station Nodes & Connecting Solid Line on Linear Track */}
+                <div
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    minWidth: configuredStations.length > 6 ? `${configuredStations.length * 110}px` : "100%",
+                    padding: "0 24px",
+                    boxSizing: "border-box",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  {/* Solid connecting line behind nodes */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "19px",
+                      left: "44px",
+                      right: "47px",
+                      height: "4px",
+                      background: "#1E66F5",
+                      zIndex: 1,
+                    }}
+                  />
+
+                  {/* Dynamic Stations */}
+                  {configuredStations.map((station, idx) => {
+                    const isFirst = idx === 0;
+                    return (
+                      <div
+                        key={station.id || idx}
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          position: "relative",
+                          zIndex: 2,
+                          minWidth: "64px",
+                        }}
+                      >
+                        {isFirst ? (
+                          <div
+                            style={{
+                              width: "38px",
+                              height: "38px",
+                              borderRadius: "50%",
+                              background: "#1E66F5",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              boxShadow: "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
+                            }}
+                          >
+                            <TrainFront size={18} color="#FFFFFF" strokeWidth={2.2} />
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              width: "22px",
+                              height: "22px",
+                              marginTop: "8px",
+                              borderRadius: "50%",
+                              background: "#FFFFFF",
+                              border: "4px solid #1E66F5",
+                              boxSizing: "border-box",
+                            }}
+                          />
+                        )}
+                        <span
+                          style={{
+                            marginTop: isFirst ? "8px" : "16px",
+                            fontFamily: "'Inter', sans-serif",
+                            fontWeight: 700,
+                            fontSize: "13px",
+                            lineHeight: "16px",
+                            color: "#0D2B43",
+                            textAlign: "center",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {station.name}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* ── Rectangle 205: Visitor Categories & Pricing ──────────────── */}
@@ -2226,282 +2685,369 @@ export default function AddEditAttractionForm({
         }}
         className="card-categories-pricing"
       >
-        <h3 style={{ margin: "0 0 24px 0", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "18px", color: "#0C2A42" }}>
-          Visitor Categories & Pricing
-        </h3>
-
-        {/* Scrollable cards row */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "20px", overflowX: "auto", paddingBottom: "12px" }}>
-          {categories.map((cat) => (
-            <div
-              key={cat.id}
-              style={{
-                boxSizing: "border-box",
-                width: "176px",
-                flexShrink: 0,
-                background: "#FFFFFF",
-                border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                borderRadius: "4px",
-                padding: "12px 10px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "10px",
-              }}
-            >
-              {/* Category Name */}
-              <span
-                style={{
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 700,
-                  fontSize: "14px",
-                  letterSpacing: "0.07em",
-                  color: "#011B2F",
-                  textAlign: "center",
-                }}
-              >
-                {cat.name}
-              </span>
-
-              {/* Avatar Circle - uses profile icon if not uploaded or error */}
-              <VisitorCategoryAvatar src={cat.image} name={cat.name} />
-
-              {/* Upload Image Button */}
-              <label
-                htmlFor={`cat-img-${cat.id}`}
-                style={{
-                  boxSizing: "border-box",
-                  width: "143px",
-                  height: "25px",
-                  background: "#FFFFFF",
-                  border: "1.5px dashed #2372A5",
-                  borderRadius: "4px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontWeight: 500,
-                  fontSize: "10px",
-                  color: "#2372A5",
-                }}
-              >
-                Upload Image
-              </label>
-              <input
-                id={`cat-img-${cat.id}`}
-                type="file"
-                accept="image/*"
-                onChange={(e) => handleCategoryImageUpload(cat.id, e)}
-                style={{ display: "none" }}
-              />
-
-              {/* Base Price */}
-              <div style={{ width: "100%", textAlign: "center" }}>
-                <span style={{ display: "block", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "10px", color: "#011B2F", marginBottom: "4px" }}>
-                  Base Price (₹)*
-                </span>
-                <input
-                  type="text"
-                  value={cat.basePrice}
-                  onChange={(e) => handleCategoryChange(cat.id, "basePrice", e.target.value.replace(/[^0-9.]/g, ""))}
-                  style={{
-                    boxSizing: "border-box",
-                    width: "144px",
-                    height: "21px",
-                    background: "#FFFFFF",
-                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                    borderRadius: "4px",
-                    textAlign: "center",
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 500,
-                    fontSize: "9px",
-                    color: "rgba(55, 65, 81, 0.84)",
-                    outline: "none",
-                  }}
-                />
-              </div>
-
-              {/* Future Price */}
-              <div style={{ width: "100%", textAlign: "center" }}>
-                <span style={{ display: "block", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "10px", color: "#011B2F", marginBottom: "4px" }}>
-                  Future Price (₹)
-                </span>
-                <input
-                  type="text"
-                  value={cat.futurePrice}
-                  onChange={(e) => handleCategoryChange(cat.id, "futurePrice", e.target.value.replace(/[^0-9.]/g, ""))}
-                  style={{
-                    boxSizing: "border-box",
-                    width: "144px",
-                    height: "21px",
-                    background: "#FFFFFF",
-                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                    borderRadius: "4px",
-                    textAlign: "center",
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 500,
-                    fontSize: "9px",
-                    color: "rgba(55, 65, 81, 0.84)",
-                    outline: "none",
-                  }}
-                />
-              </div>
-
-              {/* Effective From */}
-              <div style={{ width: "100%", textAlign: "center" }}>
-                <span style={{ display: "block", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "10px", color: "#011B2F", marginBottom: "4px" }}>
-                  Effective From
-                </span>
-                <input
-                  type="text"
-                  placeholder="Select Date"
-                  value={cat.effectiveFrom}
-                  onFocus={(e) => { e.target.type = "date"; }}
-                  onBlur={(e) => { if (!e.target.value) e.target.type = "text"; }}
-                  onChange={(e) => handleCategoryChange(cat.id, "effectiveFrom", e.target.value)}
-                  style={{
-                    boxSizing: "border-box",
-                    width: "144px",
-                    height: "21px",
-                    background: "#FFFFFF",
-                    border: "1.5px solid rgba(179, 175, 175, 0.51)",
-                    borderRadius: "4px",
-                    textAlign: "center",
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 500,
-                    fontSize: "9px",
-                    color: "rgba(55, 65, 81, 0.84)",
-                    outline: "none",
-                  }}
-                />
-              </div>
-
-              {/* Number of Seats (Required) */}
-              <div style={{ width: "100%", textAlign: "center" }} id={`field-seats-${cat.id}`}>
-                <span style={{ display: "block", fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "10px", color: "#011B2F", marginBottom: "4px" }}>
-                  No. of Seats<span style={{ color: "#DC2626" }}>*</span>
-                </span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="e.g. 10"
-                  value={cat.numberOfSeats}
-                  onChange={(e) => {
-                    handleCategoryChange(cat.id, "numberOfSeats", e.target.value.replace(/\D/g, ""));
-                    setFormErrors((prev) => {
-                      if (!prev[`seats-${cat.id}`]) return prev;
-                      const next = { ...prev };
-                      delete next[`seats-${cat.id}`];
-                      return next;
-                    });
-                  }}
-                  style={{
-                    boxSizing: "border-box",
-                    width: "144px",
-                    height: "24px",
-                    background: formErrors[`seats-${cat.id}`]
-                      ? "#FEF2F2"
-                      : cat.numberOfSeats
-                        ? "#F0FDF4"
-                        : "#FFF7ED",
-                    border: formErrors[`seats-${cat.id}`]
-                      ? "1.5px solid #DC2626"
-                      : cat.numberOfSeats
-                        ? "1.5px solid #10B981"
-                        : "1.5px solid #FCA5A5",
-                    borderRadius: "4px",
-                    textAlign: "center",
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontWeight: 700,
-                    fontSize: "10px",
-                    color: "#011B2F",
-                    outline: "none",
-                  }}
-                />
-                {formErrors[`seats-${cat.id}`] && (
-                  <span
-                    style={{
-                      display: "block",
-                      marginTop: "4px",
-                      fontSize: "9px",
-                      color: "#DC2626",
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                      fontWeight: 500,
-                    }}
-                  >
-                    {formErrors[`seats-${cat.id}`]}
-                  </span>
-                )}
-              </div>
-
-              {/* Delete button */}
-              <button
-                type="button"
-                onClick={() => handleDeleteCategory(cat.id)}
-                style={{
-                  boxSizing: "border-box",
-                  width: "144px",
-                  height: "31px",
-                  background: "#FFFFFF",
-                  border: "1px solid #DC2626",
-                  borderRadius: "6px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "6px",
-                  cursor: "pointer",
-                  transition: "all 0.18s ease",
-                }}
-              >
-                <Trash2 size={13} color="#DC2626" />
-                <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 500, fontSize: "12px", color: "#DC2626" }}>
-                  Delete
-                </span>
-              </button>
-            </div>
-          ))}
-
-          {/* + Add Visitor Category dashed card */}
+        {/* Header row with Title and + Add Visitor Category Button */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
+          <h3 style={{ margin: 0, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "18px", color: "#011B2F" }}>
+            Visitor Categories & Pricing
+          </h3>
           <button
             type="button"
             onClick={handleAddCategory}
-
             style={{
-              boxSizing: "border-box",
-              width: "176px",
-              minHeight: "356px",
-              background: "#FFFFFF",
-              border: "1.5px dashed #2372A5",
-              borderRadius: "4px",
+              background: "#011B2F",
+              color: "#FFFFFF",
+              border: "none",
+              borderRadius: "8px",
+              padding: "9px 18px",
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontWeight: 600,
+              fontSize: "13px",
               display: "flex",
-              flexDirection: "column",
               alignItems: "center",
-              justifyContent: "center",
-              gap: "14px",
+              gap: "8px",
               cursor: "pointer",
-              flexShrink: 0,
-              transition: "all 0.18s ease",
+              transition: "all 0.15s ease",
             }}
-            className="btn-add-category-card"
           >
-            <div
-              style={{
-                width: "42px",
-                height: "42px",
-                borderRadius: "50%",
-                border: "2px solid #2372A5",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Plus size={24} color="#2372A5" strokeWidth={2.5} />
-            </div>
-            <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "12px", textAlign: "center", letterSpacing: "0.02em", color: "#173F63" }}>
-              Add Visitor Category
-            </span>
+            <Plus size={16} color="#FFFFFF" strokeWidth={2.5} />
+            Add Visitor Category
           </button>
+        </div>
+
+        {/* Scrollable / Responsive cards track */}
+        <div
+          className="visitor-categories-track"
+          style={{
+            display: "flex",
+            alignItems: "stretch",
+            gap: "20px",
+            overflowX: "auto",
+            paddingBottom: "16px",
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+        >
+          {categories.map((cat) => {
+            const totalPrice = (Number(cat.basePrice || 0) * 1.18).toFixed(2);
+            return (
+              <div
+                key={cat.id}
+                className="visitor-category-card"
+                style={{
+                  boxSizing: "border-box",
+                  flex: "0 0 calc((100% - 40px) / 3)",
+                  minWidth: "260px",
+                  background: "#FFFFFF",
+                  border: "1px solid #E5E9F0",
+                  borderRadius: "16px",
+                  padding: "20px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "14px",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+                }}
+              >
+                {/* Top: Avatar, Name & Edit Button */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <VisitorCategoryAvatar src={cat.image} name={cat.name} size={44} />
+                    <span
+                      style={{
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "16px",
+                        color: "#011B2F",
+                      }}
+                    >
+                      {cat.name}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditingCategory(cat)}
+                    style={{
+                      width: "32px",
+                      height: "32px",
+                      borderRadius: "8px",
+                      border: "1px solid #E2E8F0",
+                      background: "#FFFFFF",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                    title="Edit category"
+                  >
+                    <Pencil size={15} color="#64748B" />
+                  </button>
+                </div>
+
+                {/* Row 1: Base Price (₹) & Total Price (i) */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "2px" }}>
+                      Base Price (₹)
+                    </div>
+                    <input
+                      type="text"
+                      value={cat.basePrice}
+                      onChange={(e) => handleCategoryChange(cat.id, "basePrice", e.target.value.replace(/[^0-9.]/g, ""))}
+                      style={{
+                        width: "100%",
+                        border: "none",
+                        outline: "none",
+                        background: "transparent",
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "16px",
+                        color: "#011B2F",
+                        padding: 0,
+                      }}
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "2px" }}>
+                      <span>Total Price</span>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: "12px",
+                          height: "12px",
+                          borderRadius: "50%",
+                          background: "#E2E8F0",
+                          color: "#64748B",
+                          fontSize: "8.5px",
+                          fontWeight: 700,
+                        }}
+                        title="Includes 18% GST"
+                      >
+                        i
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "16px",
+                        color: "#011B2F",
+                      }}
+                    >
+                      {totalPrice}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Row 2: Future Price & Effective Date */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      boxSizing: "border-box",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "2px" }}>
+                        Future Price
+                      </div>
+                      <input
+                        type="text"
+                        value={cat.futurePrice}
+                        onChange={(e) => handleCategoryChange(cat.id, "futurePrice", e.target.value)}
+                        placeholder="00.00"
+                        style={{
+                          width: "100%",
+                          border: "none",
+                          outline: "none",
+                          background: "transparent",
+                          fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          fontWeight: 700,
+                          fontSize: "14px",
+                          color: "#011B2F",
+                          padding: 0,
+                          marginBottom: "4px",
+                        }}
+                      />
+                    </div>
+                    {cat.futurePriceType === "onetime" ? (
+                      <span
+                        style={{
+                          alignSelf: "flex-start",
+                          fontSize: "9.5px",
+                          fontWeight: 600,
+                          color: "#9333EA",
+                          background: "#FAF5FF",
+                          border: "1px solid #F3E8FF",
+                          borderRadius: "4px",
+                          padding: "1px 6px",
+                        }}
+                      >
+                        📅 One Time
+                      </span>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px", flexWrap: "nowrap" }}>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "3px",
+                            fontSize: "9.5px",
+                            fontWeight: 600,
+                            color: "#2563EB",
+                            background: "#EFF6FF",
+                            border: "1px solid #DBEAFE",
+                            borderRadius: "4px",
+                            padding: "1px 6px",
+                          }}
+                        >
+                          <RotateCw size={9} /> Recurring
+                        </span>
+                        <span style={{ fontSize: "9px", color: "#64748B", whiteSpace: "nowrap" }}>(of Base Price)</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      boxSizing: "border-box",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ fontSize: "11px", fontWeight: 500, color: "#64748B", marginBottom: "2px" }}>
+                      Effective From
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Select Date"
+                      value={cat.effectiveFrom}
+                      onFocus={(e) => { e.target.type = "date"; }}
+                      onBlur={(e) => { if (!e.target.value) e.target.type = "text"; }}
+                      onChange={(e) => handleCategoryChange(cat.id, "effectiveFrom", e.target.value)}
+                      style={{
+                        width: "100%",
+                        border: "none",
+                        outline: "none",
+                        background: "transparent",
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        fontWeight: 600,
+                        fontSize: "12px",
+                        color: "#011B2F",
+                        padding: 0,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Row 3: No. of Seats */}
+                <div
+                  id={`field-seats-${cat.id}`}
+                  style={{
+                    background: "#F0FDF4",
+                    border: formErrors[`seats-${cat.id}`] ? "1.5px solid #DC2626" : "1px solid #86EFAC",
+                    borderRadius: "8px",
+                    padding: "8px 14px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "12px", color: "#011B2F" }}>
+                    No. of Seats<span style={{ color: "#DC2626" }}>*</span>
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="1"
+                    value={cat.numberOfSeats}
+                    onChange={(e) => {
+                      handleCategoryChange(cat.id, "numberOfSeats", e.target.value.replace(/\D/g, ""));
+                      setFormErrors((prev) => {
+                        if (!prev[`seats-${cat.id}`]) return prev;
+                        const next = { ...prev };
+                        delete next[`seats-${cat.id}`];
+                        return next;
+                      });
+                    }}
+                    style={{
+                      width: "50px",
+                      textAlign: "center",
+                      border: "none",
+                      outline: "none",
+                      background: "transparent",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 700,
+                      fontSize: "14px",
+                      color: "#011B2F",
+                      padding: 0,
+                    }}
+                  />
+                </div>
+                {formErrors[`seats-${cat.id}`] && (
+                  <span style={{ fontSize: "10px", color: "#DC2626", marginTop: "-8px" }}>
+                    {formErrors[`seats-${cat.id}`]}
+                  </span>
+                )}
+
+                {/* Row 5: Delete button */}
+                <button
+                  type="button"
+                  onClick={() => handleDeleteCategory(cat.id)}
+                  style={{
+                    width: "100%",
+                    height: "36px",
+                    background: "#FFFFFF",
+                    border: "1px solid #FCA5A5",
+                    borderRadius: "8px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#FEF2F2"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "#FFFFFF"; }}
+                >
+                  <Trash2 size={13} color="#EF4444" />
+                  <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, fontSize: "12px", color: "#EF4444" }}>
+                    Delete
+                  </span>
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -2571,6 +3117,42 @@ export default function AddEditAttractionForm({
         .btn-add-category-card:hover { background: #F0F7FF !important; transform: translateY(-2px); }
         .btn-form-cancel:hover { background: #F8FAFC !important; }
         .btn-form-save:hover { background: #E5AC32 !important; transform: translateY(-1px); }
+        .visitor-categories-track::-webkit-scrollbar {
+          height: 6px;
+        }
+        .visitor-categories-track::-webkit-scrollbar-track {
+          background: #E2E8F0;
+          border-radius: 9999px;
+        }
+        .visitor-categories-track::-webkit-scrollbar-thumb {
+          background: #94A3B8;
+          border-radius: 9999px;
+        }
+        .visitor-categories-track::-webkit-scrollbar-thumb:hover {
+          background: #64748B;
+        }
+        @media (max-width: 900px) {
+          .attraction-top-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .card-status-seating,
+          .card-basic-info {
+            height: auto !important;
+          }
+          .visitor-category-card {
+            flex: 0 0 calc((100% - 20px) / 2) !important;
+            min-width: 240px !important;
+          }
+        }
+        @media (max-width: 640px) {
+          .desc-image-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .visitor-category-card {
+            flex: 0 0 100% !important;
+            min-width: 220px !important;
+          }
+        }
         @media (max-width: 768px) {
           .card-basic-info, .card-status-seating, .card-categories-pricing {
             padding: 16px !important;
@@ -2584,11 +3166,46 @@ export default function AddEditAttractionForm({
       `}</style>
 
       {/* Add Visitor Category Modal */}
-      <AddVisitorCategoryModal
+      <AddEditVisitorCategoryModal
         isOpen={isAddCategoryModalOpen}
+        category={null}
         onClose={() => setIsAddCategoryModalOpen(false)}
-        onAdd={handleAddCategoryConfirm}
+        // onAdd={handleAddCategoryConfirm}
+        onSave={(newCat) => {
+          setCategories((prev) => [...prev, newCat]);
+          setIsAddCategoryModalOpen(false);
+        }}
         existingCategories={categories.map((c) => c.name)}
+      />
+
+      {/* Edit Visitor Category Modal */}
+      <AddEditVisitorCategoryModal
+        isOpen={Boolean(editingCategory)}
+        category={editingCategory}
+        onClose={() => setEditingCategory(null)}
+        onSave={(updatedCat) => {
+          setCategories((prev) =>
+            prev.map((c) => (c.id === updatedCat.id ? updatedCat : c))
+          );
+          setEditingCategory(null);
+        }}
+        existingCategories={categories
+          .filter((c) => c.id !== editingCategory?.id)
+          .map((c) => c.name)}
+      />
+
+      {/* Configure Stations Modal */}
+      <ConfigureStationsModal
+        isOpen={isConfigureStationsModalOpen}
+        onClose={() => setIsConfigureStationsModalOpen(false)}
+        initialMultiStation={isMultiStation}
+        initialRoundTrip={isRoundTrip}
+        initialStations={configuredStations}
+        onSave={(config) => {
+          setIsMultiStation(config.isMultiStation);
+          setIsRoundTrip(config.isRoundTrip);
+          setConfiguredStations(config.stations);
+        }}
       />
     </form>
   );

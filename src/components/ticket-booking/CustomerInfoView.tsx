@@ -898,7 +898,6 @@ function TicketGeneratedModal({
       sNo: idx + 1,
     }));
 
-  const seatText = selectedSeats && selectedSeats.length > 0 ? selectedSeats.join(", ") : "-";
 
   const hasAutoPrintedRef = useRef(false);
   const isPrintingRef = useRef(false);
